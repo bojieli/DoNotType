@@ -13,6 +13,8 @@ struct SettingsView: View {
                 .tabItem { Label("Grounding", systemImage: "text.viewfinder") }
             HistoryTab(model: model)
                 .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+            PromptTab(model: model)
+                .tabItem { Label("Prompt", systemImage: "text.quote") }
         }
         .frame(width: 620, height: 520)
         .task { await model.refresh() }
@@ -189,12 +191,17 @@ private struct HistoryTab: View {
         VStack(spacing: 0) {
             toolbar
             Divider()
+            searchBar
+            Divider()
 
             if model.records.isEmpty {
                 ContentUnavailableView(
-                    "No dictations yet",
-                    systemImage: "waveform",
-                    description: Text("Transcripts appear here, and failed ones can be retried."))
+                    model.query.isEmpty ? "No dictations yet" : "No matches",
+                    systemImage: model.query.isEmpty ? "waveform" : "magnifyingglass",
+                    description: Text(
+                        model.query.isEmpty
+                            ? "Transcripts appear here, and failed ones can be retried."
+                            : "Nothing in your history matches that filter."))
             } else {
                 List(model.records, selection: $selection) { record in
                     HistoryRow(record: record, model: model)
@@ -211,6 +218,45 @@ private struct HistoryTab: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    /// Searching is the point of keeping history at all — a log you cannot search is disk usage.
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Search transcripts, errors and apps", text: $model.query.text)
+                .textFieldStyle(.plain)
+            if !model.query.text.isEmpty {
+                Button {
+                    model.query.text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+            }
+
+            Picker("", selection: $model.query.status) {
+                ForEach(HistoryQuery.StatusFilter.allCases, id: \.self) { status in
+                    Text(status.label).tag(status)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 130)
+
+            if !model.knownApps.isEmpty {
+                Picker("", selection: $model.query.appName) {
+                    Text("Any app").tag(String?.none)
+                    ForEach(model.knownApps, id: \.self) { app in
+                        Text(app).tag(String?.some(app))
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 140)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
     }
 
     private var toolbar: some View {
@@ -236,7 +282,10 @@ private struct HistoryTab: View {
                 }
             }
 
-            Text(ByteCountFormatter.string(fromByteCount: model.audioBytes, countStyle: .file))
+            Text(
+                model.records.count == model.allRecords.count
+                    ? "\(model.allRecords.count) · \(ByteCountFormatter.string(fromByteCount: model.audioBytes, countStyle: .file))"
+                    : "\(model.records.count) of \(model.allRecords.count)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -320,6 +369,52 @@ private struct HistoryRow: View {
         case .completed: .green
         case .failed: .red
         case .pending: .orange
+        }
+    }
+}
+
+
+// MARK: - Prompt
+
+/// The prompt, editable in place.
+///
+/// Exposed because this is open-source software whose entire behaviour is a prompt; making it
+/// readable but not editable would be an odd line to draw. The warning is not boilerplate — the
+/// measured numbers in the changelog describe the shipped text and stop applying the moment it is
+/// edited, which is what `dnt-eval --prompt` is for.
+private struct PromptTab: View {
+    @Bindable var model: SettingsModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Label(
+                    model.isPromptCustom ? "Using your edited prompt" : "Using the shipped prompt",
+                    systemImage: model.isPromptCustom ? "pencil.circle.fill" : "checkmark.seal")
+                    .foregroundStyle(model.isPromptCustom ? .orange : .secondary)
+                    .font(.callout)
+                Spacer()
+                Button("Restore default") { model.restoreDefaultPrompt() }
+                    .disabled(!model.isPromptCustom)
+                Button("Save") { model.savePrompt() }
+                    .keyboardShortcut("s", modifiers: .command)
+            }
+            .padding(10)
+
+            Divider()
+
+            TextEditor(text: $model.promptText)
+                .font(.system(.body, design: .monospaced))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if let status = model.promptStatus {
+                Divider()
+                Text(status)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 }

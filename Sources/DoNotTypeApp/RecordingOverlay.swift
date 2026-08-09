@@ -9,6 +9,7 @@ import SwiftUI
 @MainActor
 final class RecordingOverlay {
     private var panel: NSPanel?
+    private var dismissWork: Task<Void, Never>?
     private let state = OverlayState()
 
     /// Live microphone level, 0...1, driving the waveform.
@@ -21,16 +22,37 @@ final class RecordingOverlay {
     }
 
     func show(phase: OverlayState.Phase, hint: String) {
+        dismissWork?.cancel()
         state.phase = phase
         state.hint = hint
 
         if panel == nil { panel = makePanel() }
         position(panel)
         panel?.orderFrontRegardless()
+        // Animated inside SwiftUI rather than on the window: animating an NSPanel's alpha while
+        // it is being ordered in produces a visible flash on the first frame.
+        withAnimation(.spring(duration: 0.28, bounce: 0.22)) { state.isPresented = true }
     }
 
-    func hide() {
-        panel?.orderOut(nil)
+    /// Flashes a confirmation, then dismisses itself.
+    func confirmInserted(characters: Int) {
+        update(phase: .inserted(characters))
+        hide(after: .milliseconds(900))
+    }
+
+    func hide(after delay: Duration = .zero) {
+        dismissWork?.cancel()
+        let work = Task { @MainActor in
+            if delay > .zero { try? await Task.sleep(for: delay) }
+            guard !Task.isCancelled else { return }
+
+            withAnimation(.easeIn(duration: 0.18)) { state.isPresented = false }
+            // Ordering the panel out before the animation finishes would cut it off mid-fade.
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            panel?.orderOut(nil)
+        }
+        dismissWork = work
     }
 
     // MARK: - Private
@@ -79,18 +101,34 @@ final class OverlayState {
     enum Phase: Equatable {
         case recording
         case transcribing
+        /// Brief confirmation that words were inserted, so success is visible rather than a
+        /// silent disappearance the user has to infer from the text appearing.
+        case inserted(Int)
         case failed(String)
     }
 
     var phase: Phase = .recording
     var level: Double = 0
     var hint: String = ""
+    /// Drives the appear/disappear transition.
+    var isPresented = false
 }
 
 private struct OverlayView: View {
     @Bindable var state: OverlayState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        content
+            // A pill that scales and fades in reads as "this appeared for you"; one that pops
+            // reads as a glitch. Respecting reduce-motion is not optional for something that
+            // shows up unannounced in the corner of the screen.
+            .opacity(state.isPresented ? 1 : 0)
+            .scaleEffect(reduceMotion ? 1 : (state.isPresented ? 1 : 0.88))
+            .offset(y: reduceMotion ? 0 : (state.isPresented ? 0 : 12))
+    }
+
+    private var content: some View {
         HStack(spacing: 12) {
             switch state.phase {
             case .recording:
@@ -106,17 +144,26 @@ private struct OverlayView: View {
                 Text("Transcribing…")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
+            case .inserted(let characters):
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .transition(.scale.combined(with: .opacity))
+                Text("Inserted \(characters) character\(characters == 1 ? "" : "s")")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
             case .failed(let message):
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                 Text(message)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.85))
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .frame(maxWidth: 320, alignment: .leading)
             }
         }
         .padding(.horizontal, 18)
-        .frame(height: 44)
+        .frame(minHeight: 44)
+        .animation(.easeInOut(duration: 0.2), value: state.phase)
         .background(
             Capsule().fill(Color.black.opacity(0.82))
         )

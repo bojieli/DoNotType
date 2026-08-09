@@ -17,9 +17,9 @@ public struct PromptBuilder: Sendable {
         }
     }
 
-    static let beginMarker = "<!-- BEGIN SYSTEM -->"
-    static let endMarker = "<!-- END SYSTEM -->"
-    static let fidelityPlaceholder = "{{FIDELITY_RULE}}"
+    public static let beginMarker = "<!-- BEGIN SYSTEM -->"
+    public static let endMarker = "<!-- END SYSTEM -->"
+    public static let fidelityPlaceholder = "{{FIDELITY_RULE}}"
     static let rewriteBeginMarker = "<!-- BEGIN REWRITE -->"
     static let rewriteEndMarker = "<!-- END REWRITE -->"
     static let stylePlaceholder = "{{STYLE_RULE}}"

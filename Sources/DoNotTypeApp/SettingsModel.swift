@@ -83,7 +83,23 @@ final class SettingsModel {
         }
     }
 
+    // MARK: - Prompt
+
+    /// The prompt actually in force. Editable, because an open-source app whose entire behaviour
+    /// is a prompt should not make that prompt read-only.
+    var promptText: String = ""
+    private(set) var promptStatus: String?
+    private(set) var isPromptCustom = false
+
+    // MARK: - History
+
+    var query = HistoryQuery() {
+        didSet { if query != oldValue { applyQuery() } }
+    }
+
+    private(set) var allRecords: [DictationRecord] = []
     private(set) var records: [DictationRecord] = []
+    private(set) var knownApps: [String] = []
     private(set) var audioBytes: Int64 = 0
     private(set) var retryingIDs: Set<UUID> = []
     private(set) var lastRetrySummary: String?
@@ -93,9 +109,11 @@ final class SettingsModel {
     private(set) var isCheckingConnection = false
 
     let store: HistoryStore
+    let prompts: PromptStore
 
     init(store: HistoryStore) {
         self.store = store
+        self.prompts = PromptStore(directory: HistoryStore.defaultDirectory())
         let settings = Settings.shared
         provider = settings.provider
         apiKey = settings.apiKey ?? ""
@@ -109,6 +127,46 @@ final class SettingsModel {
         blockedURLPrefixes = settings.blockedURLPrefixes
         retention = settings.retention
         keepAudio = settings.keepAudio
+        loadPrompt()
+    }
+
+    // MARK: - Prompt editing
+
+    static func bundledPromptURL() -> URL? {
+        Bundle.main.url(forResource: "PROMPT", withExtension: "md") ?? PromptBuilder.findPromptFile()
+    }
+
+    func loadPrompt() {
+        guard let defaultURL = Self.bundledPromptURL() else {
+            promptStatus = "Could not locate the bundled PROMPT.md."
+            return
+        }
+        promptText = (try? prompts.activeTemplate(default: defaultURL)) ?? ""
+        isPromptCustom = prompts.hasCustomPrompt
+        promptStatus = nil
+    }
+
+    /// Validated before saving. A prompt that cannot build would surface as a mid-dictation
+    /// failure rather than an error at the moment of editing.
+    func savePrompt() {
+        do {
+            try prompts.save(promptText)
+            isPromptCustom = true
+            promptStatus = "Saved. The measured numbers in the changelog no longer apply to this "
+                + "prompt — re-run `dnt-eval suite --prompt` to measure your own."
+        } catch {
+            promptStatus = error.localizedDescription
+        }
+    }
+
+    func restoreDefaultPrompt() {
+        do {
+            try prompts.restoreDefault()
+            loadPrompt()
+            promptStatus = "Restored the shipped prompt."
+        } catch {
+            promptStatus = error.localizedDescription
+        }
     }
 
     var resolvedKeySource: String {
@@ -119,14 +177,21 @@ final class SettingsModel {
         return "not set"
     }
 
-    var retryableCount: Int { records.count(where: \.canRetry) }
+    /// Counted over everything, not the filtered view — a queue you cannot see is still a queue.
+    var retryableCount: Int { allRecords.count(where: \.canRetry) }
 
     // MARK: - Actions
 
     func refresh() async {
         await reconfigureStore()
-        records = await store.all()
+        allRecords = await store.all()
+        knownApps = HistoryQuery.appNames(in: allRecords)
         audioBytes = await store.audioBytes()
+        applyQuery()
+    }
+
+    private func applyQuery() {
+        records = query.apply(to: allRecords)
     }
 
     private func reconfigureStore() async {
@@ -204,9 +269,8 @@ final class SettingsModel {
         guard let key = Settings.shared.resolvedAPIKey(), !key.isEmpty,
             let provider = try? ProviderFactory.make(
                 provider, environment: [provider.apiKeyEnvVar: key]),
-            let promptURL = Bundle.main.url(forResource: "PROMPT", withExtension: "md")
-                ?? PromptBuilder.findPromptFile(),
-            let instruction = try? PromptBuilder(contentsOf: promptURL)
+            let promptURL = Self.bundledPromptURL(),
+            let instruction = try? prompts.builder(default: promptURL)
                 .systemInstruction(fidelity: fidelity)
         else { return nil }
 

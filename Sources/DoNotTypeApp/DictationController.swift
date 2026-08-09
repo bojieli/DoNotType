@@ -38,6 +38,14 @@ final class DictationController {
     }
 
     func start() -> Bool {
+        // Watching the network lets a dictation be queued instead of failing, and lets the queue
+        // drain itself the moment connectivity returns.
+        Task {
+            await Reachability.shared.start()
+            await Reachability.shared.onOnlineAgain { [weak self] in
+                Task { @MainActor in await self?.retryPending() }
+            }
+        }
         hotkey.trigger = Settings.shared.trigger
         hotkey.mode = Settings.shared.hotkeyMode
         hotkey.isRecording = { [weak self] in self?.state == .recording }
@@ -175,6 +183,17 @@ final class DictationController {
             windowTitle: context?.windowTitle,
             context: context)
 
+        // Offline is worth knowing *before* spending fifteen seconds on a timeout: the dictation
+        // goes straight to the queue and the user is told it is safe rather than lost.
+        if await !Reachability.shared.isOnline {
+            record.status = .pending
+            record.errorMessage = "Offline when recorded."
+            await store.insert(record, audio: try? Data(contentsOf: audio.url))
+            onHistoryChange?()
+            fail("Offline — saved, and it will send itself when you reconnect.")
+            return
+        }
+
         do {
             // Pre-uploaded if the session opened and the upload landed; inline otherwise. The
             // fallback is silent by design — a flaky network should cost latency, never words.
@@ -195,9 +214,11 @@ final class DictationController {
             await store.insert(record, audio: settings.keepAudio ? try? Data(contentsOf: audio.url) : nil)
             onHistoryChange?()
 
-            overlay.hide()
             state = .idle
             await TextInjector.insert(text)
+            // Confirm rather than vanish: a silent disappearance leaves the user checking whether
+            // anything happened, especially when the target app scrolled.
+            overlay.confirmInserted(characters: text.count)
         } catch {
             log.error("transcription failed: \(error.localizedDescription)")
 
@@ -208,10 +229,9 @@ final class DictationController {
             await store.insert(record, audio: try? Data(contentsOf: audio.url))
             onHistoryChange?()
 
-            fail(
-                TranscriptionService.isTransient(error)
-                    ? "\(error.localizedDescription) — saved, retry from History."
-                    : error.localizedDescription)
+            let advice = FailureAdvice.describe(
+                error, isOnline: await Reachability.shared.isOnline)
+            fail(advice.message)
         }
     }
 
@@ -251,6 +271,8 @@ final class DictationController {
     }
 
     private func fail(_ message: String) {
+        overlay.update(phase: .failed(message))
+        overlay.hide(after: .seconds(5))
         state = .failed(message)
         Task {
             try? await Task.sleep(for: .seconds(5))
