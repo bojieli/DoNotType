@@ -3,7 +3,8 @@ import PackageDescription
 
 let package = Package(
     name: "DoNotType",
-    platforms: [.macOS(.v14)],
+    // iOS is here for DoNotTypeCore only — the app and eval targets are macOS-hosted.
+    platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .library(name: "DoNotTypeCore", targets: ["DoNotTypeCore"]),
         .executable(name: "dnt-eval", targets: ["dnt-eval"]),
