@@ -34,6 +34,8 @@ release yet, so everything below is unreleased.
   a signature changes.
 - **Measurement layer.** `dnt-eval` with `probe`, `once`, `suite` and `ablate`, plus
   `eval/model-sweep.sh` and `eval/extract-real-audio.sh`.
+- **Cross-vendor model benchmark** (`eval/benchmark-models.sh`, results in
+  [docs/MODELS.md](docs/MODELS.md)) covering 36 audio-capable models.
 - 73 Swift unit tests, 24 C# unit tests, and an opt-in integration suite that runs against the live
   API on real recorded speech.
 
@@ -46,6 +48,12 @@ release yet, so everything below is unreleased.
 - **History lists silently truncated** at 20 items on Android and 200 on Windows, which read as
   "this is your whole history" when it was not. Both now render everything the retention policy
   kept, and per-item delete was added to both.
+- **Models that reject `response_format` were unusable.** `openai/gpt-audio` and `gpt-audio-mini`
+  return a provider error the moment a JSON schema is attached, while transcribing fine without
+  one. The client now retries once without it and remembers per model — structured output is a
+  convenience here, not a requirement.
+- **Transcripts truncated by a token limit were discarded entirely.** Partial JSON is now salvaged
+  rather than thrown away, because the words in it are words the user actually said.
 
 ### Known issues
 
