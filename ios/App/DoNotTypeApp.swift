@@ -18,112 +18,108 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                recordSection
-                if !model.transcripts.isEmpty { transcriptSection }
-                settingsSection
-                explanationSection
+            VStack(spacing: 28) {
+                Spacer()
+                recordButton
+                statusLine
+                Spacer()
+                if let latest = model.records.first(where: { $0.status == .completed }) {
+                    latestTranscript(latest)
+                }
+                pendingBanner
             }
+            .padding(24)
             .navigationTitle("DoNotType")
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { model.refresh() }
-        }
-    }
-
-    private var recordSection: some View {
-        Section {
-            VStack(spacing: 16) {
-                Button(action: model.toggleRecording) {
-                    ZStack {
-                        Circle()
-                            .fill(model.state == .recording ? Color.red : Color.accentColor)
-                            .frame(width: 116, height: 116)
-                            .scaleEffect(1 + model.level * 0.18)
-                            .animation(.easeOut(duration: 0.08), value: model.level)
-                        Image(systemName: model.state == .recording ? "stop.fill" : "mic.fill")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.white)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink { HistoryView(model: model) } label: {
+                        Image(systemName: "clock.arrow.circlepath")
                     }
                 }
-                .buttonStyle(.plain)
-                .disabled(model.state == .transcribing)
-
-                Text(statusText)
-                    .font(.callout)
-                    .foregroundStyle(statusColor)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-        }
-    }
-
-    private var transcriptSection: some View {
-        Section("Recent") {
-            ForEach(model.transcripts) { entry in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.text)
-                    Text(entry.createdAt, style: .relative)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink { SettingsView(model: model) } label: {
+                        Image(systemName: "gearshape")
+                    }
                 }
             }
-            Button("Clear", role: .destructive) { model.clearHistory() }
+        }
+        .task { await model.refresh() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            // Anything that failed while offline goes out as soon as the app is foregrounded.
+            Task {
+                await model.refresh()
+                await model.retryPending()
+            }
         }
     }
 
-    private var settingsSection: some View {
-        Section("Settings") {
-            SecureField("Gemini API key", text: $model.apiKey)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+    private var recordButton: some View {
+        Button(action: model.toggleRecording) {
+            ZStack {
+                // The ring pulses with the microphone level, so it is obvious the mic is live.
+                Circle()
+                    .stroke(Color.accentColor.opacity(0.25), lineWidth: 10)
+                    .frame(width: 168, height: 168)
+                    .scaleEffect(1 + model.level * 0.22)
+                    .animation(.easeOut(duration: 0.08), value: model.level)
 
-            Picker("Fidelity", selection: $model.fidelity) {
-                Text("Raw — every um").tag(Fidelity.raw)
-                Text("Light — your words").tag(Fidelity.light)
-                Text("Tidy — plus punctuation").tag(Fidelity.tidy)
+                Circle()
+                    .fill(model.state == .recording ? Color.red : Color.accentColor)
+                    .frame(width: 132, height: 132)
+
+                Image(systemName: model.state == .recording ? "stop.fill" : "mic.fill")
+                    .font(.system(size: 46))
+                    .foregroundStyle(.white)
             }
+        }
+        .buttonStyle(.plain)
+        .disabled(model.state == .transcribing)
+    }
 
-            if !model.hasAppGroup {
+    private var statusLine: some View {
+        Group {
+            switch model.state {
+            case .idle: Text("Tap to dictate").foregroundStyle(.secondary)
+            case .recording: Text("Listening… tap to stop").foregroundStyle(.secondary)
+            case .transcribing:
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Transcribing…").foregroundStyle(.secondary)
+                }
+            case .failed(let message):
+                Text(message)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .font(.callout)
+    }
+
+    private func latestTranscript(_ record: DictationRecord) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Latest").font(.caption).foregroundStyle(.secondary)
+            Text(record.text).lineLimit(4)
+            Text("Copied to the clipboard, and waiting in the keyboard.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private var pendingBanner: some View {
+        if model.retryableCount > 0 {
+            Button {
+                Task { await model.retryAll() }
+            } label: {
                 Label(
-                    "App Group unavailable — the keyboard cannot read transcripts.",
-                    systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
+                    "\(model.retryableCount) waiting to send — retry",
+                    systemImage: "arrow.clockwise")
             }
+            .buttonStyle(.bordered)
         }
-    }
-
-    private var explanationSection: some View {
-        Section("Why the keyboard cannot record") {
-            Text(
-                """
-                iOS does not let a keyboard extension open a microphone. "Allow Full Access" grants \
-                network and a shared container — not the mic.
-
-                So dictation happens here, and the DoNotType keyboard inserts what this app \
-                produced. Transcripts also go to the clipboard, so they are usable anywhere.
-
-                Screen grounding is macOS and Android only: nothing in the iOS sandbox lets one app \
-                read another's content.
-                """
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        }
-    }
-
-    private var statusText: String {
-        switch model.state {
-        case .idle: "Tap to dictate"
-        case .recording: "Listening… tap to stop"
-        case .transcribing: "Transcribing…"
-        case .failed(let message): message
-        }
-    }
-
-    private var statusColor: Color {
-        if case .failed = model.state { return .red }
-        return .secondary
     }
 }

@@ -7,10 +7,11 @@ import UIKit
 /// Records, transcribes, and hands the result to the keyboard through the App Group.
 ///
 /// There is no screen grounding on iOS. Nothing in the sandbox lets one app read another app's
-/// content, and unlike macOS accessibility or Android's AccessibilityService there is no
-/// user-grantable escape hatch. The `ScreenContext` this sends carries only what the user typed
-/// into this app, which is usually nothing — so iOS gets verbatim transcription without the
-/// grounding half of the product.
+/// content, and unlike macOS accessibility or Android's `AccessibilityService` there is no
+/// user-grantable escape hatch. iOS gets verbatim transcription without the grounding half.
+///
+/// History and retry are shared with macOS — the same `HistoryStore` and `RetryCoordinator` from
+/// `DoNotTypeCore`, so a dictation that fails on a train is still there when the signal returns.
 @MainActor
 @Observable
 final class DictationModel {
@@ -22,31 +23,75 @@ final class DictationModel {
     }
 
     private(set) var state: State = .idle
-    private(set) var transcripts: [TranscriptStore.Entry] = []
+    private(set) var records: [DictationRecord] = []
     private(set) var level: Double = 0
+    private(set) var retryingIDs: Set<UUID> = []
+    private(set) var audioBytes: Int64 = 0
+    private(set) var connectionStatus: String?
+    private(set) var isCheckingConnection = false
 
     var apiKey: String {
         didSet { KeychainStore.write(apiKey, account: "gemini") }
     }
+    var model: String {
+        didSet { UserDefaults.standard.set(model, forKey: "model") }
+    }
     var fidelity: Fidelity {
         didSet { UserDefaults.standard.set(fidelity.rawValue, forKey: "fidelity") }
     }
+    var retention: RetentionPolicy {
+        didSet {
+            UserDefaults.standard.set(retention.rawValue, forKey: "retention")
+            Task { await refresh() }
+        }
+    }
+    var keepAudio: Bool {
+        didSet {
+            UserDefaults.standard.set(keepAudio, forKey: "keepAudio")
+            Task { await refresh() }
+        }
+    }
 
-    private let store = TranscriptStore()
+    private let transcriptStore = TranscriptStore()
+    private let history: HistoryStore
     private var recorder: AVAudioRecorder?
     private var levelTimer: Timer?
     private var recordingURL: URL?
 
     init() {
+        let defaults = UserDefaults.standard
         apiKey = KeychainStore.read(account: "gemini") ?? ""
-        fidelity = Fidelity(rawValue: UserDefaults.standard.string(forKey: "fidelity") ?? "")
-            ?? .default
-        transcripts = store.load()
+        model = defaults.string(forKey: "model") ?? ProviderKind.gemini.defaultModel
+        fidelity = Fidelity(rawValue: defaults.string(forKey: "fidelity") ?? "") ?? .default
+        retention = RetentionPolicy(rawValue: defaults.string(forKey: "retention") ?? "")
+            ?? .forever
+        keepAudio = defaults.bool(forKey: "keepAudio")
+
+        // Inside the App Group so the keyboard could read it too if that ever becomes useful.
+        let directory = TranscriptStore.containerURL
+            ?? HistoryStore.defaultDirectory()
+        history = HistoryStore(directory: directory.appendingPathComponent("History"))
     }
 
     var hasAppGroup: Bool { TranscriptStore.containerURL != nil }
+    var retryableCount: Int { records.count(where: \.canRetry) }
 
-    func refresh() { transcripts = store.load() }
+    var keySource: String {
+        apiKey.isEmpty ? "not set" : "Keychain"
+    }
+
+    func refresh() async {
+        await history.configure(retention: retention, keepAudioForCompleted: keepAudio)
+        records = await history.all()
+        audioBytes = await history.audioBytes()
+    }
+
+    /// Drains anything that failed while offline. Called when the app becomes active.
+    func retryPending() async {
+        guard retryableCount > 0, let coordinator = makeCoordinator() else { return }
+        _ = await coordinator.retryAll()
+        await refresh()
+    }
 
     // MARK: - Recording
 
@@ -133,45 +178,123 @@ final class DictationModel {
     private func transcribe(url: URL) async {
         defer { try? FileManager.default.removeItem(at: url) }
 
-        guard !apiKey.isEmpty else {
-            state = .failed("Add your Gemini API key first.")
+        guard let coordinator = makeCoordinator() else {
+            state = .failed("Add your API key in Settings.")
             return
         }
 
+        var record = DictationRecord(
+            status: .pending, provider: ProviderKind.gemini.rawValue,
+            model: model, fidelity: fidelity)
+
         do {
             let audio = try AudioFile(contentsOf: url)
-            guard let promptURL = Bundle.main.url(forResource: "PROMPT", withExtension: "md") else {
-                state = .failed("PROMPT.md is missing from the app bundle.")
-                return
-            }
+            let result = try await coordinator.service.transcribeWithRetry(
+                audio: audio, context: nil)
+            let text = result.transcript.transcript
+                .trimmingCharacters(in: .whitespacesAndNewlines)
 
-            let result = try await GeminiProvider(apiKey: apiKey).transcribe(
-                TranscriptionRequest(
-                    model: ProviderKind.gemini.defaultModel,
-                    systemInstruction: try PromptBuilder(contentsOf: promptURL)
-                        .systemInstruction(fidelity: fidelity),
-                    parts: [audio.part]))
-
-            let text = result.transcript.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else {
                 state = .idle
                 return
             }
 
-            store.append(text)
-            transcripts = store.load()
-            // Also to the pasteboard, so the transcript is usable even in apps where the user has
-            // not enabled the keyboard.
-            UIPasteboard.general.string = text
+            record.status = .completed
+            record.text = text
+            await history.insert(record, audio: keepAudio ? try? Data(contentsOf: url) : nil)
+
+            deliver(text)
             state = .idle
         } catch {
-            state = .failed(error.localizedDescription)
+            // Audio is kept so this can be retried from History, or automatically next launch.
+            record.status = .failed
+            record.errorMessage = error.localizedDescription
+            await history.insert(record, audio: try? Data(contentsOf: url))
+            state = .failed(
+                TranscriptionService.isTransient(error)
+                    ? "\(error.localizedDescription) — saved, retry from History."
+                    : error.localizedDescription)
+        }
+        await refresh()
+    }
+
+    /// Hands a finished transcript to the keyboard and the clipboard.
+    private func deliver(_ text: String) {
+        transcriptStore.append(text)
+        // Also to the pasteboard, so it is usable in apps where the keyboard is not enabled.
+        UIPasteboard.general.string = text
+    }
+
+    // MARK: - History actions
+
+    func retry(_ record: DictationRecord) async {
+        guard let coordinator = makeCoordinator() else {
+            state = .failed("Add your API key in Settings.")
+            return
+        }
+        retryingIDs.insert(record.id)
+        defer { retryingIDs.remove(record.id) }
+
+        if case .success(let text) = await coordinator.retry(record) {
+            deliver(text)
+        }
+        await refresh()
+    }
+
+    func retryAll() async {
+        guard let coordinator = makeCoordinator() else { return }
+        let pending = await history.retryable()
+        retryingIDs = Set(pending.map(\.id))
+        defer { retryingIDs.removeAll() }
+
+        _ = await coordinator.retryAll()
+        await refresh()
+    }
+
+    func delete(_ record: DictationRecord) async {
+        await history.delete(id: record.id)
+        await refresh()
+    }
+
+    func clearHistory() async {
+        await history.deleteAll()
+        transcriptStore.clear()
+        await refresh()
+    }
+
+    func checkConnection() async {
+        isCheckingConnection = true
+        connectionStatus = nil
+        defer { isCheckingConnection = false }
+
+        guard !apiKey.isEmpty else {
+            connectionStatus = "No API key set."
+            return
+        }
+        do {
+            _ = try await GeminiProvider(apiKey: apiKey).transcribe(
+                TranscriptionRequest(
+                    model: model,
+                    systemInstruction: "You are a transcription engine.",
+                    parts: [.text("Pretend the audio said: ok. Transcribe it.")]))
+            connectionStatus = "✓ Reachable, key accepted"
+        } catch {
+            connectionStatus = "✗ \(error.localizedDescription)"
         }
     }
 
-    func clearHistory() {
-        store.clear()
-        transcripts = []
+    private func makeCoordinator() -> RetryCoordinator? {
+        guard !apiKey.isEmpty,
+            let promptURL = Bundle.main.url(forResource: "PROMPT", withExtension: "md"),
+            let instruction = try? PromptBuilder(contentsOf: promptURL)
+                .systemInstruction(fidelity: fidelity)
+        else { return nil }
+
+        return RetryCoordinator(
+            service: TranscriptionService(
+                provider: GeminiProvider(apiKey: apiKey), model: model,
+                systemInstruction: instruction),
+            store: history)
     }
 }
 
