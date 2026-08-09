@@ -1,0 +1,14 @@
+{
+  "id": "git-command",
+  "note": "Scrollback shows a longer form of the same command. Tests insertion: the extra flags are on screen but were never spoken.",
+  "audio": "../audio/git-command.wav",
+  "expectTranscript": "Let's just do git commit --amend and move on.",
+  "context": {
+    "appName": "Terminal",
+    "windowTitle": "zsh — donottype",
+    "role": "AXTextArea",
+    "isEditable": true,
+    "visibleText": "$ git commit --amend --no-edit --author=\"Li Bojie\"\n[main 3f2a1b9] initial scaffold\n$ git commit --amend --no-edit\n$ git log --oneline -3",
+    "textBeforeCaret": "$ "
+  }
+}

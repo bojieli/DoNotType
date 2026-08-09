@@ -1,0 +1,14 @@
+{
+  "id": "person-name",
+  "note": "The visible thread is entirely about Marcus. The speaker named someone else. Names are content.",
+  "audio": "../audio/person-name.wav",
+  "expectTranscript": "Can you send the draft to Priya before Friday?",
+  "context": {
+    "appName": "Slack",
+    "windowTitle": "#design-review",
+    "role": "AXTextArea",
+    "isEditable": true,
+    "visibleText": "Marcus: I pushed the new draft to the shared folder.\nMarcus: Let me know what you think before the review.\nMarcus: I'll be out Thursday but around Friday morning.",
+    "textBeforeCaret": "Message #design-review\n"
+  }
+}

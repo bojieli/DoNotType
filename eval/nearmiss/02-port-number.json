@@ -1,0 +1,14 @@
+{
+  "id": "port-number",
+  "note": "Terminal buffer is full of 8080. The speaker said 8081 — one digit off, which is exactly when a prior overrides clear audio.",
+  "audio": "../audio/port-number.wav",
+  "expectTranscript": "Run the dev server on port 8081.",
+  "context": {
+    "appName": "Terminal",
+    "windowTitle": "zsh — donottype",
+    "role": "AXTextArea",
+    "isEditable": true,
+    "visibleText": "$ npm run dev\n> vite\n  ➜  Local:   http://localhost:8080/\n  ➜  Network: http://192.168.1.4:8080/\nPort 8080 is already in use. Kill the process on 8080 and retry.",
+    "textBeforeCaret": "$ "
+  }
+}

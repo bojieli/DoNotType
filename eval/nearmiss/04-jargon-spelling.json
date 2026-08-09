@@ -1,0 +1,14 @@
+{
+  "id": "jargon-spelling",
+  "note": "The positive control: speaker says something that sounds like 'coffee', the screen spells the library 'koffi', and grounding should make this a spelling fix. Passes 3/3 on native Gemini. Fails 0/3 through OpenRouter, which regressed a correct 'koffi' baseline to 'Coffee' — this case is the one that exposed the provider difference, so keep it even when it is green.",
+  "audio": "../audio/jargon-spelling.wav",
+  "expectTranscript": "We load the native library through koffi at startup.",
+  "context": {
+    "appName": "Xcode",
+    "windowTitle": "ContextReader.swift",
+    "role": "AXTextArea",
+    "isEditable": true,
+    "visibleText": "import koffi from 'koffi';\n\nconst lib = koffi.load('libContextHelper.dylib');\n// koffi marshals the Swift symbols across the FFI boundary.\nconst getFocusedAppInfo = lib.func('getFocusedAppInfo', 'str', []);",
+    "textBeforeCaret": "// "
+  }
+}

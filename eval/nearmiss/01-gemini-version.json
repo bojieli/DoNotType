@@ -1,0 +1,12 @@
+{
+  "id": "gemini-version",
+  "note": "The founding case. Screen says 'Gemini 3 Flash' five times; the speaker said 3.5. A version number is content, not spelling.",
+  "audio": "../audio/gemini-version.wav",
+  "expectTranscript": "We should switch to Gemini 3.5 Flash for this.",
+  "context": {
+    "appName": "Safari",
+    "windowTitle": "Gemini API — Pricing",
+    "browserURL": "https://ai.google.dev/gemini-api/docs/pricing",
+    "visibleText": "Gemini 3 Flash is our fastest model. Gemini 3 Flash pricing: $0.50 input, $3.00 output per million tokens. Compare Gemini 3 Flash and Gemini 3 Pro. Gemini 3 Flash is recommended for most production workloads. See the Gemini 3 Flash migration guide for details."
+  }
+}
