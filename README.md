@@ -111,11 +111,11 @@ swift run dnt-eval ablate                     # compare designs on fidelity and 
 ./eval/model-sweep.sh                         # compare model versions
 ```
 
-Only `gemini-3.6-flash` transcribes the test clip's version number correctly with no context at
-all; `gemini-3.5-flash` hears "2.4" and `gemini-3-flash-preview` hears "Gimma 2.0". Re-run the
-sweep on any model bump — multimodal quality moves between releases.
-
-See [docs/EVALUATION.md](docs/EVALUATION.md).
+Of 36 audio-capable models tested, only `gemini-3.6-flash` transcribes the reference clip's version
+number correctly with no context at all — `gemini-3.5-flash` hears "2.4", `gemini-3-flash-preview`
+hears "Gimma 2.0", and `openai/gpt-audio` sometimes replies to the audio conversationally instead of
+transcribing it. Full results in [docs/MODELS.md](docs/MODELS.md); method in
+[docs/EVALUATION.md](docs/EVALUATION.md).
 
 ## Privacy
 
@@ -140,6 +140,7 @@ predicted. See [CONTRIBUTING.md](CONTRIBUTING.md).
 | [CONTEXT_FORMAT.md](CONTEXT_FORMAT.md) | part order, delimiters, caps, truncation direction |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the pieces fit, and which decisions were measured |
 | [docs/EVALUATION.md](docs/EVALUATION.md) | how quality is measured and what the numbers say |
+| [docs/MODELS.md](docs/MODELS.md) | which models and providers can actually do this job |
 | [PLAN.html](PLAN.html) | the original reverse-engineering survey this design came from |
 
 ## License

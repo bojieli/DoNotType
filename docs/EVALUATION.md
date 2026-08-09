@@ -108,6 +108,9 @@ be scored for substitution at all, because they produce neither the spoken nor t
 **Re-run the sweep on any model bump.** Multimodal quality moves between releases, and this is the
 only measurement here that would notice.
 
+Cross-vendor results, including OpenAI's audio models and the provider-versus-model comparison, are
+in [MODELS.md](MODELS.md).
+
 ## Building a corpus
 
 ```bash

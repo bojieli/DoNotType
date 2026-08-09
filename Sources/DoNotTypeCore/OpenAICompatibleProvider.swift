@@ -15,6 +15,30 @@ public struct OpenAICompatibleProvider: TranscriptionProvider {
 
     private let session: URLSession
 
+    /// Models observed to reject `response_format`, so the fallback is paid for once rather than
+    /// on every request.
+    ///
+    /// `openai/gpt-audio` is the reason this exists: it transcribes perfectly well but returns a
+    /// provider error the moment a JSON schema is attached. Structured output is a convenience
+    /// here, not a requirement — `Transcript.parse` already tolerates bare prose — so refusing to
+    /// work with such a model would be the client's failure, not the model's.
+    private static let schemaUnsupported = SchemaSupportCache()
+
+    final class SchemaSupportCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var models: Set<String> = []
+
+        func isUnsupported(_ model: String) -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            return models.contains(model)
+        }
+
+        func markUnsupported(_ model: String) {
+            lock.lock(); defer { lock.unlock() }
+            models.insert(model)
+        }
+    }
+
     public init(
         name: String,
         baseURL: URL,
@@ -32,6 +56,34 @@ public struct OpenAICompatibleProvider: TranscriptionProvider {
     }
 
     public func transcribe(_ request: TranscriptionRequest) async throws -> TranscriptionResult {
+        let useSchema = !Self.schemaUnsupported.isUnsupported(request.model)
+        do {
+            return try await send(request, structuredOutput: useSchema)
+        } catch let error as ProviderError {
+            // Retry once without the schema when that is plausibly the cause. Losing structured
+            // output costs nothing here; losing the dictation would cost the user their words.
+            guard useSchema, case .http(let status, let body) = error,
+                Self.looksLikeSchemaRejection(status: status, body: body)
+            else { throw error }
+
+            Self.schemaUnsupported.markUnsupported(request.model)
+            return try await send(request, structuredOutput: false)
+        }
+    }
+
+    /// A 400 with no detail is the common shape here, so the heuristic is deliberately broad —
+    /// the cost of a wrong guess is one extra request, and it is remembered either way.
+    static func looksLikeSchemaRejection(status: Int, body: String) -> Bool {
+        guard status == 400 || status == 422 else { return false }
+        let haystack = body.lowercased()
+        return haystack.contains("response_format") || haystack.contains("schema")
+            || haystack.contains("json") || haystack.contains("provider returned error")
+            || haystack.isEmpty
+    }
+
+    private func send(
+        _ request: TranscriptionRequest, structuredOutput: Bool
+    ) async throws -> TranscriptionResult {
         var urlRequest = URLRequest(url: baseURL)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -39,7 +91,8 @@ public struct OpenAICompatibleProvider: TranscriptionProvider {
         for (key, value) in extraHeaders {
             urlRequest.setValue(value, forHTTPHeaderField: key)
         }
-        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body(for: request))
+        urlRequest.httpBody = try JSONSerialization.data(
+            withJSONObject: body(for: request, structuredOutput: structuredOutput))
         urlRequest.timeoutInterval = 120
 
         let (data, response) = try await session.data(for: urlRequest)
@@ -77,7 +130,7 @@ public struct OpenAICompatibleProvider: TranscriptionProvider {
 
     // MARK: - Private
 
-    private func body(for request: TranscriptionRequest) -> [String: Any] {
+    private func body(for request: TranscriptionRequest, structuredOutput: Bool) -> [String: Any] {
         var content: [[String: Any]] = []
         for part in request.parts {
             switch part {
@@ -110,15 +163,17 @@ public struct OpenAICompatibleProvider: TranscriptionProvider {
                 ["role": "user", "content": content],
             ],
             "max_tokens": request.maxOutputTokens,
-            "response_format": [
+        ]
+        if structuredOutput {
+            body["response_format"] = [
                 "type": "json_schema",
                 "json_schema": [
                     "name": "transcript",
                     "strict": true,
                     "schema": Transcript.jsonSchema,
                 ],
-            ],
-        ]
+            ]
+        }
         if let reasoningEffort {
             body["reasoning"] = ["effort": reasoningEffort]
         }

@@ -44,12 +44,50 @@ public struct Transcript: Sendable, Codable, Equatable {
         } catch {
             // A model that ignored the schema entirely and returned bare prose is still usable:
             // the text it produced is the transcript. Better a working dictation than an error.
-            guard !candidate.isEmpty, !candidate.hasPrefix("{") else {
+            guard !candidate.isEmpty else {
+                throw ProviderError.malformedResponse("the model returned nothing")
+            }
+            // Truncated or slightly malformed JSON still usually carries the transcript, and
+            // throwing it away would lose words the user actually said.
+            if candidate.hasPrefix("{"), let salvaged = salvageTranscript(from: candidate) {
+                return Transcript(transcript: salvaged, language: "")
+            }
+            guard !candidate.hasPrefix("{") else {
                 throw ProviderError.malformedResponse(
                     "could not decode Transcript from: \(candidate.prefix(200))")
             }
             return Transcript(transcript: candidate, language: "")
         }
+    }
+
+    /// Pulls the `transcript` value out of JSON that failed to decode — most often because the
+    /// response was cut off by a token limit part-way through the string.
+    static func salvageTranscript(from candidate: String) -> String? {
+        guard let keyRange = candidate.range(of: "\"transcript\"") else { return nil }
+        let afterKey = candidate[keyRange.upperBound...]
+        guard let colon = afterKey.firstIndex(of: ":") else { return nil }
+
+        var value = ""
+        var isInside = false
+        var isEscaped = false
+        for character in afterKey[afterKey.index(after: colon)...] {
+            if isEscaped {
+                // Only the escapes a transcript realistically contains; anything else passes
+                // through as written rather than being dropped.
+                value.append(character == "n" ? "\n" : character)
+                isEscaped = false
+                continue
+            }
+            if character == "\\" { isEscaped = true; continue }
+            if character == "\"" {
+                if isInside { break }
+                isInside = true
+                continue
+            }
+            if isInside { value.append(character) }
+        }
+        let trimmed = value.trimmed
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     static func stripCodeFence(_ raw: String) -> String {
