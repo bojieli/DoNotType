@@ -25,3 +25,7 @@ android/local.properties
 # iOS — project.yml is the source of truth; run `xcodegen generate`
 ios/DoNotType.xcodeproj/
 ios/App/PROMPT.md
+
+# .NET
+windows/**/bin/
+windows/**/obj/

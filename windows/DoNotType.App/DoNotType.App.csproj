@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- UI Automation for grounding lives in the WindowsDesktop WPF assemblies. -->
+    <UseWPF>true</UseWPF>
+    <!-- Lets the Windows target compile on a non-Windows machine, so CI is not Windows-only. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- Required by the LibraryImport source generator used for the Win32 entry points. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>DoNotType</AssemblyName>
+    <RootNamespace>DoNotType.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DoNotType.Core\DoNotType.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The WinForms implicit-usings set omits these two, unlike the default one. -->
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The same contract file macOS, Android and iOS ship. Copied, never duplicated. -->
+    <None Include="..\..\PROMPT.md" Link="PROMPT.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
