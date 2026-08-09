@@ -1,0 +1,17 @@
+.DS_Store
+.build/
+.swiftpm/
+*.xcuserdatan
+xcuserdata/
+DerivedData/
+
+# Eval artifacts: audio and results are local, case definitions are committed.
+eval/results/
+eval/audio/*.wav
+eval/audio/*.flac
+eval/audio/*.ogg
+eval/audio/*.aiff
+
+# Never commit a key.
+.env
+*.key
