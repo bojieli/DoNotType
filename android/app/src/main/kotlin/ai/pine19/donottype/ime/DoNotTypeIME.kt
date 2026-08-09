@@ -4,9 +4,7 @@ import ai.pine19.donottype.PromptAssets
 import ai.pine19.donottype.Settings
 import ai.pine19.donottype.accessibility.ScreenReaderService
 import ai.pine19.donottype.audio.WavRecorder
-import ai.pine19.donottype.core.ContextEncoder
-import ai.pine19.donottype.core.GeminiClient
-import ai.pine19.donottype.core.InputPart
+import ai.pine19.donottype.core.DictationService
 import ai.pine19.donottype.core.ScreenContext
 import android.Manifest
 import android.content.pm.PackageManager
@@ -44,7 +42,7 @@ class DoNotTypeIME : InputMethodService() {
 
     private val recorder = WavRecorder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val encoder = ContextEncoder()
+    private val service by lazy { DictationService(this) }
 
     private lateinit var statusLabel: TextView
     private lateinit var talkButton: Button
@@ -67,6 +65,12 @@ class DoNotTypeIME : InputMethodService() {
         scope.cancel()
         recorder.cancel()
         super.onDestroy()
+    }
+
+    override fun onStartInputView(info: android.view.inputmethod.EditorInfo?, restarting: Boolean) {
+        super.onStartInputView(info, restarting)
+        // Anything that failed while offline goes out when the keyboard next opens.
+        scope.launch { withContext(Dispatchers.IO) { service.retryAll() } }
     }
 
     override fun onCreateInputView(): View {
@@ -161,29 +165,27 @@ class DoNotTypeIME : InputMethodService() {
 
         state = State.TRANSCRIBING
         scope.launch {
-            try {
-                val parts = buildList {
-                    if (context != null && !context.isEmpty) addAll(encoder.encode(context))
-                    add(InputPart.Audio(wav, "audio/wav"))
-                }
-                val result = GeminiClient(apiKey = key, model = Settings.model)
-                    .transcribe(
-                        systemInstruction = withContext(Dispatchers.IO) {
-                            PromptAssets.systemInstruction(this@DoNotTypeIME, Settings.fidelity)
-                        },
-                        parts = parts,
-                    )
-
-                val text = result.transcript.transcript.trim()
-                if (text.isNotEmpty()) {
-                    currentInputConnection?.commitText(text, 1)
-                }
-                state = State.IDLE
-            } catch (error: Exception) {
-                Log.e(TAG, "transcription failed", error)
-                statusLabel.text = error.message ?: "Transcription failed"
-                state = State.ERROR
+            val outcome = withContext(Dispatchers.IO) {
+                service.transcribe(wav, context, context?.appName)
             }
+            outcome.fold(
+                onSuccess = { record ->
+                    if (record.text.isNotEmpty()) {
+                        currentInputConnection?.commitText(record.text, 1)
+                    }
+                    state = State.IDLE
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "transcription failed", error)
+                    // The recording is stored, so this is recoverable rather than lost.
+                    statusLabel.text = if (service.isTransient(error)) {
+                        "Saved — retry from DoNotType when you are back online"
+                    } else {
+                        error.message ?: "Transcription failed"
+                    }
+                    state = State.ERROR
+                },
+            )
         }
     }
 

@@ -1,93 +1,93 @@
 package ai.pine19.donottype
 
 import ai.pine19.donottype.accessibility.ScreenReaderService
+import ai.pine19.donottype.core.DictationRecord
+import ai.pine19.donottype.core.DictationService
 import ai.pine19.donottype.core.Fidelity
+import ai.pine19.donottype.core.GeminiClient
+import ai.pine19.donottype.core.InputPart
+import ai.pine19.donottype.core.RetentionPolicy
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.provider.Settings as AndroidSettings
 import android.text.InputType
+import android.text.format.Formatter
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 /**
- * Onboarding and settings.
+ * Setup, settings and history.
  *
  * Also the only place the microphone permission can be granted: an `InputMethodService` cannot
  * request a runtime permission itself, so the keyboard sends people here.
  *
- * Built in code rather than XML layouts — this is four controls, and a layout file would be more
- * indirection than the screen is worth.
+ * Built in code rather than XML layouts — this is a settings list, and a layout file per section
+ * would be more indirection than the screen is worth.
  */
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var apiKeyField: EditText
-    private lateinit var groundingSwitch: Switch
+    private lateinit var modelField: EditText
     private lateinit var statusLabel: TextView
+    private lateinit var connectionLabel: TextView
+    private lateinit var historyContainer: LinearLayout
+    private lateinit var historySummary: TextView
+
+    private val service by lazy { DictationService(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Settings.initialise(this)
         setContentView(buildLayout())
-        refreshStatus()
     }
 
     override fun onResume() {
         super.onResume()
         refreshStatus()
+        refreshHistory()
     }
 
     private fun buildLayout(): ScrollView {
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(56, 72, 56, 72)
+            setPadding(56, 64, 56, 96)
         }
 
-        column.addView(heading("DoNotType"))
+        column.addView(heading("DoNotType", 24f))
         column.addView(
             body(
-                "Transcribes what you said, not a tidied-up version of it. Grounded in what is " +
-                    "on your screen so names and technical terms are spelled the way you see them."
+                "Transcribes what you said, not a tidied-up version of it. Grounded in what is on "
+                    + "your screen so names and technical terms are spelled the way you see them."
             )
         )
 
-        column.addView(heading("1 · Your API key"))
-        column.addView(
-            body(
-                "Calls go straight to Google with your own key. Nothing routes through a server " +
-                    "of ours. Stored in this app's private storage."
-            )
-        )
-        apiKeyField = EditText(this).apply {
-            hint = "Gemini API key"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setText(Settings.apiKey.orEmpty())
-        }
-        column.addView(apiKeyField)
-        column.addView(
-            button("Save key") {
-                Settings.apiKey = apiKeyField.text.toString().trim()
-                refreshStatus()
-            }
-        )
+        // ---- Setup ----
+        column.addView(sectionTitle("Setup"))
+        statusLabel = body("").apply { setTypeface(Typeface.MONOSPACE) }
+        column.addView(statusLabel)
 
-        column.addView(heading("2 · Microphone"))
-        column.addView(
-            body("The keyboard records only while you hold the talk button.")
-        )
         column.addView(
             button("Grant microphone access") {
                 ActivityCompat.requestPermissions(
@@ -95,42 +95,109 @@ class SettingsActivity : AppCompatActivity() {
                 )
             }
         )
-
-        column.addView(heading("3 · Enable the keyboard"))
         column.addView(
-            button("Open keyboard settings") {
+            button("Enable the keyboard") {
                 startActivity(Intent(AndroidSettings.ACTION_INPUT_METHOD_SETTINGS))
             }
         )
-
-        column.addView(heading("4 · Screen grounding (optional)"))
         column.addView(
-            body(
-                "Reads the text on your current screen while you dictate, so the model can spell " +
-                    "what it sees. Read only while you speak, never stored. The keyboard works " +
-                    "without this — it just cannot spell what is on screen."
-            )
-        )
-        groundingSwitch = Switch(this).apply {
-            text = "Send screen context"
-            isChecked = Settings.groundingEnabled
-            setOnCheckedChangeListener { _, checked -> Settings.groundingEnabled = checked }
-        }
-        column.addView(groundingSwitch)
-        column.addView(
-            button("Open accessibility settings") {
+            button("Enable screen grounding (optional)") {
                 startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS))
             }
         )
 
-        column.addView(heading("Fidelity"))
-        column.addView(buildFidelityPicker())
+        // ---- Provider ----
+        column.addView(sectionTitle("Provider"))
+        column.addView(
+            body("Calls go straight to Google with your key. Nothing routes through a server of ours.")
+        )
+        apiKeyField = EditText(this).apply {
+            hint = "Gemini API key"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setText(Settings.apiKey.orEmpty())
+        }
+        column.addView(apiKeyField)
 
-        statusLabel = body("").apply { setTextColor(Color.parseColor("#4E7A63")) }
-        column.addView(statusLabel)
+        modelField = EditText(this).apply {
+            hint = "Model"
+            setText(Settings.model)
+        }
+        column.addView(modelField)
+
+        column.addView(
+            button("Save") {
+                Settings.apiKey = apiKeyField.text.toString().trim()
+                Settings.model = modelField.text.toString().trim().ifEmpty { "gemini-3.6-flash" }
+                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+                refreshStatus()
+            }
+        )
+
+        connectionLabel = body("")
+        column.addView(connectionLabel)
+        column.addView(button("Test connection") { testConnection() })
+
+        // ---- Dictation ----
+        column.addView(sectionTitle("Fidelity"))
+        column.addView(buildFidelityPicker())
+        column.addView(
+            body("Even Tidy only changes typography. None of these reword you.")
+        )
+
+        // ---- Grounding ----
+        column.addView(sectionTitle("Screen grounding"))
+        column.addView(
+            Switch(this).apply {
+                text = "Send screen context"
+                isChecked = Settings.groundingEnabled
+                setOnCheckedChangeListener { _, checked -> Settings.groundingEnabled = checked }
+            }
+        )
+        column.addView(
+            body(
+                "Read only while you dictate, never stored. Sent as-is — no vocabulary list, no "
+                    + "dictionary. It may correct spelling, never the words you said."
+            )
+        )
+
+        // ---- History ----
+        column.addView(sectionTitle("History"))
+        column.addView(buildRetentionPicker())
+        column.addView(
+            Switch(this).apply {
+                text = "Keep audio for successful dictations"
+                isChecked = Settings.keepAudio
+                setOnCheckedChangeListener { _, checked ->
+                    Settings.keepAudio = checked
+                    refreshHistory()
+                }
+            }
+        )
+        column.addView(
+            body(
+                "Failed dictations always keep their audio until they succeed, whatever this is "
+                    + "set to — otherwise Retry could not work."
+            )
+        )
+
+        historySummary = body("")
+        column.addView(historySummary)
+        column.addView(button("Retry all failed") { retryAll() })
+
+        historyContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        column.addView(historyContainer)
+
+        column.addView(
+            button("Delete all history") {
+                service.history.deleteAll()
+                refreshHistory()
+            }
+        )
 
         return ScrollView(this).apply { addView(column) }
     }
+
+    // MARK: - Sections
 
     private fun buildFidelityPicker(): RadioGroup {
         val descriptions = mapOf(
@@ -152,8 +219,116 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    private fun buildRetentionPicker(): Spinner {
+        val policies = RetentionPolicy.entries
+        return Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@SettingsActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                policies.map { it.label },
+            )
+            setSelection(policies.indexOf(Settings.retention).coerceAtLeast(0))
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(p: AdapterView<*>?, v: View?, position: Int, id: Long) {
+                    Settings.retention = policies[position]
+                    refreshHistory()
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            }
+        }
+    }
+
+    // MARK: - Actions
+
+    private fun testConnection() {
+        val key = Settings.apiKey
+        if (key.isNullOrBlank()) {
+            connectionLabel.text = "No API key set."
+            return
+        }
+        connectionLabel.text = "Checking…"
+        lifecycleScope.launch {
+            connectionLabel.text = runCatching {
+                GeminiClient(apiKey = key, model = Settings.model).transcribe(
+                    "You are a transcription engine.",
+                    listOf(InputPart.Text("Pretend the audio said: ok. Transcribe it.")),
+                )
+            }.fold(
+                onSuccess = { "✓ Reachable, key accepted" },
+                onFailure = { "✗ ${it.message}" },
+            )
+        }
+    }
+
+    private fun retryAll() {
+        lifecycleScope.launch {
+            historySummary.text = "Retrying…"
+            val (succeeded, failed) = service.retryAll()
+            historySummary.text = "$succeeded succeeded, $failed still failing"
+            refreshHistory()
+        }
+    }
+
+    private fun refreshHistory() {
+        service.history.configure(Settings.retention, Settings.keepAudio)
+        val records = service.history.all()
+        val retryable = records.count { it.canRetry }
+
+        historySummary.text = buildString {
+            append("${records.size} dictation${if (records.size == 1) "" else "s"}")
+            if (retryable > 0) append(" · $retryable to retry")
+            append(" · ")
+            append(Formatter.formatShortFileSize(this@SettingsActivity, service.history.audioBytes()))
+        }
+
+        historyContainer.removeAllViews()
+        records.take(20).forEach { historyContainer.addView(historyRow(it)) }
+    }
+
+    private fun historyRow(record: DictationRecord): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 12, 0, 12)
+        }
+
+        val marker = when (record.status) {
+            DictationRecord.Status.COMPLETED -> "✓"
+            DictationRecord.Status.FAILED -> "✗"
+            DictationRecord.Status.PENDING -> "…"
+        }
+
+        row.addView(
+            TextView(this).apply {
+                text = "$marker  ${record.summary.take(90)}"
+                textSize = 13f
+                setTextColor(
+                    if (record.status == DictationRecord.Status.COMPLETED) Color.DKGRAY
+                    else Color.parseColor("#B23A2F")
+                )
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+        )
+
+        if (record.canRetry) {
+            row.addView(
+                Button(this).apply {
+                    text = "Retry"
+                    setOnClickListener {
+                        isEnabled = false
+                        lifecycleScope.launch {
+                            service.retry(record)
+                            refreshHistory()
+                        }
+                    }
+                }
+            )
+        }
+        return row
+    }
+
     private fun refreshStatus() {
-        if (!::statusLabel.isInitialized) return
         val checks = listOf(
             "API key" to !Settings.apiKey.isNullOrBlank(),
             "Microphone" to (
@@ -169,16 +344,18 @@ class SettingsActivity : AppCompatActivity() {
 
     // MARK: - Tiny view helpers
 
-    private fun heading(text: String) = TextView(this).apply {
+    private fun sectionTitle(text: String) = heading(text, 18f)
+
+    private fun heading(text: String, size: Float) = TextView(this).apply {
         this.text = text
-        textSize = 19f
+        textSize = size
+        setTypeface(null, Typeface.BOLD)
         setPadding(0, 48, 0, 12)
-        gravity = Gravity.START
     }
 
     private fun body(text: String) = TextView(this).apply {
         this.text = text
-        textSize = 14f
+        textSize = 13f
         setPadding(0, 0, 0, 16)
     }
 

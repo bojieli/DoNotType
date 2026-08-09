@@ -1,6 +1,7 @@
 package ai.pine19.donottype
 
 import ai.pine19.donottype.core.Fidelity
+import ai.pine19.donottype.core.RetentionPolicy
 import android.content.Context
 import android.content.SharedPreferences
 
@@ -18,6 +19,8 @@ object Settings {
     private const val KEY_FIDELITY = "fidelity"
     private const val KEY_GROUNDING = "grounding"
     private const val KEY_BLOCKED = "blockedPackages"
+    private const val KEY_RETENTION = "retention"
+    private const val KEY_KEEP_AUDIO = "keepAudio"
 
     /**
      * Shipped non-empty. A blocklist that starts empty is one nobody ever fills in, and this app
@@ -60,6 +63,19 @@ object Settings {
         get() = if (ready) prefs.getStringSet(KEY_BLOCKED, DEFAULT_BLOCKED) ?: DEFAULT_BLOCKED
                 else DEFAULT_BLOCKED
         set(value) { if (ready) prefs.edit().putStringSet(KEY_BLOCKED, value).apply() }
+
+    var retention: RetentionPolicy
+        get() = if (ready) RetentionPolicy.from(prefs.getString(KEY_RETENTION, null))
+                else RetentionPolicy.FOREVER
+        set(value) { if (ready) prefs.edit().putString(KEY_RETENTION, value.id).apply() }
+
+    /**
+     * Keep audio for successful dictations too. Off by default; failed entries always keep theirs
+     * until they succeed, so Retry stays possible either way.
+     */
+    var keepAudio: Boolean
+        get() = ready && prefs.getBoolean(KEY_KEEP_AUDIO, false)
+        set(value) { if (ready) prefs.edit().putBoolean(KEY_KEEP_AUDIO, value).apply() }
 
     /** Evaluated before capture, never after — see CONTEXT_FORMAT.md. */
     fun isBlocked(packageName: String?): Boolean {
