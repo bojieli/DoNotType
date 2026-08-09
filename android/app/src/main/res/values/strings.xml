@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DoNotType</string>
+    <string name="ime_name">DoNotType Voice</string>
+    <string name="accessibility_name">DoNotType screen grounding</string>
+    <string name="accessibility_description">Lets DoNotType read the text on your current screen so it can spell names, product names and technical terms the way they appear there. Text is read only while you are dictating, is never stored, and is sent only to the model you configured with your own API key.</string>
+</resources>
