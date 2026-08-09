@@ -23,6 +23,7 @@ final class Settings {
         static let blockedBundleIDs = "blockedBundleIDs"
         static let blockedURLPrefixes = "blockedURLPrefixes"
         static let retention = "retention"
+        static let hotkeyMode = "hotkeyMode"
     }
 
     /// Shipped non-empty. A blocklist that starts empty is a blocklist nobody ever fills in, and
@@ -51,7 +52,16 @@ final class Settings {
             Key.blockedBundleIDs: Self.defaultBlockedBundleIDs,
             Key.blockedURLPrefixes: Self.defaultBlockedURLPrefixes,
             Key.retention: RetentionPolicy.forever.rawValue,
+            Key.hotkeyMode: HotkeyMonitor.Mode.automatic.rawValue,
         ])
+    }
+
+    var hotkeyMode: HotkeyMonitor.Mode {
+        get {
+            HotkeyMonitor.Mode(rawValue: defaults.string(forKey: Key.hotkeyMode) ?? "")
+                ?? .automatic
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.hotkeyMode) }
     }
 
     /// How long transcripts are kept. Note that a failed dictation keeps its audio regardless,

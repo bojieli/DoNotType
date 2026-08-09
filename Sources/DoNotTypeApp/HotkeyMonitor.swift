@@ -43,17 +43,59 @@ final class HotkeyMonitor {
         }
     }
 
+    /// How holding the key relates to recording.
+    ///
+    /// `automatic` is the default because it needs no decision from the user: a quick tap starts a
+    /// hands-free recording that a second tap ends, and anything held past the threshold behaves
+    /// as push-to-talk. Short utterances suit the hold; long ones suit not having to hold.
+    enum Mode: String, CaseIterable, Sendable {
+        /// Record while held, stop on release.
+        case pushToTalk
+        /// Tap once to start, tap again to stop.
+        case handsFree
+        /// Tap toggles; holding past `holdThreshold` becomes push-to-talk.
+        case automatic
+
+        var label: String {
+            switch self {
+            case .pushToTalk: "Hold to talk"
+            case .handsFree: "Tap to start, tap to stop"
+            case .automatic: "Tap to toggle, hold to talk"
+            }
+        }
+
+        /// Shown in the recording overlay, so it always says how to stop.
+        var overlayHint: String {
+            switch self {
+            case .pushToTalk: "Release to send"
+            case .handsFree: "Tap again to send"
+            case .automatic: "Release or tap to send"
+            }
+        }
+    }
+
+    /// A press shorter than this counts as a tap. 250 ms is comfortably longer than an intentional
+    /// tap and comfortably shorter than the shortest useful dictation.
+    static let holdThreshold: TimeInterval = 0.25
+
     var trigger: Trigger = .rightCommand
+    var mode: Mode = .automatic
+
     var onPress: (() -> Void)?
     var onRelease: (() -> Void)?
     /// Fires when the user taps Escape while recording.
     var onCancel: (() -> Void)?
+    /// Set by the owner so tap-toggle knows whether a tap should start or stop.
+    var isRecording: () -> Bool = { false }
 
     private let log = Logger(subsystem: "ai.19pine.donottype", category: "hotkey")
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var watchdog: Timer?
     private var isHeld = false
+    private var pressedAt: Date?
+    /// Whether the in-flight recording began with this press, for `automatic` mode.
+    private var startedByTap = false
     private(set) var restartCount = 0
 
     func start() -> Bool {
@@ -122,17 +164,58 @@ final class HotkeyMonitor {
             let down = event.flags.contains(trigger.flag)
             guard down != isHeld else { return }
             isHeld = down
-            down ? onPress?() : onRelease?()
+            down ? handlePress() : handleRelease()
 
         case .keyDown:
             // Escape aborts a recording in flight without inserting anything.
-            if isHeld, event.getIntegerValueField(.keyboardEventKeycode) == 53 {
-                isHeld = false
+            if isRecording(), event.getIntegerValueField(.keyboardEventKeycode) == 53 {
                 onCancel?()
             }
 
         default:
             break
+        }
+    }
+
+    // MARK: - Press semantics
+
+    private func handlePress() {
+        pressedAt = Date()
+        switch mode {
+        case .pushToTalk:
+            onPress?()
+        case .handsFree:
+            isRecording() ? onRelease?() : onPress?()
+        case .automatic:
+            // Start immediately either way: waiting to see whether this becomes a hold would
+            // clip the first word off every push-to-talk dictation.
+            if isRecording() {
+                startedByTap = false
+            } else {
+                startedByTap = true
+                onPress?()
+            }
+        }
+    }
+
+    private func handleRelease() {
+        let held = pressedAt.map { Date().timeIntervalSince($0) } ?? 0
+        pressedAt = nil
+
+        switch mode {
+        case .pushToTalk:
+            onRelease?()
+        case .handsFree:
+            break  // toggling already happened on press
+        case .automatic:
+            if !startedByTap {
+                // The press that landed while recording was the second tap of a hands-free
+                // session; it stopped on press and there is nothing to do here.
+                onRelease?()
+            } else if held >= Self.holdThreshold {
+                onRelease?()  // it was a hold, so release ends it
+            }
+            // Otherwise it was a tap: recording continues until the next press.
         }
     }
 

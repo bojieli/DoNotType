@@ -65,14 +65,24 @@ private struct GeneralTab: View {
             }
 
             Section("Dictation") {
-                Picker("Hold to talk", selection: $model.trigger) {
+                Picker("Key", selection: $model.trigger) {
                     ForEach(HotkeyMonitor.Trigger.allCases, id: \.self) { trigger in
                         Text(trigger.label).tag(trigger)
                     }
                 }
-                Text("Press Escape while recording to cancel.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                Picker("Behaviour", selection: $model.hotkeyMode) {
+                    ForEach(HotkeyMonitor.Mode.allCases, id: \.self) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                Text(
+                    model.hotkeyMode == .automatic
+                        ? "A quick tap starts recording and a second tap ends it; holding the key "
+                            + "past a moment records only while held. Escape cancels."
+                        : "Escape cancels a recording without inserting anything."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
 
                 Picker("Fidelity", selection: $model.fidelity) {
                     Text("Raw — every um and false start").tag(Fidelity.raw)

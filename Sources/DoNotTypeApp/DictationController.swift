@@ -27,6 +27,11 @@ final class DictationController {
     private let recorder = AudioRecorder()
     private let hotkey = HotkeyMonitor()
     private let grounding = GroundingCoordinator()
+    private let overlay = RecordingOverlay()
+
+    /// Opened at hotkey-down so the upload handshake happens while the user is still speaking.
+    private var uploader: AudioUploader?
+    private var levelTimer: Timer?
 
     init(store: HistoryStore) {
         self.store = store
@@ -34,18 +39,24 @@ final class DictationController {
 
     func start() -> Bool {
         hotkey.trigger = Settings.shared.trigger
+        hotkey.mode = Settings.shared.hotkeyMode
+        hotkey.isRecording = { [weak self] in self?.state == .recording }
         hotkey.onPress = { [weak self] in self?.beginRecording() }
         hotkey.onRelease = { [weak self] in self?.finishRecording() }
         hotkey.onCancel = { [weak self] in self?.cancelRecording() }
         return hotkey.start()
     }
 
-    func stop() { hotkey.stop() }
+    func stop() {
+        hotkey.stop()
+        levelTimer?.invalidate()
+    }
 
-    /// Re-reads the trigger after the user changes it in settings.
+    /// Re-reads the trigger and mode after the user changes them in settings.
     func reloadHotkey() {
         hotkey.stop()
         hotkey.trigger = Settings.shared.trigger
+        hotkey.mode = Settings.shared.hotkeyMode
         _ = hotkey.start()
     }
 
@@ -67,9 +78,21 @@ final class DictationController {
         do {
             try recorder.start()
             state = .recording
+
             // Phase 2 of the capture: the expensive accessibility walk runs while the user is
             // still speaking, so grounding costs no perceived latency.
             grounding.beginCapture()
+
+            // Same trick for the network. Opening the resumable upload session now means the
+            // handshake is paid for during the recording rather than after it.
+            if let key = Settings.shared.resolvedAPIKey(), Settings.shared.provider == .gemini {
+                let uploader = AudioUploader(apiKey: key)
+                self.uploader = uploader
+                Task { await uploader.prepare(estimatedBytes: 1_000_000) }
+            }
+
+            overlay.show(phase: .recording, hint: Settings.shared.hotkeyMode.overlayHint)
+            startLevelUpdates()
         } catch {
             log.error("could not start recording: \(error.localizedDescription)")
             fail(error.localizedDescription)
@@ -80,11 +103,32 @@ final class DictationController {
         guard state == .recording else { return }
         recorder.cancel()
         grounding.cancel()
+        Task { [uploader] in await uploader?.cancel() }
+        uploader = nil
+        stopLevelUpdates()
+        overlay.hide()
         state = .idle
+    }
+
+    private func startLevelUpdates() {
+        levelTimer?.invalidate()
+        levelTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) {
+            [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.overlay.update(level: self.recorder.level)
+            }
+        }
+    }
+
+    private func stopLevelUpdates() {
+        levelTimer?.invalidate()
+        levelTimer = nil
     }
 
     private func finishRecording() {
         guard state == .recording else { return }
+        stopLevelUpdates()
 
         let audio: AudioFile
         do {
@@ -92,6 +136,9 @@ final class DictationController {
         } catch AudioRecorder.RecorderError.tooShort {
             // A tap rather than a hold. Silently return to idle; not worth interrupting anyone.
             grounding.cancel()
+            Task { [uploader] in await uploader?.cancel() }
+            uploader = nil
+            overlay.hide()
             state = .idle
             return
         } catch {
@@ -101,6 +148,7 @@ final class DictationController {
         }
 
         state = .transcribing
+        overlay.update(phase: .transcribing)
         Task { [weak self] in
             guard let self else { return }
             await transcribe(audio: audio, context: await grounding.finishCapture())
@@ -128,12 +176,16 @@ final class DictationController {
             context: context)
 
         do {
+            // Pre-uploaded if the session opened and the upload landed; inline otherwise. The
+            // fallback is silent by design — a flaky network should cost latency, never words.
+            let audioPart = try await resolveAudioPart(audio)
             let result = try await coordinator.service.transcribeWithRetry(
-                audio: audio, context: context)
+                audio: audio, context: context, audioPart: audioPart)
             let text = result.transcript.transcript
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
             guard !text.isEmpty else {
+                overlay.hide()
                 state = .idle  // silence in, nothing out
                 return
             }
@@ -143,6 +195,7 @@ final class DictationController {
             await store.insert(record, audio: settings.keepAudio ? try? Data(contentsOf: audio.url) : nil)
             onHistoryChange?()
 
+            overlay.hide()
             state = .idle
             await TextInjector.insert(text)
         } catch {
@@ -159,6 +212,24 @@ final class DictationController {
                 TranscriptionService.isTransient(error)
                     ? "\(error.localizedDescription) — saved, retry from History."
                     : error.localizedDescription)
+        }
+    }
+
+    /// Chooses the upload route, degrading to inline rather than failing.
+    private func resolveAudioPart(_ audio: AudioFile) async -> InputPart? {
+        guard let uploader else { return nil }
+        self.uploader = nil
+        do {
+            let plan = try await uploader.plan(for: audio)
+            if case .preUploaded = plan.route {
+                log.info("audio pre-uploaded; request carries a URI instead of base64")
+            }
+            return plan.part
+        } catch {
+            // Only happens when the recording is too big to inline AND the upload service is
+            // unreachable. Surfacing it lets the caller store the audio for a later retry.
+            log.warning("no upload route available: \(error.localizedDescription)")
+            return nil
         }
     }
 

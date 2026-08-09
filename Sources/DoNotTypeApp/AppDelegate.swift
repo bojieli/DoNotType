@@ -1,3 +1,4 @@
+import AVFoundation
 import AppKit
 import DoNotTypeCore
 import Foundation
@@ -7,8 +8,10 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
+    private var permissionsWindow: NSWindow?
 
     private let store = HistoryStore(directory: HistoryStore.defaultDirectory())
+    private let permissions = PermissionsModel()
     private lazy var dictation = DictationController(store: store)
     private lazy var settingsModel = SettingsModel(store: store)
 
@@ -37,37 +40,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Startup
 
+    /// Re-checked at every launch, not just the first: macOS revokes Accessibility whenever an
+    /// app's signature changes, and people turn things off in System Settings without connecting
+    /// that to the app going quiet.
     private func requestPermissionsAndStart() async {
-        // Asked one at a time, at the moment each is first needed. Never all three at onboarding.
-        if !AccessibilityReader.isTrusted {
-            AccessibilityReader.requestTrust()
-            alert(
-                "Accessibility access required",
-                """
-                DoNotType needs Accessibility access for two things: to notice your hotkey, and to \
-                paste the transcript where you were typing.
+        permissions.refresh()
 
-                Grant it in System Settings › Privacy & Security › Accessibility, then relaunch.
-                """)
-            return
+        // The microphone is the one permission with a real system prompt left, so ask for it
+        // inline before falling back to the walkthrough.
+        if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+            _ = await AudioRecorder.requestAccess()
+            permissions.refresh()
         }
 
-        guard await AudioRecorder.requestAccess() else {
-            alert(
-                "Microphone access required",
-                "Grant it in System Settings › Privacy & Security › Microphone, then relaunch.")
+        guard permissions.allRequiredGranted else {
+            openPermissions()
             return
         }
+        await startDictating()
+    }
 
+    private func startDictating() async {
         guard dictation.start() else {
-            alert(
-                "Could not install the hotkey",
-                "The system refused to create an event tap. This usually means Accessibility "
-                    + "access was revoked. Re-grant it and relaunch.")
+            permissions.refresh()
+            openPermissions()
             return
         }
 
         await settingsModel.refresh()
+        rebuildMenu()
 
         if Settings.shared.resolvedAPIKey() == nil {
             openSettings()
@@ -75,6 +76,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Anything that failed while the machine was offline goes out now.
             await dictation.retryPending()
         }
+    }
+
+    @objc private func openPermissions() {
+        permissions.refresh()
+
+        if let permissionsWindow {
+            permissionsWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: 520),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.title = "DoNotType Setup"
+        window.contentView = NSHostingView(
+            rootView: PermissionsView(model: permissions) { [weak self] in
+                guard let self else { return }
+                permissionsWindow?.close()
+                Task { await self.startDictating() }
+            })
+        window.center()
+        window.isReleasedWhenClosed = false
+        permissionsWindow = window
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     // MARK: - Menu bar
@@ -126,6 +154,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(.separator())
+        if !permissions.allRequiredGranted {
+            let setup = NSMenuItem(
+                title: "Finish setup…", action: #selector(openPermissions), keyEquivalent: "")
+            setup.target = self
+            menu.addItem(setup)
+        }
+
         let settings = NSMenuItem(
             title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settings.target = self

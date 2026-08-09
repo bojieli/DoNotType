@@ -40,6 +40,13 @@ final class SettingsModel {
         }
     }
 
+    var hotkeyMode: HotkeyMonitor.Mode {
+        didSet {
+            Settings.shared.hotkeyMode = hotkeyMode
+            onHotkeyChange?()
+        }
+    }
+
     var onHotkeyChange: (() -> Void)?
 
     // MARK: - Grounding
@@ -95,6 +102,7 @@ final class SettingsModel {
         model = settings.model
         fidelity = settings.fidelity
         trigger = settings.trigger
+        hotkeyMode = settings.hotkeyMode
         groundingEnabled = settings.groundingEnabled
         screenshotEnabled = settings.screenshotEnabled
         blockedBundleIDs = settings.blockedBundleIDs

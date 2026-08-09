@@ -9,11 +9,13 @@ public enum InputPart: Sendable, Equatable {
     case text(String)
     case image(data: Data, mimeType: String)
     case audio(data: Data, mimeType: String)
+    /// Audio already uploaded to the Files API. Referenced, not carried.
+    case remoteAudio(uri: String, mimeType: String)
 }
 
 extension InputPart: Encodable {
     private enum CodingKeys: String, CodingKey {
-        case type, text, data
+        case type, text, data, uri
         case mimeType = "mime_type"
     }
 
@@ -31,6 +33,11 @@ extension InputPart: Encodable {
             try c.encode("audio", forKey: .type)
             try c.encode(data.base64EncodedString(), forKey: .data)
             try c.encode(mimeType, forKey: .mimeType)
+        case .remoteAudio(let uri, let mimeType):
+            try c.encode("audio", forKey: .type)
+            // `uri`, not `file_uri` — the latter is rejected as an unknown parameter.
+            try c.encode(uri, forKey: .uri)
+            try c.encode(mimeType, forKey: .mimeType)
         }
     }
 }
@@ -45,6 +52,8 @@ extension InputPart: CustomStringConvertible {
             return "image(\(data.count) bytes, \(mimeType))"
         case .audio(let data, let mimeType):
             return "audio(\(data.count) bytes, \(mimeType))"
+        case .remoteAudio(_, let mimeType):
+            return "audio(uploaded, \(mimeType))"
         }
     }
 }

@@ -48,14 +48,16 @@ public struct TranscriptionService: Sendable {
         self.encoder = encoder
     }
 
-    public func transcribe(audio: AudioFile, context: ScreenContext?) async throws
-        -> TranscriptionResult
-    {
+    /// - Parameter audioPart: overrides how the recording is carried, so a caller that
+    ///   pre-uploaded it can pass a URI reference instead of the bytes. Defaults to inline.
+    public func transcribe(
+        audio: AudioFile, context: ScreenContext?, audioPart: InputPart? = nil
+    ) async throws -> TranscriptionResult {
         var parts: [InputPart] = []
         if let context, !context.isEmpty {
             parts.append(contentsOf: encoder.encode(context))
         }
-        parts.append(audio.part)
+        parts.append(audioPart ?? audio.part)
 
         return try await provider.transcribe(
             TranscriptionRequest(
@@ -63,21 +65,28 @@ public struct TranscriptionService: Sendable {
     }
 
     /// Retries with exponential backoff, giving up early on errors that will not change.
+    ///
+    /// A pre-uploaded reference is used for the first attempt only. If that fails the retries fall
+    /// back to inline bytes, because a URI that failed once may be the thing that is broken —
+    /// an expired file, a half-finalised upload — and re-sending it would fail identically.
     public func transcribeWithRetry(
         audio: AudioFile,
         context: ScreenContext?,
+        audioPart: InputPart? = nil,
         attempts: Int = 3,
         initialDelay: Duration = .milliseconds(600)
     ) async throws -> TranscriptionResult {
         var delay = initialDelay
         var lastError: any Error = ProviderError.emptyOutput
+        var part = audioPart
 
         for attempt in 1...max(1, attempts) {
             do {
-                return try await transcribe(audio: audio, context: context)
+                return try await transcribe(audio: audio, context: context, audioPart: part)
             } catch {
                 lastError = error
                 guard attempt < attempts, Self.isTransient(error) else { throw error }
+                part = nil  // fall back to inline for every subsequent attempt
                 try? await Task.sleep(for: delay)
                 delay = delay * 2
             }
