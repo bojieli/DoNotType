@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The contract files are copied into every bundle at build time so the platforms cannot drift.
+  # This checks the invariant that makes that safe: the shipped prompt must actually build.
+  contract:
+    name: Contract
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prompt builds for every fidelity
+        run: swift test --filter PromptBuilderTests
+
+  swift:
+    name: Swift core and macOS app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unit tests
+        # Integration tests are deliberately excluded: they call a paid API and fail when the
+        # network does, which would make CI a coin flip rather than a signal.
+        run: swift test --filter DoNotTypeCoreTests
+
+      - name: Build the menu-bar app
+        run: swift build -c release --product DoNotType
+
+      - name: Build the evaluation harness
+        run: swift build -c release --product dnt-eval
+
+  windows-core:
+    name: Windows core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # The core deliberately targets plain net10.0 with no Windows TFM, so it builds and tests
+      # anywhere. That is what makes this job possible on Linux.
+      - name: Core tests
+        run: dotnet test windows/DoNotType.Core.Tests/DoNotType.Core.Tests.csproj
+
+  windows-app:
+    name: Windows app
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build the tray app
+        run: dotnet build windows/DoNotType.App/DoNotType.App.csproj -c Release
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+
+      - name: Assemble debug APK
+        working-directory: android
+        run: gradle assembleDebug --no-daemon
+
+      - name: The shared contract must be inside the APK
+        working-directory: android
+        run: |
+          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/PROMPT.md \
+            | grep -q "Context corrects SPELLING, never CONTENT"
+
+  ios:
+    name: iOS
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build app and keyboard extension
+        working-directory: ios
+        run: |
+          xcodebuild -project DoNotType.xcodeproj -scheme DoNotType \
+            -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -configuration Debug CODE_SIGNING_ALLOWED=NO build
