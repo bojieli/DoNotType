@@ -144,12 +144,45 @@ public sealed class SettingsForm : Form
         // Per-item retry: double-clicking a failed row reissues just that dictation.
         _history.DoubleClick += async (_, _) =>
         {
-            if (_history.SelectedItems.Count == 0) return;
-            if (_history.SelectedItems[0].Tag is not DictationRecord record || !record.CanRetry) return;
+            if (SelectedRecord() is not { CanRetry: true } record) return;
 
             _historySummary.Text = "Retrying…";
             await _controller.RetryAsync(record).ConfigureAwait(true);
             RefreshHistory();
+        };
+
+        // Per-item delete, from the keyboard and from a right-click menu. Deleting one transcript
+        // should not require deleting all of them.
+        var rowMenu = new ContextMenuStrip();
+        var deleteOne = new ToolStripMenuItem("Delete this transcript");
+        deleteOne.Click += (_, _) => DeleteSelected();
+        var retryOne = new ToolStripMenuItem("Retry this dictation");
+        retryOne.Click += async (_, _) =>
+        {
+            if (SelectedRecord() is not { CanRetry: true } record) return;
+            await _controller.RetryAsync(record).ConfigureAwait(true);
+            RefreshHistory();
+        };
+        var copyOne = new ToolStripMenuItem("Copy transcript");
+        copyOne.Click += (_, _) =>
+        {
+            if (SelectedRecord() is { } record && record.Text.Length > 0) Clipboard.SetText(record.Text);
+        };
+        rowMenu.Opening += (_, _) =>
+        {
+            var record = SelectedRecord();
+            retryOne.Enabled = record?.CanRetry == true;
+            copyOne.Enabled = record?.Text.Length > 0;
+            deleteOne.Enabled = record is not null;
+        };
+        rowMenu.Items.AddRange([retryOne, copyOne, new ToolStripSeparator(), deleteOne]);
+        _history.ContextMenuStrip = rowMenu;
+
+        _history.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Delete) return;
+            DeleteSelected();
+            e.Handled = true;
         };
 
         page.Controls.Add(_history);
@@ -157,14 +190,36 @@ public sealed class SettingsForm : Form
         return page;
     }
 
+    private DictationRecord? SelectedRecord() =>
+        _history.SelectedItems.Count == 0
+            ? null
+            : _history.SelectedItems[0].Tag as DictationRecord;
+
+    private void DeleteSelected()
+    {
+        // Multi-select is enabled, so a range delete is one action rather than N.
+        var records = _history.SelectedItems
+            .Cast<ListViewItem>()
+            .Select(item => item.Tag)
+            .OfType<DictationRecord>()
+            .ToList();
+        if (records.Count == 0) return;
+
+        foreach (var record in records) _controller.History.Delete(record.Id);
+        RefreshHistory();
+    }
+
     private void RefreshHistory()
     {
         _controller.History.Configure(_settings.Retention, _settings.KeepAudio);
         var records = _controller.History.All();
 
+        // Rendered in one pass rather than truncated. A capped list that says nothing about the
+        // cap reads as "this is your whole history" when it is not — and the retention policy,
+        // not the view, is what is supposed to bound how much there is.
         _history.BeginUpdate();
         _history.Items.Clear();
-        foreach (var record in records.Take(200))
+        foreach (var record in records)
         {
             var item = new ListViewItem(record.CreatedAt.ToString("MMM d HH:mm"))
             {
@@ -181,7 +236,7 @@ public sealed class SettingsForm : Form
         var bytes = _controller.History.AudioBytes();
         _historySummary.Text =
             $"{records.Count} dictations · {retryable} to retry · {bytes / 1024} KB audio"
-            + (retryable > 0 ? "  (double-click a row to retry it)" : string.Empty);
+            + "   (double-click to retry · Delete key or right-click to remove)";
     }
 
     // ---- Values ------------------------------------------------------------------------------

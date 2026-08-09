@@ -45,6 +45,74 @@ You are a transcription engine. Output only what the speaker said.
 Return JSON matching the provided schema and nothing else.
 <!-- END SYSTEM -->
 
+## The rewrite stage
+
+Optional, and off by default. The raw transcript is always produced first and always stored, so
+whatever the rewrite does, what you actually said is recoverable. That is the part Typeless got
+wrong — not that rewriting exists, but that it is mandatory and discards the original.
+
+**Whether to rewrite in one request or two is an open question, and the obvious answer is wrong.**
+
+The argument for two passes is that a model asked to polish prose normalises unfamiliar tokens
+toward familiar ones, so combining "transcribe" with "make it formal" puts the objectives in
+competition. That argument is plausible and it does not survive measurement
+(`swift run dnt-eval ablate`, 15 trials per condition, gemini-3.6-flash):
+
+| condition | substituted | rate | mean latency |
+|---|---|---|---|
+| no context at all | 3/14 | 21% | 5.7 s |
+| verbatim + context | 4/11 | 36% | 5.5 s |
+| single request, transcribe + formalise | 5/13 | **38%** | 15.7 s |
+| two requests, transcribe then formalise | 9/12 | **75%** | 7.5 s |
+
+Two passes was **twice as bad**, not better. The likely mechanism is the opposite of the one
+predicted: a rewriter handed "Gemini 1.5" applies its own world knowledge and "corrects" a version
+number it believes is stale. It never sees the screen context, so nothing tells it the number came
+from audio and is not its to fix — which is why rule 2 of the rewrite block exists, and why it is
+evidently not enough.
+
+Latency also went the other way. The single request was *slower* (15.7 s), because one call doing
+both jobs emits far more output than two specialised ones.
+
+Neither option is recommended yet. Both are implemented and both are measured; the numbers are
+here so the choice is made on evidence rather than on the mechanism story, which was wrong twice.
+
+<!-- BEGIN REWRITE -->
+You rewrite a transcript of spoken words into clear written prose.
+
+1. Preserve meaning exactly. Never add a fact, a name, a number, a commitment or a caveat that is
+   not in the input. Never remove one.
+2. Numbers, version numbers, dates, names and identifiers pass through **unchanged**. They were
+   transcribed from speech and are not yours to correct.
+3. Fix what speech does badly on the page: run-on sentences, false starts left behind, missing
+   punctuation, inconsistent capitalisation.
+4. {{STYLE_RULE}}
+5. Keep the speaker's language. Never translate.
+6. Return only the rewritten text. No preamble, no explanation, no quotation marks around it.
+<!-- END REWRITE -->
+
+### style: formal
+
+```
+Write in clear professional prose suitable for an email or a document. Remove discourse markers
+("you know", "like", "I mean"), tighten wordy phrasing, and use complete sentences. Keep the
+speaker's own vocabulary and terminology.
+```
+
+### style: concise
+
+```
+Tighten without formalising. Cut repetition and filler, keep the speaker's register and word
+choice, and leave casual phrasing casual. Aim for the same voice in fewer words.
+```
+
+### style: bullets
+
+```
+Reorganise into a short bulleted list, one idea per bullet, in the order the speaker said them.
+Keep the speaker's wording. Do not add headings or a summary line.
+```
+
 ## Fidelity clauses
 
 Substituted into `{{FIDELITY_RULE}}`. Exactly one is sent per request.
@@ -130,3 +198,51 @@ What this means, stated plainly:
 
 The failing case is kept in the integration suite deliberately. It is the only test in the project
 that has ever caught the bug the project is about.
+
+### 2026-08-09 — measured, and two predictions falsified
+
+`swift run dnt-eval ablate`, 15 trials per condition, `gemini-3.6-flash`, on the real clip:
+
+| condition | substituted | rate | mean latency |
+|---|---|---|---|
+| no context at all | 3/14 | 21% | 5.7 s |
+| verbatim + context | 4/11 | 36% | 5.5 s |
+| single request, transcribe + formalise | 5/13 | 38% | 15.7 s |
+| two requests, transcribe then formalise | 9/12 | 75% | 7.5 s |
+
+**Read the first row before anything else.** With *no context at all*, the model still wrote 2.5
+in 21% of runs. This clip's audio is genuinely hard — the speaker is mid-sentence and the number
+is unstressed. So the honest claim is not "grounding causes a 58% failure"; it is that grounding
+roughly **doubles an error rate that is already non-zero**, from ~21% to ~36%.
+
+Two things I predicted and got wrong:
+
+- **Restating the rule closer to the audio would help.** It made things worse, 11/19 → 15/18. The
+  restatement used the decoy value as its example, which appears to prime it. Examples in a
+  fidelity rule must never contain a concrete value that could be echoed.
+- **Two passes would beat one.** Two passes was twice as bad, 75% versus 38%, and *slower* is not
+  even the trade — the single request was slower (15.7 s), because one call doing two jobs emits
+  far more output. The likely mechanism is the reverse of the predicted one: a rewriter handed
+  "Gemini 1.5" applies world knowledge and "corrects" a version number it thinks is stale, and it
+  never sees the screen context that would tell it the number came from audio.
+
+### 2026-08-09 — model comparison
+
+`./eval/model-sweep.sh`. Same clip, same hostile context.
+
+| model | no-context transcript of the version | audio tokens |
+|---|---|---|
+| `gemini-3.6-flash` | "Gemini **1.5**" — correct | 550 |
+| `gemini-3.5-flash` | "Gemini **2.4**" — wrong | 550 |
+| `gemini-3-flash-preview` | "**Gimma 2.0**" — wrong | 550 |
+| `gemini-2.5-flash` | retired: "no longer available to new users" | — |
+
+All three process the audio; none silently drops it. But only 3.6 transcribes the number correctly
+**without any context at all**, and its general transcription is visibly better ("unified source"
+versus "unified sauce" versus "verified source"). The older models cannot be scored for
+substitution on this case at all, because they do not produce either the spoken or the decoy value
+— they simply mis-hear it.
+
+So `gemini-3.6-flash` stays the default, and the substitution numbers above are specific to it.
+Re-run the sweep on any model bump: multimodal quality moves between releases, and this is the
+only measurement in the project that would notice.

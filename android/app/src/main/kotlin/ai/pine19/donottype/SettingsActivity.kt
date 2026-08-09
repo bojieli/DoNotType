@@ -282,8 +282,11 @@ class SettingsActivity : AppCompatActivity() {
             append(Formatter.formatShortFileSize(this@SettingsActivity, service.history.audioBytes()))
         }
 
+        // Rendered in full rather than truncated. A list capped at 20 with nothing said about it
+        // reads as "this is your whole history" when it is not; the retention policy is what is
+        // supposed to bound how much there is, not the view.
         historyContainer.removeAllViews()
-        records.take(20).forEach { historyContainer.addView(historyRow(it)) }
+        records.forEach { historyContainer.addView(historyRow(it)) }
     }
 
     private fun historyRow(record: DictationRecord): View {
@@ -325,6 +328,18 @@ class SettingsActivity : AppCompatActivity() {
                 }
             )
         }
+
+        // Per-item delete: removing one transcript should not require removing all of them.
+        row.addView(
+            Button(this).apply {
+                text = "✕"
+                contentDescription = "Delete this transcript"
+                setOnClickListener {
+                    service.history.delete(record.id)
+                    refreshHistory()
+                }
+            }
+        )
         return row
     }
 

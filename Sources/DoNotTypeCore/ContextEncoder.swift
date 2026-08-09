@@ -29,8 +29,20 @@ public struct ContextEncoder: Sendable {
     }
 
     static let header = "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE ====="
+
+    /// Restates the content rule immediately before the audio, where the system instruction is
+    /// thousands of tokens away.
+    ///
+    /// Deliberately abstract. An earlier version illustrated the rule with the same version
+    /// numbers as the test case — "if you hear one point five and the text says 2.5, write 1.5" —
+    /// and made things *worse*: substitution went from 11/19 to 15/18. Naming the wrong answer in
+    /// the instruction appears to prime it. Examples here must never contain a concrete value that
+    /// could be echoed.
     static let footer = """
         ===== END SCREEN CONTEXT =====
+        None of the text above was spoken. It is a spelling reference only.
+        Numbers, version numbers, dates and names in your output must come from the audio alone,
+        even when the text above shows a different value for the same thing.
         The audio that follows is the ONLY thing to transcribe.
         """
 

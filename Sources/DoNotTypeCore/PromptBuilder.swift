@@ -20,6 +20,9 @@ public struct PromptBuilder: Sendable {
     static let beginMarker = "<!-- BEGIN SYSTEM -->"
     static let endMarker = "<!-- END SYSTEM -->"
     static let fidelityPlaceholder = "{{FIDELITY_RULE}}"
+    static let rewriteBeginMarker = "<!-- BEGIN REWRITE -->"
+    static let rewriteEndMarker = "<!-- END REWRITE -->"
+    static let stylePlaceholder = "{{STYLE_RULE}}"
 
     public let template: String
 
@@ -63,9 +66,33 @@ public struct PromptBuilder: Sendable {
             of: Self.fidelityPlaceholder, with: try fidelityClause(fidelity))
     }
 
+    /// System instruction for the second-stage rewrite.
+    public func rewriteInstruction(style: RewriteStyle) throws -> String {
+        guard style.isRewrite else { return "" }
+        guard
+            let begin = template.range(of: Self.rewriteBeginMarker),
+            let end = template.range(of: Self.rewriteEndMarker),
+            begin.upperBound < end.lowerBound
+        else {
+            throw Error.markersMissing("expected \(Self.rewriteBeginMarker) … \(Self.rewriteEndMarker)")
+        }
+        let body = String(template[begin.upperBound..<end.lowerBound]).trimmed
+        return body.replacingOccurrences(
+            of: Self.stylePlaceholder, with: try clause(named: style.promptSection))
+    }
+
+    /// The style rule alone, for appending to a transcription prompt in single-pass mode.
+    public func styleClause(_ style: RewriteStyle) throws -> String {
+        style.isRewrite ? try clause(named: style.promptSection) : ""
+    }
+
     /// Pulls the clause out of the fenced block under `### <fidelity>`.
     func fidelityClause(_ fidelity: Fidelity) throws -> String {
-        let heading = "### \(fidelity.rawValue)"
+        try clause(named: fidelity.rawValue)
+    }
+
+    private func clause(named name: String) throws -> String {
+        let heading = "### \(name)"
         guard let headingRange = template.range(of: heading) else {
             throw Error.markersMissing("no section \(heading)")
         }
