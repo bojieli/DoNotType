@@ -103,3 +103,30 @@ Notes on the first measurement:
   "Kubernetes" with *no context at all*, so it measured nothing. Until the suite uses real speech
   and identifiers the model cannot already know, treat `regressed 0` as necessary but not
   sufficient.
+
+### 2026-08-09 — rule 4 fails intermittently on real speech
+
+The caveat above turned out to be the important part. Once the suite moved to real recorded
+speech, the substitution this contract exists to prevent **reproduced**.
+
+The clip (`eval/audio/real-talk-gemini15.wav`, extracted from a real talk) says "Gemini 1.5". Given
+screen context repeating "Gemini 2.5" five times, an integration run produced **2.5** — a version
+number the speaker never said.
+
+It is intermittent, not systematic: the no-context baseline says 1.5 every time, and repeated runs
+*with* the hostile context mostly also say 1.5. But "mostly" is the finding. On synthesized audio
+this never happened at all, which is exactly why the TTS suite could not be trusted.
+
+What this means, stated plainly:
+
+- **`regressed 0` on the synthesized suite is not evidence the rule holds.** Only real, slightly
+  ambiguous speech exercises the failure.
+- **A single run proves nothing in either direction.** `--repeat-count` defaults to 3 and should
+  probably be higher for cases like this one.
+- **The prompt is not yet sufficient on its own.** Options not yet tried: stating rule 4 twice
+  (once before the context block and once after), moving the numbers clause into the closing line
+  that follows the context, or lowering the visible-text budget so a repeated wrong string carries
+  less weight.
+
+The failing case is kept in the integration suite deliberately. It is the only test in the project
+that has ever caught the bug the project is about.

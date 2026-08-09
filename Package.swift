@@ -27,5 +27,8 @@ let package = Package(
         // entitlements live in Resources/ rather than an .xcodeproj so they stay reviewable.
         .executableTarget(name: "DoNotTypeApp", dependencies: ["DoNotTypeCore"]),
         .testTarget(name: "DoNotTypeCoreTests", dependencies: ["DoNotTypeCore"]),
+        // Hits the live API and costs money, so every test skips unless DNT_INTEGRATION=1.
+        // Run with: DNT_INTEGRATION=1 swift test --filter IntegrationTests
+        .testTarget(name: "IntegrationTests", dependencies: ["DoNotTypeCore"]),
     ]
 )

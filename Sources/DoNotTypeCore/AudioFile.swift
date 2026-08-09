@@ -12,6 +12,13 @@ public struct AudioFile: Sendable {
         self.mimeType = Self.mimeType(forExtension: url.pathExtension)
     }
 
+    /// For audio already in memory — a retry reading from the history store, or a test fixture.
+    public init(data: Data, mimeType: String, url: URL = URL(fileURLWithPath: "/dev/null")) {
+        self.data = data
+        self.mimeType = mimeType
+        self.url = url
+    }
+
     public var part: InputPart { .audio(data: data, mimeType: mimeType) }
 
     /// Roughly what the model will bill, at the documented 32 tokens per audio second.
