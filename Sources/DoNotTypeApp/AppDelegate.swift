@@ -1,19 +1,30 @@
 import AppKit
 import DoNotTypeCore
 import Foundation
+import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
-    private let dictation = DictationController()
+    private var settingsWindow: NSWindow?
+
+    private let store = HistoryStore(directory: HistoryStore.defaultDirectory())
+    private lazy var dictation = DictationController(store: store)
+    private lazy var settingsModel = SettingsModel(store: store)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         setIcon(for: .idle)
 
+        settingsModel.onHotkeyChange = { [weak self] in self?.dictation.reloadHotkey() }
         dictation.onStateChange = { [weak self] state in
             self?.setIcon(for: state)
             self?.rebuildMenu()
+        }
+        dictation.onHistoryChange = { [weak self] in
+            guard let self else { return }
+            Task { await settingsModel.refresh() }
+            rebuildMenu()
         }
         rebuildMenu()
 
@@ -56,16 +67,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        if Settings.shared.resolvedAPIKey() == nil {
-            alert(
-                "Add your API key",
-                """
-                DoNotType calls the model with your own key, so nothing routes through a server \
-                of ours.
+        await settingsModel.refresh()
 
-                Set \(Settings.shared.provider.apiKeyEnvVar) in your environment, or add a key \
-                from the menu bar item.
-                """)
+        if Settings.shared.resolvedAPIKey() == nil {
+            openSettings()
+        } else {
+            // Anything that failed while the machine was offline goes out now.
+            await dictation.retryPending()
         }
     }
 
@@ -80,8 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .transcribing: name = "waveform"
         case .failed: name = "exclamationmark.triangle"
         }
-        button.image = NSImage(
-            systemSymbolName: name, accessibilityDescription: "DoNotType")
+        button.image = NSImage(systemSymbolName: name, accessibilityDescription: "DoNotType")
         button.image?.isTemplate = true
     }
 
@@ -96,53 +103,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .transcribing:
             menu.addItem(disabled("Transcribing…"))
         case .failed(let message):
-            menu.addItem(disabled("Error: \(message)"))
+            menu.addItem(disabled(String(message.prefix(70))))
         }
-        menu.addItem(.separator())
 
-        let fidelity = NSMenu()
-        for value in Fidelity.allCases {
-            let item = NSMenuItem(
-                title: describe(value), action: #selector(setFidelity(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = value.rawValue
-            item.state = Settings.shared.fidelity == value ? .on : .off
-            fidelity.addItem(item)
+        let pending = settingsModel.retryableCount
+        if pending > 0 {
+            menu.addItem(.separator())
+            let retry = NSMenuItem(
+                title: "Retry \(pending) failed dictation\(pending == 1 ? "" : "s")",
+                action: #selector(retryAll), keyEquivalent: "")
+            retry.target = self
+            menu.addItem(retry)
         }
-        let fidelityItem = NSMenuItem(title: "Fidelity", action: nil, keyEquivalent: "")
-        fidelityItem.submenu = fidelity
-        menu.addItem(fidelityItem)
-
-        let grounding = NSMenuItem(
-            title: "Ground in screen context", action: #selector(toggleGrounding),
-            keyEquivalent: "")
-        grounding.target = self
-        grounding.state = Settings.shared.groundingEnabled ? .on : .off
-        menu.addItem(grounding)
 
         menu.addItem(.separator())
-        if let latest = dictation.recentHistory.first {
+        if let latest = settingsModel.records.first(where: { $0.status == .completed }) {
             menu.addItem(disabled(String(latest.text.prefix(60))))
             let copy = NSMenuItem(
-                title: "Copy last transcript", action: #selector(copyLast), keyEquivalent: "")
+                title: "Copy last transcript", action: #selector(copyLast), keyEquivalent: "c")
             copy.target = self
             menu.addItem(copy)
-            menu.addItem(.separator())
         }
+
+        menu.addItem(.separator())
+        let settings = NSMenuItem(
+            title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
 
         let quit = NSMenuItem(title: "Quit DoNotType", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 
         statusItem.menu = menu
-    }
-
-    private func describe(_ fidelity: Fidelity) -> String {
-        switch fidelity {
-        case .raw: "Raw — every um and false start"
-        case .light: "Light — drop fillers, keep your words"
-        case .tidy: "Tidy — light, plus punctuation"
-        }
     }
 
     private func disabled(_ title: String) -> NSMenuItem {
@@ -153,21 +146,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Actions
 
-    @objc private func setFidelity(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-            let fidelity = Fidelity(rawValue: raw)
-        else { return }
-        Settings.shared.fidelity = fidelity
-        rebuildMenu()
+    @objc private func openSettings() {
+        if let settingsWindow {
+            settingsWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 520),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered, defer: false)
+        window.title = "DoNotType Settings"
+        window.contentView = NSHostingView(rootView: SettingsView(model: settingsModel))
+        window.center()
+        window.isReleasedWhenClosed = false
+        settingsWindow = window
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
-    @objc private func toggleGrounding() {
-        Settings.shared.groundingEnabled.toggle()
-        rebuildMenu()
+    @objc private func retryAll() {
+        Task {
+            await settingsModel.retryAll()
+            rebuildMenu()
+        }
     }
 
     @objc private func copyLast() {
-        guard let latest = dictation.recentHistory.first else { return }
+        guard let latest = settingsModel.records.first(where: { $0.status == .completed }) else {
+            return
+        }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(latest.text, forType: .string)
     }

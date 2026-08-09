@@ -18,23 +18,19 @@ final class DictationController {
     }
 
     var onStateChange: ((State) -> Void)?
+    /// Fires after a dictation is stored, so an open settings window can refresh.
+    var onHistoryChange: (() -> Void)?
+
+    let store: HistoryStore
 
     private let log = Logger(subsystem: "ai.19pine.donottype", category: "dictation")
     private let recorder = AudioRecorder()
     private let hotkey = HotkeyMonitor()
     private let grounding = GroundingCoordinator()
-    private var history: [HistoryEntry] = []
 
-    /// The last few dictations, newest first. Audio is not retained unless the user opts in.
-    struct HistoryEntry: Identifiable {
-        let id = UUID()
-        let text: String
-        let at: Date
-        let context: ScreenContext?
-        let contextTokens: Int
+    init(store: HistoryStore) {
+        self.store = store
     }
-
-    var recentHistory: [HistoryEntry] { history }
 
     func start() -> Bool {
         hotkey.trigger = Settings.shared.trigger
@@ -51,6 +47,17 @@ final class DictationController {
         hotkey.stop()
         hotkey.trigger = Settings.shared.trigger
         _ = hotkey.start()
+    }
+
+    /// Drains anything that failed while the network was down. Called at launch.
+    func retryPending() async {
+        guard let coordinator = makeCoordinator() else { return }
+        let pending = await store.retryable()
+        guard !pending.isEmpty else { return }
+
+        log.info("retrying \(pending.count) pending dictation(s)")
+        _ = await coordinator.retryAll()
+        onHistoryChange?()
     }
 
     // MARK: - Recording
@@ -83,8 +90,7 @@ final class DictationController {
         do {
             audio = try recorder.stop()
         } catch AudioRecorder.RecorderError.tooShort {
-            // A tap rather than a hold. Silently return to idle; this is not an error worth
-            // interrupting anyone over.
+            // A tap rather than a hold. Silently return to idle; not worth interrupting anyone.
             grounding.cancel()
             state = .idle
             return
@@ -102,63 +108,81 @@ final class DictationController {
     }
 
     private func transcribe(audio: AudioFile, context: ScreenContext?) async {
-        defer {
-            if !Settings.shared.keepAudio { try? FileManager.default.removeItem(at: audio.url) }
-        }
+        defer { try? FileManager.default.removeItem(at: audio.url) }
 
         let settings = Settings.shared
-        guard let key = settings.resolvedAPIKey(), !key.isEmpty else {
-            fail("No API key. Add one in Settings.")
+        let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName
+
+        guard let coordinator = makeCoordinator() else {
+            fail("No API key. Open Settings to add one.")
             return
         }
 
+        var record = DictationRecord(
+            status: .pending,
+            provider: settings.provider.rawValue,
+            model: settings.model,
+            fidelity: settings.fidelity,
+            appName: context?.appName ?? frontmost,
+            windowTitle: context?.windowTitle,
+            context: context)
+
         do {
-            let provider = try ProviderFactory.make(
-                settings.provider, environment: [settings.provider.apiKeyEnvVar: key])
-            let promptURL = Bundle.main.url(forResource: "PROMPT", withExtension: "md")
-                ?? PromptBuilder.findPromptFile()
-            guard let promptURL else {
-                fail("PROMPT.md is missing from the app bundle.")
-                return
-            }
+            let result = try await coordinator.service.transcribeWithRetry(
+                audio: audio, context: context)
+            let text = result.transcript.transcript
+                .trimmingCharacters(in: .whitespacesAndNewlines)
 
-            let encoder = ContextEncoder()
-            var parts: [InputPart] = []
-            if let context { parts.append(contentsOf: encoder.encode(context)) }
-            parts.append(audio.part)
-
-            let result = try await provider.transcribe(
-                TranscriptionRequest(
-                    model: settings.model,
-                    systemInstruction: try PromptBuilder(contentsOf: promptURL)
-                        .systemInstruction(fidelity: settings.fidelity),
-                    parts: parts))
-
-            let text = result.transcript.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else {
                 state = .idle  // silence in, nothing out
                 return
             }
 
-            history.insert(
-                HistoryEntry(
-                    text: text, at: Date(), context: context,
-                    contextTokens: context.map(encoder.estimatedTokens) ?? 0),
-                at: 0)
-            if history.count > 50 { history.removeLast() }
+            record.status = .completed
+            record.text = text
+            await store.insert(record, audio: settings.keepAudio ? try? Data(contentsOf: audio.url) : nil)
+            onHistoryChange?()
 
             state = .idle
             await TextInjector.insert(text)
         } catch {
             log.error("transcription failed: \(error.localizedDescription)")
-            fail(error.localizedDescription)
+
+            // The recording is kept so this can be retried from the history window, or
+            // automatically at the next launch. A failed dictation is not lost work.
+            record.status = .failed
+            record.errorMessage = error.localizedDescription
+            await store.insert(record, audio: try? Data(contentsOf: audio.url))
+            onHistoryChange?()
+
+            fail(
+                TranscriptionService.isTransient(error)
+                    ? "\(error.localizedDescription) — saved, retry from History."
+                    : error.localizedDescription)
         }
+    }
+
+    private func makeCoordinator() -> RetryCoordinator? {
+        let settings = Settings.shared
+        guard let key = settings.resolvedAPIKey(), !key.isEmpty,
+            let provider = try? ProviderFactory.make(
+                settings.provider, environment: [settings.provider.apiKeyEnvVar: key]),
+            let promptURL = Bundle.main.url(forResource: "PROMPT", withExtension: "md")
+                ?? PromptBuilder.findPromptFile(),
+            let instruction = try? PromptBuilder(contentsOf: promptURL)
+                .systemInstruction(fidelity: settings.fidelity)
+        else { return nil }
+
+        return RetryCoordinator(
+            service: TranscriptionService(
+                provider: provider, model: settings.model, systemInstruction: instruction),
+            store: store)
     }
 
     private func fail(_ message: String) {
         state = .failed(message)
         Task {
-            try? await Task.sleep(for: .seconds(4))
+            try? await Task.sleep(for: .seconds(5))
             if case .failed = state { state = .idle }
         }
     }

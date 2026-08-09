@@ -1,0 +1,145 @@
+import Foundation
+
+/// One place where a dictation becomes a transcript, whether it is the first attempt or the
+/// fourth.
+///
+/// The point of routing retries through the same function as first attempts is that a retried
+/// dictation is not a lesser one: it uses the stored screen context, the stored fidelity and the
+/// stored audio, so the result is what the original request would have produced had the network
+/// held.
+public struct TranscriptionService: Sendable {
+    /// Errors worth retrying automatically, as opposed to ones that will fail identically forever.
+    ///
+    /// A 401 is not a network blip and retrying it just burns the user's time; a 503 or a dropped
+    /// connection is exactly what retry exists for.
+    public static func isTransient(_ error: any Error) -> Bool {
+        if let providerError = error as? ProviderError {
+            switch providerError {
+            case .http(let status, _):
+                return status == 408 || status == 429 || (500...599).contains(status)
+            case .missingAPIKey, .audioSilentlyDropped:
+                return false
+            case .malformedResponse, .emptyOutput:
+                return true
+            }
+        }
+        let code = (error as NSError).code
+        return [
+            NSURLErrorTimedOut, NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost,
+            NSURLErrorNotConnectedToInternet, NSURLErrorDNSLookupFailed,
+            NSURLErrorResourceUnavailable, NSURLErrorSecureConnectionFailed,
+        ].contains(code)
+    }
+
+    public var provider: any TranscriptionProvider
+    public var model: String
+    public var systemInstruction: String
+    public var encoder: ContextEncoder
+
+    public init(
+        provider: any TranscriptionProvider,
+        model: String,
+        systemInstruction: String,
+        encoder: ContextEncoder = ContextEncoder()
+    ) {
+        self.provider = provider
+        self.model = model
+        self.systemInstruction = systemInstruction
+        self.encoder = encoder
+    }
+
+    public func transcribe(audio: AudioFile, context: ScreenContext?) async throws
+        -> TranscriptionResult
+    {
+        var parts: [InputPart] = []
+        if let context, !context.isEmpty {
+            parts.append(contentsOf: encoder.encode(context))
+        }
+        parts.append(audio.part)
+
+        return try await provider.transcribe(
+            TranscriptionRequest(
+                model: model, systemInstruction: systemInstruction, parts: parts))
+    }
+
+    /// Retries with exponential backoff, giving up early on errors that will not change.
+    public func transcribeWithRetry(
+        audio: AudioFile,
+        context: ScreenContext?,
+        attempts: Int = 3,
+        initialDelay: Duration = .milliseconds(600)
+    ) async throws -> TranscriptionResult {
+        var delay = initialDelay
+        var lastError: any Error = ProviderError.emptyOutput
+
+        for attempt in 1...max(1, attempts) {
+            do {
+                return try await transcribe(audio: audio, context: context)
+            } catch {
+                lastError = error
+                guard attempt < attempts, Self.isTransient(error) else { throw error }
+                try? await Task.sleep(for: delay)
+                delay = delay * 2
+            }
+        }
+        throw lastError
+    }
+}
+
+/// Drains everything that failed while the network was down.
+///
+/// Deliberately sequential: a user coming back online after an hour may have a dozen pending
+/// dictations, and firing them concurrently is the fastest way to hit a rate limit and turn a
+/// recoverable backlog into a stuck one.
+public struct RetryCoordinator: Sendable {
+    public struct Outcome: Sendable {
+        public var succeeded: [UUID] = []
+        public var failed: [(id: UUID, error: String)] = []
+        public var isEmpty: Bool { succeeded.isEmpty && failed.isEmpty }
+    }
+
+    public var service: TranscriptionService
+    public var store: HistoryStore
+
+    public init(service: TranscriptionService, store: HistoryStore) {
+        self.service = service
+        self.store = store
+    }
+
+    /// Retries a single record and writes the result back to the store.
+    @discardableResult
+    public func retry(_ record: DictationRecord) async -> Result<String, any Error> {
+        var updated = record
+        updated.retryCount += 1
+
+        do {
+            let audio = try await store.audioFile(for: record)
+            let result = try await service.transcribe(audio: audio, context: record.context)
+            let text = result.transcript.transcript
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            updated.status = .completed
+            updated.text = text
+            updated.errorMessage = nil
+            await store.update(updated)
+            return .success(text)
+        } catch {
+            updated.status = .failed
+            updated.errorMessage = error.localizedDescription
+            await store.update(updated)
+            return .failure(error)
+        }
+    }
+
+    public func retryAll() async -> Outcome {
+        var outcome = Outcome()
+        for record in await store.retryable() {
+            switch await retry(record) {
+            case .success: outcome.succeeded.append(record.id)
+            case .failure(let error):
+                outcome.failed.append((record.id, error.localizedDescription))
+            }
+        }
+        return outcome
+    }
+}

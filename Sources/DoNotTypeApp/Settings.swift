@@ -22,6 +22,7 @@ final class Settings {
         static let keepAudio = "keepAudio"
         static let blockedBundleIDs = "blockedBundleIDs"
         static let blockedURLPrefixes = "blockedURLPrefixes"
+        static let retention = "retention"
     }
 
     /// Shipped non-empty. A blocklist that starts empty is a blocklist nobody ever fills in, and
@@ -49,7 +50,17 @@ final class Settings {
             Key.keepAudio: false,
             Key.blockedBundleIDs: Self.defaultBlockedBundleIDs,
             Key.blockedURLPrefixes: Self.defaultBlockedURLPrefixes,
+            Key.retention: RetentionPolicy.forever.rawValue,
         ])
+    }
+
+    /// How long transcripts are kept. Note that a failed dictation keeps its audio regardless,
+    /// until it succeeds or is deleted — otherwise Retry would be a button that cannot work.
+    var retention: RetentionPolicy {
+        get {
+            RetentionPolicy(rawValue: defaults.string(forKey: Key.retention) ?? "") ?? .forever
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.retention) }
     }
 
     var provider: ProviderKind {
