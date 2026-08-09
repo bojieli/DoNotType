@@ -20,15 +20,28 @@ DoNotType inverts both. The prompt is a versioned file you can read and change
 ([`PROMPT.md`](PROMPT.md)). Screen context is sent **raw** — no term extraction, no dictionary, no
 prior transcripts — and its authority is scoped to spelling only.
 
-## Status
+## Platforms
 
-**M0: the prompt harness.** No macOS app yet, deliberately. The riskiest assumption in the whole
-design is whether a model will use screen context for spelling without letting it overwrite
-content, and that is testable with a CLI in an afternoon rather than after weeks of accessibility
-plumbing.
+| | Dictation | Screen grounding | Build |
+|---|---|---|---|
+| **macOS** | menu-bar app, hold Right ⌘ | ✅ accessibility tree + screenshot fallback | `make app` |
+| **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | `cd android && gradle assembleDebug` |
+| **iOS** | containing app | ❌ not possible in the sandbox | `cd ios && xcodegen generate` |
+
+All three send the **same** `PROMPT.md`, copied into each bundle at build time rather than
+duplicated, so no platform can quietly drift from what the eval measures.
+
+iOS is the odd one out for a reason: a keyboard extension cannot open a microphone, so the app
+records and the keyboard inserts through an App Group. See [`ios/README.md`](ios/README.md).
+
+## Measurement
+
+The riskiest assumption in the design is whether a model will use screen context for spelling
+without letting it overwrite content. That is testable with a CLI in an afternoon, so it was built
+before any platform code.
 
 ```
-swift test                                     # 38 unit tests
+swift test                                     # 41 unit tests
 swift run dnt-eval probe --audio some.wav      # verify a provider forwards audio
 swift run dnt-eval once   --audio some.wav --visible-text "..."
 swift run dnt-eval suite  eval/nearmiss        # the number that matters
@@ -81,16 +94,33 @@ swift run dnt-eval probe --provider <name> --audio eval/audio/gemini-version.wav
 - [`CONTEXT_FORMAT.md`](CONTEXT_FORMAT.md) — part order, delimiters, caps, truncation direction
 - [`PLAN.html`](PLAN.html) — the full survey and rationale
 
+## How grounding stays cheap
+
+Copied from Typeless, which got this part right. Two phases:
+
+| Phase | When | Reads | Blocking |
+|---|---|---|---|
+| 1 | hotkey-down | app identity, cursor state | yes, ~20 ms |
+| 2 | immediately after, not awaited | visible text (500 ms cap), caret window, screenshot | no |
+
+Phase 1 has to be synchronous because it is the last moment the focused element is guaranteed to
+be the one being dictated into. Phase 2 runs while you are still speaking, so grounding costs no
+perceived latency.
+
+The privacy gate runs **before** capture, never after — filtering a context you already collected
+still means the text was in the process's memory. It ships non-empty (password managers, banking,
+health) and re-checks once a browser URL is known.
+
 ## Roadmap
 
 | | |
 |---|---|
 | **M0** | Prompt harness — *done* |
-| M1 | Menu-bar app: hotkey, capture, transcribe, paste. No grounding. |
-| M2 | Accessibility grounding, two-phase capture, privacy gate, context inspector |
-| M3 | Screenshot when the accessibility tree comes back thin |
-| M4 | History, onboarding, notarized build |
-| M5+ | Android IME, then iOS / Windows / Linux |
+| **M1–M3** | macOS: hotkey, capture, inject, accessibility grounding, screenshot fallback — *done* |
+| **M4** | Android keyboard + accessibility grounding — *done* |
+| **M5** | iOS app + keyboard extension — *done* |
+| M6 | Real recorded eval suite, context inspector UI, notarized release |
+| M7 | Windows (UI Automation) and Linux (AT-SPI) |
 
 ## License
 
