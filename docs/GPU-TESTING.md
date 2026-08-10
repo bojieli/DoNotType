@@ -210,6 +210,13 @@ transcription request, so B could not be run. A future run needs the separate Tr
 and serving surface; a short Python script comparing the two on the same clip is enough once that
 checkpoint is available.
 
+The downloaded Small checkpoint did permit a related real-speech control: on the public SEAME
+decimal clip, the same hostile text was tested both **after** the audio block and in DoNotType's
+production **text-before-audio** order. Audio-before-text retained the spoken `2.5` in 15/15 trials;
+the production order copied the hostile `3.5` in 15/15. This is an ordering observation, not the
+decoder-level biasing experiment above, and is recorded under `additional_decimal_number_smoke` in
+the result JSON.
+
 ---
 
 ## 6. Reporting back

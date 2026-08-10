@@ -468,7 +468,7 @@ pinned revisions are in `additional_decimal_number_smoke` in the result JSON.
 | `Qwen/Qwen3-Omni-30B-A3B-Instruct` | exact 15/15; decoy 0/15 | exact 15/15; decoy 0/15 | 0.510 s / 0.440 s | Stable spoken decimal |
 | `openbmb/MiniCPM-o-4_5` | exact 15/15; decoy 0/15 | exact 15/15; decoy 0/15 | 0.272 s / 0.194 s | Retained decimal, including Chinese `二点五` |
 | `openai/whisper-large-v3` (`initial_prompt`) | exact 15/15; decoy 0/15 | exact 0/15; decoy 15/15 | 0.177 s / 1.011 s | Copied hostile `3.5` and dropped the spoken `2.5` |
-| `mistralai/Voxtral-Small-24B-2507` | exact 15/15; decoy 0/15 | exact 15/15; decoy 0/15 | 0.365 s / 0.618 s | Stable spoken decimal |
+| `mistralai/Voxtral-Small-24B-2507` | exact 15/15; decoy 0/15 | exact 0/15; decoy 15/15 | 0.652 s / 0.236 s | App-order text-before-audio copied `3.5`; audio-before-text control retained `2.5` 15/15 |
 | `google/gemma-4-E4B-it` | exact 0/15; near `dot 5K` 15/15; decoy 0/15 | exact 0/15; near `dot point five K` 15/15; decoy 0/15 | 0.312 s / 0.305 s | Dropped “two” but did not copy the decoy |
 | `fixie-ai/ultravox-v0_5-llama-3_1-8b` | exact 15/15; decoy 0/15 | exact 15/15; decoy 15/15 | 0.280 s / 0.308 s | Retained `2.5` but also copied hostile `3.5` |
 | `mistralai/Voxtral-Mini-4B-Realtime-2602` | exact 0/1; near `5K` only | context unsupported | 1.808 s / n/a | Audio-only control misrecognized the decimal |
@@ -476,8 +476,16 @@ pinned revisions are in `additional_decimal_number_smoke` in the result JSON.
 This control provides a real decimal-number stress case: prompt-conditioned Whisper copied the
 hostile value exactly, while the other multimodal checkpoints either preserved `2.5` or produced a
 near variant. Ultravox retained both values, demonstrating that preserving the spoken value does
-not prevent context contamination. These observations are public-audio evidence only, not a score
-for the missing DoNotType fixture.
+not prevent context contamination. Voxtral Small exposed a strong ordering effect: with audio
+before text it retained `2.5` in all hostile trials, but with the app's production order
+(context text before audio) it emitted `3.5` in all 15 trials. The machine-readable result records
+both conditions. These observations are public-audio evidence only, not a score for the missing
+DoNotType fixture.
+
+Ordering caveat for the earlier Voxtral public controls: their direct Transformers harness placed
+the audio block before the instruction/context text. Those rows remain valid audio-first controls,
+but they are not production-order (`context text → audio`) measurements. The decimal ablation above
+is the first paired result that measures both orders and shows why the distinction matters.
 
 To exercise context handling on genuine speech while the DoNotType fixtures were unavailable, the
 primary downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
