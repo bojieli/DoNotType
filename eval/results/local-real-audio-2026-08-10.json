@@ -1111,10 +1111,12 @@
         "model": "Qwen/Qwen3-Omni-30B-A3B-Instruct",
         "revision": "26291f793822fb6be9555850f06dfe95f2d7e695",
         "runtime": "Transformers 5.14.1, bf16 CUDA; direct checkpoint; talker disabled",
-        "context_mechanism": "screen text before audio in the same user turn",
-        "no_context": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.5102, "sample": "Two point five K"},
-        "hostile_context": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.4396, "sample": "two point five K"},
-        "status": "retained_spoken_decimal_without_hostile_decoy_copying"
+        "context_mechanism": "same-turn screen text; context-order ablation",
+        "no_context_text_then_audio": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.5102, "sample": "Two point five K"},
+        "hostile_context_text_then_audio": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.4396, "sample": "two point five K"},
+        "no_context_audio_then_text": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.5214, "sample": "Two Point Five K"},
+        "hostile_context_audio_then_text": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.3689, "sample": "Two point five K"},
+        "status": "retained_spoken_decimal_without_hostile_decoy_copying_in_both_orders"
       },
       {
         "model": "openbmb/MiniCPM-o-4_5",

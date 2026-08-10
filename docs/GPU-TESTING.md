@@ -215,7 +215,8 @@ decimal clip, the same hostile text was tested both **after** the audio block an
 production **text-before-audio** order. Audio-before-text retained the spoken `2.5` in 15/15 trials;
 the production order copied the hostile `3.5` in 15/15. This is an ordering observation, not the
 decoder-level biasing experiment above, and is recorded under `additional_decimal_number_smoke` in
-the result JSON.
+the result JSON. A paired Qwen3-Omni control retained `2.5` and omitted the decoy in all 15 hostile
+trials in both orders, so the flip is not a generic property of every audio LLM.
 
 ---
 
