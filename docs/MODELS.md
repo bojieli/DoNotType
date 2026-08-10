@@ -197,6 +197,11 @@ the Seattle reference block in 0.69/0.64 seconds on the 12-second opening segmen
 recognition smoke-test observations only; there is no paired screen context or verified word-level
 reference for this sample.
 
+As a second independent public real-speech check, Qwen3-ASR transcribed the 11.04-second
+`patrickvonplaten/audio_samples/bcn_weather.mp3` clip in 0.67 seconds, preserving both spoken
+temperatures (35 and minus 20 degrees) and the proper noun Barcelona. Its file hash and transcript
+are included in the machine-readable result.
+
 To exercise context handling on genuine speech while the DoNotType fixtures were unavailable, the
 four downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
 recording says **Chicago** in its opening sentence; the context repeated **Seattle** eight times.

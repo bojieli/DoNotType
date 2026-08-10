@@ -8,6 +8,18 @@
     "language": "en",
     "real_speech": true
   },
+  "additional_audio_smoke": [
+    {
+      "source": "patrickvonplaten/audio_samples/bcn_weather.mp3",
+      "duration_seconds": 11.04,
+      "sha256": "47f2f8c2382b7b78fa7e8427a0fc7d33e8f997a0a9a9bc93c803eba218813130",
+      "model": "Qwen/Qwen3-ASR-0.6B-hf",
+      "revision": "7f1569a48a89f3e3f4dc3a5c9d28bddd903bc76c",
+      "runtime": "Transformers 5.15.0.dev0, bf16 CUDA",
+      "latency_seconds": 0.6739,
+      "transcript": "Yesterday it was 35 degrees in Barcelona, but today the temperature will go down to minus 20 degrees."
+    }
+  ],
   "task": {
     "spoken_anchor": "Chicago",
     "decoy": "Seattle",
