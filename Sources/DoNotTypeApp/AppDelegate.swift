@@ -144,6 +144,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(retry)
         }
 
+        if dictation.canUndo {
+            menu.addItem(.separator())
+            let undo = NSMenuItem(
+                title: "Undo last insertion", action: #selector(undoInsertion), keyEquivalent: "z")
+            undo.keyEquivalentModifierMask = [.command, .shift]
+            undo.target = self
+            menu.addItem(undo)
+
+            if dictation.canRevertToVerbatim {
+                let revert = NSMenuItem(
+                    title: "Revert to what you said", action: #selector(revertToVerbatim),
+                    keyEquivalent: "z")
+                revert.keyEquivalentModifierMask = [.command, .option]
+                revert.target = self
+                menu.addItem(revert)
+            }
+        }
+
         menu.addItem(.separator())
         if let latest = settingsModel.records.first(where: { $0.status == .completed }) {
             menu.addItem(disabled(String(latest.text.prefix(60))))
@@ -151,6 +169,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 title: "Copy last transcript", action: #selector(copyLast), keyEquivalent: "c")
             copy.target = self
             menu.addItem(copy)
+
+            let paste = NSMenuItem(
+                title: "Paste last transcript", action: #selector(pasteLast), keyEquivalent: "v")
+            paste.keyEquivalentModifierMask = [.command, .control]
+            paste.target = self
+            menu.addItem(paste)
         }
 
         menu.addItem(.separator())
@@ -207,6 +231,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await settingsModel.retryAll()
             rebuildMenu()
         }
+    }
+
+    @objc private func undoInsertion() {
+        Task { await dictation.undoLastInsertion(revertToVerbatim: false); rebuildMenu() }
+    }
+
+    @objc private func revertToVerbatim() {
+        Task { await dictation.undoLastInsertion(revertToVerbatim: true); rebuildMenu() }
+    }
+
+    @objc private func pasteLast() {
+        Task { await dictation.pasteLastTranscript(); rebuildMenu() }
     }
 
     @objc private func copyLast() {

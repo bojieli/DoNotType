@@ -58,6 +58,32 @@ final class SettingsModel {
         didSet { Settings.shared.secondaryStyle = secondaryStyle }
     }
 
+    var microphoneUID: String? {
+        didSet { Settings.shared.microphoneUID = microphoneUID }
+    }
+
+    var interactionSounds: Bool {
+        didSet { Settings.shared.interactionSounds = interactionSounds }
+    }
+
+    var launchAtLogin: Bool {
+        didSet { LaunchAtLogin.set(launchAtLogin) }
+    }
+
+    /// Re-read each time settings open: devices come and go while the app is running.
+    var availableMicrophones: [AudioDevices.Device] { AudioDevices.inputs() }
+
+    /// What is actually in use, which may not be what was chosen if the device was unplugged.
+    var activeMicrophoneName: String {
+        if let uid = microphoneUID, let id = AudioDevices.resolve(preferredUID: uid),
+            let name = AudioDevices.name(of: id)
+        {
+            return name
+        }
+        let fallback = AudioDevices.name(of: AudioDevices.defaultInputID()) ?? "system default"
+        return microphoneUID == nil ? "\(fallback) (system default)" : "\(fallback) — chosen device unavailable"
+    }
+
     var onHotkeyChange: (() -> Void)?
 
     // MARK: - Grounding
@@ -134,6 +160,9 @@ final class SettingsModel {
         hotkeyMode = settings.hotkeyMode
         secondaryTrigger = settings.secondaryTrigger
         secondaryStyle = settings.secondaryStyle
+        microphoneUID = settings.microphoneUID
+        interactionSounds = settings.interactionSounds
+        launchAtLogin = LaunchAtLogin.isEnabled
         groundingEnabled = settings.groundingEnabled
         screenshotEnabled = settings.screenshotEnabled
         blockedBundleIDs = settings.blockedBundleIDs

@@ -66,6 +66,30 @@ private struct GeneralTab: View {
                 .foregroundStyle(.secondary)
             }
 
+            Section("Audio") {
+                Picker("Microphone", selection: $model.microphoneUID) {
+                    Text("System default").tag(String?.none)
+                    ForEach(model.availableMicrophones) { device in
+                        Text(device.name).tag(AudioDevices.uid(of: device.id))
+                    }
+                }
+                LabeledContent("In use") {
+                    Text(model.activeMicrophoneName).foregroundStyle(.secondary)
+                }
+                Toggle("Play a sound when recording starts and stops", isOn: $model.interactionSounds)
+                Text(
+                    "Pinning a device matters when a headset connects mid-session and macOS "
+                        + "switches the default underneath you. If the chosen one disappears, "
+                        + "dictation keeps working on whatever is there."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
+            Section("System") {
+                Toggle("Launch at login", isOn: $model.launchAtLogin)
+            }
+
             Section("Dictation") {
                 Picker("Key", selection: $model.trigger) {
                     ForEach(HotkeyMonitor.Trigger.allCases, id: \.self) { trigger in
@@ -118,6 +142,18 @@ private struct GeneralTab: View {
                 Text(
                     "Even Tidy only changes typography. None of these reword you or make you "
                         + "sound more formal."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
+            Section("Shortcuts") {
+                LabeledContent("Undo last insertion") { Text("⌘⇧Z").monospaced() }
+                LabeledContent("Revert a rewrite to what you said") { Text("⌘⌥Z").monospaced() }
+                LabeledContent("Paste last transcript again") { Text("⌘⌃V").monospaced() }
+                Text(
+                    "Undo works for a minute after inserting, then expires — deleting characters "
+                        + "from a field you have since moved away from would destroy unrelated text."
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)

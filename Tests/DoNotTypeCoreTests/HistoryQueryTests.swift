@@ -243,3 +243,45 @@ final class PromptStoreTests: XCTestCase {
         try PromptStore.validate(try String(contentsOf: url, encoding: .utf8))
     }
 }
+
+/// The rewrite lives beside the transcript rather than replacing it — the property that makes
+/// "revert to what I said" possible at all.
+final class DeliveredTextTests: XCTestCase {
+    private func record(text: String, styled: String? = nil) -> DictationRecord {
+        DictationRecord(
+            status: .completed, text: text, styledText: styled,
+            style: styled == nil ? nil : .formal,
+            provider: "gemini", model: "m", fidelity: .light)
+    }
+
+    func testDeliveredTextIsTheStyledVersionWhenOneExists() {
+        XCTAssertEqual(record(text: "so uh ship it", styled: "Please ship it.").deliveredText,
+                       "Please ship it.")
+    }
+
+    func testDeliveredTextFallsBackToTheTranscript() {
+        XCTAssertEqual(record(text: "ship it").deliveredText, "ship it")
+    }
+
+    /// The verbatim text must survive a rewrite, or the whole separation is pointless.
+    func testVerbatimSurvivesAlongsideTheRewrite() {
+        let stored = record(text: "so uh ship it", styled: "Please ship it.")
+        XCTAssertEqual(stored.text, "so uh ship it")
+        XCTAssertNotEqual(stored.text, stored.deliveredText)
+    }
+
+    func testSummaryShowsWhatWasActuallyInserted() {
+        XCTAssertEqual(record(text: "raw", styled: "polished").summary, "polished")
+    }
+
+    /// Round-tripping must not drop the styled version, or history loses which text was inserted.
+    func testStyledTextSurvivesEncoding() throws {
+        let original = record(text: "raw words", styled: "Polished words.")
+        let data = try JSONEncoder.history.encode([original])
+        let decoded = try JSONDecoder.history.decode([DictationRecord].self, from: data)
+
+        XCTAssertEqual(decoded.first?.text, "raw words")
+        XCTAssertEqual(decoded.first?.styledText, "Polished words.")
+        XCTAssertEqual(decoded.first?.style, .formal)
+    }
+}

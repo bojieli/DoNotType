@@ -28,6 +28,7 @@ final class DictationController {
     private let hotkey = HotkeyMonitor()
     private let grounding = GroundingCoordinator()
     private let overlay = RecordingOverlay()
+    private let insertions = InsertionTracker()
 
     /// Opened at hotkey-down so the upload handshake happens while the user is still speaking.
     private var uploader: AudioUploader?
@@ -58,6 +59,22 @@ final class DictationController {
         hotkey.onPress = { [weak self] in self?.beginRecording() }
         hotkey.onRelease = { [weak self] in self?.finishRecording() }
         hotkey.onCancel = { [weak self] in self?.cancelRecording() }
+
+        // ⌘⇧Z undoes the last insertion; ⌘⌥Z swaps a rewrite back to what was actually said.
+        // Both are cheap only because the verbatim transcript is always kept.
+        hotkey.chords = [
+            (keyCode: 6, flags: [.maskCommand, .maskShift], action: { [weak self] in
+                Task { await self?.undoLastInsertion(revertToVerbatim: false) }
+            }),
+            (keyCode: 6, flags: [.maskCommand, .maskAlternate], action: { [weak self] in
+                Task { await self?.undoLastInsertion(revertToVerbatim: true) }
+            }),
+            // ⌘⌃V re-pastes the last transcript, for when the first insertion landed in the
+            // wrong window.
+            (keyCode: 9, flags: [.maskCommand, .maskControl], action: { [weak self] in
+                Task { await self?.pasteLastTranscript() }
+            }),
+        ]
         return hotkey.start()
     }
 
@@ -91,8 +108,10 @@ final class DictationController {
     private func beginRecording() {
         guard state == .idle else { return }
         do {
+            recorder.preferredDeviceUID = Settings.shared.microphoneUID
             try recorder.start()
             state = .recording
+            InteractionSounds.playStart()
 
             // Phase 2 of the capture: the expensive accessibility walk runs while the user is
             // still speaking, so grounding costs no perceived latency.
@@ -144,6 +163,8 @@ final class DictationController {
     private func finishRecording() {
         guard state == .recording else { return }
         stopLevelUpdates()
+
+        InteractionSounds.playStop()
 
         let audio: AudioFile
         do {
@@ -238,6 +259,7 @@ final class DictationController {
 
             state = .idle
             await TextInjector.insert(delivered)
+            insertions.record(recordID: record.id, delivered: delivered, verbatim: text)
             // Confirm rather than vanish: a silent disappearance leaves the user checking whether
             // anything happened, especially when the target app scrolled.
             overlay.confirmInserted(characters: delivered.count)
@@ -255,6 +277,35 @@ final class DictationController {
                 error, isOnline: await Reachability.shared.isOnline)
             fail(advice.message)
         }
+    }
+
+    // MARK: - Undo and re-paste
+
+    var canUndo: Bool { insertions.canUndo }
+    var canRevertToVerbatim: Bool { insertions.canRevertToVerbatim }
+
+    func undoLastInsertion(revertToVerbatim: Bool) async {
+        guard insertions.canUndo else { return }
+        let didUndo = await insertions.undo(replacingWithVerbatim: revertToVerbatim)
+        guard didUndo else { return }
+
+        overlay.show(
+            phase: .inserted(0),
+            hint: revertToVerbatim ? "Reverted to what you said" : "Removed")
+        overlay.update(phase: .failed(revertToVerbatim ? "Reverted to verbatim" : "Insertion removed"))
+        overlay.hide(after: .milliseconds(1_200))
+    }
+
+    /// Re-inserts the most recent transcript, for when the first one landed in the wrong window.
+    func pasteLastTranscript() async {
+        let recent = await store.all().first { $0.status == .completed }
+        guard let recent else { return }
+
+        let text = recent.deliveredText
+        await TextInjector.insert(text)
+        insertions.record(recordID: recent.id, delivered: text, verbatim: recent.text)
+        overlay.show(phase: .inserted(text.count), hint: "")
+        overlay.hide(after: .milliseconds(900))
     }
 
     private func rewriteInstruction(for style: RewriteStyle) -> String? {

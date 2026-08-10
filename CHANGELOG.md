@@ -41,6 +41,16 @@ release yet, so everything below is unreleased.
 - **Optional rewrite on a second hotkey** — formal, concise or bullets, for turning a dictated
   paragraph into an email. The verbatim transcript is always produced and stored first, and the
   inspector shows both versions together, so what you actually said stays recoverable.
+- **Undo and revert-to-verbatim.** `⌘⇧Z` removes the last insertion; `⌘⌥Z` replaces a rewrite with
+  the verbatim transcript. Cheap only because the original is always stored. Expires after a
+  minute, since deleting characters from a field the caret has since left would destroy unrelated
+  text.
+- **Paste last transcript** (`⌘⌃V`), for when the first insertion landed in the wrong window.
+- **Microphone selection**, pinned by device UID rather than ID so it survives reboots, falling
+  back silently when the device is unplugged.
+- **Launch at login** via `SMAppService`, so the toggle also appears in System Settings › Login
+  Items where someone would look to remove it.
+- **Optional start/stop tones**, off by default.
 - **Cross-vendor model benchmark** (`eval/benchmark-models.sh`, results in
   [docs/MODELS.md](docs/MODELS.md)) covering 36 audio-capable models.
 - 73 Swift unit tests, 24 C# unit tests, and an opt-in integration suite that runs against the live

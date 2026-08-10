@@ -86,6 +86,10 @@ dictation goes straight to history and sends itself when you reconnect.
 **Failed dictations keep their audio** until they succeed. Otherwise "Retry" would be a button that
 cannot work.
 
+**Undo is cheap because the verbatim transcript is always kept.** A wrong transcript, or a rewrite
+that came out too formal, is one key away from being fixed — `⌘⌥Z` swaps in what you actually said.
+A tool that discards the original cannot offer this at all, which is the difference being argued.
+
 More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Settings
@@ -96,6 +100,10 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Hotkey** — which key, whether a tap toggles or a hold talks, and an optional **second key
   bound to a rewrite** (formal, concise, bullets) for when you want an email rather than a
   transcript. Your main key always stays verbatim.
+- **Shortcuts** — `⌘⇧Z` undoes the last insertion, `⌘⌥Z` reverts a rewrite to what you actually
+  said, `⌘⌃V` pastes the last transcript again.
+- **Audio** — pin a microphone rather than following the system default, and optional start/stop
+  tones.
 - **Fidelity** — `raw`, `light` (default), `tidy`. Even `tidy` only changes typography, never words.
 - **Grounding** — on/off, screenshot fallback, and two blocklists evaluated *before* capture.
 - **History** — search, filters, per-item retry and delete, retention policy, and a **Context

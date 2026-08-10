@@ -95,6 +95,12 @@ final class HotkeyMonitor {
     var onRelease: (() -> Void)?
     /// Fires when the user taps Escape while recording.
     var onCancel: (() -> Void)?
+
+    /// Extra chorded shortcuts that work whether or not a recording is in flight.
+    ///
+    /// Keyed by (keyCode, required flags). Kept separate from the push-to-talk trigger because
+    /// these are ordinary shortcuts — press and go — rather than a held modifier.
+    var chords: [(keyCode: CGKeyCode, flags: CGEventFlags, action: () -> Void)] = []
     /// Set by the owner so tap-toggle knows whether a tap should start or stop.
     var isRecording: () -> Bool = { false }
 
@@ -187,9 +193,18 @@ final class HotkeyMonitor {
             }
 
         case .keyDown:
+            let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+
             // Escape aborts a recording in flight without inserting anything.
-            if isRecording(), event.getIntegerValueField(.keyboardEventKeycode) == 53 {
+            if isRecording(), keyCode == 53 {
                 onCancel?()
+                return
+            }
+
+            let flags = event.flags.intersection([.maskCommand, .maskShift, .maskControl, .maskAlternate])
+            for chord in chords where chord.keyCode == keyCode && flags == chord.flags {
+                chord.action()
+                return
             }
 
         default:

@@ -26,6 +26,8 @@ final class Settings {
         static let hotkeyMode = "hotkeyMode"
         static let secondaryTrigger = "secondaryTrigger"
         static let secondaryStyle = "secondaryStyle"
+        static let microphoneUID = "microphoneUID"
+        static let interactionSounds = "interactionSounds"
     }
 
     /// Shipped non-empty. A blocklist that starts empty is a blocklist nobody ever fills in, and
@@ -57,6 +59,22 @@ final class Settings {
             Key.hotkeyMode: HotkeyMonitor.Mode.automatic.rawValue,
             Key.secondaryStyle: RewriteStyle.formal.rawValue,
         ])
+    }
+
+    /// Pinned input device, by UID. Nil means "whatever the system default is".
+    ///
+    /// UID rather than AudioDeviceID because IDs are reassigned across reboots and reconnections,
+    /// so a saved ID would silently point at the wrong device.
+    var microphoneUID: String? {
+        get { defaults.string(forKey: Key.microphoneUID) }
+        set { defaults.set(newValue, forKey: Key.microphoneUID) }
+    }
+
+    /// Off by default: the overlay already conveys start and stop visually, and a tone on every
+    /// dictation is maddening to some people.
+    var interactionSounds: Bool {
+        get { defaults.bool(forKey: Key.interactionSounds) }
+        set { defaults.set(newValue, forKey: Key.interactionSounds) }
     }
 
     /// Second key bound to a rewrite style. Off unless the user picks one, because a key that

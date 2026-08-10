@@ -62,6 +62,28 @@ enum TextInjector {
         pasteboard.writeObjects(items)
     }
 
+    /// Removes `count` characters before the caret.
+    ///
+    /// Simulated backspaces rather than setting the field's value: the target is an arbitrary app
+    /// and most do not expose a settable value, which is the same reason insertion goes through
+    /// the pasteboard. Batched with a small gap because some apps drop synthetic keys sent faster
+    /// than a person could type.
+    static func deleteBackward(count: Int) async {
+        guard count > 0, let source = CGEventSource(stateID: .combinedSessionState) else { return }
+        let backspace: CGKeyCode = 51
+
+        for index in 0..<count {
+            CGEvent(keyboardEventSource: source, virtualKey: backspace, keyDown: true)?
+                .post(tap: .cgAnnotatedSessionEventTap)
+            CGEvent(keyboardEventSource: source, virtualKey: backspace, keyDown: false)?
+                .post(tap: .cgAnnotatedSessionEventTap)
+
+            // Every few keystrokes, yield briefly. Without this a long transcript floods the
+            // target app's event queue and some of the deletions are silently dropped.
+            if index % 16 == 15 { try? await Task.sleep(for: .milliseconds(8)) }
+        }
+    }
+
     private static func simulatePaste() {
         guard let source = CGEventSource(stateID: .combinedSessionState) else {
             log.error("could not create an event source for ⌘V")

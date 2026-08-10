@@ -52,8 +52,21 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
+    /// Pinned input device UID, or nil for the system default.
+    ///
+    /// Passed in rather than read from `Settings` because the recorder runs off the main actor.
+    /// Unplugging a pinned microphone must not stop dictation working — `resolve` returns nil and
+    /// capture falls back to whatever the system offers.
+    var preferredDeviceUID: String?
+
     func start() throws {
         guard !engine.isRunning else { return }
+
+        // Applied before the tap is installed; changing it afterwards has no effect on a stream
+        // that is already running.
+        if let deviceID = AudioDevices.resolve(preferredUID: preferredDeviceUID) {
+            try? engine.inputNode.auAudioUnit.setDeviceID(deviceID)
+        }
 
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
