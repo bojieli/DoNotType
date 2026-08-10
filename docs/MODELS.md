@@ -126,7 +126,7 @@ The authoritative real-speech fixtures, `eval/audio/real-talk-gemini15.wav` and
 The real fixtures could not be recovered from the repository or its upstream sources. Consequently,
 **none of the cells below is a valid result against the hosted
 real-speech baseline**. The model weights are the real downloaded checkpoints (not mock or
-synthetic models): Voxtral, Gemma, Qwen, Ultravox, Whisper large-v3, Voxtral Realtime, and Qwen3-ASR. The WAVs used here are
+synthetic models): Voxtral, Gemma, Qwen, Ultravox, Whisper large-v3, Voxtral Realtime, Qwen3-ASR, and MiniCPM-o 4.5. The WAVs used here are
 synthetic espeak stand-ins, retained only as ignored files to exercise audio transport,
 transcription, and context behavior. Do not compare their rates with the Gemini numbers above.
 
@@ -145,6 +145,7 @@ revisions used for the measurements:
 | `openai/whisper-large-v3` | `06f233fe06e710322aca913c1bc4249a0d71fce1` | 6 / 18,523,040,177 |
 | `mistralai/Voxtral-Mini-4B-Realtime-2602` | `2769294da9567371363522aac9bbcfdd19447add` | 2 / 17,718,909,592 |
 | `Qwen/Qwen3-ASR-0.6B-hf` | `7f1569a48a89f3e3f4dc3a5c9d28bddd903bc76c` | 1 / 1,564,928,088 |
+| `openbmb/MiniCPM-o-4_5` | `1f761131fa83f5ed3cd6f2f22b225c4501d154fa` | 4 / 18,743,737,228 |
 
 No synthetic checkpoint, randomly initialized model, or generated weights were used.
 
@@ -191,7 +192,8 @@ Whisper large-v3 in 18.48 seconds. Voxtral Realtime produced the opening transcr
 Ultravox was loaded from its real adapter plus the downloaded
 unsloth Llama backbone and Whisper large-v3-turbo encoder; its 12-second opening-segment probe
 returned the same Chicago sentence in 0.98 seconds. Qwen3-ASR produced the same opening sentence
-in 1.28 seconds on the full 203.52-second recording. All seven downloaded checkpoints processed real audio. These are
+in 1.28 seconds on the full 203.52-second recording. MiniCPM-o 4.5 retained Chicago with and without
+the Seattle reference block in 0.69/0.64 seconds on the 12-second opening segment. All eight downloaded checkpoints processed real audio. These are
 recognition smoke-test observations only; there is no paired screen context or verified word-level
 reference for this sample.
 
@@ -213,6 +215,7 @@ including the WAV hash and checkpoint revisions, is in
 | `fixie-ai/ultravox-v0_5-llama-3_1-8b` (12-second opening segment, chat-template prompt) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 0.68 s / 0.42 s |
 | `mistralai/Voxtral-Mini-4B-Realtime-2602` (full audio, streaming ASR; 1 probe) | Chicago 1/1; Seattle 0/1 | not supported | 2.73 s / n/a |
 | `Qwen/Qwen3-ASR-0.6B-hf` (full audio, ASR hotword prompt) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 1.28 s / 1.26 s |
+| `openbmb/MiniCPM-o-4_5` (12-second opening segment, audio+LLM chat) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 0.69 s / 0.64 s |
 
 Whisper used the first 12 seconds of the same recording because the anchor occurs in its opening
 sentence; its segment hash is recorded in the result file. The three priority checkpoints used the

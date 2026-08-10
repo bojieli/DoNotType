@@ -112,6 +112,22 @@
       "no_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 1.2789},
       "hostile_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 1.2562},
       "context_mechanism": "Qwen3-ASR system prompt/hotword field"
+    },
+    {
+      "model": "openbmb/MiniCPM-o-4_5",
+      "revision": "1f761131fa83f5ed3cd6f2f22b225c4501d154fa",
+      "runtime": "Transformers 4.51.0, bf16 CUDA; audio+LLM modules",
+      "weight_files": 4,
+      "weight_bytes": 18743737228,
+      "audio_segment": {
+        "source": "patrickvonplaten/audio_samples/obama.mp3",
+        "duration_seconds": 12.0,
+        "sha256": "4004049d1a2966b67e0fdc0497755118f97822c7f275dc4ed96f5ef71d55f552",
+        "reason": "the spoken anchor is in the opening sentence; short segment keeps the multimodal context smoke test practical"
+      },
+      "no_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.6933},
+      "hostile_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.6437},
+      "context_mechanism": "reference text in the same user message before audio"
     }
   ]
 }

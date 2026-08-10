@@ -43,6 +43,7 @@ exists purely to point that client at your machine.
 | 5 | `openai/whisper-large-v3` | ~10 GB | Not an LLM — the control. Its `initial_prompt` is the original context hook and is known to leak. |
 | control | `mistralai/Voxtral-Mini-4B-Realtime-2602` | ~18 GB | Downloaded streaming ASR control; audio-only, so it cannot take screen context or run the substitution A/B. |
 | control | `Qwen/Qwen3-ASR-0.6B-hf` | ~2 GB | Downloaded compact ASR control; its explicit hotword/prompt field permits a proper-noun context smoke test but it is not a general audio LLM. |
+| control | `openbmb/MiniCPM-o-4_5` | ~19 GB | Downloaded audio+LLM control; accepts text and audio in one chat turn, but its broader omni stack is outside the primary five-model comparison. |
 
 Quantised builds (AWQ/GPTQ/GGUF) cut these substantially if you are card-limited. Note the quant in
 your results — it is a confound worth recording.
