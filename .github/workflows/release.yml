@@ -77,7 +77,10 @@ jobs:
         run: |
           mkdir -p dist
           ditto -c -k --keepParent .build/DoNotType.app dist/DoNotType-macOS.zip
-          shasum -a 256 dist/DoNotType-macOS.zip | tee dist/DoNotType-macOS.zip.sha256
+          # Hashed from inside dist/ so the file records a bare filename. A checksum naming a
+          # build-machine path is one `shasum -c` cannot verify anywhere else, which makes it
+          # worse than none — it fails and looks like corruption.
+          (cd dist && shasum -a 256 DoNotType-macOS.zip | tee DoNotType-macOS.zip.sha256)
 
       - uses: actions/upload-artifact@v4
         with:
@@ -124,8 +127,11 @@ jobs:
           Copy-Item PROMPT.md publish/PROMPT.md
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path publish/* -DestinationPath dist/DoNotType-Windows-x64.zip
-          (Get-FileHash dist/DoNotType-Windows-x64.zip -Algorithm SHA256).Hash `
-            | Out-File dist/DoNotType-Windows-x64.zip.sha256
+          # Written in the same "<hash>  <filename>" shape as the other platforms, and as ASCII:
+          # Out-File defaults to UTF-16 with a BOM, which sha256sum cannot read at all.
+          $hash = (Get-FileHash dist/DoNotType-Windows-x64.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  DoNotType-Windows-x64.zip" `
+            | Out-File -Encoding ascii dist/DoNotType-Windows-x64.zip.sha256
 
       - uses: actions/upload-artifact@v4
         with:
@@ -179,7 +185,7 @@ jobs:
         run: |
           mkdir -p dist
           cp "android/$APK" dist/DoNotType-Android.apk
-          sha256sum dist/DoNotType-Android.apk | tee dist/DoNotType-Android.apk.sha256
+          (cd dist && sha256sum DoNotType-Android.apk | tee DoNotType-Android.apk.sha256)
 
       - uses: actions/upload-artifact@v4
         with:
