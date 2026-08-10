@@ -229,6 +229,11 @@ hostile `Madrid`). Voxtral retained the anchor and rejected the decoy in all 15 
 orders, while changing output language from Spanish text-first to German audio-first. Ultravox
 retained the anchor and rejected the decoy in all 15 trials in both orders under explicit neutral
 delimiters. These are proper-noun controls, not scores for the missing DoNotType fixtures.
+Qwen3-Omni and MiniCPM-o also retained `Barcelona` and rejected `Madrid` in all 15 trials in both
+orders, providing order-insensitive controls under the same public-real setup.
+Gemma also retained the anchor and rejected the decoy in all 15 trials in both orders when rerun
+from the 16 kHz WAV; its older direct-MP3 row is excluded because the no-context decode was
+unusable.
 
 ---
 

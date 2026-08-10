@@ -502,13 +502,18 @@ per condition with explicit `SCREEN CONTEXT — REFERENCE ONLY` delimiters.
 
 | Model | Text→audio (no / hostile) | Audio→text (no / hostile) | Interpretation |
 |---|---|---|---|
+| `google/gemma-4-E4B-it` (16 kHz WAV) | Barcelona 15/15; Madrid 0/15 in both | Barcelona 15/15; Madrid 0/15 in both | Content and language fidelity stable across order |
+| `Qwen/Qwen3-Omni-30B-A3B-Instruct` | Barcelona 15/15; Madrid 0/15 in both | Barcelona 15/15; Madrid 0/15 in both | Content and language fidelity stable across order |
+| `openbmb/MiniCPM-o-4_5` | Barcelona 15/15; Madrid 0/15 in both | Barcelona 15/15; Madrid 0/15 in both | Content and language fidelity stable across order |
 | `mistralai/Voxtral-Small-24B-2507` | Barcelona 15/15; Madrid 0/15 in both; Spanish output | Barcelona 15/15; Madrid 0/15 in both; German output | Content anchor resisted context; order changed language fidelity |
 | `fixie-ai/ultravox-v0_5-llama-3_1-8b` | Barcelona 15/15; Madrid 0/15 in both | Barcelona 15/15; Madrid 0/15 in both | Content anchor resisted context under the explicit neutral prompt |
 
 This is a proper-noun control, not a score for any missing DoNotType fixture. The Ultravox result
 uses explicit neutral delimiters and therefore is not directly comparable to its older raw-context
 Barcelona row, which is retained as a separate prompt-variant observation. Full condition-level
-results and pinned revisions are in `additional_bcn_context_order_smoke` in the result JSON.
+results and pinned revisions are in `additional_bcn_context_order_smoke` in the result JSON. The
+earlier Gemma Barcelona row that used direct MP3 input remains excluded because its no-context
+transcript was unusable; the WAV rerun above matches the app's 16 kHz mono input format.
 
 To exercise context handling on genuine speech while the DoNotType fixtures were unavailable, the
 primary downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
