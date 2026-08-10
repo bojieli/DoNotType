@@ -3,6 +3,7 @@ package ai.pine19.donottype.core
 import android.content.Context
 import ai.pine19.donottype.PromptAssets
 import ai.pine19.donottype.Settings
+import ai.pine19.donottype.audio.WavRecorder
 import java.io.File
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -57,10 +58,14 @@ class DictationService(private val context: Context) {
         }
 
         history.configure(Settings.retention, Settings.keepAudio)
+        // From here, not from the request: reading the screen and any retry are time the user
+        // spends waiting, and a figure that skipped them would flatter the app.
+        val releasedAt = System.currentTimeMillis()
         val record = DictationRecord(
             model = Settings.model,
             fidelity = Settings.fidelity,
             appName = appName,
+            durationSeconds = WavRecorder.durationSeconds(wav),
         )
 
         return try {
@@ -70,12 +75,16 @@ class DictationService(private val context: Context) {
                 }
                 add(InputPart.Audio(wav, "audio/wav"))
             }
+            val requestStart = System.currentTimeMillis()
             val result = GeminiClient(apiKey = key, model = Settings.model)
                 .transcribe(PromptAssets.systemInstruction(context, Settings.fidelity), parts)
+            record.requestMillis = System.currentTimeMillis() - requestStart
+            record.audioTokens = result.usage.audioTokens
 
             val text = result.transcript.transcript.trim()
             record.status = DictationRecord.Status.COMPLETED
             record.text = text
+            record.latencyMillis = System.currentTimeMillis() - releasedAt
             history.insert(record, if (Settings.keepAudio) wav else null)
             Result.success(record)
         } catch (error: Exception) {

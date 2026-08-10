@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using DoNotType.Core;
 
 namespace DoNotType.App;
@@ -165,12 +166,17 @@ public sealed class DictationController : IDisposable
         var service = new TranscriptionService(
             provider, PromptBuilder.FromFile(promptPath).SystemInstruction(_settings.Fidelity));
 
+        // From here, not from the request: reading the screen, a failed pre-upload and any retry
+        // are all time the user spends watching the overlay, and a figure that skipped them would
+        // flatter the app.
+        var releasedAt = Stopwatch.GetTimestamp();
         var record = new DictationRecord
         {
             Model = _settings.Model,
             Fidelity = _settings.Fidelity,
             AppName = context?.AppName,
             WindowTitle = context?.WindowTitle,
+            DurationSeconds = AudioRecorder.DurationSeconds(wav),
         };
 
         try
@@ -185,8 +191,11 @@ public sealed class DictationController : IDisposable
                 _uploader = null;
             }
 
+            var requestStart = Stopwatch.GetTimestamp();
             var result = await service.TranscribeWithRetryAsync(wav, context, audioPart)
                 .ConfigureAwait(false);
+            record.RequestSeconds = Stopwatch.GetElapsedTime(requestStart).TotalSeconds;
+            record.AudioTokens = result.Usage.AudioTokens;
             var text = result.Transcript.Text.Trim();
 
             if (text.Length == 0)
@@ -197,6 +206,7 @@ public sealed class DictationController : IDisposable
 
             record.Status = DictationStatus.Completed;
             record.Text = text;
+            record.LatencySeconds = Stopwatch.GetElapsedTime(releasedAt).TotalSeconds;
             _history.Insert(record, _settings.KeepAudio ? wav : null);
             HistoryChanged?.Invoke();
 

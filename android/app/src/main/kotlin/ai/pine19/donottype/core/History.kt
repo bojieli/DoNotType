@@ -24,6 +24,19 @@ data class DictationRecord(
     val appName: String? = null,
     var retryCount: Int = 0,
     var audioFileName: String? = null,
+    /**
+     * Wall clock from the end of speech to text delivered -- what the user actually waits.
+     *
+     * Measured from key release rather than from the request, because everything in between
+     * (reading the screen, a failed pre-upload, a retry) is time spent staring at the overlay.
+     * A figure that excluded it would flatter the app.
+     */
+    var latencyMillis: Long? = null,
+    /** Time inside the request alone, for telling a slow model from a slow app. */
+    var requestMillis: Long? = null,
+    /** Seconds of speech, for the wait-per-second-spoken figure. */
+    var durationSeconds: Double = 0.0,
+    var audioTokens: Int? = null,
 ) {
     enum class Status(val id: String) {
         COMPLETED("completed"),
@@ -57,6 +70,10 @@ data class DictationRecord(
         .put("appName", appName)
         .put("retryCount", retryCount)
         .put("audioFileName", audioFileName)
+        .put("latencyMillis", latencyMillis)
+        .put("requestMillis", requestMillis)
+        .put("durationSeconds", durationSeconds)
+        .put("audioTokens", audioTokens)
 
     companion object {
         fun fromJson(json: JSONObject) = DictationRecord(
@@ -70,6 +87,12 @@ data class DictationRecord(
             appName = json.optString("appName").takeIf { it.isNotEmpty() },
             retryCount = json.optInt("retryCount"),
             audioFileName = json.optString("audioFileName").takeIf { it.isNotEmpty() },
+            // Records written before timings existed have no value here, which must stay null
+            // rather than becoming a zero that reads as "instant".
+            latencyMillis = if (json.isNull("latencyMillis")) null else json.optLong("latencyMillis"),
+            requestMillis = if (json.isNull("requestMillis")) null else json.optLong("requestMillis"),
+            durationSeconds = json.optDouble("durationSeconds", 0.0),
+            audioTokens = if (json.isNull("audioTokens")) null else json.optInt("audioTokens"),
         )
     }
 }

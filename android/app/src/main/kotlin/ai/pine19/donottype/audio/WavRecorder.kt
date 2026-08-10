@@ -25,6 +25,19 @@ class WavRecorder {
         const val SAMPLE_RATE = 16_000
         /** Below this it was a stray tap rather than speech. */
         const val MIN_DURATION_MS = 500L
+
+        /**
+         * Length of a recording this class produced, from its own 44-byte header.
+         *
+         * Only valid for WAVs written here -- everything this app records is 16 kHz mono 16-bit,
+         * so there is nothing to parse. A general WAV reader would have to scan for the `data`
+         * chunk, and there is no source of foreign WAVs on this platform.
+         */
+        fun durationSeconds(wav: ByteArray): Double {
+            val bytesPerSecond = SAMPLE_RATE * 2
+            val samples = (wav.size - 44).coerceAtLeast(0)
+            return samples.toDouble() / bytesPerSecond
+        }
     }
 
     private var record: AudioRecord? = null

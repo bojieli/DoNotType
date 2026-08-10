@@ -8,7 +8,11 @@ let package = Package(
     products: [
         .library(name: "DoNotTypeCore", targets: ["DoNotTypeCore"]),
         .executable(name: "dnt-eval", targets: ["dnt-eval"]),
-        .executable(name: "DoNotType", targets: ["DoNotTypeApp"]),
+        // Named DoNotTypeMac, not DoNotType: the iOS project consumes this package and has its
+        // own target called DoNotType. Xcode resolves the two by name and would intermittently
+        // try to build the macOS executable — AppKit, ScreenCaptureKit and all — for iOS. The
+        // bundle's binary is still called DoNotType; the Makefile renames it on copy.
+        .executable(name: "DoNotTypeMac", targets: ["DoNotTypeApp"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),

@@ -75,6 +75,10 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
 
+      - name: Unit tests
+        working-directory: android
+        run: gradle test --no-daemon
+
       - name: Assemble debug APK
         working-directory: android
         run: gradle assembleDebug --no-daemon

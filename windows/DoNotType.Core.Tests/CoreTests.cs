@@ -367,3 +367,144 @@ public class HistoryQueryTests
     public void AppNamesAreDeduplicatedAndSorted() =>
         Assert.Equal(["Notepad", "Slack"], HistoryQuery.AppNames(Corpus));
 }
+
+/// <summary>
+/// The same invariants the Swift and Kotlin suites assert. Three ports of one calculation are
+/// three chances for it to disagree with itself, and a stats screen that reports different numbers
+/// on different platforms is worse than no stats screen.
+/// </summary>
+public class PerformanceStatsTests
+{
+    private static DictationRecord Record(
+        DictationStatus status = DictationStatus.Completed,
+        string text = "one two three",
+        double? latency = 3,
+        double spoken = 6,
+        int retries = 0,
+        string model = "gemini-3.6-flash") => new()
+        {
+            Status = status,
+            Text = text,
+            LatencySeconds = latency,
+            DurationSeconds = spoken,
+            RetryCount = retries,
+            Model = model,
+        };
+
+    [Fact]
+    public void EmptyHistoryProducesNoMisleadingZeroes()
+    {
+        var stats = PerformanceStats.Compute([]);
+        Assert.Equal(0, stats.Total);
+        Assert.Null(stats.MedianLatency);
+        Assert.Null(stats.SuccessRate); // 0/0 is not a 0% success rate
+        Assert.Null(stats.RealTimeFactor);
+    }
+
+    [Fact]
+    public void CountsByStatus()
+    {
+        var stats = PerformanceStats.Compute([
+            Record(), Record(),
+            Record(status: DictationStatus.Failed, latency: null),
+            Record(status: DictationStatus.Pending, latency: null),
+        ]);
+        Assert.Equal(4, stats.Total);
+        Assert.Equal(2, stats.Completed);
+        Assert.Equal(1, stats.Failed);
+        Assert.Equal(1, stats.Pending);
+        Assert.Equal(0.5, stats.SuccessRate);
+    }
+
+    /// <summary>
+    /// A failure's latency measures how long an error took to arrive. Folding it in would make a
+    /// fast app with a bad key look slow.
+    /// </summary>
+    [Fact]
+    public void FailedDictationsDoNotContributeTimings()
+    {
+        var stats = PerformanceStats.Compute([
+            Record(latency: 2), Record(status: DictationStatus.Failed, latency: 90),
+        ]);
+        Assert.Equal(2, stats.MedianLatency);
+    }
+
+    [Fact]
+    public void MedianIsNotDraggedByAnOutlier()
+    {
+        var stats = PerformanceStats.Compute([
+            Record(latency: 2), Record(latency: 2), Record(latency: 3), Record(latency: 3),
+            Record(latency: 120),
+        ]);
+        Assert.Equal(3, stats.MedianLatency);
+        Assert.Equal(120, stats.P95Latency); // p95 is where the bad case is meant to show up
+    }
+
+    [Fact]
+    public void PercentileUsesNearestRank()
+    {
+        double[] values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        Assert.Equal(5, PerformanceStats.Percentile(values, 0.5));
+        Assert.Equal(10, PerformanceStats.Percentile(values, 0.95));
+        Assert.Null(PerformanceStats.Percentile([], 0.5));
+        Assert.Equal(7, PerformanceStats.Percentile([7], 0.95));
+    }
+
+    /// <summary>Zero means "not measured", like null does — never "instant".</summary>
+    [Fact]
+    public void UnmeasuredRecordsAreExcludedRatherThanCountedAsInstant()
+    {
+        var stats = PerformanceStats.Compute([
+            Record(latency: null), Record(latency: 0), Record(latency: 4),
+        ]);
+        Assert.Equal(4, stats.MedianLatency);
+    }
+
+    [Fact]
+    public void RealTimeFactorComparesWaitToSpeech()
+    {
+        var stats = PerformanceStats.Compute([Record(latency: 3, spoken: 6)]);
+        Assert.Equal(0.5, stats.RealTimeFactor!.Value, 3);
+    }
+
+    [Fact]
+    public void RetriesAreCountedPerDictationNotPerAttempt()
+    {
+        var stats = PerformanceStats.Compute([
+            Record(retries: 3), Record(retries: 0), Record(retries: 1),
+        ]);
+        Assert.Equal(2, stats.Retried);
+    }
+
+    [Fact]
+    public void WordsAndSpeechAccumulate()
+    {
+        var stats = PerformanceStats.Compute([
+            Record(text: "one two three", spoken: 6), Record(text: "four five", spoken: 4),
+        ]);
+        Assert.Equal(5, stats.Words);
+        Assert.Equal(10, stats.SpokenSeconds);
+    }
+
+    [Fact]
+    public void DurationFormattingMatchesTheOtherPorts()
+    {
+        Assert.Equal("420 ms", PerformanceStats.FormatDuration(0.42));
+        Assert.Equal("3.5 s", PerformanceStats.FormatDuration(3.46));
+        Assert.Equal("2m 5s", PerformanceStats.FormatDuration(125));
+        Assert.Equal("1h 2m", PerformanceStats.FormatDuration(3_725));
+        Assert.Equal("—", PerformanceStats.FormatDuration(null));
+    }
+
+    [Fact]
+    public void BreakdownGroupsByModelMostUsedFirst()
+    {
+        var breakdown = ModelPerformance.Breakdown([
+            Record(model: "gemini-3.6-flash"), Record(model: "gemini-3.6-flash"),
+            Record(model: "gemini-2.5-flash"),
+        ]);
+        Assert.Equal(2, breakdown.Count);
+        Assert.Equal("gemini-3.6-flash", breakdown[0].Model);
+        Assert.Equal(2, breakdown[0].Stats.Total);
+    }
+}

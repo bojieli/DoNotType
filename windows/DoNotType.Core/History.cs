@@ -32,6 +32,25 @@ public sealed class DictationRecord
     public int RetryCount { get; set; }
     public string? AudioFileName { get; set; }
 
+    /// <summary>
+    /// Wall clock from the end of speech to text delivered -- what the user actually waits.
+    /// </summary>
+    /// <remarks>
+    /// Measured from key release rather than from the request, because everything in between
+    /// (reading the screen, a failed pre-upload, a retry) is time spent watching the overlay. A
+    /// figure that excluded it would flatter the app. Null means not measured, which must never
+    /// render as zero.
+    /// </remarks>
+    public double? LatencySeconds { get; set; }
+
+    /// <summary>Time inside the request alone, for telling a slow model from a slow app.</summary>
+    public double? RequestSeconds { get; set; }
+
+    /// <summary>Seconds of speech, for the wait-per-second-spoken figure.</summary>
+    public double DurationSeconds { get; set; }
+
+    public int? AudioTokens { get; set; }
+
     [JsonIgnore]
     public bool IsRetryable => Status != DictationStatus.Completed;
 

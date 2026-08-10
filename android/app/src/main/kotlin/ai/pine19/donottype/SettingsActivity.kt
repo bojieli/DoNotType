@@ -7,6 +7,7 @@ import ai.pine19.donottype.core.Fidelity
 import ai.pine19.donottype.core.HistoryQuery
 import ai.pine19.donottype.core.GeminiClient
 import ai.pine19.donottype.core.InputPart
+import ai.pine19.donottype.core.PerformanceStats
 import ai.pine19.donottype.core.RetentionPolicy
 import android.Manifest
 import android.content.Intent
@@ -359,6 +360,16 @@ class SettingsActivity : AppCompatActivity() {
             if (retryable > 0) append(" · $retryable to retry")
             append(" · ")
             append(Formatter.formatShortFileSize(this@SettingsActivity, service.history.audioBytes()))
+
+            // Hidden until three successes: a median of two samples is not a median.
+            val stats = PerformanceStats.compute(all)
+            if (stats.completed >= 3) {
+                append("\n")
+                append("Typical wait ${PerformanceStats.formatMillis(stats.medianLatencyMillis)}")
+                append(" · slowest 5% ${PerformanceStats.formatMillis(stats.p95LatencyMillis)}")
+                stats.successRate?.let { append(" · ${(it * 100).toInt()}% succeeded") }
+                append(" · ${PerformanceStats.formatCount(stats.words)} words")
+            }
         }
 
         // Rendered in full rather than truncated. A list capped at 20 with nothing said about it
@@ -381,15 +392,43 @@ class SettingsActivity : AppCompatActivity() {
             DictationRecord.Status.PENDING -> "…"
         }
 
+        // Transcript with its timing underneath. Per row rather than only in aggregate, because
+        // "that one felt slow" is a claim the user should be able to check.
         row.addView(
-            TextView(this).apply {
-                text = "$marker  ${record.summary.take(90)}"
-                textSize = 13f
-                setTextColor(
-                    if (record.status == DictationRecord.Status.COMPLETED) Color.DKGRAY
-                    else Color.parseColor("#B23A2F")
-                )
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+
+                addView(
+                    TextView(this@SettingsActivity).apply {
+                        text = "$marker  ${record.summary.take(90)}"
+                        textSize = 13f
+                        setTextColor(
+                            if (record.status == DictationRecord.Status.COMPLETED) Color.DKGRAY
+                            else Color.parseColor("#B23A2F")
+                        )
+                    }
+                )
+
+                val details = buildList {
+                    record.latencyMillis?.let { add(PerformanceStats.formatMillis(it)) }
+                    if (record.retryCount > 0) add("retried ${record.retryCount}×")
+                    if (record.durationSeconds > 0) {
+                        add("${PerformanceStats.formatSeconds(record.durationSeconds)} spoken")
+                    }
+                }
+                if (details.isNotEmpty()) {
+                    addView(
+                        TextView(this@SettingsActivity).apply {
+                            text = details.joinToString(" · ")
+                            textSize = 11f
+                            setTextColor(
+                                if ((record.latencyMillis ?: 0) > 8_000) Color.parseColor("#B26A00")
+                                else Color.GRAY
+                            )
+                        }
+                    )
+                }
             }
         )
 

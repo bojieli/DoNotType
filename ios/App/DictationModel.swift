@@ -236,14 +236,21 @@ final class DictationModel {
             return
         }
 
+        // From the end of speech, not from the request: everything in between is time the user
+        // spends waiting, and a figure that skipped it would flatter the app.
+        let releasedAt = Date()
+        let audioDuration = (try? AudioFile(contentsOf: url))?.durationSeconds ?? 0
         var record = DictationRecord(
             status: .pending, provider: ProviderKind.gemini.rawValue,
-            model: model, fidelity: fidelity)
+            model: model, fidelity: fidelity, durationSeconds: audioDuration)
 
         do {
             let audio = try AudioFile(contentsOf: url)
-            let result = try await coordinator.service.transcribeWithRetry(
-                audio: audio, context: nil)
+            let requestStart = Date()
+            let result = try await coordinator.service.transcribeLong(audio: audio, context: nil)
+            record.requestSeconds = Date().timeIntervalSince(requestStart)
+            record.usage = result.usage
+            record.chunkCount = result.chunkCount
             let text = result.transcript.transcript
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -254,6 +261,7 @@ final class DictationModel {
 
             record.status = .completed
             record.text = text
+            record.latencySeconds = Date().timeIntervalSince(releasedAt)
             await history.insert(record, audio: keepAudio ? try? Data(contentsOf: url) : nil)
 
             deliver(text)

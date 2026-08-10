@@ -168,6 +168,15 @@ public sealed class AudioRecorder : IDisposable
         return peak / 32768f;
     }
 
+    /// <summary>Length of a recording this class produced, from its own 44-byte header.</summary>
+    /// <remarks>
+    /// Only valid for WAVs written here -- everything this app records is 16 kHz mono 16-bit, so
+    /// there is nothing to parse. A general reader would have to scan for the <c>data</c> chunk,
+    /// and there is no source of foreign WAVs on this platform.
+    /// </remarks>
+    public static double DurationSeconds(byte[] wav) =>
+        Math.Max(0, wav.Length - 44) / (double)(SampleRate * 2);
+
     /// <summary>44-byte canonical RIFF header, PCM 16-bit mono.</summary>
     internal static byte[] WrapInWavContainer(byte[] pcm)
     {

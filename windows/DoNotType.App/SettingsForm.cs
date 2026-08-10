@@ -114,7 +114,10 @@ public sealed class SettingsForm : Form
 
         _history.Columns.Add("When", 110);
         _history.Columns.Add("Status", 80);
-        _history.Columns.Add("Transcript", 380);
+        // The wait, per dictation. Shown per row rather than only in aggregate, because "that one
+        // felt slow" is a claim the user should be able to check.
+        _history.Columns.Add("Wait", 60);
+        _history.Columns.Add("Transcript", 320);
 
         // Search sits above the list because it is the reason history is kept at all.
         var searchBar = new FlowLayoutPanel
@@ -257,6 +260,7 @@ public sealed class SettingsForm : Form
                 Tag = record,
             };
             item.SubItems.Add(record.Status.ToString());
+            item.SubItems.Add(PerformanceStats.FormatDuration(record.LatencySeconds));
             item.SubItems.Add(record.Summary.Replace('\n', ' '));
             if (record.CanRetry) item.ForeColor = Color.Firebrick;
             _history.Items.Add(item);
@@ -268,9 +272,19 @@ public sealed class SettingsForm : Form
         var shown = records.Count == all.Count
             ? $"{all.Count} dictations"
             : $"{records.Count} of {all.Count}";
+        // Hidden until three successes: a median of two samples is not a median.
+        var stats = PerformanceStats.Compute(all);
+        var performance = stats.Completed >= 3
+            ? $"\r\nTypical wait {PerformanceStats.FormatDuration(stats.MedianLatency)}"
+              + $" · slowest 5% {PerformanceStats.FormatDuration(stats.P95Latency)}"
+              + $" · {stats.SuccessRate * 100:F0}% succeeded"
+              + $" · {PerformanceStats.FormatCount(stats.Words)} words"
+            : string.Empty;
+
         _historySummary.Text =
             $"{shown} · {retryable} to retry · {bytes / 1024} KB audio"
-            + "   (double-click to retry · Delete key or right-click to remove)";
+            + "   (double-click to retry · Delete key or right-click to remove)"
+            + performance;
     }
 
     // ---- Prompt ------------------------------------------------------------------------------

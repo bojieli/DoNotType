@@ -249,6 +249,30 @@ private struct SetupRow: View {
 struct HistoryView: View {
     @Bindable var model: DictationModel
 
+    private var stats: PerformanceStats { .compute(from: model.allRecords) }
+
+    /// Hidden until there is something worth reporting — two samples are not a median.
+    @ViewBuilder private var statsSummary: some View {
+        Group {
+            LabeledContent("Typical wait") {
+                Text(PerformanceStats.formatDuration(stats.medianLatency)).monospacedDigit()
+            }
+            LabeledContent("Slowest 5%") {
+                Text(PerformanceStats.formatDuration(stats.p95Latency)).monospacedDigit()
+            }
+            if let rate = stats.successRate {
+                LabeledContent("Succeeded") {
+                    Text("\(Int(rate * 100))% of \(stats.total)")
+                        .monospacedDigit()
+                        .foregroundStyle(rate < 0.95 ? .orange : .secondary)
+                }
+            }
+            LabeledContent("Words dictated") {
+                Text(PerformanceStats.formatCount(stats.words)).monospacedDigit()
+            }
+        }
+    }
+
     var body: some View {
         List {
             Section {
@@ -266,6 +290,12 @@ struct HistoryView: View {
                         Task { await model.retryAll() }
                     }
                 }
+            }
+
+            // A compact version of the desktop Stats tab. On a phone the numbers that matter are
+            // "is it fast" and "is it working"; the per-model table is a desktop concern.
+            if stats.completed >= 3 {
+                Section("Performance") { statsSummary }
             }
 
             ForEach(model.records) { record in
@@ -311,6 +341,13 @@ private struct HistoryRow: View {
                 Text(record.summary).lineLimit(3)
                 HStack(spacing: 6) {
                     Text(record.createdAt, format: .dateTime.hour().minute())
+                    // The wait, per dictation. "That one felt slow" should be checkable.
+                    if let latency = record.latencySeconds {
+                        Text("· \(PerformanceStats.formatDuration(latency))")
+                            .monospacedDigit()
+                            .foregroundStyle(latency > 8 ? Color.orange : Color.secondary)
+                    }
+                    if let chunks = record.chunkCount, chunks > 1 { Text("· \(chunks) parts") }
                     if record.retryCount > 0 { Text("· retried \(record.retryCount)×") }
                 }
                 .font(.caption)

@@ -6,6 +6,11 @@
 
 CONFIG      ?= release
 APP         := DoNotType
+# The SPM product cannot also be called DoNotType -- the iOS project consumes this package and has
+# a target by that name, and Xcode would resolve the collision by building the macOS executable
+# for iOS. The binary is renamed back on the way into the bundle, which is what Info.plist's
+# CFBundleExecutable expects.
+PRODUCT     := DoNotTypeMac
 BUNDLE_ID   := ai.19pine.donottype
 BUILD_DIR   := .build/$(CONFIG)
 APP_BUNDLE  := .build/$(APP).app
@@ -33,7 +38,7 @@ eval:
 app: build
 	@rm -rf "$(APP_BUNDLE)"
 	@mkdir -p "$(CONTENTS)/MacOS" "$(CONTENTS)/Resources"
-	@cp "$(BUILD_DIR)/$(APP)" "$(CONTENTS)/MacOS/$(APP)"
+	@cp "$(BUILD_DIR)/$(PRODUCT)" "$(CONTENTS)/MacOS/$(APP)"
 	@cp Resources/Info.plist "$(CONTENTS)/Info.plist"
 	@# The contract ships inside the bundle so the app does not depend on the source tree.
 	@cp PROMPT.md "$(CONTENTS)/Resources/PROMPT.md"

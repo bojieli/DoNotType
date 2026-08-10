@@ -76,7 +76,8 @@ not defects.
 ## Commits and PRs
 
 - One coherent change per commit; the body explains why, not a restatement of the diff.
-- `swift test` and `dotnet test` must pass. Integration tests are opt-in and not required in CI.
+- `swift test`, `dotnet test` and `gradle test` must pass. Integration tests are opt-in and not
+  required in CI.
 - If you touched a platform you cannot run, say so in the PR. "Compiles, untested on device" is
   useful and honest; silence is not.
 
