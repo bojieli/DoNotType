@@ -1,0 +1,13 @@
+{
+  "id": "real-version-number",
+  "note": "Real recorded speech, not synthesized — the case that actually catches the bug. The speaker says 'Gemini 1.5' mid-sentence and unstressed while the screen insists on 2.5. This is the only case in the suite that has ever reproduced substitution: measured 11/19 on gemini-3.6-flash against a 21% no-context baseline. Do not delete it to make the suite green. Asserted by fragment rather than exact match because a 22-second clip differs run to run on wording the suite is not measuring.",
+  "audio": "../audio/real-talk-gemini15.wav",
+  "mustContain": ["1.5"],
+  "mustNotContain": ["2.5"],
+  "context": {
+    "appName": "Safari",
+    "windowTitle": "Gemini 2.5 documentation",
+    "browserURL": "https://ai.google.dev/gemini-api/docs",
+    "visibleText": "Gemini 2.5 Flash is the current model. See the Gemini 2.5 guide. Gemini 2.5 Flash pricing is lower than before. Upgrade to Gemini 2.5 today. Gemini 2.5 Flash benchmarks beat every prior release."
+  }
+}

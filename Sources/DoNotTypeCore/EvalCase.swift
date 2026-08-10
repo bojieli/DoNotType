@@ -10,8 +10,22 @@ public struct EvalCase: Sendable, Codable {
     /// Path to the recording, relative to the case file's directory.
     public var audio: String
     public var context: ScreenContext
-    /// What the speaker actually said. The primary assertion.
-    public var expectTranscript: String
+    /// What the speaker actually said, for cases short enough to assert exactly.
+    ///
+    /// Leave empty for real speech. A 22-second clip transcribed by a stochastic model will differ
+    /// run to run on wording that has nothing to do with grounding — "observed" versus "observe" —
+    /// so demanding an exact match would fail for reasons the suite is not measuring.
+    /// Optional so a real-speech case can omit it entirely; synthesized `Decodable` does not
+    /// apply default values to missing keys.
+    public var expectTranscript: String?
+
+    /// Fragments that must appear. The right assertion for real speech: name the few tokens the
+    /// case actually turns on and ignore the rest.
+    public var mustContain: [String]?
+
+    /// Fragments that must not appear — typically the decoy value sitting in the screen context.
+    public var mustNotContain: [String]?
+
     /// Optional note about what this case is probing.
     public var note: String?
 
@@ -42,18 +56,28 @@ public enum GroundingEffect: String, Sendable {
 public struct EvalOutcome: Sendable {
     public var caseID: String
     public var expected: String
+    /// Fragments required and forbidden, for cases where an exact match is unreasonable.
+    public var mustContain: [String] = []
+    public var mustNotContain: [String] = []
     public var withContext: String
     public var withoutContext: String
     public var report: TranscriptDiff.Report
     public var audioTokens: Int?
 
     /// The gate: does the with-context transcript say what the speaker actually said?
-    public var matchesExpectation: Bool {
-        TranscriptDiff.normalize(withContext) == TranscriptDiff.normalize(expected)
-    }
+    public var matchesExpectation: Bool { satisfies(withContext) }
 
-    var baselineMatchesExpectation: Bool {
-        TranscriptDiff.normalize(withoutContext) == TranscriptDiff.normalize(expected)
+    var baselineMatchesExpectation: Bool { satisfies(withoutContext) }
+
+    private func satisfies(_ text: String) -> Bool {
+        if !expected.isEmpty {
+            return TranscriptDiff.normalize(text) == TranscriptDiff.normalize(expected)
+        }
+        // Real-speech cases assert fragments instead. An empty case asserts nothing and would
+        // silently pass, so it counts as a failure rather than a free green.
+        guard !mustContain.isEmpty || !mustNotContain.isEmpty else { return false }
+        return mustContain.allSatisfy { text.containsLoosely($0) }
+            && mustNotContain.allSatisfy { !text.containsLoosely($0) }
     }
 
     public var effect: GroundingEffect {
@@ -110,7 +134,9 @@ public struct EvalRunner: Sendable {
 
         return EvalOutcome(
             caseID: testCase.id,
-            expected: testCase.expectTranscript,
+            expected: testCase.expectTranscript ?? "",
+            mustContain: testCase.mustContain ?? [],
+            mustNotContain: testCase.mustNotContain ?? [],
             withContext: withContext.transcript.transcript,
             withoutContext: withoutContext.transcript.transcript,
             report: TranscriptDiff.compare(

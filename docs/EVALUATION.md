@@ -52,12 +52,33 @@ reported 0 regressions and the next reported 2.
 
 ## Current numbers
 
-**Synthesized suite** (`eval/nearmiss`, `say`-generated audio, gemini-3.6-flash, 3 runs per case):
-15 runs, 15 matched, **0 regressed**.
+**The suite is red, and that is correct.** With real-speech cases added it reports what the
+synthesized-only version could not:
 
-**That number is not evidence.** `say` enunciates far more clearly than a person, and the model's
-own knowledge covers well-known terms — a control saying "cuber netties" came back as "Kubernetes"
-with *no context at all*, measuring nothing.
+```
+runs             14  (11 matched ground truth)
+improved          0
+neutral-correct  11
+REGRESSED         3   ← must be 0
+```
+
+Two of the three regressions are the same clip on consecutive runs:
+
+```
+real-version-number:
+  baseline  … the smaller models including Gemini 1.5     ← correct
+  context   … the smaller models, including Gemini 2.5    ← the screen's value
+```
+
+The third is `jargon-spelling`, and it failed in an instructive direction. It was written as a
+*positive* control — the audio sounds like "coffee", the screen spells it `koffi`, and context
+should fix the spelling. Instead the baseline got `Koffi` right on its own and context turned it
+into `Coffee`. A case intended to demonstrate the feature working demonstrated the bug instead.
+
+**The synthesized-only suite reported 0 regressions**, and that number was not evidence: `say`
+enunciates far more clearly than a person, and the model's own knowledge covers well-known terms —
+a control saying "cuber netties" came back as "Kubernetes" with *no context at all*, measuring
+nothing. Real cases changed the result immediately.
 
 **Real speech** (`eval/audio/real-talk-gemini15.wav`, extracted from a recorded talk; the speaker
 says "Gemini 1.5", the screen says "2.5"; 20 trials):
@@ -69,6 +90,12 @@ says "Gemini 1.5", the screen says "2.5"; 20 trials):
 | no version mentioned | 1 |
 
 **58% substitution.** The bug reproduces on real audio and never reproduced on synthesized audio.
+
+Real-speech cases assert **fragments** rather than an exact transcript (`mustContain`,
+`mustNotContain`). A 22-second clip transcribed by a stochastic model differs run to run on wording
+the suite is not measuring — "observed" versus "observe", "unified source" versus "unified
+thoughts" — so an exact-match assertion would fail for reasons unrelated to grounding. Name the few
+tokens the case turns on and ignore the rest.
 
 **The control matters more than the headline.** With *no context at all*, the model still writes
 2.5 in 21% of runs — this clip is genuinely hard, the number is unstressed and mid-sentence. So the

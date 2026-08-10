@@ -77,8 +77,10 @@ release yet, so everything below is unreleased.
   [docs/EVALUATION.md](docs/EVALUATION.md). This is the central open problem.
 - **The Windows app has never been run.** It compiles and its core tests pass, but every Win32 path
   — keyboard hook, `waveIn` capture, `SendInput`, UI Automation, DPAPI — is unexercised.
-- **The near-miss suite is mostly synthesized audio**, which measures the easy case. Real-speech
-  cases are being added; see `eval/extract-real-audio.sh`.
+- **The near-miss suite is red, deliberately.** Adding real-speech cases took it from 0 regressions
+  to 3, which is the honest state: two are the version-number substitution reproducing, and one is
+  a case written as a positive control that failed in the opposite direction. It is not to be made
+  green by deleting cases.
 - **Rewrite styles are implemented but not recommended.** Both single-pass and two-pass are
   measured and neither is good enough to enable by default.
 
