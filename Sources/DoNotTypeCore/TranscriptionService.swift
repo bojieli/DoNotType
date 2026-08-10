@@ -74,7 +74,8 @@ public struct TranscriptionService: Sendable {
         if let context, !context.isEmpty {
             parts.append(contentsOf: encoder.encode(context))
         }
-        parts.append(audioPart ?? audio.part)
+        // Compressed unless the caller already resolved the audio to a pre-uploaded reference.
+        parts.append(audioPart ?? audio.compressedForUpload().part)
 
         return try await provider.transcribe(
             TranscriptionRequest(

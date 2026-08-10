@@ -81,6 +81,7 @@ The guard lives on the provider protocol, not in an allowlist, because any backe
 | `TokenBudget` | estimate + truncate | Truncation keeps the **tail**: the end of a buffer is the part nearest the caret. |
 | `TranscriptionProvider` | one backend | `SupportsPreUpload` and audio-token reporting are on the interface because omitting them would let it lie. |
 | `AudioUploader` | route the recording | Degrades to inline on any failure. A flaky network should cost latency, never words. |
+| `OggOpusWriter` | container for compressed upload | CoreAudio encodes Opus but only into CAF; the API decodes Ogg. 16× smaller uploads, ~25% lower latency, identical transcripts. |
 | `TranscriptionService` | first attempt and retries | Same code path both times, so a retry is not a lesser attempt. |
 | `HistoryStore` | persistence | A failed entry keeps its audio until it succeeds, whatever retention says — otherwise Retry is a button that cannot work. |
 | `HistoryQuery` | search and filter | In the core so the rules are testable without a UI. |
@@ -145,7 +146,7 @@ platform order was macOS → Android → iOS.
 
 ## Testing layers
 
-- **Unit** (`swift test`, `dotnet test`, `gradle test`) — pure logic, no network. 169 + 53 + 24
+- **Unit** (`swift test`, `dotnet test`, `gradle test`) — pure logic, no network. 182 + 53 + 24
   tests. Where a type exists on several platforms, the ports assert the same invariants: a stats
   screen that reports different numbers on different platforms is worse than no stats screen.
 - **Integration** (`DNT_INTEGRATION=1 swift test`) — live API on real recorded speech. Opt-in

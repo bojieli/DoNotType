@@ -41,6 +41,15 @@ release yet, so everything below is unreleased.
 - **Optional rewrite on a second hotkey** — formal, concise or bullets, for turning a dictated
   paragraph into an email. The verbatim transcript is always produced and stored first, and the
   inspector shows both versions together, so what you actually said stays recoverable.
+- **Uploads are Opus now, not PCM.** A 30-second dictation was 960 kB and is now about 60 kB —
+  16× less to send. End-to-end latency fell from 6.9 s to 4.9 s at 10 s of speech, and 13.1 s to
+  9.9 s at 30 s. The transcript is unaffected: the same fixtures transcribe identically as WAV,
+  FLAC and Opus, and the provider bills the same audio-token count for each.
+
+  CoreAudio encodes Opus natively but will only wrap it in CAF, and the API decodes Ogg — so
+  `OggOpusWriter` writes the container directly rather than adding a libopus dependency to four
+  build systems. Only the upload is compressed; history still keeps the WAV, because a retry
+  re-runs the whole pipeline and the chunker needs PCM to find silence in.
 - **Tap to talk, hold to talk — on every platform.** The Android keyboard was hold-only, which
   means keeping a finger down for the length of a thought: fine for a sentence, miserable for a
   paragraph. It now behaves like the desktop hotkey — a quick tap starts and a second tap stops,

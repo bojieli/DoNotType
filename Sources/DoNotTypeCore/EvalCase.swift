@@ -122,7 +122,9 @@ public struct EvalRunner: Sendable {
         if let context {
             parts.append(contentsOf: encoder.encode(context))
         }
-        parts.append(audio.part)
+        // Compressed, so the harness measures what the app actually uploads rather than a
+        // heavier payload the product never sends.
+        parts.append(audio.compressedForUpload().part)
 
         var delay = Duration.milliseconds(800)
         var lastError: any Error = ProviderError.emptyOutput

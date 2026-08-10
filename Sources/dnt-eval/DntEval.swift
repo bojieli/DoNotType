@@ -11,7 +11,7 @@ struct DntEval: AsyncParsableCommand {
         commandName: "dnt-eval",
         abstract: "Measure what screen context does to a transcript.",
         subcommands: [
-            Probe.self, Once.self, Suite.self, Ablate.self, Rewrite.self, Conformance.self,
+            Probe.self, Once.self, Suite.self, Ablate.self, Rewrite.self, Conformance.self, Encode.self,
         ],
         defaultSubcommand: Suite.self
     )
