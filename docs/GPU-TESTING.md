@@ -41,6 +41,7 @@ exists purely to point that client at your machine.
 | 3 | `google/gemma-4-E4B-it` | ~10 GB | Small enough for a single consumer card; establishes the floor. |
 | 4 | `fixie-ai/ultravox-v0_5-llama-3_1-8b` | ~18 GB | Projects audio into the token space; a third architecture for comparison. |
 | 5 | `openai/whisper-large-v3` | ~10 GB | Not an LLM — the control. Its `initial_prompt` is the original context hook and is known to leak. |
+| control | `mistralai/Voxtral-Mini-4B-Realtime-2602` | ~18 GB | Downloaded streaming ASR control; audio-only, so it cannot take screen context or run the substitution A/B. |
 
 Quantised builds (AWQ/GPTQ/GGUF) cut these substantially if you are card-limited. Note the quant in
 your results — it is a confound worth recording.
@@ -77,6 +78,16 @@ vllm serve mistralai/Voxtral-Small-24B-2507 \
   --gpu-memory-utilization 0.90
 # multi-GPU: add --tensor-parallel-size 2
 ```
+
+The downloaded Realtime control uses a different streaming endpoint and does not accept the
+screen-context input used by DoNotType:
+
+```bash
+vllm serve mistralai/Voxtral-Mini-4B-Realtime-2602 --port 8000
+```
+
+Its real-checkpoint audio-only probe is recorded separately; do not interpret it as a context
+substitution result.
 
 Confirm it is up and the model name it reports:
 

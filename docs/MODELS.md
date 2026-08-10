@@ -121,11 +121,12 @@ A local model removes the API key, network dependency, and data-sharing question
 results from the RTX PRO 6000 Blackwell workstation (`nvidia-smi`: 97,887 MiB VRAM) on 2026-08-10.
 
 The authoritative real-speech fixtures, `eval/audio/real-talk-gemini15.wav` and
-`eval/audio/real-mandarin.wav`, are intentionally git-ignored and were not present on this host.
-They could not be recovered from the repository or its upstream sources. Consequently, **none of
-the cells below is a valid result against the hosted
+`eval/audio/real-mandarin.wav`, are not present in this checkout. The ignored file currently at
+`real-talk-gemini15.wav` has the known synthetic TTS hash and is rejected by the benchmark guard.
+The real fixtures could not be recovered from the repository or its upstream sources. Consequently,
+**none of the cells below is a valid result against the hosted
 real-speech baseline**. The model weights are the real downloaded checkpoints (not mock or
-synthetic models): Voxtral, Gemma, Qwen, Ultravox, and Whisper large-v3. The WAVs used here are
+synthetic models): Voxtral, Gemma, Qwen, Ultravox, Whisper large-v3, and Voxtral Realtime. The WAVs used here are
 synthetic espeak stand-ins, retained only as ignored files to exercise audio transport,
 transcription, and context behavior. Do not compare their rates with the Gemini numbers above.
 
@@ -141,6 +142,8 @@ revisions used for the measurements:
 | `fixie-ai/ultravox-v0_5-llama-3_1-8b` adapter | `94aa77f70ca548e669ea61f737e159b2fddbb7f7` | adapter + real backbone below |
 | `unsloth/Meta-Llama-3.1-8B-Instruct` backbone | `a2856192dd7c25b842431f39c179a6c2c2f627d1` | 4 shards / downloaded |
 | `openai/whisper-large-v3-turbo` audio encoder | `41f01f3fe87f28c78e2fbf8b568835947dd65ed9` | downloaded |
+| `openai/whisper-large-v3` | `06f233fe06e710322aca913c1bc4249a0d71fce1` | 6 / 18,523,040,177 |
+| `mistralai/Voxtral-Mini-4B-Realtime-2602` | `2769294da9567371363522aac9bbcfdd19447add` | 2 / 17,718,909,592 |
 
 No synthetic checkpoint, randomly initialized model, or generated weights were used.
 
@@ -164,11 +167,12 @@ provider's prompt, context ordering, audio block, and JSON schema.
 
 ### Additional real-checkpoint smoke test
 
-The newly released `mistralai/Voxtral-Mini-4B-Realtime-2602` checkpoint was downloaded from
-Hugging Face (8.86 GB `model.safetensors`, bf16) and loaded through Transformers 5.15.0.dev0. It
-used approximately 8.8 GiB of GPU memory and processed Mistral's public real-speech
-`patrickvonplaten/audio_samples/obama.mp3` sample (3,256,320 samples; 128 × 20,744 mel features).
-Generation took 5.72 seconds and returned a coherent Obama farewell-address transcript beginning:
+The newly released `mistralai/Voxtral-Mini-4B-Realtime-2602` checkpoint was downloaded and verified
+at Hub revision `2769294da9567371363522aac9bbcfdd19447add` (two weight files, 17,718,909,592
+bytes; bf16) and loaded through Transformers 5.15.0.dev0. It processed Mistral's public
+real-speech `patrickvonplaten/audio_samples/obama.mp3` sample (3,256,320 samples; 128 × 20,744
+mel features). With `max_new_tokens=128`, generation took 2.73 seconds and returned a coherent
+Obama farewell-address transcript beginning:
 
 ```text
 This week, I traveled to Chicago to deliver my final farewell address to the nation, following in
@@ -182,9 +186,11 @@ accepts audio only and exposes no screen-context or context-biasing input. The e
 The same 203.52-second Obama recording was also sent through the previously downloaded priority
 weights: Gemma produced a coherent transcript in 2.49 seconds, Voxtral Small in 6.52 seconds,
 Qwen through vLLM in 4.98 seconds (3,314 prompt tokens; audio-token usage was not reported), and
-Whisper large-v3 in 18.48 seconds. Ultravox was loaded from its real adapter plus the downloaded
+Whisper large-v3 in 18.48 seconds. Voxtral Realtime produced the opening transcript in 2.73 seconds.
+Ultravox was loaded from its real adapter plus the downloaded
 unsloth Llama backbone and Whisper large-v3-turbo encoder; its 12-second opening-segment probe
-returned the same Chicago sentence in 0.98 seconds. All five processed real audio. These are
+returned the same Chicago sentence in 0.98 seconds. All six downloaded checkpoints processed real
+audio. These are
 recognition smoke-test observations only; there is no paired screen context or verified word-level
 reference for this sample.
 
@@ -202,8 +208,9 @@ including the WAV hash and checkpoint revisions, is in
 | `Qwen/Qwen3-Omni-30B-A3B-Instruct` (vLLM) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 4.11 s / 4.12 s |
 | `google/gemma-4-E4B-it` (Transformers) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 2.08 s / 2.04 s |
 | `mistralai/Voxtral-Small-24B-2507` (Transformers, 128-token cap) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 4.63 s / 4.64 s |
-| `openai/whisper-large-v3` (12-second opening segment, `initial_prompt`) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 0.58 s / 0.52 s |
+| `openai/whisper-large-v3` (12-second opening segment, HF snapshot, `initial_prompt`) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 0.34 s / 0.33 s |
 | `fixie-ai/ultravox-v0_5-llama-3_1-8b` (12-second opening segment, chat-template prompt) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 0.68 s / 0.42 s |
+| `mistralai/Voxtral-Mini-4B-Realtime-2602` (full audio, streaming ASR; 1 probe) | Chicago 1/1; Seattle 0/1 | not supported | 2.73 s / n/a |
 
 Whisper used the first 12 seconds of the same recording because the anchor occurs in its opening
 sentence; its segment hash is recorded in the result file. The three priority checkpoints used the
@@ -239,7 +246,7 @@ a control observation, but not on the missing hard real-speech clip.
 | Model | Result |
 |---|---|
 | `google/gemma-4-E4B-it` (vLLM) | vLLM failed before loading: Transformers 4.57.6 does not recognize `model_type: gemma4`. The isolated Transformers run above is the compatible fallback. |
-| `fixie-ai/ultravox-v0_5-llama-3_1-8b` | Downloaded, but its config requires the gated `meta-llama/Llama-3.1-8B-Instruct` backbone; the authenticated Hugging Face download returned HTTP 403, so no complete compatible local checkpoint was available. |
+| `fixie-ai/ultravox-v0_5-llama-3_1-8b` | Its config names the gated `meta-llama/Llama-3.1-8B-Instruct` backbone (HTTP 403). A complete compatible real backbone, `unsloth/Meta-Llama-3.1-8B-Instruct`, was downloaded and wired into a temporary local snapshot; the resulting real-audio smoke test is recorded above. |
 | `mistralai/Voxtral-Small-24B-2507` (vLLM) | vLLM 0.19.0 failed while loading current `audio_tower.*` weights into `LlamaForCausalLM`; direct Transformers succeeded. |
 
 The installed Voxtral Small processor/transcription request exposes no `context_biasing` parameter.

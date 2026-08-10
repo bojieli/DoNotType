@@ -43,15 +43,19 @@
     },
     {
       "model": "openai/whisper-large-v3",
-      "checkpoint": "openai-whisper large-v3 (downloaded model, fp16 CUDA)",
+      "revision": "06f233fe06e710322aca913c1bc4249a0d71fce1",
+      "checkpoint": "Hugging Face snapshot (downloaded model, fp16 CUDA)",
+      "weight_files": 6,
+      "weight_bytes": 18523040177,
+      "runtime": "Transformers 4.57.6, fp16 CUDA",
       "audio_segment": {
         "source": "patrickvonplaten/audio_samples/obama.mp3",
         "duration_seconds": 12.0,
         "sha256": "4004049d1a2966b67e0fdc0497755118f97822c7f275dc4ed96f5ef71d55f552",
         "reason": "the spoken anchor is in the opening sentence; short segment keeps the control run practical"
       },
-      "no_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.5807},
-      "hostile_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.5153},
+      "no_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.3379},
+      "hostile_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.3287},
       "context_mechanism": "initial_prompt"
     },
     {
@@ -71,6 +75,27 @@
       "no_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.6847},
       "hostile_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.4183},
       "context_mechanism": "screen text before audio in user turn"
+    },
+    {
+      "model": "mistralai/Voxtral-Mini-4B-Realtime-2602",
+      "revision": "2769294da9567371363522aac9bbcfdd19447add",
+      "runtime": "Transformers 5.15.0.dev0, bf16, CUDA",
+      "weight_files": 2,
+      "weight_bytes": 17718909592,
+      "audio_segment": {
+        "source": "patrickvonplaten/audio_samples/obama.mp3",
+        "duration_seconds": 203.52,
+        "sha256": "f2af840ffa70d3312a98d7c8598794eb87e03de73c4aff17a61c25e437a038e3",
+        "max_new_tokens": 128
+      },
+      "no_context": {
+        "anchor": "1/1",
+        "decoy": "0/1",
+        "mean_latency_seconds": 2.7250,
+        "transcript_sample": "This week, I traveled to Chicago to deliver my final farewell address to the nation, following in the tradition of presidents before me. It was an opportunity"
+      },
+      "hostile_context": "not_supported_by_realtime_architecture",
+      "context_mechanism": "none (streaming ASR; no text-context input)"
     }
   ]
 }
