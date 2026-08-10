@@ -1,0 +1,254 @@
+name: Release
+
+# Tag-driven, not push-driven: a release is a decision, and `git tag v0.2.0 && git push --tags`
+# is a clearer way to make it than a branch name. `workflow_dispatch` builds the same artifacts
+# without publishing, so the packaging can be exercised before a tag exists.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Create a draft GitHub release from this run'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: macOS app
+    runs-on: macos-15
+    # Secrets are lifted to job scope because a step's own `env:` block is not in scope for that
+    # same step's `if:` — the condition is evaluated first, so `if: env.X != ''` against a
+    # step-level env is always false and the signing step silently never runs.
+    env:
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+      NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+      NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # A release that fails its own suite should not exist. Cheap insurance against tagging a
+      # commit that was never green.
+      - name: Unit tests
+        run: swift test --filter DoNotTypeCoreTests
+
+      # Imported before the build, not after, so `make app` signs with the Developer ID on its
+      # only run. Ad-hoc still produces a working app, but macOS forgets the Accessibility grant
+      # on every update because TCC keys permissions to the signature — so an unsigned build is
+      # for trying it out, not for living with.
+      - name: Import signing certificate
+        if: env.MACOS_CERTIFICATE != ''
+        run: |
+          echo "$MACOS_CERTIFICATE" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p runner build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p runner build.keychain
+          security import /tmp/cert.p12 -k build.keychain \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k runner build.keychain
+          rm -f /tmp/cert.p12
+
+      - name: Build the app bundle
+        run: make app
+
+      - name: Notarize
+        if: env.NOTARY_KEY_ID != ''
+        run: |
+          echo "$NOTARY_KEY" > /tmp/notary.p8
+          ditto -c -k --keepParent .build/DoNotType.app /tmp/notarize.zip
+          xcrun notarytool submit /tmp/notarize.zip \
+            --key /tmp/notary.p8 --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+            --wait
+          # Stapling means the app opens without a network round trip on first launch.
+          xcrun stapler staple .build/DoNotType.app
+          rm -f /tmp/notary.p8
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent .build/DoNotType.app dist/DoNotType-macOS.zip
+          shasum -a 256 dist/DoNotType-macOS.zip | tee dist/DoNotType-macOS.zip.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/
+
+  windows:
+    name: Windows app
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Unit tests
+        run: dotnet test windows/DoNotType.Core.Tests/DoNotType.Core.Tests.csproj -c Release
+
+      # Built from source rather than downloaded. libopus is the project's only native dependency,
+      # and a release binary pulled from a random host is a supply-chain decision nobody reviewed;
+      # compiling a pinned tag in the open is one anybody can audit from the log.
+      - name: Build libopus
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch v1.5.2 https://github.com/xiph/opus.git $env:RUNNER_TEMP/opus
+          cmake -S $env:RUNNER_TEMP/opus -B $env:RUNNER_TEMP/opus/build `
+            -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build $env:RUNNER_TEMP/opus/build --config Release
+          New-Item -ItemType Directory -Force -Path native | Out-Null
+          Copy-Item $env:RUNNER_TEMP/opus/build/Release/opus.dll native/opus.dll
+
+      - name: Publish self-contained
+        run: >
+          dotnet publish windows/DoNotType.App/DoNotType.App.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -o publish
+
+      - name: Package
+        shell: pwsh
+        run: |
+          # opus.dll sits beside the executable, which is where the import resolver looks first.
+          # Without it the app still dictates — it just uploads WAV and is slower.
+          Copy-Item native/opus.dll publish/opus.dll
+          Copy-Item PROMPT.md publish/PROMPT.md
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path publish/* -DestinationPath dist/DoNotType-Windows-x64.zip
+          (Get-FileHash dist/DoNotType-Windows-x64.zip -Algorithm SHA256).Hash `
+            | Out-File dist/DoNotType-Windows-x64.zip.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+
+      - name: Unit tests
+        working-directory: android
+        run: gradle test --no-daemon
+
+      # Signed with the upload keystore when it exists. Without it the APK is debug-signed, which
+      # installs fine from a file but can never be updated in place by a differently-signed build
+      # — worth knowing before you sideload it onto a phone you rely on.
+      - name: Decode keystore
+        if: env.ANDROID_KEYSTORE != ''
+        run: echo "$ANDROID_KEYSTORE" | base64 --decode > android/release.keystore
+
+      - name: Build APK
+        working-directory: android
+        run: |
+          if [ -f release.keystore ]; then
+            gradle assembleRelease --no-daemon
+            echo "APK=app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_ENV"
+          else
+            gradle assembleDebug --no-daemon
+            echo "APK=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
+          fi
+
+      - name: The shared contract must be inside the APK
+        working-directory: android
+        run: |
+          unzip -p "$APK" assets/PROMPT.md \
+            | grep -q "Context corrects SPELLING, never CONTENT"
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp "android/$APK" dist/DoNotType-Android.apk
+          sha256sum dist/DoNotType-Android.apk | tee dist/DoNotType-Android.apk.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/
+
+  # iOS is built but deliberately not released. Distributing it needs a provisioning profile and
+  # App Store Connect, which is an account decision rather than a packaging one — and an unsigned
+  # .app nobody can install is not a release artifact. This job exists so a tag cannot be cut on a
+  # commit where iOS is broken.
+  ios:
+    name: iOS builds
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate the project
+        run: |
+          brew install xcodegen
+          cd ios && xcodegen generate
+      - name: Build
+        run: |
+          cd ios
+          xcodebuild -project DoNotType.xcodeproj -scheme DoNotType \
+            -destination 'generic/platform=iOS Simulator' build
+
+  publish:
+    name: Publish release
+    needs: [macos, windows, android, ios]
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect
+        run: |
+          mkdir -p dist
+          find artifacts -type f -exec cp {} dist/ \;
+          ls -la dist/
+
+      # Drafted rather than published outright. A release is a public, hard-to-retract act, and the
+      # notes below are generated — someone should read them before anyone downloads them.
+      - name: Draft the release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: dist/*
+          body: |
+            ## Install
+
+            **macOS** — unzip and drag to Applications. Grant Accessibility and Microphone when
+            asked; both are required, and the app checks them at launch.
+
+            **Windows** — unzip anywhere and run `DoNotType.exe`. `opus.dll` must stay beside it:
+            without it dictation still works but uploads are ~16× larger and noticeably slower.
+
+            **Android** — install the APK, then enable the keyboard in Settings › System ›
+            Keyboards and grant microphone access from the DoNotType app.
+
+            **iOS** — not distributed here. It needs a provisioning profile; build it from source
+            with `cd ios && xcodegen generate`.
+
+            Verify a download against the matching `.sha256` file before running it.
+
+            ## Note on signing
+
+            If this build was produced without signing secrets configured, macOS will refuse to
+            open it normally and Android will have signed it with a debug key. See
+            `docs/RELEASING.md` for what to set.

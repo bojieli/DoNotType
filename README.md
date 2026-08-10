@@ -59,6 +59,12 @@ Access" grants network and a shared container, not the mic. See [ios/README.md](
 
 ## Install
 
+Prebuilt macOS, Windows and Android artifacts are attached to each
+[release](../../releases), with a `.sha256` beside every one. iOS is not distributed — it needs a
+provisioning profile, so build it from source.
+
+From source on macOS:
+
 ```bash
 git clone https://github.com/bojieli/DoNotType && cd DoNotType
 export GEMINI_API_KEY=...       # or add it in Settings
@@ -159,6 +165,7 @@ predicted. See [CONTRIBUTING.md](CONTRIBUTING.md).
 | [docs/EVALUATION.md](docs/EVALUATION.md) | how quality is measured and what the numbers say |
 | [docs/MODELS.md](docs/MODELS.md) | which models and providers can actually do this job |
 | [docs/GPU-TESTING.md](docs/GPU-TESTING.md) | running open-weight models locally, and what to measure |
+| [docs/RELEASING.md](docs/RELEASING.md) | cutting a release, and which signing secrets change what |
 | [PLAN.html](PLAN.html) | the original reverse-engineering survey this design came from |
 
 ## License

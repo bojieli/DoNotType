@@ -17,9 +17,29 @@ android {
         versionName = "0.1.0"
     }
 
+    // Signed with the upload keystore when one is present, which in practice means CI with the
+    // secret configured. A local `assembleRelease` without it produces an unsigned APK rather than
+    // failing the build -- being unable to make a release build on a laptop would be worse than a
+    // build you cannot ship.
+    signingConfigs {
+        create("upload") {
+            val keystore = rootProject.file("release.keystore")
+            if (keystore.exists()) {
+                storeFile = keystore
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                    ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (rootProject.file("release.keystore").exists()) {
+                signingConfig = signingConfigs.getByName("upload")
+            }
         }
     }
 

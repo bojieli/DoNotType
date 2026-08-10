@@ -33,7 +33,7 @@ jobs:
         run: swift test --filter DoNotTypeCoreTests
 
       - name: Build the menu-bar app
-        run: swift build -c release --product DoNotType
+        run: swift build -c release --product DoNotTypeMac
 
       - name: Build the evaluation harness
         run: swift build -c release --product dnt-eval

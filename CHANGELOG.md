@@ -41,6 +41,12 @@ release yet, so everything below is unreleased.
 - **Optional rewrite on a second hotkey** — formal, concise or bullets, for turning a dictated
   paragraph into an email. The verbatim transcript is always produced and stored first, and the
   inspector shows both versions together, so what you actually said stays recoverable.
+- **Releases are cut by tag.** `git push origin v0.2.0` builds all four platforms, runs each one's
+  tests first, and opens a *draft* GitHub release with signed artifacts and checksums attached —
+  draft rather than published, because a release is hard to retract and the notes are generated.
+  Every signing secret is optional and independently checked, so a fork produces working unsigned
+  builds instead of a red workflow. Windows builds libopus from a pinned source tag rather than
+  downloading a binary.
 - **Opus uploads on Windows,** via libopus — the one native dependency in the project, and only on
   this platform, since it is the only one with no encoder in the box. The container is a port of
   the same `OggOpusWriter`, checked byte-for-byte against the reference stream the Kotlin port
