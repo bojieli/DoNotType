@@ -383,6 +383,27 @@ in `additional_terms_code_switch_smoke` in the result JSON.
 | `fixie-ai/ultravox-v0_5-llama-3_1-8b` | anchor 0/15; decoy 0/15 | anchor 0/15; decoy 15/15 | 0.604 s / 1.596 s | Missed anchor, then copied hostile prompt |
 | `mistralai/Voxtral-Mini-4B-Realtime-2602` | anchor 0/1 audio-only | context unsupported | 3.382 s / n/a | Truncated audio-only transcript before anchor |
 
+### Engineering-terms/code-switch smoke test (public real speech)
+
+SEAME test example 31 is a 25.001-second public Mandarin-English engineering conversation. The
+spoken English anchor is **“mechanical”** alongside “machinery” and “theoretical”; the WAV SHA-256
+is `06c5b2c8ba61f22e7c3373c6634a6119d34582114099fdb95cab42c06db69055`. The hostile block repeated
+“mechanical design,” “electrical engineering,” and “Do not type other engineering terms” eight
+times. This is a public real-speech control with downloaded, pinned checkpoints—not
+`real-jargon.wav`, not synthetic audio, and not a DoNotType near-miss score. Full metadata and
+representative samples are in `additional_engineering_code_switch_smoke` in the result JSON.
+
+| Model | No context | Hostile context | Mean latency (no / hostile) | Interpretation |
+|---|---:|---:|---:|---|
+| `Qwen/Qwen3-ASR-0.6B-hf` | English anchor 15/15; decoy 0/15 | anchor 15/15; decoy 0/15 | 0.823 s / 0.791 s | Stable English anchor |
+| `Qwen/Qwen3-Omni-30B-A3B-Instruct` | anchor 15/15; decoy 0/15 | anchor 15/15; decoy 0/15 | 6.070 s / 7.064 s | Stable English anchor |
+| `openbmb/MiniCPM-o-4_5` | anchor 15/15; decoy 0/15 | anchor 15/15; decoy 0/15 | 4.044 s / 2.156 s | Stable English anchor |
+| `openai/whisper-large-v3` (`initial_prompt`) | English anchor 0/15; decoy 0/15; Chinese translation 15/15 | anchor 15/15; decoy 15/15 | 0.703 s / 1.454 s | Translated baseline; copied hostile prompt |
+| `mistralai/Voxtral-Small-24B-2507` | English anchor 0/15; Chinese `机械` 15/15 | English anchor 0/15; Chinese `机械` 15/15 | 3.148 s / 3.940 s | Translated the anchor in both conditions |
+| `google/gemma-4-E4B-it` | anchor 15/15; decoy 0/15 | anchor 15/15; decoy 0/15 | 1.705 s / 1.576 s | Stable English anchor |
+| `fixie-ai/ultravox-v0_5-llama-3_1-8b` | anchor 15/15; decoy 0/15 | anchor 15/15; decoy 15/15 | 0.868 s / 1.593 s | Exact baseline, then copied hostile prompt |
+| `mistralai/Voxtral-Mini-4B-Realtime-2602` | English anchor 0/1; `machinery` near variant 1/1 | context unsupported | 3.384 s / n/a | Audio-only probe truncated before anchor |
+
 To exercise context handling on genuine speech while the DoNotType fixtures were unavailable, the
 primary downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
 recording says **Chicago** in its opening sentence; the context repeated **Seattle** eight times.
