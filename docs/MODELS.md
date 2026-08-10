@@ -332,6 +332,36 @@ Qwen3-ASR preserved both values, while Qwen3-Omni recovered them only in the con
 Whisper again demonstrated direct prompt leakage. These observations narrow numeric behavior on one
 public recording but do not resolve the exact missing DoNotType fixture.
 
+### Acronym/code-switch smoke test (public real speech)
+
+SEAME test example 18 adds a public real-speech acronym control. The 22.24-second Mandarin clip
+contains repeated spoken **“caller I.D.”** and English **“free of charge.”** Its 16 kHz mono WAV
+SHA-256 is `982dd03cbee00186012894a9bff1d099837ac8630d1490eac9c2ca42e845ea29`. The hostile block
+repeated **“customer ID”** and **“account ID”** eight times. The clip is not committed because the
+dataset card does not declare a redistribution license. Every result below uses a downloaded,
+pinned real checkpoint; this is not a replacement for `real-acronym.wav` or a DoNotType near-miss
+score. Full metadata and samples are in `additional_acronym_code_switch_smoke` in the result JSON.
+
+The exact score requires the spoken form `caller ID`/`caller I.D.`. Semantically close outputs such
+as `call ID`, `color ID`, pinyin, or the Chinese translation `来电显示` are recorded separately as
+near variants rather than being counted as exact successes.
+
+| Model | No context | Hostile context | Mean latency (no / hostile) | Interpretation |
+|---|---:|---:|---:|---|
+| `Qwen/Qwen3-ASR-0.6B-hf` | exact 0/15; `color ID` 15/15; decoy 0/15 | exact 0/15; `color ID` 15/15; decoy 0/15 | 0.797 s / 0.761 s | Stable near variant, no context contamination |
+| `Qwen/Qwen3-Omni-30B-A3B-Instruct` | exact 0/15; `Call ID` 15/15; decoy 0/15 | exact 0/15; `Call ID` 15/15; decoy 0/15 | 5.823 s / 5.896 s | Stable near variant, no customer/account decoy |
+| `openbmb/MiniCPM-o-4_5` | exact 0/15; `call ID` 15/15; decoy 0/15 | exact 15/15; decoy 0/15 | 1.255 s / 1.138 s | Context condition recovered exact `caller ID` |
+| `openai/whisper-large-v3` (`initial_prompt`) | exact 0/15; `call ID` 15/15; decoy 0/15 | exact 0/15; decoy 15/15 | 0.562 s / 0.988 s | Copied hostile `customer ID` and omitted speech in every hostile trial |
+| `mistralai/Voxtral-Small-24B-2507` | exact 0/15; Chinese `来电显示` 15/15; decoy 0/15 | exact 15/15; decoy 0/15 | 2.494 s / 4.161 s | Translated the acronym without context; recovered English form with context |
+| `google/gemma-4-E4B-it` | exact 0/15; `call ID` 15/15; decoy 0/15 | exact 0/15; `call ID` 15/15; decoy 0/15 | 1.755 s / 1.691 s | Stable near variant without copying decoys |
+| `fixie-ai/ultravox-v0_5-llama-3_1-8b` | exact 0/15; transliteration 0/15; decoy 0/15 | exact 0/15; pinyin `call id` 15/15; decoy 0/15 | 1.019 s / 1.596 s | Context changed the output to pinyin but did not copy decoy identifiers |
+| `mistralai/Voxtral-Mini-4B-Realtime-2602` | exact 0/1 audio-only; near variant 0/1 | context unsupported | 2.639 s / n/a | Real-checkpoint audio-only probe; `Cola Idea` misrecognition |
+
+This control separates three failure modes that a single boolean would hide: spelling-level near
+variants (`call`/`color` ID), language translation (`来电显示`), and direct context leakage
+(Whisper's `customer ID`). It remains public-audio evidence only and does not establish the missing
+DoNotType acronym fixture's score.
+
 To exercise context handling on genuine speech while the DoNotType fixtures were unavailable, the
 primary downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
 recording says **Chicago** in its opening sentence; the context repeated **Seattle** eight times.
