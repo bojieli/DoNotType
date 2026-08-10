@@ -175,6 +175,10 @@ because an easy case measures nothing.
 
 `gemini-3.6-flash`, native API:
 
+These are historical handoff targets, not currently reproducible cells: the exact reference WAV is
+absent from this checkout. Use them only after restoring and verifying that recording; never compare
+them with the synthetic stand-in or the public real-audio smoke clips.
+
 | condition | substitution | mean latency |
 |---|---|---|
 | no context at all | 21% (3/14) | 5.7 s |
@@ -184,9 +188,9 @@ because an easy case measures nothing.
 
 Baseline transcription quality, no context: **6/8** correct on the reference clip.
 
-**A local model beating 36% substitution while staying near 6/8 baseline accuracy would be the most
-important result this project has produced.** It would mean the fix is architectural rather than a
-matter of prompt wording — and it would come with no API key and no data leaving the machine.
+Once the exact fixture is restored, a local model beating 36% substitution while staying near the
+historical 6/8 baseline accuracy would be important evidence that the fix is architectural rather
+than a matter of prompt wording — and it would come with no API key and no data leaving the machine.
 
 ---
 

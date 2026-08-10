@@ -52,108 +52,36 @@ reported 0 regressions and the next reported 2.
 
 ## Current numbers
 
-**The suite is red, and that is correct.** With real-speech cases added it reports what the
-synthesized-only version could not:
+The authoritative real-speech WAV payloads are not present in this checkout. That includes
+`real-talk-gemini15.wav`, `real-mandarin.wav`, `real-codeswitch.wav`, `real-acronym.wav`, and the
+later acronym/jargon/brand fixtures. The ignored file at `real-talk-gemini15.wav` has the known
+synthetic TTS hash and is rejected by the benchmark guard. Therefore there is currently **no valid
+full-suite count, Gemini 1.5-versus-2.5 substitution rate, code-switch number result, or claim that
+only numeric values regress** that can be reproduced from this repository.
 
-```
-runs             18  (15 matched ground truth)
-improved          0
-neutral-correct  15
-neutral-wrong     1
-REGRESSED         2   ← must be 0
-```
+Earlier revisions of this document listed results for those recordings, but the payloads were
+never actually committed despite a commit message saying they were. Those figures are not retained
+as current evidence: without the exact audio, neither the ground truth nor the trial population can
+be audited. The synthetic `say`/`espeak` clips remain useful for transport plumbing only and must not
+be used to fill the missing cells.
 
-Nine cases, four of them real speech. The regression count moves between runs because several
-cases are genuinely flaky — that is the measurement working, not noise to be smoothed away.
+Current local-GPU evidence uses downloaded, revision-pinned model checkpoints and separately
+labeled public real recordings. It is recorded in [MODELS.md](MODELS.md) and
+[`eval/results/local-real-audio-2026-08-10.json`](../eval/results/local-real-audio-2026-08-10.json).
+Those Obama, Barcelona, AISHELL, and SEAME observations exercise audio transport, language fidelity,
+and hostile-context behavior, but none substitutes for a named DoNotType fixture.
 
-Two of the three regressions are the same clip on consecutive runs:
-
-```
-real-version-number:
-  baseline  … the smaller models including Gemini 1.5     ← correct
-  context   … the smaller models, including Gemini 2.5    ← the screen's value
-```
-
-The third is `jargon-spelling`, and it failed in an instructive direction. It was written as a
-*positive* control — the audio sounds like "coffee", the screen spells it `koffi`, and context
-should fix the spelling. Instead the baseline got `Koffi` right on its own and context turned it
-into `Coffee`. A case intended to demonstrate the feature working demonstrated the bug instead.
-
-**The synthesized-only suite reported 0 regressions**, and that number was not evidence: `say`
-enunciates far more clearly than a person, and the model's own knowledge covers well-known terms —
-a control saying "cuber netties" came back as "Kubernetes" with *no context at all*, measuring
-nothing. Real cases changed the result immediately.
-
-**Real speech** (`eval/audio/real-talk-gemini15.wav`, extracted from a recorded talk; the speaker
-says "Gemini 1.5", the screen says "2.5"; 20 trials):
-
-| | count |
-|---|---|
-| correct (1.5) | 8 |
-| **substituted (2.5)** | **11** |
-| no version mentioned | 1 |
-
-**58% substitution.** The bug reproduces on real audio and never reproduced on synthesized audio.
-
-Real-speech cases assert **fragments** rather than an exact transcript (`mustContain`,
-`mustNotContain`). A 22-second clip transcribed by a stochastic model differs run to run on wording
-the suite is not measuring — "observed" versus "observe", "unified source" versus "unified
-thoughts" — so an exact-match assertion would fail for reasons unrelated to grounding. Name the few
-tokens the case turns on and ignore the rest.
-
-**The control matters more than the headline.** With *no context at all*, the model still writes
-2.5 in 21% of runs — this clip is genuinely hard, the number is unstressed and mid-sentence. So the
-honest claim is that grounding roughly **doubles an already non-zero error rate**, from ~21% to
-~36%, not that it creates it.
-
-### The failure is specific to numbers
-
-Twelve cases, four of them word-based near-misses deliberately chosen to be as hard as the number
-cases. Every word case passes; both regressions are numeric.
-
-| Case | Spoken | On screen | Result |
-|---|---|---|---|
-| `real-acronym` | DAPO | GRPO ×5 | ✅ survived |
-| `real-acronym-chain` | VAD, ASR | TTS, NLU ×5 | ✅ survived |
-| `real-jargon` | Scrum, work item | Kanban, Jira ×5 | ✅ survived |
-| `real-brand` | Google, Bing | Bing ×6 | ✅ survived |
-| `person-name` | Priya | Marcus ×3 | ✅ survived |
-| **`real-version-number`** | **1.5** | **2.5 ×5** | ❌ **→ 2.5** |
-| **`real-codeswitch`** | **4240** | **4250 ×3** | ❌ **→ 1240** |
-
-Acronyms, brand names, methodology terms and personal names all hold under hostile context —
-including GRPO against DAPO, which is phonetically closer than either number case and sits in a
-sentence where both are plausible. **Only numeric values get corrupted.**
-
-That is a much narrower target than "grounding overwrites what you said", and it points somewhere
-specific: whatever protects an unfamiliar word from being replaced does not protect a digit. Worth
-trying before any further prompt wording — isolate numeric spans, or verify digit sequences against
-the no-context run and prefer the audio-only answer when they disagree.
-
-### Context can corrupt a number without copying the screen's
-
-The code-switched case found a failure mode the original model of this bug does not cover. The
-speaker says **4240**; the screen repeats **4250**; the transcript came back **1240**.
-
-```
-real-codeswitch:
-  baseline  …比如說這個是 4240，我印像里…      ← correct
-  context   …比如说这个是 1240 我印象里…       ← neither spoken nor on screen
-```
-
-So "substitution" is too narrow a name. Screen context does not only pull a value toward the one
-displayed — it degrades numeric accuracy generally, producing values that appear in neither the
-audio nor the context. Any mitigation aimed only at "do not copy the screen's value" would miss
-this entirely.
-
-Acronyms, by contrast, held up. `real-acronym` puts **GRPO** on screen five times against a speaker
-saying **DAPO** — phonetically close, both real algorithms, exactly the case a vocabulary-based
-tool fails worst — and it passed 2/2. Whatever is fragile about numbers is not simply "short
-tokens".
+When the exact WAVs are restored, real-speech cases should continue to assert **fragments** rather
+than an exact transcript (`mustContain`, `mustNotContain`). A stochastic 22-second transcription
+varies on wording unrelated to the near-miss under test, so the scorer should name the few tokens a
+case turns on and ignore the rest.
 
 ## Ablation
 
 `swift run dnt-eval ablate`, 15 trials per condition:
+
+The table below is retained as historical handoff context only. It cannot be reproduced or cited as
+a current benchmark until the exact `real-talk-gemini15.wav` recording is restored and verified.
 
 | condition | substituted | rate | mean latency |
 |---|---|---|---|
@@ -168,6 +96,10 @@ reasoning was plausible and someone will otherwise re-derive it.
 ## Models
 
 `./eval/model-sweep.sh`. Same clip, same hostile context.
+
+This sweep is also historical and currently unverifiable because that clip is missing. Re-run it
+from the downloaded/hosted models only after the exact reference WAV has been restored; do not infer
+these cells from synthetic audio or the public smoke-test clips.
 
 | model | version transcribed with **no** context | verdict |
 |---|---|---|

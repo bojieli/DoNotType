@@ -126,10 +126,12 @@ swift run dnt-eval ablate                     # compare designs on fidelity and 
 ./eval/model-sweep.sh                         # compare model versions
 ```
 
-Of 36 audio-capable models tested, only `gemini-3.6-flash` transcribes the reference clip's version
-number correctly with no context at all — `gemini-3.5-flash` hears "2.4", `gemini-3-flash-preview`
-hears "Gimma 2.0", and `openai/gpt-audio` sometimes replies to the audio conversationally instead of
-transcribing it. Full results in [docs/MODELS.md](docs/MODELS.md); method in
+Historical runs found `gemini-3.6-flash` strongest on the reference clip, while older Gemini models
+misheard its version number and `openai/gpt-audio` sometimes replied conversationally instead of
+transcribing. The exact real-speech fixtures are not present in this checkout, so those figures are
+handoff context rather than a currently reproducible benchmark; the ignored synthetic stand-ins are
+not valid replacements. Current downloaded-checkpoint tests use separately labeled public real
+audio. Full status in [docs/MODELS.md](docs/MODELS.md); method in
 [docs/EVALUATION.md](docs/EVALUATION.md).
 
 ## Privacy

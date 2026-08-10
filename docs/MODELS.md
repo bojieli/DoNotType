@@ -27,7 +27,15 @@ speaker says "**Gemini 1.5**"; the test context repeats "**Gemini 2.5**" five ti
 unstressed and mid-sentence, which makes it a genuinely hard case — deliberately, because an easy
 case measures nothing.
 
-## Results — 2026-08-10
+**Current-fixture warning (2026-08-10).** The WAV payload for that reference clip is not present in
+this checkout. The ignored path is the known synthetic TTS stand-in and is rejected by the benchmark
+guard. The hosted tables below preserve historical handoff measurements, but they are not currently
+reproducible or valid claims against the DoNotType real-speech baseline. Do not cite the 58%
+substitution figure, provider near-miss rates, or any exact-fixture result until the original WAV is
+restored and verified. The local GPU section below uses real downloaded checkpoints and separately
+labeled public recordings instead.
+
+## Historical hosted results — 2026-08-10 (fixture unavailable)
 
 ### Audio capability
 
@@ -262,6 +270,36 @@ The complete entries, checkpoint revisions, dataset license, and reference trans
 `additional_language_smoke` object of
 [`eval/results/local-real-audio-2026-08-10.json`](../eval/results/local-real-audio-2026-08-10.json).
 
+### Mandarin-English code-switch smoke test (public real speech)
+
+To exercise the missing code-switch case without fabricating a fixture, I downloaded one real
+recording from the public `AudioLLMs/seame_dev_man` test split (example 7). The clip is 23.234
+seconds of Mandarin with spoken English terms including **“looking for job opportunities,” “NTU,”
+“career website,” “school of computer engineering,”** and **“code switch.”** Its 16 kHz mono WAV
+hash is `88443f86632c44da6c526738247389e058d6d6e250651be0ff896ab95eeaf8f0`. The dataset card cites
+the SEAME corpus (Lyu et al., Interspeech 2010) but does not declare a redistribution license, so
+the audio is not committed here. The hostile context repeated **NUS**, **school of computer
+science**, and **machine translation** eight times. This is a public-audio control, not a result for
+`real-codeswitch.wav` or any DoNotType near-miss case; the complete hash, manual reference, pinned
+checkpoint revisions, and samples are in `additional_code_switch_smoke` in the result JSON.
+
+| Model | No context | Hostile context | Mean latency (no / hostile) | Interpretation |
+|---|---:|---:|---:|---|
+| `Qwen/Qwen3-ASR-0.6B-hf` | computer-engineering 15/15; decoy 0/15 | computer-engineering 15/15; decoy 0/15 | 0.866 s / 0.841 s | Chinese plus English terms held; `NTU` was rendered as “And TU” |
+| `Qwen/Qwen3-Omni-30B-A3B-Instruct` | computer-engineering 15/15; decoy 0/15 | computer-engineering 15/15; decoy 0/15 | 5.446 s / 5.679 s | Mixed-language anchor held in all trials |
+| `openbmb/MiniCPM-o-4_5` | computer-engineering 15/15; decoy 0/15 | computer-engineering 15/15; decoy 0/15 | 1.307 s / 1.454 s | Mixed-language anchor held in all trials |
+| `google/gemma-4-E4B-it` | computer-engineering 15/15; decoy 0/15 | computer-engineering 15/15; decoy 0/15 | 1.822 s / 1.798 s | Anchor held, but `code switch` was consistently heard as `course switch` |
+| `mistralai/Voxtral-Small-24B-2507` | English-term anchor 0/15; decoy 0/15 | English-term anchor 0/15; decoy 0/15 | 2.316 s / 2.723 s | Retained NTU and avoided decoys, but translated the spoken English terms into Chinese |
+| `openai/whisper-large-v3` (`initial_prompt`) | computer-engineering 15/15; decoy 0/15 | computer-engineering 0/15; decoy 15/15 | 0.618 s / 1.037 s | Copied the hostile block and dropped the real speech in every hostile trial |
+| `fixie-ai/ultravox-v0_5-llama-3_1-8b` | NTU 15/15; NUS 0/15 | NTU 0/15; NUS 15/15 | 0.998 s / 1.597 s | Substituted the screen's NUS for spoken NTU and switched to English |
+| `mistralai/Voxtral-Mini-4B-Realtime-2602` | NTU 1/1 audio-only | context unsupported | 2.677 s / n/a | Real-checkpoint audio-only control; no text-context input |
+
+The four multimodal checkpoints that preserved the technical phrase (Qwen Omni, Qwen3-ASR,
+MiniCPM-o, and Gemma) resisted this particular hostile block. Whisper and Ultravox reproduce the
+prompt-conditioned leakage seen on the Barcelona control; Voxtral Small demonstrates that retaining
+the semantic content is not enough when language fidelity fails. None of these observations changes
+the unresolved status of the exact DoNotType code-switch fixture.
+
 To exercise context handling on genuine speech while the DoNotType fixtures were unavailable, the
 primary downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
 recording says **Chicago** in its opening sentence; the context repeated **Seattle** eight times.
@@ -358,9 +396,10 @@ serving and measurement procedure. `--provider local` points the client at a loc
 
 ## Recommendation
 
-Use **`gemini-3.6-flash` on the native Gemini API**. It is the only configuration measured to
-transcribe the reference clip correctly without help, and the only one supporting the pre-upload
-path. OpenRouter is a working fallback and useful for models Google does not serve directly.
+The historical hosted measurements favored **`gemini-3.6-flash` on the native Gemini API**, and it
+is the only listed configuration supporting the pre-upload path. Because the exact reference WAV is
+currently missing, that model comparison must be re-run before treating it as a current benchmark.
+OpenRouter remains a working fallback and useful for models Google does not serve directly.
 
 The open-weight path is the one worth watching. The local Voxtral Small and Gemma measurements
 above are encouraging transport and runtime checks, but they are not evidence against the hosted
