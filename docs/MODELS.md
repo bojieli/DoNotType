@@ -191,7 +191,7 @@ Whisper large-v3 in 18.48 seconds. Voxtral Realtime produced the opening transcr
 Ultravox was loaded from its real adapter plus the downloaded
 unsloth Llama backbone and Whisper large-v3-turbo encoder; its 12-second opening-segment probe
 returned the same Chicago sentence in 0.98 seconds. Qwen3-ASR produced the same opening sentence
-in 0.39 seconds on its 12-second probe. All seven downloaded checkpoints processed real audio. These are
+in 1.28 seconds on the full 203.52-second recording. All seven downloaded checkpoints processed real audio. These are
 recognition smoke-test observations only; there is no paired screen context or verified word-level
 reference for this sample.
 
@@ -212,7 +212,7 @@ including the WAV hash and checkpoint revisions, is in
 | `openai/whisper-large-v3` (12-second opening segment, HF snapshot, `initial_prompt`) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 0.34 s / 0.33 s |
 | `fixie-ai/ultravox-v0_5-llama-3_1-8b` (12-second opening segment, chat-template prompt) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 0.68 s / 0.42 s |
 | `mistralai/Voxtral-Mini-4B-Realtime-2602` (full audio, streaming ASR; 1 probe) | Chicago 1/1; Seattle 0/1 | not supported | 2.73 s / n/a |
-| `Qwen/Qwen3-ASR-0.6B-hf` (12-second opening segment, ASR hotword prompt) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 0.39 s / 0.36 s |
+| `Qwen/Qwen3-ASR-0.6B-hf` (full audio, ASR hotword prompt) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 1.28 s / 1.26 s |
 
 Whisper used the first 12 seconds of the same recording because the anchor occurs in its opening
 sentence; its segment hash is recorded in the result file. The three priority checkpoints used the

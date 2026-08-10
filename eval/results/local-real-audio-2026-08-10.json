@@ -105,12 +105,12 @@
       "weight_bytes": 1564928088,
       "audio_segment": {
         "source": "patrickvonplaten/audio_samples/obama.mp3",
-        "duration_seconds": 12.0,
-        "sha256": "4004049d1a2966b67e0fdc0497755118f97822c7f275dc4ed96f5ef71d55f552",
-        "reason": "the spoken anchor is in the opening sentence; ASR control uses the same practical segment as Whisper and Ultravox"
+        "duration_seconds": 203.52,
+        "sha256": "f2af840ffa70d3312a98d7c8598794eb87e03de73c4aff17a61c25e437a038e3",
+        "reason": "full real recording; opening anchor is retained while long-form behavior is exercised"
       },
-      "no_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.3934},
-      "hostile_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.3634},
+      "no_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 1.2789},
+      "hostile_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 1.2562},
       "context_mechanism": "Qwen3-ASR system prompt/hotword field"
     }
   ]
