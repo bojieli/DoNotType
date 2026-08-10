@@ -198,7 +198,7 @@ final class Settings {
 }
 
 enum Keychain {
-    private static let service = "ai.19pine.donottype"
+    private static let service = "app.donottype"
 
     static func read(account: String) -> String? {
         let query: [String: Any] = [

@@ -12,7 +12,7 @@ import os
 /// put back afterwards, so a user's copied image or rich text survives a dictation.
 @MainActor
 enum TextInjector {
-    private static let log = Logger(subsystem: "ai.19pine.donottype", category: "inject")
+    private static let log = Logger(subsystem: "app.donottype", category: "inject")
 
     /// How long to let the target app read the pasteboard before restoring it.
     ///

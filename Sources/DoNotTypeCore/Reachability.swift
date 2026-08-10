@@ -32,7 +32,7 @@ public actor Reachability {
         monitor.pathUpdateHandler = { [weak self] path in
             Task { await self?.update(path.status) }
         }
-        monitor.start(queue: DispatchQueue(label: "ai.19pine.donottype.reachability"))
+        monitor.start(queue: DispatchQueue(label: "app.donottype.reachability"))
     }
 
     public func stop() {

@@ -1,4 +1,4 @@
-package ai.pine19.donottype.core
+package app.donottype.core
 
 /**
  * Splits a long recording on silence so it can be transcribed in parallel.

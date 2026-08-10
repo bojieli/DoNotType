@@ -14,7 +14,7 @@ import os
 /// always finished; if it has not, the dictation goes out with phase 1 only rather than waiting.
 @MainActor
 final class GroundingCoordinator {
-    private let log = Logger(subsystem: "ai.19pine.donottype", category: "grounding")
+    private let log = Logger(subsystem: "app.donottype", category: "grounding")
 
     private var identity: ScreenContext?
     private var fullCapture: Task<ScreenContext?, Never>?

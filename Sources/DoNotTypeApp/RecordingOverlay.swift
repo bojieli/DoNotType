@@ -142,9 +142,7 @@ private struct OverlayView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
             case .transcribing:
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(.white)
+                ThinkingDots()
                 Text("Transcribing…")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
@@ -153,6 +151,8 @@ private struct OverlayView: View {
                     .progressViewStyle(.linear)
                     .tint(.white)
                     .frame(width: 76)
+                    // A determinate bar here, not the dots: with several parts in flight there is
+                    // real progress to report, and reporting it beats implying it.
                 Text("Transcribing… part \(min(done + 1, total)) of \(total)")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
@@ -216,5 +216,35 @@ private struct Waveform: View {
         let travel = sin(phase * 4 + Double(index) * 0.9) * 0.5 + 0.5
         let amplitude = max(0.12, level) * Self.weights[index]
         return 4 + 18 * min(1, amplitude * (0.65 + 0.35 * travel))
+    }
+}
+
+/// The "still working" animation, shown once speech has stopped.
+///
+/// Deliberately unlike the recording waveform, which is driven by the microphone. After the user
+/// stops talking there is no input left to reflect, so a level-driven animation would be
+/// decoration pretending to be a signal. What this has to convey is only "not hung" — the failure
+/// it prevents is someone deciding nothing happened and pressing the key again mid-request.
+///
+/// Occupies the same width as the waveform so the pill does not resize between phases; a capsule
+/// that jumps as it changes state reads as a glitch.
+private struct ThinkingDots: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 6) {
+                ForEach(0..<3, id: \.self) { index in
+                    // Each dot lags the one before it, so the group reads as motion in one
+                    // direction rather than three things blinking independently.
+                    let local = reduceMotion ? 0.5 : abs(sin(time * 3 - Double(index) * 0.7))
+                    Circle()
+                        .fill(.white.opacity(0.45 + 0.5 * local))
+                        .frame(width: 6 + 3 * local, height: 6 + 3 * local)
+                }
+            }
+            .frame(width: 76, alignment: .center)
+        }
     }
 }

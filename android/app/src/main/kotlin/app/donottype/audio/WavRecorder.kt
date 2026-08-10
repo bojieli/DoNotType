@@ -1,4 +1,4 @@
-package ai.pine19.donottype.audio
+package app.donottype.audio
 
 import android.annotation.SuppressLint
 import android.media.AudioFormat
@@ -47,6 +47,18 @@ class WavRecorder {
     @Volatile private var capturing = false
     @Volatile var peakAmplitude: Int = 0
         private set
+
+    /**
+     * Reads the loudest sample since the last call and resets the counter.
+     *
+     * Read-and-reset rather than a plain getter: a running peak that is never cleared only ever
+     * climbs, so the meter would latch at whatever the loudest moment was and stop responding.
+     */
+    fun consumePeak(): Int {
+        val peak = peakAmplitude
+        peakAmplitude = 0
+        return peak
+    }
 
     private var startedAt = 0L
 

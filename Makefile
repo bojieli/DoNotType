@@ -11,7 +11,7 @@ APP         := DoNotType
 # for iOS. The binary is renamed back on the way into the bundle, which is what Info.plist's
 # CFBundleExecutable expects.
 PRODUCT     := DoNotTypeMac
-BUNDLE_ID   := ai.19pine.donottype
+BUNDLE_ID   := app.donottype
 BUILD_DIR   := .build/$(CONFIG)
 APP_BUNDLE  := .build/$(APP).app
 CONTENTS    := $(APP_BUNDLE)/Contents

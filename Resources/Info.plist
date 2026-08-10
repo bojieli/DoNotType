@@ -7,7 +7,7 @@
 	<key>CFBundleDisplayName</key>
 	<string>DoNotType</string>
 	<key>CFBundleIdentifier</key>
-	<string>ai.19pine.donottype</string>
+	<string>app.donottype</string>
 	<key>CFBundleExecutable</key>
 	<string>DoNotType</string>
 	<key>CFBundlePackageType</key>

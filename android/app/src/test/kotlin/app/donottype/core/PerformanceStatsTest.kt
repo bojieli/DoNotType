@@ -1,4 +1,4 @@
-package ai.pine19.donottype.core
+package app.donottype.core
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

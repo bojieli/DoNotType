@@ -1,14 +1,14 @@
-package ai.pine19.donottype
+package app.donottype
 
-import ai.pine19.donottype.accessibility.ScreenReaderService
-import ai.pine19.donottype.core.DictationRecord
-import ai.pine19.donottype.core.DictationService
-import ai.pine19.donottype.core.Fidelity
-import ai.pine19.donottype.core.HistoryQuery
-import ai.pine19.donottype.core.GeminiClient
-import ai.pine19.donottype.core.InputPart
-import ai.pine19.donottype.core.PerformanceStats
-import ai.pine19.donottype.core.RetentionPolicy
+import app.donottype.accessibility.ScreenReaderService
+import app.donottype.core.DictationRecord
+import app.donottype.core.DictationService
+import app.donottype.core.Fidelity
+import app.donottype.core.HistoryQuery
+import app.donottype.core.GeminiClient
+import app.donottype.core.InputPart
+import app.donottype.core.PerformanceStats
+import app.donottype.core.RetentionPolicy
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager

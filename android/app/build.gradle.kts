@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "ai.pine19.donottype"
+    namespace = "app.donottype"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "ai.pine19.donottype"
+        applicationId = "app.donottype"
         // InputMethodService recording in-process needs nothing exotic; 26 keeps the audio and
         // coroutine APIs used here available without desugaring.
         minSdk = 26

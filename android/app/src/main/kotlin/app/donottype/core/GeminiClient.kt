@@ -1,4 +1,4 @@
-package ai.pine19.donottype.core
+package app.donottype.core
 
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers

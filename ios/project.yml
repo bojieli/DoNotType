@@ -5,7 +5,7 @@
 
 name: DoNotType
 options:
-  bundleIdPrefix: ai.19pine.donottype
+  bundleIdPrefix: app.donottype
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -35,7 +35,7 @@ targets:
         buildPhase: resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.19pine.donottype
+        PRODUCT_BUNDLE_IDENTIFIER: app.donottype
         INFOPLIST_FILE: App/Info.plist
         CODE_SIGN_ENTITLEMENTS: App/DoNotType.entitlements
         ENABLE_USER_SCRIPT_SANDBOXING: NO
@@ -55,6 +55,6 @@ targets:
       - path: Shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.19pine.donottype.keyboard
+        PRODUCT_BUNDLE_IDENTIFIER: app.donottype.keyboard
         INFOPLIST_FILE: Keyboard/Info.plist
         CODE_SIGN_ENTITLEMENTS: Keyboard/DoNotTypeKeyboard.entitlements

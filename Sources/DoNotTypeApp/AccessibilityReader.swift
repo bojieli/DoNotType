@@ -10,7 +10,7 @@ import os
 /// block an `AXUIElementCopyAttributeValue` call indefinitely, and a dictation tool that hangs
 /// because Slack is busy is worse than one that grounds on nothing.
 struct AccessibilityReader: Sendable {
-    private static let log = Logger(subsystem: "ai.19pine.donottype", category: "ax")
+    private static let log = Logger(subsystem: "app.donottype", category: "ax")
 
     /// Character budgets, matching the ones Typeless arrived at.
     struct Limits: Sendable {

@@ -5,7 +5,7 @@
 	<!-- The only channel between the app and the keyboard. Both targets must declare it. -->
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.ai.19pine.donottype</string>
+		<string>group.app.donottype</string>
 	</array>
 </dict>
 </plist>

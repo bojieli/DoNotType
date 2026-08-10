@@ -1,4 +1,4 @@
-package ai.pine19.donottype.core
+package app.donottype.core
 
 import java.io.File
 import java.util.Base64

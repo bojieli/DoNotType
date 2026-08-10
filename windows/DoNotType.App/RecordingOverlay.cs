@@ -119,9 +119,14 @@ public sealed class RecordingOverlay : Form
                 g.DrawString(_hint, font, textBrush, 108, Height / 2 - 8);
                 break;
             case Phase.Transcribing:
-                // The hint carries "part 2 of 5" for a split dictation, and is empty otherwise.
+                // Dots rather than a static label alone. After the user stops talking the wait is
+                // dead time, and the failure to prevent is them deciding nothing happened and
+                // pressing the key again mid-request. Deliberately unlike the recording waveform:
+                // there is no input left to reflect, so anything level-driven would be decoration
+                // pretending to be a signal.
+                DrawThinkingDots(g, new Rectangle(20, Height / 2 - 4, 76, 8));
                 var label = _hint.Length == 0 ? "Transcribing…" : $"Transcribing… {_hint}";
-                g.DrawString(label, font, textBrush, 24, Height / 2 - 8);
+                g.DrawString(label, font, textBrush, 108, Height / 2 - 8);
                 break;
             default:
                 using (var warn = new SolidBrush(Color.FromArgb(230, 240, 160, 90)))
@@ -136,6 +141,28 @@ public sealed class RecordingOverlay : Form
     /// Level-driven bars. Deliberately not a spectrum — this is a liveness indicator, and what
     /// people need from it is "the mic is hearing me", which amplitude answers.
     /// </summary>
+    /// <summary>Three dots travelling in one direction, so the group reads as motion rather than
+    /// as three things blinking independently.</summary>
+    private void DrawThinkingDots(Graphics g, Rectangle bounds)
+    {
+        const int dots = 3;
+        var phase = Environment.TickCount / 1000.0;
+        var spacing = bounds.Width / (float)(dots + 1);
+
+        for (var index = 0; index < dots; index++)
+        {
+            var local = Math.Abs(Math.Sin(phase * 3 - index * 0.7));
+            var radius = (float)(3 + 2 * local);
+            var alpha = (int)Math.Clamp(120 + 135 * local, 0, 255);
+
+            using var brush = new SolidBrush(Color.FromArgb(alpha, 127, 178, 255));
+            var centreX = bounds.Left + spacing * (index + 1);
+            g.FillEllipse(
+                brush, centreX - radius, bounds.Top + bounds.Height / 2f - radius,
+                radius * 2, radius * 2);
+        }
+    }
+
     private void DrawWaveform(Graphics g, Rectangle bounds)
     {
         using var brush = new SolidBrush(Color.FromArgb(230, 245, 245, 245));

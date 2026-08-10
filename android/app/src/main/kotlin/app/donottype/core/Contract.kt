@@ -1,4 +1,4 @@
-package ai.pine19.donottype.core
+package app.donottype.core
 
 /**
  * How much cleanup the transcript may receive.

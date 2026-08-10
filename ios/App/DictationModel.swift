@@ -156,6 +156,35 @@ final class DictationModel {
         }
     }
 
+    /// How long a press must last before releasing it ends the recording.
+    ///
+    /// 350 ms: long enough that a deliberate tap never trips it, short enough that someone who
+    /// meant to hold does not get a surprise toggle. Matches the desktop hotkey and the Android
+    /// keyboard, so the gesture means the same thing everywhere.
+    private static let holdThreshold: TimeInterval = 0.35
+    private var pressStartedAt: Date?
+
+    /// Touch-down. Recording starts immediately rather than waiting to classify the gesture --
+    /// waiting would clip the first word, which is the one people say fastest.
+    func pressBegan() {
+        guard pressStartedAt == nil else { return }  // DragGesture.onChanged repeats
+        pressStartedAt = Date()
+
+        switch state {
+        case .recording: finishRecording()  // second tap ends it
+        case .idle, .failed: Task { await beginRecording() }
+        case .transcribing: break
+        }
+    }
+
+    /// Touch-up. A hold ends here; a tap leaves recording running until the next tap.
+    func pressEnded() {
+        defer { pressStartedAt = nil }
+        guard let startedAt = pressStartedAt else { return }
+        guard Date().timeIntervalSince(startedAt) >= Self.holdThreshold else { return }
+        if state == .recording { finishRecording() }
+    }
+
     private func beginRecording() async {
         guard await requestMicrophone() else {
             state = .failed("Microphone access is required. Enable it in Settings › DoNotType.")
@@ -362,7 +391,7 @@ final class DictationModel {
 /// Keychain wrapper. The key never goes in `UserDefaults` — this is a bring-your-own-key app, so
 /// the key is the whole privacy story.
 enum KeychainStore {
-    private static let service = "ai.19pine.donottype"
+    private static let service = "app.donottype"
 
     static func read(account: String) -> String? {
         let query: [String: Any] = [

@@ -51,7 +51,7 @@ public actor AudioUploader {
         }
     }
 
-    private let log = Logger(subsystem: "ai.19pine.donottype", category: "upload")
+    private let log = Logger(subsystem: "app.donottype", category: "upload")
     private let apiKey: String
     private let session: URLSession
     private let baseURL: URL

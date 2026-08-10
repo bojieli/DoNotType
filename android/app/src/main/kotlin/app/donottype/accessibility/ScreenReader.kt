@@ -1,8 +1,8 @@
-package ai.pine19.donottype.accessibility
+package app.donottype.accessibility
 
-import ai.pine19.donottype.Settings
-import ai.pine19.donottype.core.ScreenContext
-import ai.pine19.donottype.core.TokenBudget
+import app.donottype.Settings
+import app.donottype.core.ScreenContext
+import app.donottype.core.TokenBudget
 import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo

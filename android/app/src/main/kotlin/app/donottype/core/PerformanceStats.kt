@@ -1,4 +1,4 @@
-package ai.pine19.donottype.core
+package app.donottype.core
 
 /**
  * What the app has actually cost you, computed from the history.

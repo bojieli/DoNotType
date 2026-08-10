@@ -1,11 +1,11 @@
-package ai.pine19.donottype.ime
+package app.donottype.ime
 
-import ai.pine19.donottype.PromptAssets
-import ai.pine19.donottype.Settings
-import ai.pine19.donottype.accessibility.ScreenReaderService
-import ai.pine19.donottype.audio.WavRecorder
-import ai.pine19.donottype.core.DictationService
-import ai.pine19.donottype.core.ScreenContext
+import app.donottype.PromptAssets
+import app.donottype.Settings
+import app.donottype.accessibility.ScreenReaderService
+import app.donottype.audio.WavRecorder
+import app.donottype.core.DictationService
+import app.donottype.core.ScreenContext
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -46,6 +46,14 @@ class DoNotTypeIME : InputMethodService() {
 
     private lateinit var statusLabel: TextView
     private lateinit var talkButton: Button
+    private lateinit var indicator: DictationIndicatorView
+
+    /// True once the press has lasted long enough to count as a hold rather than a tap.
+    private var pressBecameHold = false
+    private var pressStartedAt = 0L
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var holdRunnable: Runnable? = null
+    private var levelRunnable: Runnable? = null
 
     private var state = State.IDLE
         set(value) {
@@ -63,6 +71,8 @@ class DoNotTypeIME : InputMethodService() {
 
     override fun onDestroy() {
         scope.cancel()
+        stopLevelUpdates()
+        holdRunnable?.let { handler.removeCallbacks(it) }
         recorder.cancel()
         super.onDestroy()
     }
@@ -91,12 +101,27 @@ class DoNotTypeIME : InputMethodService() {
             setPadding(0, 0, 0, 28)
         }
 
+        indicator = DictationIndicatorView(this)
+
         talkButton = Button(this).apply {
             textSize = 17f
+            // Tap to toggle, hold to talk -- the same gesture the desktop hotkey uses, and for the
+            // same reason. Hold-only forces you to keep a finger down for the length of a thought,
+            // which is fine for a sentence and miserable for a paragraph; toggle-only means a
+            // mis-tap leaves the microphone open. Supporting both costs one timer: if the button
+            // is still down after HOLD_THRESHOLD_MS the gesture is a hold and release ends it,
+            // otherwise it was a tap and recording continues until the next tap.
             setOnTouchListener { view, event ->
                 when (event.action) {
-                    MotionEvent.ACTION_DOWN -> { view.performClick(); beginRecording(); true }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { finishRecording(); true }
+                    MotionEvent.ACTION_DOWN -> {
+                        view.performClick()
+                        onPressDown()
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        onPressUp(cancelled = event.action == MotionEvent.ACTION_CANCEL)
+                        true
+                    }
                     else -> false
                 }
             }
@@ -104,11 +129,83 @@ class DoNotTypeIME : InputMethodService() {
 
         root.addView(statusLabel)
         root.addView(
+            indicator,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 120),
+        )
+        root.addView(
             talkButton,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 180),
         )
         render()
         return root
+    }
+
+    // MARK: - Gestures
+
+    /**
+     * A press starts recording immediately either way -- waiting to find out whether it is a tap
+     * or a hold would clip the first word, which is the one people say fastest.
+     */
+    private fun onPressDown() {
+        if (state == State.TRANSCRIBING) return
+
+        // A second tap while already recording ends it. This is the toggle half of the gesture.
+        if (state == State.RECORDING && !pressBecameHold) {
+            finishRecording()
+            return
+        }
+
+        pressBecameHold = false
+        pressStartedAt = System.currentTimeMillis()
+        beginRecording()
+
+        holdRunnable = Runnable { pressBecameHold = true }.also {
+            handler.postDelayed(it, HOLD_THRESHOLD_MS)
+        }
+    }
+
+    private fun onPressUp(cancelled: Boolean) {
+        holdRunnable?.let { handler.removeCallbacks(it) }
+        holdRunnable = null
+
+        if (cancelled) {
+            // A finger dragged off the button, or the system stealing the gesture. Discard rather
+            // than transcribe: the user did not choose to end here.
+            if (state == State.RECORDING) {
+                recorder.cancel()
+                pendingContext = null
+                state = State.IDLE
+            }
+            pressBecameHold = false
+            return
+        }
+
+        val heldFor = System.currentTimeMillis() - pressStartedAt
+        if (heldFor >= HOLD_THRESHOLD_MS) {
+            // It was a hold: releasing ends it, exactly as before.
+            pressBecameHold = false
+            finishRecording()
+        } else {
+            // It was a tap: recording stays on until the next tap.
+            pressBecameHold = false
+        }
+    }
+
+    private fun startLevelUpdates() {
+        stopLevelUpdates()
+        levelRunnable = object : Runnable {
+            override fun run() {
+                // peakAmplitude is a raw 16-bit peak; the divisor puts ordinary speech near the
+                // top of the range rather than leaving the bars permanently short.
+                indicator.level = (recorder.consumePeak() / 12_000f).coerceIn(0f, 1f)
+                handler.postDelayed(this, 60)
+            }
+        }.also { handler.post(it) }
+    }
+
+    private fun stopLevelUpdates() {
+        levelRunnable?.let { handler.removeCallbacks(it) }
+        levelRunnable = null
     }
 
     // MARK: - Dictation
@@ -194,31 +291,49 @@ class DoNotTypeIME : InputMethodService() {
         when (state) {
             State.IDLE -> {
                 statusLabel.text = if (ScreenReaderService.instance == null) {
-                    "Hold to talk · screen grounding off"
+                    "Tap to talk · screen grounding off"
                 } else {
-                    "Hold to talk"
+                    "Tap to talk, or hold"
                 }
-                talkButton.text = "Hold to talk"
+                talkButton.text = "Tap to talk"
                 talkButton.isEnabled = true
+                indicator.mode = DictationIndicatorView.Mode.IDLE
+                stopLevelUpdates()
             }
             State.RECORDING -> {
-                statusLabel.text = "Listening… release to transcribe"
-                talkButton.text = "Release to send"
+                statusLabel.text = "Listening…"
+                talkButton.text = "Tap to stop"
                 talkButton.isEnabled = true
+                indicator.mode = DictationIndicatorView.Mode.RECORDING
+                startLevelUpdates()
             }
             State.TRANSCRIBING -> {
+                // Named rather than left as a spinner: after you stop talking the wait is dead
+                // time, and "Transcribing" tells you what is consuming it and that it will end.
                 statusLabel.text = "Transcribing…"
                 talkButton.text = "Working…"
                 talkButton.isEnabled = false
+                indicator.mode = DictationIndicatorView.Mode.TRANSCRIBING
+                stopLevelUpdates()
             }
             State.ERROR -> {
-                talkButton.text = "Hold to talk"
+                talkButton.text = "Tap to talk"
                 talkButton.isEnabled = true
+                indicator.mode = DictationIndicatorView.Mode.IDLE
+                stopLevelUpdates()
             }
         }
     }
 
     private companion object {
         const val TAG = "DoNotTypeIME"
+
+        /**
+         * How long a press has to last before releasing it ends the recording.
+         *
+         * 350 ms: long enough that a deliberate tap never trips it, short enough that someone who
+         * meant to hold does not get a surprise toggle. Matches the desktop hotkey.
+         */
+        const val HOLD_THRESHOLD_MS = 350L
     }
 }

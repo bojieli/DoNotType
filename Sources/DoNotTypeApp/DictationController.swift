@@ -23,7 +23,7 @@ final class DictationController {
 
     let store: HistoryStore
 
-    private let log = Logger(subsystem: "ai.19pine.donottype", category: "dictation")
+    private let log = Logger(subsystem: "app.donottype", category: "dictation")
     private let recorder = AudioRecorder()
     private let hotkey = HotkeyMonitor()
     private let grounding = GroundingCoordinator()

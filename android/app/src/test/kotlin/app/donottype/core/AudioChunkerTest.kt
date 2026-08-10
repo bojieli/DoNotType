@@ -1,4 +1,4 @@
-package ai.pine19.donottype.core
+package app.donottype.core
 
 import kotlin.math.abs
 import kotlin.math.sin

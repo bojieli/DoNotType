@@ -1,6 +1,6 @@
-package ai.pine19.donottype
+package app.donottype
 
-import ai.pine19.donottype.core.Fidelity
+import app.donottype.core.Fidelity
 import android.content.Context
 
 /**

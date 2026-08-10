@@ -1,7 +1,7 @@
-package ai.pine19.donottype
+package app.donottype
 
-import ai.pine19.donottype.core.Fidelity
-import ai.pine19.donottype.core.RetentionPolicy
+import app.donottype.core.Fidelity
+import app.donottype.core.RetentionPolicy
 import android.content.Context
 import android.content.SharedPreferences
 
@@ -80,7 +80,7 @@ object Settings {
     /** Evaluated before capture, never after — see CONTEXT_FORMAT.md. */
     fun isBlocked(packageName: String?): Boolean {
         if (packageName == null) return false
-        if (packageName == "ai.pine19.donottype") return true
+        if (packageName == "app.donottype") return true
         return blockedPackages.any { it.equals(packageName, ignoreCase = true) }
     }
 }

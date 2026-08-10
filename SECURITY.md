@@ -28,7 +28,7 @@ anything from an app or URL on the blocklist, or any stored history.
 
 | Platform | API key storage |
 |---|---|
-| macOS | Keychain (`ai.19pine.donottype`) |
+| macOS | Keychain (`app.donottype`) |
 | iOS | Keychain |
 | Windows | DPAPI, scoped to your Windows account |
 | Android | app-private `SharedPreferences` |

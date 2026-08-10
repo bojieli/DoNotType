@@ -1,9 +1,9 @@
-package ai.pine19.donottype.core
+package app.donottype.core
 
 import android.content.Context
-import ai.pine19.donottype.PromptAssets
-import ai.pine19.donottype.Settings
-import ai.pine19.donottype.audio.WavRecorder
+import app.donottype.PromptAssets
+import app.donottype.Settings
+import app.donottype.audio.WavRecorder
 import java.io.File
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll

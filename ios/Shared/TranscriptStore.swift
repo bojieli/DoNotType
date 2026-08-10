@@ -11,11 +11,11 @@ import Foundation
 /// transcript appears without the user having to switch back and forth.
 public struct TranscriptStore: Sendable {
     /// Must match the App Group in both targets' entitlements.
-    public static let appGroup = "group.ai.19pine.donottype"
+    public static let appGroup = "group.app.donottype"
 
     /// Posted when the app writes a transcript. Darwin notifications carry no payload, which is
     /// fine — it is a hint to re-read the container, not a message.
-    public static let didUpdateNotification = "ai.19pine.donottype.transcripts.didUpdate"
+    public static let didUpdateNotification = "app.donottype.transcripts.didUpdate"
 
     public struct Entry: Codable, Sendable, Identifiable, Equatable {
         public let id: UUID
