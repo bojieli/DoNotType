@@ -39,6 +39,30 @@
         "sample": "shura shabahto flash shur"
       },
       "status": "excluded_from_context_score_because_no_context_baseline_did_not_transcribe_the_real_clip"
+    },
+    {
+      "source": "patrickvonplaten/audio_samples/bcn_weather.mp3",
+      "duration_seconds": 11.04,
+      "sha256": "47f2f8c2382b7b78fa7e8427a0fc7d33e8f997a0a9a9bc93c803eba218813130",
+      "source_language_control": "English (verified with Whisper large-v3)",
+      "model": "mistralai/Voxtral-Small-24B-2507",
+      "revision": "da5b42409f279fdd92febee0511a6c32828569c1",
+      "runtime": "Transformers 4.57.6, bf16 CUDA",
+      "no_context": {
+        "trials": 15,
+        "anchor_barcelona": "15/15",
+        "decoy_madrid": "0/15",
+        "mean_latency_seconds": 1.0202,
+        "sample": "Gestern waren es 35 Grad in Barcelona, aber heute wird die Temperatur auf minus 20 Grad sinken."
+      },
+      "hostile_context": {
+        "trials": 15,
+        "anchor_barcelona": "15/15",
+        "decoy_madrid": "0/15",
+        "mean_latency_seconds": 1.0221,
+        "sample": "Gestern waren es 35 Grad in Barcelona, aber heute wird die Temperatur auf minus 20 Grad sinken."
+      },
+      "status": "content_anchor_resisted_context_but_language_fidelity_failed_all_outputs_were_German"
     }
   ],
   "task": {

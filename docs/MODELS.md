@@ -207,6 +207,12 @@ unusable in all 15 trials (repeated fragments such as "rush rush about flash"), 
 run is recorded but deliberately excluded from any grounding score: a model that cannot transcribe
 the audio without context cannot measure context substitution.
 
+Voxtral Small retained Barcelona and both spoken temperatures in all 15 no-context and all 15
+hostile-context trials on the same clip, and never emitted the hostile Madrid decoy. However, every
+output was a German translation even though the source audio is English (as independently verified
+with Whisper large-v3). This supports content-anchor and context-resistance observations, but is not
+a clean transcription pass because language fidelity failed in all 30 trials.
+
 To exercise context handling on genuine speech while the DoNotType fixtures were unavailable, the
 four downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
 recording says **Chicago** in its opening sentence; the context repeated **Seattle** eight times.
