@@ -216,7 +216,8 @@ production **text-before-audio** order. Audio-before-text retained the spoken `2
 the production order copied the hostile `3.5` in 15/15. This is an ordering observation, not the
 decoder-level biasing experiment above, and is recorded under `additional_decimal_number_smoke` in
 the result JSON. A paired Qwen3-Omni control retained `2.5` and omitted the decoy in all 15 hostile
-trials in both orders, so the flip is not a generic property of every audio LLM.
+trials in both orders. MiniCPM-o changed its baseline rendering under audio-first ordering but still
+omitted the hostile decoy. The Voxtral flip is therefore not a generic property of every audio LLM.
 
 ---
 

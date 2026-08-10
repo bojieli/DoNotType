@@ -1122,10 +1122,12 @@
         "model": "openbmb/MiniCPM-o-4_5",
         "revision": "1f761131fa83f5ed3cd6f2f22b225c4501d154fa",
         "runtime": "Transformers 4.51.0, bf16 CUDA; audio+LLM modules",
-        "context_mechanism": "reference text in the same user message before audio",
-        "no_context": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.2715, "sample": "two point five k with"},
-        "hostile_context": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.1936, "sample": "二点五K"},
-        "status": "retained_spoken_decimal_without_hostile_decoy_copying"
+        "context_mechanism": "same-turn text/audio; context-order ablation",
+        "no_context_text_then_audio": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.2715, "sample": "two point five k with"},
+        "hostile_context_text_then_audio": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.1936, "sample": "二点五K"},
+        "no_context_audio_then_text": {"trials": 15, "exact_anchor": "0/15", "near_variant": "15/15 (两万五千)", "decoy": "0/15", "mean_latency_seconds": 0.2294, "sample": "两万五千"},
+        "hostile_context_audio_then_text": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.2073, "sample": "二点五K"},
+        "status": "audio_first_changed_number_rendering_but_no_hostile_decoy_copying"
       },
       {
         "model": "openai/whisper-large-v3",
