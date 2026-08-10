@@ -1,0 +1,89 @@
+[
+  {
+    "id": "01-app-only",
+    "why": "The minimum that still produces a header.",
+    "appName": "Slack"
+  },
+  {
+    "id": "02-full-identity",
+    "why": "Every identity line at once, including the editable suffix.",
+    "appName": "Safari",
+    "windowTitle": "Gemini API docs",
+    "browserUrl": "https://ai.google.dev/gemini-api/docs",
+    "role": "AXTextArea",
+    "isEditable": true,
+    "visibleText": "Gemini 3 Flash is our fastest model. The Gemini 3 Flash guide covers streaming, function calling and structured output. Gemini 3 Flash pricing is listed on the pricing page, alongside Gemini 3 Pro and the older Gemini 2.5 family. See the migration notes before upgrading."
+  },
+  {
+    "id": "03-title-without-app",
+    "why": "A window title with no app name uses a different label.",
+    "windowTitle": "Untitled Document",
+    "visibleText": "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs. How vexingly quick daft zebras jump. Sphinx of black quartz, judge my vow. Jackdaws love my big sphinx of quartz and the five boxing wizards jump quickly."
+  },
+  {
+    "id": "04-role-not-editable",
+    "why": "A non-editable field must not gain the editable suffix.",
+    "appName": "Preview",
+    "role": "AXStaticText",
+    "isEditable": false,
+    "visibleText": "Quarterly results were released on Tuesday. Revenue grew across every region, with the strongest performance in EMEA. The board approved the dividend at the same level as last year. Full statements are attached in the appendix for review by shareholders."
+  },
+  {
+    "id": "05-thin-text-no-screenshot",
+    "why": "Below the thin threshold with no screenshot: visible text is dropped entirely.",
+    "appName": "Terminal",
+    "visibleText": "$ git status"
+  },
+  {
+    "id": "06-thin-text-with-screenshot",
+    "why": "The same thin text WITH a screenshot is kept — the screenshot is why it is thin.",
+    "appName": "Figma",
+    "visibleText": "Untitled",
+    "screenshotBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+  },
+  {
+    "id": "07-caret-window",
+    "why": "Before-caret keeps its tail, after-caret keeps its head. Getting these the wrong way round loses exactly the text nearest the caret.",
+    "appName": "Xcode",
+    "windowTitle": "ContextEncoder.swift",
+    "textBeforeCaret": "func encode(_ context: ScreenContext) -> [InputPart] {\n    guard !context.isEmpty else { return [] }\n    var parts: [InputPart] = []",
+    "textAfterCaret": "    sections.append(Self.footer)\n    parts.append(.text(sections.joined(separator: \"\\n\\n\")))\n    return parts\n}"
+  },
+  {
+    "id": "08-selected-text",
+    "why": "Selected text is never clipped, and comes last.",
+    "appName": "Mail",
+    "selectedText": "Please confirm the deployment window before Friday."
+  },
+  {
+    "id": "09-cjk",
+    "why": "Exercises the CJK branch of the token estimator and any byte-versus-character confusion in clipping.",
+    "appName": "微信",
+    "windowTitle": "工作群",
+    "visibleText": "我要把这几个给它串起来，就会搞成一个 retrieval pipeline，要给它串在一起的。然后它这所有都一样，所以说我要把它这个给它分开，比如说这个是 4240 我印象里。然后可以看到在这个里边，它就把这个 index 已经把这个建好了，接下来就是把它跑起来看看效果怎么样。"
+  },
+  {
+    "id": "10-whitespace-only-fields",
+    "why": "Whitespace is not content: these fields must be omitted, not emitted empty.",
+    "appName": "Notes",
+    "windowTitle": "   ",
+    "browserUrl": "  ",
+    "textBeforeCaret": "\n\n  \t ",
+    "selectedText": "   ",
+    "visibleText": "Meeting notes from the planning session. We agreed to ship the import flow first, then revisit the export path once the schema settles. Owners were assigned for each workstream and the next review is in a fortnight, with a written update in the channel before then."
+  },
+  {
+    "id": "11-long-visible-text",
+    "why": "Clipping to the visible-text cap keeps the TAIL. Repeated numbered lines make an off-by-one or a head-clip obvious.",
+    "appName": "Console",
+    "visibleTextRepeat": {
+      "line": "line %d: the system emitted a diagnostic record for this iteration\n",
+      "count": 400
+    }
+  },
+  {
+    "id": "12-empty",
+    "why": "Nothing worth sending must produce no parts at all, not an empty header.",
+    "appName": "   "
+  }
+]

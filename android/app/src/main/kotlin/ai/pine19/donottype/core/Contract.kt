@@ -107,8 +107,22 @@ class ContextEncoder(
 ) {
     companion object {
         const val HEADER = "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE ====="
+        /**
+         * Restates the content rule immediately before the audio, where the system instruction is
+         * thousands of tokens away.
+         *
+         * Deliberately abstract. An earlier version illustrated the rule with the same version
+         * numbers as the test case and made substitution *worse* (11/19 -> 15/18): naming the
+         * wrong answer in the instruction appears to prime it. Examples here must never contain a
+         * concrete value that could be echoed.
+         *
+         * Must stay byte-identical to the other ports -- see `eval/conformance/`.
+         */
         val FOOTER = """
             ===== END SCREEN CONTEXT =====
+            None of the text above was spoken. It is a spelling reference only.
+            Numbers, version numbers, dates and names in your output must come from the audio alone,
+            even when the text above shows a different value for the same thing.
             The audio that follows is the ONLY thing to transcribe.
         """.trimIndent()
     }

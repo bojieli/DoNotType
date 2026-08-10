@@ -122,8 +122,24 @@ public sealed class ContextEncoder(
 {
     public const string Header = "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE =====";
 
+    /// <summary>
+    /// Restates the content rule immediately before the audio, where the system instruction is
+    /// thousands of tokens away.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately abstract. An earlier version illustrated the rule with the same version numbers
+    /// as the test case and made substitution <em>worse</em> (11/19 → 15/18): naming the wrong
+    /// answer in the instruction appears to prime it. Examples here must never contain a concrete
+    /// value that could be echoed.
+    ///
+    /// Must stay byte-identical to the other ports -- see <c>eval/conformance/</c>.
+    /// </remarks>
     public const string Footer =
-        "===== END SCREEN CONTEXT =====\nThe audio that follows is the ONLY thing to transcribe.";
+        "===== END SCREEN CONTEXT =====\n"
+        + "None of the text above was spoken. It is a spelling reference only.\n"
+        + "Numbers, version numbers, dates and names in your output must come from the audio alone,\n"
+        + "even when the text above shows a different value for the same thing.\n"
+        + "The audio that follows is the ONLY thing to transcribe.";
 
     public IReadOnlyList<InputPart> Encode(ScreenContext context)
     {

@@ -32,8 +32,50 @@ struct Ablate: AsyncParsableCommand {
     @Option(name: .long, help: "Runs per condition. Below ~15 the intervals are too wide to act on.")
     var trials: Int = 15
 
-    @Option(name: .long, help: "Conditions to run: verbatim, single-formal, two-formal, no-context.")
+    @Option(name: .long, help: "Conditions: verbatim, no-context, digit-guard, single-formal, two-formal.")
     var conditions: String = "verbatim,single-formal,two-formal"
+
+    /// Counters for the digit-guard condition, which has two failure modes worth telling apart:
+    /// the guard declining to act because the runs disagreed on how many numbers there were, and
+    /// the guard acting on a value the audio-only run also got wrong.
+    final class Diagnostics: @unchecked Sendable {
+        private let lock = NSLock()
+        private(set) var applied = 0
+        private(set) var skippedForMismatch = 0
+        private(set) var agreed = 0
+        private(set) var groundedSeconds = 0.0
+        private(set) var audioOnlySeconds = 0.0
+        private(set) var wallSeconds = 0.0
+
+        func record(
+            reconciliation: NumericGuard.Reconciliation,
+            grounded: Double, audioOnly: Double, wall: Double
+        ) {
+            lock.withLock {
+                if reconciliation.skippedForMismatch { skippedForMismatch += 1 }
+                else if reconciliation.corrections.isEmpty { agreed += 1 }
+                else { applied += 1 }
+                groundedSeconds += grounded
+                audioOnlySeconds += audioOnly
+                wallSeconds += wall
+            }
+        }
+
+        var summary: String {
+            let total = applied + skippedForMismatch + agreed
+            guard total > 0 else { return "" }
+            return """
+                digit-guard detail: corrected \(applied), already agreed \(agreed), \
+                declined for count mismatch \(skippedForMismatch) of \(total)
+                  mean leg latency: grounded \(fmt(groundedSeconds / Double(total)))s, \
+                audio-only \(fmt(audioOnlySeconds / Double(total)))s, \
+                wall \(fmt(wallSeconds / Double(total)))s \
+                (wall near the slower leg means they really ran concurrently)
+                """
+        }
+
+        private func fmt(_ value: Double) -> String { String(format: "%.2f", value) }
+    }
 
     struct Outcome {
         var correct = 0
@@ -65,6 +107,7 @@ struct Ablate: AsyncParsableCommand {
         print("provider \(kind.rawValue) · model \(runner.model) · \(trials) trials per condition")
         print("audio \(file.url.lastPathComponent) · spoken \"\(spoken)\" · decoy \"\(decoy)\"\n")
 
+        let diagnostics = Diagnostics()
         var results: [(String, Outcome)] = []
         for condition in selected {
             var outcome = Outcome()
@@ -73,7 +116,7 @@ struct Ablate: AsyncParsableCommand {
                 do {
                     let text = try await runOne(
                         condition: condition, audio: file, context: context,
-                        builder: builder, runner: runner)
+                        builder: builder, runner: runner, diagnostics: diagnostics)
                     outcome.totalSeconds += Date().timeIntervalSince(started)
                     if outcome.sample.isEmpty { outcome.sample = String(text.prefix(90)) }
 
@@ -102,12 +145,20 @@ struct Ablate: AsyncParsableCommand {
                              outcome.noVersion, outcome.errors)
                     + rate + "   " + latency)
         }
+        if !diagnostics.summary.isEmpty { print("\n" + diagnostics.summary) }
         print("\nLower substitution is better. Latency is what the user feels after releasing the key.")
+    }
+
+    private func timed<T: Sendable>(
+        _ work: @Sendable () async throws -> T
+    ) async rethrows -> (T, Double) {
+        let started = Date()
+        return (try await work(), Date().timeIntervalSince(started))
     }
 
     private func runOne(
         condition: String, audio: AudioFile, context: ScreenContext,
-        builder: PromptBuilder, runner: EvalRunner
+        builder: PromptBuilder, runner: EvalRunner, diagnostics: Diagnostics
     ) async throws -> String {
         switch condition {
         case "no-context":
@@ -117,6 +168,27 @@ struct Ablate: AsyncParsableCommand {
         case "verbatim":
             return try await runner.transcribe(audio: audio, context: context)
                 .transcript.transcript
+
+        case "digit-guard":
+            // Grounded and audio-only together, then take the numbers from the run that could not
+            // have seen the screen. They must genuinely overlap -- run one after the other this
+            // doubles the wait and is indefensible -- so the legs are timed individually and the
+            // wall time is reported next to them rather than assumed.
+            let wallStart = Date()
+            async let groundedTimed = timed {
+                try await runner.transcribe(audio: audio, context: context).transcript.transcript
+            }
+            async let audioOnlyTimed = timed {
+                try await runner.transcribe(audio: audio, context: nil).transcript.transcript
+            }
+            let (grounded, groundedSeconds) = try await groundedTimed
+            let (audioOnly, audioOnlySeconds) = try await audioOnlyTimed
+
+            let reconciliation = NumericGuard.reconcile(grounded: grounded, audioOnly: audioOnly)
+            diagnostics.record(
+                reconciliation: reconciliation, grounded: groundedSeconds,
+                audioOnly: audioOnlySeconds, wall: Date().timeIntervalSince(wallStart))
+            return reconciliation.text
 
         case "single-formal":
             // One request that both transcribes and rewrites, by appending the style rule.

@@ -1,0 +1,168 @@
+[
+  {
+    "id" : "01-app-only",
+    "parts" : [
+      {
+        "text" : "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE =====\nApp: Slack",
+        "type" : "text"
+      },
+      {
+        "text" : "===== END SCREEN CONTEXT =====\nNone of the text above was spoken. It is a spelling reference only.\nNumbers, version numbers, dates and names in your output must come from the audio alone,\neven when the text above shows a different value for the same thing.\nThe audio that follows is the ONLY thing to transcribe.",
+        "type" : "text"
+      }
+    ],
+    "why" : "The minimum that still produces a header."
+  },
+  {
+    "id" : "02-full-identity",
+    "parts" : [
+      {
+        "text" : "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE =====\nApp: Safari — Gemini API docs\nURL: https://ai.google.dev/gemini-api/docs\nField: AXTextArea · editable",
+        "type" : "text"
+      },
+      {
+        "text" : "===== END SCREEN CONTEXT =====\nNone of the text above was spoken. It is a spelling reference only.\nNumbers, version numbers, dates and names in your output must come from the audio alone,\neven when the text above shows a different value for the same thing.\nThe audio that follows is the ONLY thing to transcribe.",
+        "type" : "text"
+      }
+    ],
+    "why" : "Every identity line at once, including the editable suffix."
+  },
+  {
+    "id" : "03-title-without-app",
+    "parts" : [
+      {
+        "text" : "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE =====\nWindow: Untitled Document",
+        "type" : "text"
+      },
+      {
+        "text" : "===== END SCREEN CONTEXT =====\nNone of the text above was spoken. It is a spelling reference only.\nNumbers, version numbers, dates and names in your output must come from the audio alone,\neven when the text above shows a different value for the same thing.\nThe audio that follows is the ONLY thing to transcribe.",
+        "type" : "text"
+      }
+    ],
+    "why" : "A window title with no app name uses a different label."
+  },
+  {
+    "id" : "04-role-not-editable",
+    "parts" : [
+      {
+        "text" : "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE =====\nApp: Preview\nField: AXStaticText",
+        "type" : "text"
+      },
+      {
+        "text" : "===== END SCREEN CONTEXT =====\nNone of the text above was spoken. It is a spelling reference only.\nNumbers, version numbers, dates and names in your output must come from the audio alone,\neven when the text above shows a different value for the same thing.\nThe audio that follows is the ONLY thing to transcribe.",
+        "type" : "text"
+      }
+    ],
+    "why" : "A non-editable field must not gain the editable suffix."
+  },
+  {
+    "id" : "05-thin-text-no-screenshot",
+    "parts" : [
+      {
+        "text" : "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE =====\nApp: Terminal",
+        "type" : "text"
+      },
+      {
+        "text" : "===== END SCREEN CONTEXT =====\nNone of the text above was spoken. It is a spelling reference only.\nNumbers, version numbers, dates and names in your output must come from the audio alone,\neven when the text above shows a different value for the same thing.\nThe audio that follows is the ONLY thing to transcribe.",
+        "type" : "text"
+      }
+    ],
+    "why" : "Below the thin threshold with no screenshot: visible text is dropped entirely."
+  },
+  {
+    "id" : "06-thin-text-with-screenshot",
+    "parts" : [
+      {
+        "text" : "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE =====\nApp: Figma",
+        "type" : "text"
+      },
+      {
+        "bytes" : 70,
+        "mimeType" : "image/png",
+        "type" : "image"
+      },
+      {
+        "text" : "--- VISIBLE TEXT (accessibility) ---\nUntitled\n\n===== END SCREEN CONTEXT =====\nNone of the text above was spoken. It is a spelling reference only.\nNumbers, version numbers, dates and names in your output must come from the audio alone,\neven when the text above shows a different value for the same thing.\nThe audio that follows is the ONLY thing to transcribe.",
+        "type" : "text"
+      }
+    ],
+    "why" : "The same thin text WITH a screenshot is kept — the screenshot is why it is thin."
+  },
+  {
+    "id" : "07-caret-window",
+    "parts" : [
+      {
+        "text" : "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE =====\nApp: Xcode — ContextEncoder.swift",
+        "type" : "text"
+      },
+      {
+        "text" : "--- TEXT BEFORE CARET ---\nfunc encode(_ context: ScreenContext) -> [InputPart] {\n    guard !context.isEmpty else { return [] }\n    var parts: [InputPart] = []\n\n--- TEXT AFTER CARET ---\nsections.append(Self.footer)\n    parts.append(.text(sections.joined(separator: \"\\n\\n\")))\n    return parts\n}\n\n===== END SCREEN CONTEXT =====\nNone of the text above was spoken. It is a spelling reference only.\nNumbers, version numbers, dates and names in your output must come from the audio alone,\neven when the text above shows a different value for the same thing.\nThe audio that follows is the ONLY thing to transcribe.",
+        "type" : "text"
+      }
+    ],
+    "why" : "Before-caret keeps its tail, after-caret keeps its head. Getting these the wrong way round loses exactly the text nearest the caret."
+  },
+  {
+    "id" : "08-selected-text",
+    "parts" : [
+      {
+        "text" : "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE =====\nApp: Mail",
+        "type" : "text"
+      },
+      {
+        "text" : "--- SELECTED TEXT ---\nPlease confirm the deployment window before Friday.\n\n===== END SCREEN CONTEXT =====\nNone of the text above was spoken. It is a spelling reference only.\nNumbers, version numbers, dates and names in your output must come from the audio alone,\neven when the text above shows a different value for the same thing.\nThe audio that follows is the ONLY thing to transcribe.",
+        "type" : "text"
+      }
+    ],
+    "why" : "Selected text is never clipped, and comes last."
+  },
+  {
+    "id" : "09-cjk",
+    "parts" : [
+      {
+        "text" : "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE =====\nApp: 微信 — 工作群",
+        "type" : "text"
+      },
+      {
+        "text" : "===== END SCREEN CONTEXT =====\nNone of the text above was spoken. It is a spelling reference only.\nNumbers, version numbers, dates and names in your output must come from the audio alone,\neven when the text above shows a different value for the same thing.\nThe audio that follows is the ONLY thing to transcribe.",
+        "type" : "text"
+      }
+    ],
+    "why" : "Exercises the CJK branch of the token estimator and any byte-versus-character confusion in clipping."
+  },
+  {
+    "id" : "10-whitespace-only-fields",
+    "parts" : [
+      {
+        "text" : "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE =====\nApp: Notes",
+        "type" : "text"
+      },
+      {
+        "text" : "===== END SCREEN CONTEXT =====\nNone of the text above was spoken. It is a spelling reference only.\nNumbers, version numbers, dates and names in your output must come from the audio alone,\neven when the text above shows a different value for the same thing.\nThe audio that follows is the ONLY thing to transcribe.",
+        "type" : "text"
+      }
+    ],
+    "why" : "Whitespace is not content: these fields must be omitted, not emitted empty."
+  },
+  {
+    "id" : "11-long-visible-text",
+    "parts" : [
+      {
+        "text" : "===== SCREEN CONTEXT — REFERENCE ONLY, DO NOT TRANSCRIBE =====\nApp: Console",
+        "type" : "text"
+      },
+      {
+        "text" : "--- VISIBLE TEXT (accessibility) ---\nion\nline 254: the system emitted a diagnostic record for this iteration\nline 255: the system emitted a diagnostic record for this iteration\nline 256: the system emitted a diagnostic record for this iteration\nline 257: the system emitted a diagnostic record for this iteration\nline 258: the system emitted a diagnostic record for this iteration\nline 259: the system emitted a diagnostic record for this iteration\nline 260: the system emitted a diagnostic record for this iteration\nline 261: the system emitted a diagnostic record for this iteration\nline 262: the system emitted a diagnostic record for this iteration\nline 263: the system emitted a diagnostic record for this iteration\nline 264: the system emitted a diagnostic record for this iteration\nline 265: the system emitted a diagnostic record for this iteration\nline 266: the system emitted a diagnostic record for this iteration\nline 267: the system emitted a diagnostic record for this iteration\nline 268: the system emitted a diagnostic record for this iteration\nline 269: the system emitted a diagnostic record for this iteration\nline 270: the system emitted a diagnostic record for this iteration\nline 271: the system emitted a diagnostic record for this iteration\nline 272: the system emitted a diagnostic record for this iteration\nline 273: the system emitted a diagnostic record for this iteration\nline 274: the system emitted a diagnostic record for this iteration\nline 275: the system emitted a diagnostic record for this iteration\nline 276: the system emitted a diagnostic record for this iteration\nline 277: the system emitted a diagnostic record for this iteration\nline 278: the system emitted a diagnostic record for this iteration\nline 279: the system emitted a diagnostic record for this iteration\nline 280: the system emitted a diagnostic record for this iteration\nline 281: the system emitted a diagnostic record for this iteration\nline 282: the system emitted a diagnostic record for this iteration\nline 283: the system emitted a diagnostic record for this iteration\nline 284: the system emitted a diagnostic record for this iteration\nline 285: the system emitted a diagnostic record for this iteration\nline 286: the system emitted a diagnostic record for this iteration\nline 287: the system emitted a diagnostic record for this iteration\nline 288: the system emitted a diagnostic record for this iteration\nline 289: the system emitted a diagnostic record for this iteration\nline 290: the system emitted a diagnostic record for this iteration\nline 291: the system emitted a diagnostic record for this iteration\nline 292: the system emitted a diagnostic record for this iteration\nline 293: the system emitted a diagnostic record for this iteration\nline 294: the system emitted a diagnostic record for this iteration\nline 295: the system emitted a diagnostic record for this iteration\nline 296: the system emitted a diagnostic record for this iteration\nline 297: the system emitted a diagnostic record for this iteration\nline 298: the system emitted a diagnostic record for this iteration\nline 299: the system emitted a diagnostic record for this iteration\nline 300: the system emitted a diagnostic record for this iteration\nline 301: the system emitted a diagnostic record for this iteration\nline 302: the system emitted a diagnostic record for this iteration\nline 303: the system emitted a diagnostic record for this iteration\nline 304: the system emitted a diagnostic record for this iteration\nline 305: the system emitted a diagnostic record for this iteration\nline 306: the system emitted a diagnostic record for this iteration\nline 307: the system emitted a diagnostic record for this iteration\nline 308: the system emitted a diagnostic record for this iteration\nline 309: the system emitted a diagnostic record for this iteration\nline 310: the system emitted a diagnostic record for this iteration\nline 311: the system emitted a diagnostic record for this iteration\nline 312: the system emitted a diagnostic record for this iteration\nline 313: the system emitted a diagnostic record for this iteration\nline 314: the system emitted a diagnostic record for this iteration\nline 315: the system emitted a diagnostic record for this iteration\nline 316: the system emitted a diagnostic record for this iteration\nline 317: the system emitted a diagnostic record for this iteration\nline 318: the system emitted a diagnostic record for this iteration\nline 319: the system emitted a diagnostic record for this iteration\nline 320: the system emitted a diagnostic record for this iteration\nline 321: the system emitted a diagnostic record for this iteration\nline 322: the system emitted a diagnostic record for this iteration\nline 323: the system emitted a diagnostic record for this iteration\nline 324: the system emitted a diagnostic record for this iteration\nline 325: the system emitted a diagnostic record for this iteration\nline 326: the system emitted a diagnostic record for this iteration\nline 327: the system emitted a diagnostic record for this iteration\nline 328: the system emitted a diagnostic record for this iteration\nline 329: the system emitted a diagnostic record for this iteration\nline 330: the system emitted a diagnostic record for this iteration\nline 331: the system emitted a diagnostic record for this iteration\nline 332: the system emitted a diagnostic record for this iteration\nline 333: the system emitted a diagnostic record for this iteration\nline 334: the system emitted a diagnostic record for this iteration\nline 335: the system emitted a diagnostic record for this iteration\nline 336: the system emitted a diagnostic record for this iteration\nline 337: the system emitted a diagnostic record for this iteration\nline 338: the system emitted a diagnostic record for this iteration\nline 339: the system emitted a diagnostic record for this iteration\nline 340: the system emitted a diagnostic record for this iteration\nline 341: the system emitted a diagnostic record for this iteration\nline 342: the system emitted a diagnostic record for this iteration\nline 343: the system emitted a diagnostic record for this iteration\nline 344: the system emitted a diagnostic record for this iteration\nline 345: the system emitted a diagnostic record for this iteration\nline 346: the system emitted a diagnostic record for this iteration\nline 347: the system emitted a diagnostic record for this iteration\nline 348: the system emitted a diagnostic record for this iteration\nline 349: the system emitted a diagnostic record for this iteration\nline 350: the system emitted a diagnostic record for this iteration\nline 351: the system emitted a diagnostic record for this iteration\nline 352: the system emitted a diagnostic record for this iteration\nline 353: the system emitted a diagnostic record for this iteration\nline 354: the system emitted a diagnostic record for this iteration\nline 355: the system emitted a diagnostic record for this iteration\nline 356: the system emitted a diagnostic record for this iteration\nline 357: the system emitted a diagnostic record for this iteration\nline 358: the system emitted a diagnostic record for this iteration\nline 359: the system emitted a diagnostic record for this iteration\nline 360: the system emitted a diagnostic record for this iteration\nline 361: the system emitted a diagnostic record for this iteration\nline 362: the system emitted a diagnostic record for this iteration\nline 363: the system emitted a diagnostic record for this iteration\nline 364: the system emitted a diagnostic record for this iteration\nline 365: the system emitted a diagnostic record for this iteration\nline 366: the system emitted a diagnostic record for this iteration\nline 367: the system emitted a diagnostic record for this iteration\nline 368: the system emitted a diagnostic record for this iteration\nline 369: the system emitted a diagnostic record for this iteration\nline 370: the system emitted a diagnostic record for this iteration\nline 371: the system emitted a diagnostic record for this iteration\nline 372: the system emitted a diagnostic record for this iteration\nline 373: the system emitted a diagnostic record for this iteration\nline 374: the system emitted a diagnostic record for this iteration\nline 375: the system emitted a diagnostic record for this iteration\nline 376: the system emitted a diagnostic record for this iteration\nline 377: the system emitted a diagnostic record for this iteration\nline 378: the system emitted a diagnostic record for this iteration\nline 379: the system emitted a diagnostic record for this iteration\nline 380: the system emitted a diagnostic record for this iteration\nline 381: the system emitted a diagnostic record for this iteration\nline 382: the system emitted a diagnostic record for this iteration\nline 383: the system emitted a diagnostic record for this iteration\nline 384: the system emitted a diagnostic record for this iteration\nline 385: the system emitted a diagnostic record for this iteration\nline 386: the system emitted a diagnostic record for this iteration\nline 387: the system emitted a diagnostic record for this iteration\nline 388: the system emitted a diagnostic record for this iteration\nline 389: the system emitted a diagnostic record for this iteration\nline 390: the system emitted a diagnostic record for this iteration\nline 391: the system emitted a diagnostic record for this iteration\nline 392: the system emitted a diagnostic record for this iteration\nline 393: the system emitted a diagnostic record for this iteration\nline 394: the system emitted a diagnostic record for this iteration\nline 395: the system emitted a diagnostic record for this iteration\nline 396: the system emitted a diagnostic record for this iteration\nline 397: the system emitted a diagnostic record for this iteration\nline 398: the system emitted a diagnostic record for this iteration\nline 399: the system emitted a diagnostic record for this iteration\nline 400: the system emitted a diagnostic record for this iteration\n\n===== END SCREEN CONTEXT =====\nNone of the text above was spoken. It is a spelling reference only.\nNumbers, version numbers, dates and names in your output must come from the audio alone,\neven when the text above shows a different value for the same thing.\nThe audio that follows is the ONLY thing to transcribe.",
+        "type" : "text"
+      }
+    ],
+    "why" : "Clipping to the visible-text cap keeps the TAIL. Repeated numbered lines make an off-by-one or a head-clip obvious."
+  },
+  {
+    "id" : "12-empty",
+    "parts" : [
+
+    ],
+    "why" : "Nothing worth sending must produce no parts at all, not an empty header."
+  }
+]

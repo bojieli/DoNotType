@@ -41,6 +41,15 @@ release yet, so everything below is unreleased.
 - **Optional rewrite on a second hotkey** — formal, concise or bullets, for turning a dictated
   paragraph into an email. The verbatim transcript is always produced and stored first, and the
   inspector shows both versions together, so what you actually said stays recoverable.
+- **Cross-platform encoder conformance.** `ContextEncoder` exists four times and nothing checked
+  that the ports agreed. A shared fixture set (`eval/conformance/`) is now encoded by Swift as the
+  reference and verified byte-for-byte by the Kotlin and C# suites.
+
+  It found a real bug on its first run: **Android and Windows were both shipping a truncated
+  footer**, missing the three lines that restate the content rule immediately before the audio —
+  the instruction that tells the model numbers must come from what was said, not from what is on
+  screen. Those two platforms had been running without the project's central anti-substitution
+  measure since their ports were written, and no test could have noticed. Both fixed.
 - **Long dictations are split across concurrent requests** on macOS, iOS and Windows. Cuts land in
   the middle of the quietest 100 ms near the target, so no chunk starts or ends mid-word, and every
   chunk carries the *same* screen context — which is what keeps a name spelled the same on both sides of a seam.

@@ -75,6 +75,7 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
 
+      # Includes the cross-platform encoder check against eval/conformance/golden.json.
       - name: Unit tests
         working-directory: android
         run: gradle test --no-daemon
