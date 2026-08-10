@@ -140,9 +140,9 @@ be used to fill the missing cells.
 Current local-GPU evidence uses downloaded, revision-pinned model checkpoints and separately
 labeled public real recordings. It is recorded in [MODELS.md](MODELS.md) and
 [`eval/results/local-real-audio-2026-08-10.json`](../eval/results/local-real-audio-2026-08-10.json).
-Those Obama, Barcelona, AISHELL, and SEAME observations (including the acronym-chain control)
-exercise audio transport, language fidelity,
-and hostile-context behavior, but none substitutes for a named DoNotType fixture.
+Those Obama, Barcelona, AISHELL, and SEAME observations (including the acronym-chain and
+decimal-number controls) exercise audio transport, language fidelity, and hostile-context behavior,
+but none substitutes for a named DoNotType fixture.
 
 When the exact WAVs are restored, real-speech cases should continue to assert **fragments** rather
 than an exact transcript (`mustContain`, `mustNotContain`). A stochastic 22-second transcription
