@@ -175,9 +175,9 @@ because an easy case measures nothing.
 
 `gemini-3.6-flash`, native API:
 
-These are historical handoff targets, not currently reproducible cells: the exact reference WAV is
-absent from this checkout. Use them only after restoring and verifying that recording; never compare
-them with the synthetic stand-in or the public real-audio smoke clips.
+These are historical handoff targets. The exact reference WAV is now supplied and verified; the
+uploaded-fixture campaign below is the current local evidence. Never compare these historical rates
+with the synthetic stand-in or the public real-audio smoke clips.
 
 | condition | substitution | mean latency |
 |---|---|---|
@@ -188,9 +188,9 @@ them with the synthetic stand-in or the public real-audio smoke clips.
 
 Baseline transcription quality, no context: **6/8** correct on the reference clip.
 
-Once the exact fixture is restored, a local model beating 36% substitution while staying near the
-historical 6/8 baseline accuracy would be important evidence that the fix is architectural rather
-than a matter of prompt wording — and it would come with no API key and no data leaving the machine.
+The current local runs do not establish a useful substitution rate when a checkpoint fails the
+no-context `Gemini 1.5` recognition gate. A model must first recover the spoken value before a
+context substitution comparison is meaningful; the uploaded campaign records that gate explicitly.
 
 ---
 
@@ -228,7 +228,7 @@ A second order-neutral public-real control used the Barcelona weather clip (spok
 hostile `Madrid`). Voxtral retained the anchor and rejected the decoy in all 15 trials in both
 orders, while changing output language from Spanish text-first to German audio-first. Ultravox
 retained the anchor and rejected the decoy in all 15 trials in both orders under explicit neutral
-delimiters. These are proper-noun controls, not scores for the missing DoNotType fixtures.
+delimiters. These are proper-noun controls, not scores for the uploaded DoNotType fixtures.
 Qwen3-Omni and MiniCPM-o also retained `Barcelona` and rejected `Madrid` in all 15 trials in both
 orders, providing order-insensitive controls under the same public-real setup.
 Gemma also retained the anchor and rejected the decoy in all 15 trials in both orders when rerun
@@ -258,6 +258,14 @@ and still be unusable.
 
 Results belong in [MODELS.md](MODELS.md) under a new "Local / open-weight" section. Raw output
 pasted into an issue is fine — the table can be written from it.
+
+The uploaded-fixture handoff is now complete for every listed downloadable candidate/control. The
+exact reference and suite records are in
+[`eval/results/local-real-audio-2026-08-10.json`](../eval/results/local-real-audio-2026-08-10.json):
+Voxtral Small, Qwen3-Omni, Gemma 4, Whisper large-v3, Ultravox, Qwen3-ASR, and MiniCPM-o 4.5 each
+have a pinned revision, raw probe, ablation rows appropriate to their architecture, and per-case
+counts. Voxtral Realtime has a three-trial uploaded audio-only probe and explicitly cannot accept
+screen context or run the A/B.
 
 ---
 
