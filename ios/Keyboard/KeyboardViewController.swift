@@ -24,7 +24,13 @@ final class KeyboardViewController: UIInputViewController {
 
         // The app posts a Darwin notification when it stores a transcript, so switching back to
         // the keyboard shows it without a manual refresh.
-        TranscriptStore.observeUpdates { [weak self] in self?.reload() }
+        // Hopped to the main actor explicitly. The notification arrives on a Darwin callback with
+        // no isolation of its own, and `reload` touches UIKit — Swift 6.2 infers the hop, 6.0 does
+        // not, and relying on inference for a UI update from a C callback is the wrong bet either
+        // way.
+        TranscriptStore.observeUpdates {
+            Task { @MainActor [weak self] in self?.reload() }
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {

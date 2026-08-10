@@ -240,7 +240,7 @@ final class DictationController {
         do {
             // Pre-uploaded if the session opened and the upload landed; inline otherwise. The
             // fallback is silent by design — a flaky network should cost latency, never words.
-            let audioPart = try await resolveAudioPart(audio)
+            let audioPart = await resolveAudioPart(audio)
             let requestStart = Date()
             // Long recordings are split across concurrent requests; short ones — every ordinary
             // dictation — take the single-request path unchanged.

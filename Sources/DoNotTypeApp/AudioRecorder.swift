@@ -12,7 +12,10 @@ import os
 final class AudioRecorder: @unchecked Sendable {
     enum RecorderError: LocalizedError {
         case microphoneDenied
-        case converterUnavailable(from: AVAudioFormat, to: AVAudioFormat)
+        /// Carries descriptions rather than the formats themselves: `AVAudioFormat` is a
+        /// non-Sendable class, and an `Error` that holds one cannot cross an isolation boundary.
+        /// Swift 6.2 lets it pass; 6.0 does not, and 6.0 is right — the error is only ever read.
+        case converterUnavailable(from: String, to: String)
         case tooShort(seconds: Double)
 
         var errorDescription: String? {
@@ -20,7 +23,7 @@ final class AudioRecorder: @unchecked Sendable {
             case .microphoneDenied:
                 "Microphone access denied. Grant it in System Settings › Privacy & Security › Microphone."
             case .converterUnavailable(let from, let to):
-                "Cannot convert \(from.sampleRate) Hz to \(to.sampleRate) Hz"
+                "Cannot convert \(from) to \(to)"
             case .tooShort(let seconds):
                 "Recording too short (\(String(format: "%.2f", seconds))s)"
             }
@@ -75,10 +78,12 @@ final class AudioRecorder: @unchecked Sendable {
                 commonFormat: .pcmFormatInt16, sampleRate: Self.sampleRate,
                 channels: 1, interleaved: true)
         else {
-            throw RecorderError.converterUnavailable(from: inputFormat, to: inputFormat)
+            throw RecorderError.converterUnavailable(
+                from: "\(inputFormat.sampleRate) Hz", to: "16 kHz mono")
         }
         guard let converter = AVAudioConverter(from: inputFormat, to: target) else {
-            throw RecorderError.converterUnavailable(from: inputFormat, to: target)
+            throw RecorderError.converterUnavailable(
+                from: "\(inputFormat.sampleRate) Hz", to: "\(target.sampleRate) Hz")
         }
         self.converter = converter
 
