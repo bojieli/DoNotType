@@ -87,7 +87,7 @@ public struct HistoryQuery: Sendable, Equatable {
 
 extension String {
     /// Case- and diacritic-insensitive substring match.
-    func containsLoosely(_ needle: String) -> Bool {
+    public func containsLoosely(_ needle: String) -> Bool {
         guard !needle.isEmpty else { return true }
         return range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil
     }

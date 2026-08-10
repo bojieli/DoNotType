@@ -115,8 +115,48 @@ is hard. A model that does well on it may do worse elsewhere. Adding more real c
 -value contribution anyone could make to this file; see
 [EVALUATION.md](EVALUATION.md#building-a-corpus).
 
+## Open-weight models
+
+Worth tracking, because a local model would remove the API key, the network dependency and the
+privacy question in one move. The capability now exists in the open — what is missing here is
+access, not models.
+
+**Context-conditioned transcription is a solved idea in open weights.** The mechanism this project
+needs has a name in the ASR world — *context biasing* or *prompt conditioning* — and several open
+models ship it:
+
+| Model | Licence | Relevance |
+|---|---|---|
+| [Voxtral Transcribe 2](https://mistral.ai/news/voxtral-transcribe-2/) (Mistral) | Apache 2.0 | **Ships context biasing explicitly**, plus diarization and word timestamps. The closest open analogue to what this app does. |
+| [Qwen3-Omni](https://huggingface.co/Qwen/Qwen3-Omni-30B-A3B-Instruct) (Alibaba) | Apache 2.0 | Audio-LLM taking arbitrary text alongside audio — so screen context can be passed as-is, exactly as here. Reports open SOTA on 32 of 36 audio benchmarks. |
+| [Gemma 4](https://ai.google.dev/gemma/docs/capabilities/audio) (Google) | Apache 2.0 | Native audio from 4B up; small enough to run locally. |
+| [Ultravox](https://huggingface.co/fixie-ai/ultravox-v0_2) (Fixie) | open weights | Projects audio into the LLM's token space, so audio and text context share one prompt. |
+| Whisper (OpenAI) | MIT | `initial_prompt` is the original context-conditioning hook — and it is *leaky*, known to hallucinate the prompt into output. That is this project's substitution bug, in the model everyone already uses. |
+
+**None were testable from this setup**, and the reasons are worth separating:
+
+| Model | Result |
+|---|---|
+| `mistralai/voxtral-small-24b-2507` | HTTP 404 — the OpenRouter **account's provider allowlist** excludes Mistral |
+| `nvidia/nemotron-3-nano-omni-…:free` | HTTP 404 — same cause |
+| `xiaomi/mimo-v2.5` | **accepted the audio and billed 0 audio tokens** — caught by the silent-drop guard |
+| `thinkingmachines/inkling-small` | HTTP 502 from the upstream: audio payload rejected |
+
+The third row is the notable one. `mimo-v2.5` is advertised as audio-capable, accepts an
+`input_audio` block without complaint, and processes none of it. Without the guard it would have
+returned a confident, entirely invented transcript — the second time that exact failure has been
+caught by that check, on a different provider.
+
+To test the blocked models, widen the provider allowlist in OpenRouter's account settings, or run
+them locally with vLLM or llama.cpp.
+
 ## Recommendation
 
 Use **`gemini-3.6-flash` on the native Gemini API**. It is the only configuration measured to
 transcribe the reference clip correctly without help, and the only one supporting the pre-upload
 path. OpenRouter is a working fallback and useful for models Google does not serve directly.
+
+The open-weight path is the one worth watching. Voxtral Transcribe 2's context biasing is the same
+idea this project implements by prompt, done inside the decoder where a prior can be weighted
+rather than merely requested — which may be a better answer to the substitution problem than any
+amount of instruction. Testing it needs a widened OpenRouter allowlist or a local runtime.

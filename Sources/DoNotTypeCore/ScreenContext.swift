@@ -69,5 +69,5 @@ public struct ScreenContext: Sendable, Codable, Equatable {
 }
 
 extension String {
-    var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
+    public var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 }
