@@ -5,6 +5,11 @@ import ai.pine19.donottype.PromptAssets
 import ai.pine19.donottype.Settings
 import ai.pine19.donottype.audio.WavRecorder
 import java.io.File
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -69,19 +74,45 @@ class DictationService(private val context: Context) {
         )
 
         return try {
-            val parts = buildList {
+            val contextParts = buildList {
                 if (screenContext != null && !screenContext.isEmpty) {
                     addAll(ContextEncoder().encode(screenContext))
                 }
-                add(InputPart.Audio(wav, "audio/wav"))
             }
-            val requestStart = System.currentTimeMillis()
-            val result = GeminiClient(apiKey = key, model = Settings.model)
-                .transcribe(PromptAssets.systemInstruction(context, Settings.fidelity), parts)
-            record.requestMillis = System.currentTimeMillis() - requestStart
-            record.audioTokens = result.usage.audioTokens
+            val instruction = PromptAssets.systemInstruction(context, Settings.fidelity)
+            val client = GeminiClient(apiKey = key, model = Settings.model)
 
-            val text = result.transcript.transcript.trim()
+            // Long recordings are split on silence and transcribed concurrently; anything under
+            // the threshold comes back as one chunk and takes the ordinary path unchanged. Every
+            // chunk carries identical context, which is what keeps a name spelled the same on both
+            // sides of a seam.
+            val chunks = AudioChunker.split(wav)
+            val requestStart = System.currentTimeMillis()
+
+            val results = if (chunks.size == 1) {
+                listOf(client.transcribe(instruction, contextParts + InputPart.Audio(wav, "audio/wav")))
+            } else {
+                coroutineScope {
+                    // Bounded, because a ten-minute dictation fired all at once is the fastest way
+                    // to hit a rate limit and turn a slow dictation into a failed one.
+                    val gate = Semaphore(3)
+                    chunks.map { chunk ->
+                        async {
+                            gate.withPermit {
+                                client.transcribe(
+                                    instruction,
+                                    contextParts + InputPart.Audio(chunk.data, "audio/wav"),
+                                )
+                            }
+                        }
+                    }.awaitAll()
+                }
+            }
+
+            record.requestMillis = System.currentTimeMillis() - requestStart
+            record.audioTokens = results.sumOf { it.usage.audioTokens ?: 0 }.takeIf { it > 0 }
+
+            val text = AudioChunker.stitch(results.map { it.transcript.transcript })
             record.status = DictationRecord.Status.COMPLETED
             record.text = text
             record.latencyMillis = System.currentTimeMillis() - releasedAt

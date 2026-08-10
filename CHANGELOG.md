@@ -77,7 +77,7 @@ release yet, so everything below is unreleased.
   the instruction that tells the model numbers must come from what was said, not from what is on
   screen. Those two platforms had been running without the project's central anti-substitution
   measure since their ports were written, and no test could have noticed. Both fixed.
-- **Long dictations are split across concurrent requests** on macOS, iOS and Windows. Cuts land in
+- **Long dictations are split across concurrent requests** on all four platforms. Cuts land in
   the middle of the quietest 100 ms near the target, so no chunk starts or ends mid-word, and every
   chunk carries the *same* screen context — which is what keeps a name spelled the same on both sides of a seam.
   Under 90 seconds nothing changes, so an ordinary dictation pays nothing for this. The overlay
