@@ -148,7 +148,9 @@ returned a confident, entirely invented transcript — the second time that exac
 caught by that check, on a different provider.
 
 To test the blocked models, widen the provider allowlist in OpenRouter's account settings, or run
-them locally with vLLM or llama.cpp.
+them locally — see **[GPU-TESTING.md](GPU-TESTING.md)**, which covers serving each candidate and
+what to measure. `--provider local` points the client at your own `/v1/chat/completions` endpoint,
+so no new code is needed.
 
 ## Recommendation
 

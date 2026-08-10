@@ -90,8 +90,9 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Settings
 
-- **Providers and keys** — Gemini (default) or any OpenAI-compatible gateway, with a live
-  connection test. Keys live in the Keychain / DPAPI, never in a config file.
+- **Providers and keys** — Gemini (default), any OpenAI-compatible gateway, or a server you run
+  yourself (vLLM, llama.cpp), with a live connection test. Keys live in the Keychain / DPAPI, never
+  in a config file.
 - **Hotkey** — which key, and whether a tap toggles or a hold talks.
 - **Fidelity** — `raw`, `light` (default), `tidy`. Even `tidy` only changes typography, never words.
 - **Grounding** — on/off, screenshot fallback, and two blocklists evaluated *before* capture.
@@ -141,6 +142,7 @@ predicted. See [CONTRIBUTING.md](CONTRIBUTING.md).
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the pieces fit, and which decisions were measured |
 | [docs/EVALUATION.md](docs/EVALUATION.md) | how quality is measured and what the numbers say |
 | [docs/MODELS.md](docs/MODELS.md) | which models and providers can actually do this job |
+| [docs/GPU-TESTING.md](docs/GPU-TESTING.md) | running open-weight models locally, and what to measure |
 | [PLAN.html](PLAN.html) | the original reverse-engineering survey this design came from |
 
 ## License

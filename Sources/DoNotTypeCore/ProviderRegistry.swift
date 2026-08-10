@@ -15,11 +15,20 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     case gemini
     /// Verified to forward audio. Useful as a second opinion and for models Google does not serve.
     case openrouter
+    /// Any OpenAI-compatible server you run yourself — vLLM, SGLang, llama.cpp.
+    ///
+    /// This is the interesting one for open-weight models: `vllm serve` exposes exactly the
+    /// `/v1/chat/completions` shape `OpenAICompatibleProvider` already speaks, so pointing this at
+    /// `http://your-gpu-box:8000/v1/chat/completions` needs no new client code. It also removes
+    /// the API key, the network dependency and the privacy question in one move.
+    case local
 
     public var defaultModel: String {
         switch self {
         case .openrouter: "google/gemini-3.6-flash"
         case .gemini: "gemini-3.6-flash"
+        // Whatever the server was started with; overridden by --model in practice.
+        case .local: ProcessInfo.processInfo.environment["DNT_LOCAL_MODEL"] ?? "local-model"
         }
     }
 
@@ -27,6 +36,9 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         switch self {
         case .openrouter: "OPENROUTER_API_KEY"
         case .gemini: "GEMINI_API_KEY"
+        // Most local servers ignore the key entirely; the factory supplies a placeholder so an
+        // unauthenticated server does not require inventing one.
+        case .local: "DNT_LOCAL_API_KEY"
         }
     }
 }
@@ -43,7 +55,10 @@ public enum ProviderFactory {
         appURL: String = "https://github.com/donottype/donottype",
         appTitle: String = "DoNotType"
     ) throws -> any TranscriptionProvider {
-        let key = environment[kind.apiKeyEnvVar]?.trimmed ?? ""
+        var key = environment[kind.apiKeyEnvVar]?.trimmed ?? ""
+        // A self-hosted server usually has no auth at all, so an absent key is normal there
+        // rather than a misconfiguration.
+        if kind == .local, key.isEmpty { key = "not-required" }
         guard !key.isEmpty else {
             throw ProviderError.missingAPIKey(envVar: kind.apiKeyEnvVar)
         }
@@ -58,6 +73,20 @@ public enum ProviderFactory {
             )
         case .gemini:
             return GeminiProvider(apiKey: key)
+
+        case .local:
+            let base = environment["DNT_LOCAL_BASE_URL"]
+                ?? "http://localhost:8000/v1/chat/completions"
+            guard let url = URL(string: base) else {
+                throw ProviderError.malformedResponse(
+                    "DNT_LOCAL_BASE_URL is not a valid URL: \(base)")
+            }
+            return OpenAICompatibleProvider(
+                name: "local",
+                baseURL: url,
+                apiKey: key,
+                // Open models generally reject an unknown `reasoning` field outright.
+                reasoningEffort: nil)
         }
     }
 }
