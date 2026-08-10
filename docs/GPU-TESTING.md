@@ -217,7 +217,12 @@ the production order copied the hostile `3.5` in 15/15. This is an ordering obse
 decoder-level biasing experiment above, and is recorded under `additional_decimal_number_smoke` in
 the result JSON. A paired Qwen3-Omni control retained `2.5` and omitted the decoy in all 15 hostile
 trials in both orders. MiniCPM-o changed its baseline rendering under audio-first ordering but still
-omitted the hostile decoy. The Voxtral flip is therefore not a generic property of every audio LLM.
+omitted the hostile decoy. Gemma 4 showed the inverse: audio-first improved its baseline to exact
+`2.5`, then copied hostile `3.5` in all 15 trials, while text-first produced near variants without
+the decoy. Ultravox matched the same ordering direction under explicit neutral delimiters: it
+copied hostile `3.5` in all 15 production text-before-audio trials but retained `2.5` and omitted
+the decoy in all 15 audio-before-text controls. The Voxtral flip is therefore not a generic
+property of every audio LLM, but it is also not unique to Voxtral.
 
 ---
 

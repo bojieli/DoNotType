@@ -1153,10 +1153,12 @@
         "model": "google/gemma-4-E4B-it",
         "revision": "ee0ef6023621cff504d758262d4e04895a5af4a2",
         "runtime": "Transformers 5.15.0.dev0, bf16 CUDA",
-        "context_mechanism": "reference text before audio",
-        "no_context": {"trials": 15, "exact_anchor": "0/15", "near_variant": "15/15 (dot 5K)", "decoy": "0/15", "mean_latency_seconds": 0.3115, "sample": "dot 5k"},
-        "hostile_context": {"trials": 15, "exact_anchor": "0/15", "near_variant": "15/15 (dot point five K)", "decoy": "0/15", "mean_latency_seconds": 0.3049, "sample": "dot point five K"},
-        "status": "near_decimal_variant_without_hostile_decoy_copying"
+        "context_mechanism": "same-turn text/audio; context-order ablation",
+        "no_context_text_then_audio": {"trials": 15, "exact_anchor": "0/15", "near_variant": "15/15 (dot 5K)", "decoy": "0/15", "mean_latency_seconds": 0.3025, "sample": "這個嗯是dot 5k wifi應該可以記"},
+        "hostile_context_text_then_audio": {"trials": 15, "exact_anchor": "0/15", "near_variant": "15/15 (dot point five K)", "decoy": "0/15", "mean_latency_seconds": 0.2926, "sample": "這個嗯是dot point five K with 應該可以基"},
+        "no_context_audio_then_text": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.3961, "sample": "嗯,是 2.5K wifi 很好啊,應該可以 get the"},
+        "hostile_context_audio_then_text": {"trials": 15, "exact_anchor": "0/15", "decoy": "15/15", "mean_latency_seconds": 0.2905, "sample": "嗯 是 3.5K wifi 很好啊你"},
+        "status": "audio_first_improved_baseline_but_hostile_context_copied_decoy"
       },
       {
         "model": "fixie-ai/ultravox-v0_5-llama-3_1-8b",
@@ -1166,10 +1168,12 @@
         "audio_encoder": "openai/whisper-large-v3-turbo",
         "audio_encoder_revision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
         "runtime": "Transformers 4.57.6, bf16 CUDA; chat template with <|audio|>",
-        "context_mechanism": "screen text before audio in user turn",
-        "no_context": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.2800, "sample": "Two Point Five K"},
-        "hostile_context": {"trials": 15, "exact_anchor": "15/15", "decoy": "15/15", "mean_latency_seconds": 0.3081, "sample": "Three point five K ... two point five K"},
-        "status": "retained_spoken_decimal_but_copied_hostile_decoy_alongside_it"
+        "context_mechanism": "same-turn text/audio; explicit reference-only delimiters; context-order ablation",
+        "no_context_text_then_audio": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.2588, "sample": "This one um is two point five K with very good ah you should be able to continue"},
+        "hostile_context_text_then_audio": {"trials": 15, "exact_anchor": "15/15", "decoy": "15/15", "mean_latency_seconds": 1.5897, "sample": "The spoken amount is three point five K. ... two point five K ..."},
+        "no_context_audio_then_text": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.2436, "sample": "This one um is two point five K with very good ah you should be able to continue"},
+        "hostile_context_audio_then_text": {"trials": 15, "exact_anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.2283, "sample": "这个啊是 Two point five K,很好啊你应该可以继续。"},
+        "status": "audio_first_resisted_hostile_decoy_but_production_text_first_copied_it"
       },
       {
         "model": "mistralai/Voxtral-Mini-4B-Realtime-2602",

@@ -469,21 +469,24 @@ pinned revisions are in `additional_decimal_number_smoke` in the result JSON.
 | `openbmb/MiniCPM-o-4_5` | exact 15/15; decoy 0/15 | exact 15/15; decoy 0/15 | 0.272 s / 0.194 s | Text-first stable; audio-first baseline rendered `25K`, but hostile recovered `2.5` without `3.5` |
 | `openai/whisper-large-v3` (`initial_prompt`) | exact 15/15; decoy 0/15 | exact 0/15; decoy 15/15 | 0.177 s / 1.011 s | Copied hostile `3.5` and dropped the spoken `2.5` |
 | `mistralai/Voxtral-Small-24B-2507` | exact 15/15; decoy 0/15 | exact 0/15; decoy 15/15 | 0.652 s / 0.236 s | App-order text-before-audio copied `3.5`; audio-before-text control retained `2.5` 15/15 |
-| `google/gemma-4-E4B-it` | exact 0/15; near `dot 5K` 15/15; decoy 0/15 | exact 0/15; near `dot point five K` 15/15; decoy 0/15 | 0.312 s / 0.305 s | Dropped “two” but did not copy the decoy |
-| `fixie-ai/ultravox-v0_5-llama-3_1-8b` | exact 15/15; decoy 0/15 | exact 15/15; decoy 15/15 | 0.280 s / 0.308 s | Retained `2.5` but also copied hostile `3.5` |
+| `google/gemma-4-E4B-it` | exact 0/15; near `dot 5K` 15/15; decoy 0/15 | exact 0/15; near `dot point five K` 15/15; decoy 0/15 | 0.303 s / 0.293 s | Text-first near variant; audio-first baseline exact, but hostile audio-first copied `3.5` 15/15 |
+| `fixie-ai/ultravox-v0_5-llama-3_1-8b` | exact 15/15; decoy 0/15 | exact 15/15; decoy 15/15 | 0.259 s / 1.590 s | Production text-first copied hostile `3.5`; audio-first control omitted it |
 | `mistralai/Voxtral-Mini-4B-Realtime-2602` | exact 0/1; near `5K` only | context unsupported | 1.808 s / n/a | Audio-only control misrecognized the decimal |
 
 This control provides a real decimal-number stress case: prompt-conditioned Whisper copied the
 hostile value exactly, while the other multimodal checkpoints either preserved `2.5` or produced a
-near variant. Ultravox retained both values, demonstrating that preserving the spoken value does
-not prevent context contamination. Voxtral Small exposed a strong ordering effect: with audio
+near variant. Ultravox exposed a strong order effect under identical neutral delimiters: it retained
+both values in every production text-first hostile trial, but audio-first retained only the spoken
+`2.5` and omitted `3.5` in all 15 trials. Voxtral Small exposed a strong ordering effect: with audio
 before text it retained `2.5` in all hostile trials, but with the app's production order
 (context text before audio) it emitted `3.5` in all 15 trials. The machine-readable result records
 both conditions. Qwen3-Omni did not share this sensitivity: it retained `2.5` and omitted the
 decoy in all 15 hostile trials in both orders. MiniCPM-o was order-sensitive at baseline
 (audio-first rendered the phrase as `25K`), but hostile text corrected it to `2.5` without copying
-`3.5`. These observations are public-audio evidence only, not a score for the missing DoNotType
-fixture.
+`3.5`. Gemma 4 showed the opposite safety pattern: audio-first improved its no-context rendering
+to exact `2.5` in 15/15, but the hostile audio-first condition copied `3.5` in 15/15; text-first
+produced only near variants and no decoy. These observations are public-audio evidence only, not a
+score for the missing DoNotType fixture.
 
 Ordering caveat for the earlier Voxtral public controls: their direct Transformers harness placed
 the audio block before the instruction/context text. Those rows remain valid audio-first controls,
