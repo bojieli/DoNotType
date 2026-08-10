@@ -182,10 +182,22 @@ struct Suite: AsyncParsableCommand {
         var all: [EvalOutcome] = []
         var regressions: [EvalOutcome] = []
 
+        var errored: [String] = []
+
         for (testCase, url) in cases {
             var runs: [EvalOutcome] = []
             for _ in 0..<repeatCount {
-                runs.append(try await runner.run(testCase, caseFile: url))
+                do {
+                    runs.append(try await runner.run(testCase, caseFile: url))
+                } catch {
+                    // One unreachable case must not discard the whole run. Recorded and reported
+                    // rather than swallowed, so a partial suite is never mistaken for a clean one.
+                    errored.append("\(testCase.id): \(error.localizedDescription)")
+                }
+            }
+            guard !runs.isEmpty else {
+                print("ERROR \(testCase.id)  — all \(repeatCount) runs failed")
+                continue
             }
             all.append(contentsOf: runs)
             regressions.append(contentsOf: runs.filter { $0.effect.isBug })
@@ -211,6 +223,11 @@ struct Suite: AsyncParsableCommand {
         print("neutral-correct  \(effect(.neutralCorrect))")
         print("neutral-wrong    \(effect(.neutralWrong))   ← context did not help")
         print("REGRESSED        \(effect(.regressed))   ← must be 0: context broke a correct baseline")
+
+        if !errored.isEmpty {
+            print("\nerrors (\(errored.count) run(s) did not complete):")
+            for message in errored.prefix(5) { print("  \(message.prefix(120))") }
+        }
 
         if !regressions.isEmpty {
             print("\nregressions:")

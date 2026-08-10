@@ -1,0 +1,12 @@
+{
+  "id": "real-acronym",
+  "note": "Real speech in which the speaker says 'DAPO' — a real RL algorithm — while the screen is full of GRPO, an equally real and similar-sounding one. Acronyms are the hardest near-miss: they are short, unstressed, phonetically close, and the model has strong priors about which ones exist. This is the case a dictionary-based tool fails worst, because both are plausible vocabulary entries.",
+  "audio": "../audio/real-acronym.wav",
+  "mustContain": ["gradient"],
+  "mustNotContain": ["GRPO"],
+  "context": {
+    "appName": "Chrome",
+    "windowTitle": "GRPO training notes",
+    "visibleText": "GRPO computes the gradient over grouped rollouts. We use GRPO for the policy update. Compare GRPO against PPO on the same batch. The GRPO objective normalises within the group."
+  }
+}

@@ -84,6 +84,15 @@ release yet, so everything below is unreleased.
 - **Rewrite styles are implemented but not recommended.** Both single-pass and two-pass are
   measured and neither is good enough to enable by default.
 
+### Open findings
+
+- **Context corrupts numbers without copying the screen's value.** Speaker says 4240, screen says
+  4250, transcript says **1240**. "Substitution" is too narrow a name for the failure: grounding
+  degrades numeric accuracy generally, so a mitigation aimed only at "do not copy what is on
+  screen" would miss this case.
+- **Acronyms are more robust than numbers.** GRPO on screen five times against a spoken DAPO
+  passed 2/2, despite being phonetically closer than any of the number cases.
+
 ### Measured and rejected
 
 Recorded because the reasoning was plausible and someone will otherwise re-derive it.

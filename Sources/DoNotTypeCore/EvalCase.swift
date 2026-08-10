@@ -112,6 +112,9 @@ public struct EvalRunner: Sendable {
     }
 
     /// Transcribes once. `context` of `nil` produces the no-context baseline.
+    ///
+    /// Retries transient failures rather than aborting. A suite run costs twenty minutes and real
+    /// money, and losing it to one dropped connection is a harness defect, not a finding.
     public func transcribe(audio: AudioFile, context: ScreenContext?) async throws
         -> TranscriptionResult
     {
@@ -120,9 +123,23 @@ public struct EvalRunner: Sendable {
             parts.append(contentsOf: encoder.encode(context))
         }
         parts.append(audio.part)
-        return try await provider.transcribe(
-            TranscriptionRequest(
-                model: model, systemInstruction: systemInstruction, parts: parts))
+
+        var delay = Duration.milliseconds(800)
+        var lastError: any Error = ProviderError.emptyOutput
+
+        for attempt in 1...4 {
+            do {
+                return try await provider.transcribe(
+                    TranscriptionRequest(
+                        model: model, systemInstruction: systemInstruction, parts: parts))
+            } catch {
+                lastError = error
+                guard attempt < 4, TranscriptionService.isTransient(error) else { throw error }
+                try? await Task.sleep(for: delay)
+                delay = delay * 2
+            }
+        }
+        throw lastError
     }
 
     public func run(_ testCase: EvalCase, caseFile: URL) async throws -> EvalOutcome {

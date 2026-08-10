@@ -56,11 +56,15 @@ reported 0 regressions and the next reported 2.
 synthesized-only version could not:
 
 ```
-runs             14  (11 matched ground truth)
+runs             18  (15 matched ground truth)
 improved          0
-neutral-correct  11
-REGRESSED         3   ← must be 0
+neutral-correct  15
+neutral-wrong     1
+REGRESSED         2   ← must be 0
 ```
+
+Nine cases, four of them real speech. The regression count moves between runs because several
+cases are genuinely flaky — that is the measurement working, not noise to be smoothed away.
 
 Two of the three regressions are the same clip on consecutive runs:
 
@@ -101,6 +105,27 @@ tokens the case turns on and ignore the rest.
 2.5 in 21% of runs — this clip is genuinely hard, the number is unstressed and mid-sentence. So the
 honest claim is that grounding roughly **doubles an already non-zero error rate**, from ~21% to
 ~36%, not that it creates it.
+
+### Context can corrupt a number without copying the screen's
+
+The code-switched case found a failure mode the original model of this bug does not cover. The
+speaker says **4240**; the screen repeats **4250**; the transcript came back **1240**.
+
+```
+real-codeswitch:
+  baseline  …比如說這個是 4240，我印像里…      ← correct
+  context   …比如说这个是 1240 我印象里…       ← neither spoken nor on screen
+```
+
+So "substitution" is too narrow a name. Screen context does not only pull a value toward the one
+displayed — it degrades numeric accuracy generally, producing values that appear in neither the
+audio nor the context. Any mitigation aimed only at "do not copy the screen's value" would miss
+this entirely.
+
+Acronyms, by contrast, held up. `real-acronym` puts **GRPO** on screen five times against a speaker
+saying **DAPO** — phonetically close, both real algorithms, exactly the case a vocabulary-based
+tool fails worst — and it passed 2/2. Whatever is fragile about numbers is not simply "short
+tokens".
 
 ## Ablation
 
