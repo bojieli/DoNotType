@@ -237,10 +237,12 @@ private struct SetupRow: View {
     }
 
     private var symbol: String {
+        // Spelled with explicit optional patterns. `true` / `false` / `nil` is exhaustive to
+        // Swift 6.2 and not to 6.0, and the older compiler is the one contributors have.
         switch isDone {
-        case true: "checkmark.circle.fill"
-        case false: "circle"
-        case nil: "questionmark.circle"
+        case .some(true): "checkmark.circle.fill"
+        case .some(false): "circle"
+        case .none: "questionmark.circle"
         }
     }
 }
