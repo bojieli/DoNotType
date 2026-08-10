@@ -96,6 +96,22 @@
       },
       "hostile_context": "not_supported_by_realtime_architecture",
       "context_mechanism": "none (streaming ASR; no text-context input)"
+    },
+    {
+      "model": "Qwen/Qwen3-ASR-0.6B-hf",
+      "revision": "7f1569a48a89f3e3f4dc3a5c9d28bddd903bc76c",
+      "runtime": "Transformers 5.15.0.dev0, bf16 CUDA",
+      "weight_files": 1,
+      "weight_bytes": 1564928088,
+      "audio_segment": {
+        "source": "patrickvonplaten/audio_samples/obama.mp3",
+        "duration_seconds": 12.0,
+        "sha256": "4004049d1a2966b67e0fdc0497755118f97822c7f275dc4ed96f5ef71d55f552",
+        "reason": "the spoken anchor is in the opening sentence; ASR control uses the same practical segment as Whisper and Ultravox"
+      },
+      "no_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.3934},
+      "hostile_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.3634},
+      "context_mechanism": "Qwen3-ASR system prompt/hotword field"
     }
   ]
 }
