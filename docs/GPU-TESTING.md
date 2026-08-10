@@ -36,7 +36,7 @@ exists purely to point that client at your machine.
 
 | Priority | Model | VRAM (bf16) | Why |
 |---|---|---|---|
-| **1** | `mistralai/Voxtral-Small-24B-2507` | ~48 GB | **Ships context biasing.** The direct test of the hypothesis above. |
+| **1** | `mistralai/Voxtral-Small-24B-2507` | ~48 GB | Closest cached Mistral audio model to the Transcribe 2 context-biasing lead. |
 | 2 | `Qwen/Qwen3-Omni-30B-A3B-Instruct` | ~60 GB (MoE, 3B active) | Takes arbitrary text alongside audio, exactly like the hosted path. Open SOTA on 32/36 audio benchmarks. |
 | 3 | `google/gemma-4-E4B-it` | ~10 GB | Small enough for a single consumer card; establishes the floor. |
 | 4 | `fixie-ai/ultravox-v0_5-llama-3_1-8b` | ~18 GB | Projects audio into the token space; a third architecture for comparison. |
@@ -51,6 +51,19 @@ harness is identical.
 ---
 
 ## 2. Serving
+
+Download and verify the actual checkpoint before starting a server. `snapshot_download` caches the
+immutable Hub revision and the helper refuses a snapshot that has no model weights; it never
+creates or falls back to a synthetic model:
+
+```bash
+python3 eval/download-checkpoint.py mistralai/Voxtral-Small-24B-2507
+# {"model_type": "voxtral", "path": "...", "revision": "...", "weight_bytes": ..., "weight_files": 11}
+```
+
+Use the printed snapshot path with a direct Transformers runner, or use the model ID with vLLM;
+vLLM will load the same Hub checkpoint from its cache. Record the resolved revision in results so
+that a later model update cannot be mistaken for a reproduction.
 
 ### vLLM (recommended — closest to the hosted API shape)
 
@@ -166,18 +179,19 @@ matter of prompt wording — and it would come with no API key and no data leavi
 
 ## 5. Voxtral's context biasing specifically
 
-This is the experiment that motivated the doc. Voxtral exposes context biasing as a first-class
-input rather than as prose in the prompt, so the comparison is:
+This is the experiment that motivated the doc. The Transcribe 2 serving surface exposes context
+biasing as a first-class input rather than as prose in the prompt, so the intended comparison is:
 
 - **A.** Screen context passed as prompt text, exactly as DoNotType does today (`dnt-eval ablate`
   handles this).
 - **B.** The same screen text passed through Voxtral's context-biasing parameter instead.
 
 If B substitutes less than A at equal baseline accuracy, the answer is decoder-level biasing and
-this project's whole approach should change. Check Mistral's serving docs for the parameter name —
-it is not part of the OpenAI-compatible schema, so B will need a direct call rather than
-`dnt-eval`. A short Python script comparing the two on the same clip is enough; the number is what
-matters, not the harness.
+this project's whole approach should change. The cached `Voxtral-Small-24B-2507` checkpoint tested
+here does **not** expose that parameter in either its Transformers processor or Mistral
+transcription request, so B could not be run. A future run needs the separate Transcribe 2 model
+and serving surface; a short Python script comparing the two on the same clip is enough once that
+checkpoint is available.
 
 ---
 
@@ -209,6 +223,22 @@ pasted into an issue is fine — the table can be written from it.
 
 **Audio format.** The app records 16 kHz mono WAV and the eval clips are the same. Some servers
 want a specific sample rate; resample rather than assuming (`ffmpeg -ac 1 -ar 16000`).
+
+**Real-speech fixtures are required but intentionally ignored.**
+`eval/audio/real-talk-gemini15.wav` and `eval/audio/real-mandarin.wav` are not part of the repository
+because they contain real speech. A local run is comparable to the hosted baseline only when those
+exact files have been restored or supplied separately; synthetic TTS stand-ins are transport smoke
+tests, not benchmark data. The real cases use `mustContain`/`mustNotContain` fragment assertions,
+so wording variation does not mask a version-number or language regression. The Python fallback
+recognizes the known stand-in by SHA-256 and blocks it by default; pass `--allow-synthetic` only for
+an explicitly labelled transport smoke test. Verify any replacement clip by ear before recording
+scores.
+
+**Swift is optional on a GPU host.** The production harness is Swift, but a machine used only for
+model serving may not have a Swift toolchain. In that case, use
+[`eval/local-gpu-benchmark.py`](../eval/local-gpu-benchmark.py), which sends the same OpenAI-
+compatible request shape and reports the same probe/ablation/suite measurements. Swift build and
+test results should be recorded as unavailable rather than inferred from the Python fallback.
 
 **`response_format`.** The client sends a JSON schema and retries once without it on a 400. Local
 servers vary in support — the retry handles it, but the first request per model is wasted, and the

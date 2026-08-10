@@ -6,7 +6,8 @@ xcuserdata/
 DerivedData/
 
 # Eval artifacts: audio and results are local, case definitions are committed.
-eval/results/
+eval/results/*
+!eval/results/local-real-audio-2026-08-10.json
 eval/audio/*.wav
 eval/audio/*.flac
 eval/audio/*.ogg
