@@ -27,13 +27,11 @@ speaker says "**Gemini 1.5**"; the test context repeats "**Gemini 2.5**" five ti
 unstressed and mid-sentence, which makes it a genuinely hard case — deliberately, because an easy
 case measures nothing.
 
-**Current-fixture warning (2026-08-10).** The WAV payload for that reference clip is not present in
-this checkout. The ignored path is the known synthetic TTS stand-in and is rejected by the benchmark
-guard. The hosted tables below preserve historical handoff measurements, but they are not currently
-reproducible or valid claims against the DoNotType real-speech baseline. Do not cite the 58%
-substitution figure, provider near-miss rates, or any exact-fixture result until the original WAV is
-restored and verified. The local GPU section below uses real downloaded checkpoints and separately
-labeled public recordings instead.
+**Current-fixture status (2026-08-10).** The user-supplied reference WAV and companion real fixtures
+are now present under `eval/audio/` and verified by SHA-256. The historical hosted tables below remain
+historical; the new exact-fixture results are recorded in the local GPU section and in
+[`eval/results/local-real-audio-2026-08-10.json`](../eval/results/local-real-audio-2026-08-10.json).
+The known synthetic stand-in hash remains rejected and is not used for any benchmark claim.
 
 ## Historical hosted results — 2026-08-10 (fixture unavailable)
 
@@ -128,15 +126,10 @@ is hard. A model that does well on it may do worse elsewhere. Adding more real c
 A local model removes the API key, network dependency, and data-sharing question. These are the
 results from the RTX PRO 6000 Blackwell workstation (`nvidia-smi`: 97,887 MiB VRAM) on 2026-08-10.
 
-The authoritative real-speech fixtures, `eval/audio/real-talk-gemini15.wav` and
-`eval/audio/real-mandarin.wav`, are not present in this checkout. The ignored file currently at
-`real-talk-gemini15.wav` has the known synthetic TTS hash and is rejected by the benchmark guard.
-The real fixtures could not be recovered from the repository or its upstream sources. Consequently,
-**none of the cells below is a valid result against the hosted
-real-speech baseline**. The model weights are the real downloaded checkpoints (not mock or
-synthetic models): Voxtral, Gemma, Qwen, Ultravox, Whisper large-v3, Voxtral Realtime, Qwen3-ASR, and MiniCPM-o 4.5. The WAVs used here are
-synthetic espeak stand-ins, retained only as ignored files to exercise audio transport,
-transcription, and context behavior. Do not compare their rates with the Gemini numbers above.
+The authoritative real-speech fixtures are now supplied under `eval/audio/`. The older table below
+is explicitly labelled **synthetic stand-ins** and remains useful only for transport/scorer smoke
+tests. The exact uploaded-fixture campaign, run against downloaded immutable checkpoints, follows
+below; its hashes, raw probe samples, ablations, and per-case counts are in the result JSON.
 
 The downloaded snapshots were verified with
 [`eval/download-checkpoint.py`](../eval/download-checkpoint.py); these are the immutable Hub
@@ -167,6 +160,27 @@ No synthetic checkpoint, randomly initialized model, or generated weights were u
 | `openai/whisper-large-v3`, openai-whisper 20240930, fp16 CUDA | yes; token usage unavailable, ~5.9 GiB allocated | 15/15 (`Gemini 1.5`) | 15/15; 0/15 substitutions | 0/15 grounded with `initial_prompt`; 12/15 no-context | ~0.59 s no-context; ~0.54 s hostile |
 | `fixie-ai/ultravox-v0_5-llama-3_1-8b` + real Llama/Whisper, Transformers 4.57.6, bf16 | yes; 12 s opening segment, ~8.1B params | Chicago 15/15 | Chicago 15/15; Seattle 0/15 | not run (architecture has no benchmark fixture) | ~0.68 s no-context; ~0.42 s hostile |
 
+### Uploaded exact-fixture campaign (real WAVs, downloaded checkpoints)
+
+The uploaded files were verified as 16 kHz mono 16-bit PCM and run directly; no synthetic audio,
+mock weights, or generated checkpoints were used. Each model received a probe, 15 trials in each
+of four context/rewrite conditions, and three repeats of all 16 `eval/nearmiss` cases. Full SHA-256
+hashes, raw probe transcripts, ablation latencies, and per-case counts are in
+[`eval/results/local-real-audio-2026-08-10.json`](../eval/results/local-real-audio-2026-08-10.json).
+
+| Model (pinned Hub revision) | Real-version probe | Four-condition ablation (`1.5` / `2.5`) | Suite (48 grounded trials) |
+|---|---|---|---:|
+| Qwen3-Omni-30B-A3B-Instruct (`26291f…e695`) | `Gemini 2.5`/“two point five”; no `1.5` | no-context 0/15 / 15/15; verbatim 0/15 / 0/15 literal but “two point five”; single-formal 0/15 / 15/15; two-formal 0/15 / 15/15 | 33 matched, 12 improved, 3 regressed |
+| Voxtral-Small-24B-2507 (`da5b424…69c1`) | `Gemini 2.5`; no `1.5` | 0/15 / 15/15 in all four conditions | 30 matched, 6 improved, 0 regressed |
+| Gemma-4-E4B-it (`ee0ef60…f4a2`) | `Gemini 2.` plus leaked prompt/template text | 0/15 `1.5` in all; `2.5` 0/15 no-context and single-formal, 15/15 verbatim and two-formal | 6 matched, 3 improved, 0 regressed; 42 neutral-wrong |
+
+The exact reference recording therefore did not reproduce a successful `1.5` recovery on any of
+these downloaded checkpoints. Voxtral retained the Mandarin, code-switch, acronym, jargon, and
+brand anchors; Qwen retained most of those spoken anchors but failed the strict code-switch number
+assertion; Gemma leaked system/template text and was broadly unusable.
+When a model spelled a number (“two point five”), the result was scored as a numeric error even when
+the literal `2.5` counter was zero.
+
 Voxtral and Gemma were run through their native Transformers processors rather than vLLM. Voxtral
 used the model's dedicated transcription mode for the reference check and audio-instruct mode for
 the context tests. Gemma required an isolated Transformers build because the stable global
@@ -190,8 +204,8 @@ the tradition of presidents before me.
 ```
 
 This is a real-audio checkpoint smoke test, not the DoNotType benchmark: Realtime's processor
-accepts audio only and exposes no screen-context or context-biasing input. The exact
-`real-talk-gemini15.wav` file is still required for the substitution experiment.
+accepts audio only and exposes no screen-context or context-biasing input. Its audio-only result is
+therefore separate from the uploaded exact-fixture context experiment above.
 
 The same 203.52-second Obama recording was also sent through the previously downloaded priority
 weights: Gemma produced a coherent transcript in 2.49 seconds, Voxtral Small in 6.52 seconds,
@@ -612,16 +626,16 @@ serving and measurement procedure. `--provider local` points the client at a loc
 ## Recommendation
 
 The historical hosted measurements favored **`gemini-3.6-flash` on the native Gemini API**, and it
-is the only listed configuration supporting the pre-upload path. Because the exact reference WAV is
-currently missing, that model comparison must be re-run before treating it as a current benchmark.
-OpenRouter remains a working fallback and useful for models Google does not serve directly.
+is the only listed configuration supporting the pre-upload path. The uploaded exact fixture now
+shows that Qwen3-Omni, Voxtral Small, and Gemma 4 all fail the no-context `Gemini 1.5` gate, so none
+can currently replace that hosted path on this workload. OpenRouter remains a working fallback and
+useful for models Google does not serve directly.
 
-The open-weight path is the one worth watching. The local Voxtral Small and Gemma measurements
-above are encouraging transport and runtime checks, but they are not evidence against the hosted
-baseline until the real reference WAV is supplied. Voxtral Transcribe 2's context biasing is the
-same idea this project implements by prompt, done inside the decoder where a prior can be weighted
-rather than merely requested — and it remains the most promising follow-up experiment. It needs the
-Transcribe 2 serving surface (the Small checkpoint tested here does not expose that parameter).
+The open-weight path remains worth watching, but the exact-fixture result is a negative one rather
+than a transport-only caveat. Voxtral Transcribe 2's context biasing is the same idea this project
+implements by prompt, done inside the decoder where a prior can be weighted rather than merely
+requested — and it remains the most promising follow-up experiment. It needs the Transcribe 2
+serving surface (the Small checkpoint tested here does not expose that parameter).
 
 ## Latency against fidelity (2026-08-10)
 

@@ -266,15 +266,15 @@ pasted into an issue is fine — the table can be written from it.
 **Audio format.** The app records 16 kHz mono WAV and the eval clips are the same. Some servers
 want a specific sample rate; resample rather than assuming (`ffmpeg -ac 1 -ar 16000`).
 
-**Real-speech fixtures are required but intentionally ignored.**
-`eval/audio/real-talk-gemini15.wav` and `eval/audio/real-mandarin.wav` are not part of the repository
-because they contain real speech. A local run is comparable to the hosted baseline only when those
-exact files have been restored or supplied separately; synthetic TTS stand-ins are transport smoke
-tests, not benchmark data. The real cases use `mustContain`/`mustNotContain` fragment assertions,
-so wording variation does not mask a version-number or language regression. The Python fallback
-recognizes the known stand-in by SHA-256 and blocks it by default; pass `--allow-synthetic` only for
-an explicitly labelled transport smoke test. Verify any replacement clip by ear before recording
-scores.
+**Real-speech fixtures are now supplied under `eval/audio/`.**
+The uploaded `real-talk-gemini15.wav` and companion recordings are verified 16 kHz mono PCM and
+their SHA-256 hashes are recorded in `eval/audio/README.md` and the result JSON. The short
+`say`-generated clips remain transport/scorer smoke tests only. The real cases use
+`mustContain`/`mustNotContain` fragment assertions, so wording variation does not mask a
+version-number or language regression. The Python fallback recognizes the known synthetic stand-in
+by SHA-256 and blocks it by default; pass `--allow-synthetic` only for an explicitly labelled
+transport smoke test. The completed direct-checkpoint campaign is summarized in
+[`docs/MODELS.md`](MODELS.md#uploaded-exact-fixture-campaign-real-wavs-downloaded-checkpoints).
 
 **Swift is optional on a GPU host.** The production harness is Swift, but a machine used only for
 model serving may not have a Swift toolchain. In that case, use
