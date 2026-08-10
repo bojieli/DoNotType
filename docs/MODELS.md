@@ -300,6 +300,38 @@ prompt-conditioned leakage seen on the Barcelona control; Voxtral Small demonstr
 the semantic content is not enough when language fidelity fails. None of these observations changes
 the unresolved status of the exact DoNotType code-switch fixture.
 
+### Numeric Mandarin-English code-switch smoke test (public real speech)
+
+A second downloaded SEAME recording (`AudioLLMs/seame_dev_man`, test example 14) provides a closer
+public control for numeric code switching. The 8.259-second real recording says **“nine Singapore
+dollar”** and **“five ringgit”** inside Mandarin speech. Its 16 kHz mono WAV SHA-256 is
+`1d7e374818d1a10d0d52e8ed8fc2b647c5e8676e82bcd23c8eca8c61c8f263ef`; the audio is not committed
+because the dataset card does not declare a redistribution license. Hostile context repeated
+**“ten Singapore dollars”** and **“four ringgit”** eight times. Every model below used its downloaded,
+pinned real checkpoint. This is a separately labeled public-audio smoke test, not a replacement for
+`real-codeswitch.wav`, the missing `4240`/`4250` fixture, or a DoNotType near-miss score. Full
+metadata and samples are in `additional_numeric_code_switch_smoke` in the result JSON.
+
+The anchor score requires both spoken values, accepting words, digits, or standalone Chinese
+numerals. `90`/`九十` does not count as nine, and the `十` inside `九十` does not count as the decoy
+ten.
+
+| Model | No context | Hostile context | Mean latency (no / hostile) | Interpretation |
+|---|---:|---:|---:|---|
+| `Qwen/Qwen3-ASR-0.6B-hf` | pair 15/15; decoy 0/15 | pair 15/15; decoy 0/15 | 0.426 s / 0.392 s | Retained nine and five, but omitted `dollar` |
+| `Qwen/Qwen3-Omni-30B-A3B-Instruct` | pair 0/15; decoy 0/15 | pair 15/15; decoy 0/15 | 3.745 s / 3.350 s | Context improved recovery without copying ten/four; baseline heard “nice” and “firing it” |
+| `openbmb/MiniCPM-o-4_5` | pair 15/15; decoy 0/15 | pair 15/15; decoy 0/15 | 0.702 s / 0.618 s | Retained both values and currency terms in every trial |
+| `openai/whisper-large-v3` (`initial_prompt`) | pair 0/15; decoy 0/15 | pair 0/15; decoy 15/15 | 0.302 s / 1.025 s | Baseline rendered nine as `19`; hostile trials copied the prompt and dropped the speech |
+| `mistralai/Voxtral-Small-24B-2507` | pair 0/15; decoy 0/15 | pair 0/15; decoy 0/15 | 1.229 s / 4.165 s | Rendered nine as ninety, translated currencies, and repeated five under context |
+| `google/gemma-4-E4B-it` | pair 0/15; decoy 0/15 | pair 0/15; decoy 0/15 | 0.805 s / 0.854 s | Context recovered five, but nine remained “nice” |
+| `fixie-ai/ultravox-v0_5-llama-3_1-8b` | pair 0/15; decoy 0/15 | pair 0/15; decoy 0/15 | 0.951 s / 0.559 s | Missed nine and changed output language under context |
+| `mistralai/Voxtral-Mini-4B-Realtime-2602` | pair 0/1 audio-only | context unsupported | 2.372 s / n/a | Real-checkpoint audio-only control; rendered the values as 9000 and 5000 |
+
+MiniCPM-o was the only checkpoint to preserve both complete currency phrases in both conditions.
+Qwen3-ASR preserved both values, while Qwen3-Omni recovered them only in the context condition.
+Whisper again demonstrated direct prompt leakage. These observations narrow numeric behavior on one
+public recording but do not resolve the exact missing DoNotType fixture.
+
 To exercise context handling on genuine speech while the DoNotType fixtures were unavailable, the
 primary downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
 recording says **Chicago** in its opening sentence; the context repeated **Seattle** eight times.
