@@ -58,7 +58,13 @@ final class DictationModel {
         }
     }
 
+    /// The prompt in force. Editable, for the same reason as on macOS.
+    var promptText: String = ""
+    private(set) var promptStatus: String?
+    private(set) var isPromptCustom = false
+
     private let transcriptStore = TranscriptStore()
+    private let prompts: PromptStore
     private let history: HistoryStore
     private var recorder: AVAudioRecorder?
     private var levelTimer: Timer?
@@ -77,6 +83,41 @@ final class DictationModel {
         let directory = TranscriptStore.containerURL
             ?? HistoryStore.defaultDirectory()
         history = HistoryStore(directory: directory.appendingPathComponent("History"))
+        prompts = PromptStore(directory: directory.appendingPathComponent("Prompt"))
+        loadPrompt()
+    }
+
+    // MARK: - Prompt editing
+
+    private static var bundledPromptURL: URL? {
+        Bundle.main.url(forResource: "PROMPT", withExtension: "md")
+    }
+
+    func loadPrompt() {
+        guard let defaultURL = Self.bundledPromptURL else {
+            promptStatus = "PROMPT.md is missing from the app bundle."
+            return
+        }
+        promptText = (try? prompts.activeTemplate(default: defaultURL)) ?? ""
+        isPromptCustom = prompts.hasCustomPrompt
+        promptStatus = nil
+    }
+
+    func savePrompt() {
+        do {
+            try prompts.save(promptText)
+            isPromptCustom = true
+            promptStatus = "Saved. The published measurements describe the shipped prompt and no "
+                + "longer apply to this one."
+        } catch {
+            promptStatus = error.localizedDescription
+        }
+    }
+
+    func restoreDefaultPrompt() {
+        try? prompts.restoreDefault()
+        loadPrompt()
+        promptStatus = "Restored the shipped prompt."
     }
 
     var hasAppGroup: Bool { TranscriptStore.containerURL != nil }
@@ -297,8 +338,8 @@ final class DictationModel {
 
     private func makeCoordinator() -> RetryCoordinator? {
         guard !apiKey.isEmpty,
-            let promptURL = Bundle.main.url(forResource: "PROMPT", withExtension: "md"),
-            let instruction = try? PromptBuilder(contentsOf: promptURL)
+            let promptURL = Self.bundledPromptURL,
+            let instruction = try? prompts.builder(default: promptURL)
                 .systemInstruction(fidelity: fidelity)
         else { return nil }
 

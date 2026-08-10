@@ -64,8 +64,10 @@ release yet, so everything below is unreleased.
 - **The Context Inspector was documented but did not exist.** README, SECURITY.md and the
   architecture table all described it. A false claim in a privacy document is the worst place to
   have one; it is now built.
-- **History search and the prompt editor were macOS-only.** Both are now on Windows, Android and
-  iOS, with the filtering rules in each platform's core so they are testable without a UI.
+- **History search and the prompt editor were macOS-only.** Both are now on all four platforms,
+  with the filtering and validation rules in each platform's core so they are testable without a
+  UI. Editing an invalid prompt is rejected at the moment of editing rather than surfacing as a
+  mid-dictation failure, and every fidelity must resolve before a prompt can be saved.
 
 ### Known issues
 

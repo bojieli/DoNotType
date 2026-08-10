@@ -49,6 +49,7 @@ public sealed class SettingsForm : Form
         var tabs = new TabControl { Dock = DockStyle.Fill };
         tabs.TabPages.Add(BuildGeneralTab());
         tabs.TabPages.Add(BuildHistoryTab());
+        tabs.TabPages.Add(BuildPromptTab());
         Controls.Add(tabs);
 
         LoadValues();
@@ -270,6 +271,69 @@ public sealed class SettingsForm : Form
         _historySummary.Text =
             $"{shown} · {retryable} to retry · {bytes / 1024} KB audio"
             + "   (double-click to retry · Delete key or right-click to remove)";
+    }
+
+    // ---- Prompt ------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The contract, editable in place. Exposed because this is open-source software whose entire
+    /// behaviour is a prompt; the warning is not boilerplate, since the measured numbers describe
+    /// the shipped text and stop applying the moment it is edited.
+    /// </summary>
+    private TabPage BuildPromptTab()
+    {
+        var page = new TabPage("Prompt");
+        var editor = new TextBox
+        {
+            Multiline = true,
+            ScrollBars = ScrollBars.Vertical,
+            Dock = DockStyle.Fill,
+            Font = new Font(FontFamily.GenericMonospace, 9f),
+            WordWrap = false,
+        };
+        var status = new Label { Dock = DockStyle.Bottom, AutoSize = false, Height = 40 };
+
+        var store = new PromptStore(HistoryStore.DefaultDirectory());
+        var defaultPath = PromptBuilder.FindPromptFile();
+
+        if (defaultPath is null)
+        {
+            status.Text = "Could not locate the bundled PROMPT.md next to the executable.";
+        }
+        else
+        {
+            editor.Text = store.ActiveTemplate(defaultPath);
+        }
+
+        var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40 };
+        var save = new Button { Text = "Save", Width = 100 };
+        save.Click += (_, _) =>
+        {
+            try
+            {
+                store.Save(editor.Text);
+                status.Text = "Saved. The measured numbers in the changelog no longer apply to "
+                    + "this prompt — re-measure with `dnt-eval suite --prompt`.";
+            }
+            catch (Exception error)
+            {
+                status.Text = error.Message;
+            }
+        };
+        var restore = new Button { Text = "Restore default", Width = 130 };
+        restore.Click += (_, _) =>
+        {
+            store.RestoreDefault();
+            if (defaultPath is not null) editor.Text = store.ActiveTemplate(defaultPath);
+            status.Text = "Restored the shipped prompt.";
+        };
+        toolbar.Controls.Add(save);
+        toolbar.Controls.Add(restore);
+
+        page.Controls.Add(editor);
+        page.Controls.Add(toolbar);
+        page.Controls.Add(status);
+        return page;
     }
 
     // ---- Values ------------------------------------------------------------------------------

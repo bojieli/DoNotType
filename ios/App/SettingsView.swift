@@ -19,6 +19,7 @@ struct SettingsView: View {
             providerSection
             dictationSection
             historySection
+            promptSection
             aboutSection
         }
         .navigationTitle("Settings")
@@ -149,6 +150,27 @@ struct SettingsView: View {
             Text(
                 "Failed dictations always keep their audio until they succeed, whatever this is "
                     + "set to — otherwise Retry could not work."
+            )
+        }
+    }
+
+    /// The contract, editable in place — same reasoning as macOS, and the same warning.
+    private var promptSection: some View {
+        Section {
+            NavigationLink {
+                PromptEditorView(model: model)
+            } label: {
+                LabeledContent("Transcription prompt") {
+                    Text(model.isPromptCustom ? "edited" : "default")
+                        .foregroundStyle(model.isPromptCustom ? .orange : .secondary)
+                }
+            }
+        } header: {
+            Text("Prompt")
+        } footer: {
+            Text(
+                "Editing the contract invalidates the measured numbers in the project's changelog, "
+                    + "which describe the shipped text."
             )
         }
     }
@@ -330,6 +352,42 @@ private struct HistoryRow: View {
         case .completed: .green
         case .failed: .red
         case .pending: .orange
+        }
+    }
+}
+
+
+/// Full-screen prompt editor. Validation happens on save, so a broken prompt is caught here rather
+/// than in the middle of a dictation.
+struct PromptEditorView: View {
+    @Bindable var model: DictationModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TextEditor(text: $model.promptText)
+                .font(.system(.caption, design: .monospaced))
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+
+            if let status = model.promptStatus {
+                Divider()
+                Text(status)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+            }
+        }
+        .navigationTitle("Prompt")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Save") { model.savePrompt() }
+            }
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Default") { model.restoreDefaultPrompt() }
+                    .disabled(!model.isPromptCustom)
+            }
         }
     }
 }

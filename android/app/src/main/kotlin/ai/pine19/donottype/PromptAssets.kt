@@ -14,14 +14,57 @@ object PromptAssets {
     private const val BEGIN = "<!-- BEGIN SYSTEM -->"
     private const val END = "<!-- END SYSTEM -->"
     private const val PLACEHOLDER = "{{FIDELITY_RULE}}"
+    private const val CUSTOM_FILE = "PROMPT.md"
 
     private var cached: String? = null
 
+    /** The user's edited prompt, if they have saved one. */
+    private fun customFile(context: Context) = java.io.File(context.filesDir, CUSTOM_FILE)
+
+    fun hasCustomPrompt(context: Context): Boolean = customFile(context).exists()
+
+    /** The text in force: the edited copy when present, otherwise the bundled default. */
+    fun activeTemplate(context: Context): String {
+        val custom = customFile(context)
+        if (custom.exists()) {
+            val text = runCatching { custom.readText() }.getOrNull()
+            if (!text.isNullOrBlank()) return text
+        }
+        return bundledTemplate(context)
+    }
+
+    fun bundledTemplate(context: Context): String =
+        context.assets.open(ASSET).bufferedReader().use { it.readText() }
+
+    /**
+     * Validated before writing. A prompt that cannot build would fail mid-dictation rather than
+     * at the moment of editing, and every fidelity must resolve or switching to one later breaks.
+     */
+    fun saveCustomPrompt(context: Context, template: String) {
+        require(template.isNotBlank()) { "The prompt is empty." }
+        require(template.contains(BEGIN) && template.contains(END)) {
+            "The prompt needs a $BEGIN … $END block."
+        }
+        require(template.contains(PLACEHOLDER)) {
+            "The system block needs a $PLACEHOLDER placeholder."
+        }
+        Fidelity.entries.forEach { build(template, it) }
+
+        customFile(context).writeText(template)
+        cached = null
+    }
+
+    fun restoreDefault(context: Context) {
+        customFile(context).delete()
+        cached = null
+    }
+
     fun systemInstruction(context: Context, fidelity: Fidelity): String {
-        val template = cached ?: context.assets.open(ASSET)
-            .bufferedReader()
-            .use { it.readText() }
-            .also { cached = it }
+        val template = cached ?: activeTemplate(context).also { cached = it }
+        return build(template, fidelity)
+    }
+
+    private fun build(template: String, fidelity: Fidelity): String {
 
         val begin = template.indexOf(BEGIN)
         val end = template.indexOf(END)

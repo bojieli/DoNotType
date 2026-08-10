@@ -222,6 +222,45 @@ class SettingsActivity : AppCompatActivity() {
         historyContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         column.addView(historyContainer)
 
+        // ---- Prompt ----
+        // Editable because this is open-source software whose entire behaviour is a prompt;
+        // making it readable but not editable would be an odd line to draw.
+        column.addView(sectionTitle("Prompt"))
+        column.addView(
+            body(
+                "The transcription contract. Editing it invalidates the measured numbers in the "
+                    + "project's changelog, which describe the shipped text."
+            )
+        )
+        val promptEditor = EditText(this).apply {
+            setTypeface(Typeface.MONOSPACE)
+            textSize = 10f
+            minLines = 8
+            maxLines = 16
+            gravity = Gravity.TOP or Gravity.START
+            setText(PromptAssets.activeTemplate(this@SettingsActivity))
+        }
+        column.addView(promptEditor)
+        val promptStatus = body("")
+        column.addView(promptStatus)
+        column.addView(
+            button("Save prompt") {
+                promptStatus.text = runCatching {
+                    PromptAssets.saveCustomPrompt(this, promptEditor.text.toString())
+                }.fold(
+                    onSuccess = { "Saved. Re-measure before trusting the published numbers." },
+                    onFailure = { it.message ?: "The prompt could not be saved." },
+                )
+            }
+        )
+        column.addView(
+            button("Restore default prompt") {
+                PromptAssets.restoreDefault(this)
+                promptEditor.setText(PromptAssets.activeTemplate(this))
+                promptStatus.text = "Restored the shipped prompt."
+            }
+        )
+
         column.addView(
             button("Delete all history") {
                 service.history.deleteAll()

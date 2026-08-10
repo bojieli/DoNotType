@@ -100,7 +100,8 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Grounding** — on/off, screenshot fallback, and two blocklists evaluated *before* capture.
 - **History** — search, filters, per-item retry and delete, retention policy, and a **Context
   Inspector** showing exactly what was sent with any dictation.
-- **Prompt** — edit the contract in place, validated before saving, restorable to default.
+- **Prompt** — edit the contract in place on any platform, validated before saving, restorable to
+  the shipped default.
 
 ## Evaluation
 
