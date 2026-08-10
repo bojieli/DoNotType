@@ -106,8 +106,10 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   tones.
 - **Fidelity** — `raw`, `light` (default), `tidy`. Even `tidy` only changes typography, never words.
 - **Grounding** — on/off, screenshot fallback, and two blocklists evaluated *before* capture.
-- **History** — search, filters, per-item retry and delete, retention policy, and a **Context
-  Inspector** showing exactly what was sent with any dictation.
+- **History** — search, filters, per-item retry and delete, retention policy, per-dictation
+  timings, and a **Context Inspector** showing exactly what was sent with any dictation.
+- **Stats** — median and p95 wait, wait per second spoken, success rate, retries, and a per-model
+  breakdown measured on your microphone and your network rather than on a vendor's benchmark.
 - **Prompt** — edit the contract in place on any platform, validated before saving, restorable to
   the shipped default.
 
@@ -117,7 +119,7 @@ The failure this project is about is invisible to ordinary assertions: a substit
 reads as a correctly transcribed technical term. So there is a measurement layer.
 
 ```bash
-swift test                                    # 73 unit tests, no network
+swift test                                    # 141 unit tests, no network
 DNT_INTEGRATION=1 swift test                  # live API on real speech
 swift run dnt-eval suite eval/nearmiss        # near-miss suite
 swift run dnt-eval ablate                     # compare designs on fidelity and latency

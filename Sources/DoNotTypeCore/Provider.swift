@@ -25,7 +25,7 @@ public struct TranscriptionRequest: Sendable {
     }
 }
 
-public struct TokenUsage: Sendable, Equatable {
+public struct TokenUsage: Sendable, Equatable, Codable {
     public var promptTokens: Int?
     public var completionTokens: Int?
     /// Audio tokens the provider says it billed.
@@ -39,6 +39,20 @@ public struct TokenUsage: Sendable, Equatable {
         self.completionTokens = completionTokens
         self.audioTokens = audioTokens
     }
+
+    /// Totals the cost of a dictation that took more than one request.
+    ///
+    /// `nil` means "not reported" and must not become zero: zero audio tokens is the specific
+    /// signal that a provider dropped the audio, so inventing one would fire that alarm falsely.
+    public static func + (lhs: Self, rhs: Self) -> Self {
+        func add(_ a: Int?, _ b: Int?) -> Int? {
+            a == nil && b == nil ? nil : (a ?? 0) + (b ?? 0)
+        }
+        return TokenUsage(
+            promptTokens: add(lhs.promptTokens, rhs.promptTokens),
+            completionTokens: add(lhs.completionTokens, rhs.completionTokens),
+            audioTokens: add(lhs.audioTokens, rhs.audioTokens))
+    }
 }
 
 public struct TranscriptionResult: Sendable {
@@ -46,6 +60,17 @@ public struct TranscriptionResult: Sendable {
     public var usage: TokenUsage
     /// Raw model output before parsing, kept for the eval report and the context inspector.
     public var rawOutput: String
+    /// How many requests the audio was split across. 1 for every ordinary dictation.
+    public var chunkCount: Int
+
+    public init(
+        transcript: Transcript, usage: TokenUsage, rawOutput: String, chunkCount: Int = 1
+    ) {
+        self.transcript = transcript
+        self.usage = usage
+        self.rawOutput = rawOutput
+        self.chunkCount = chunkCount
+    }
 }
 
 public enum ProviderError: Error, LocalizedError, Sendable {

@@ -45,6 +45,21 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
     public var durationSeconds: Double
     public var retryCount: Int
 
+    /// Wall clock from the end of speech to text on screen — the number the user actually feels.
+    ///
+    /// Deliberately measured from key release rather than from the request, because everything
+    /// between those two points (waiting on the screen-context read, falling back from a failed
+    /// pre-upload, a retry) is time the user spends staring at the overlay. A latency figure that
+    /// excluded it would be flattering and useless.
+    public var latencySeconds: Double?
+    /// Time inside the transcription request alone, for separating a slow model from a slow app.
+    public var requestSeconds: Double?
+    /// Time spent rewriting, when a style was applied. Part of the wait, but a separate choice.
+    public var rewriteSeconds: Double?
+    /// How many requests the audio was split across. 1 unless the dictation was long.
+    public var chunkCount: Int?
+    public var usage: TokenUsage?
+
     /// Filename inside the history's `audio/` directory. Nil once the audio has been discarded.
     public var audioFileName: String?
     /// The exact context that was sent, so the inspector can show it and a retry can reuse it.
@@ -65,6 +80,11 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         windowTitle: String? = nil,
         durationSeconds: Double = 0,
         retryCount: Int = 0,
+        latencySeconds: Double? = nil,
+        requestSeconds: Double? = nil,
+        rewriteSeconds: Double? = nil,
+        chunkCount: Int? = nil,
+        usage: TokenUsage? = nil,
         audioFileName: String? = nil,
         context: ScreenContext? = nil
     ) {
@@ -82,6 +102,11 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         self.windowTitle = windowTitle
         self.durationSeconds = durationSeconds
         self.retryCount = retryCount
+        self.latencySeconds = latencySeconds
+        self.requestSeconds = requestSeconds
+        self.rewriteSeconds = rewriteSeconds
+        self.chunkCount = chunkCount
+        self.usage = usage
         self.audioFileName = audioFileName
         self.context = context
     }

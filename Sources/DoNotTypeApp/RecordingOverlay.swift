@@ -101,6 +101,10 @@ final class OverlayState {
     enum Phase: Equatable {
         case recording
         case transcribing
+        /// A long dictation split across several requests. Shown only when there is more than one,
+        /// because "1 of 1" is noise — but a nine-minute recording that sits on "Transcribing…"
+        /// for half a minute looks hung, and this is what distinguishes slow from stuck.
+        case transcribingChunk(done: Int, of: Int)
         /// Brief confirmation that words were inserted, so success is visible rather than a
         /// silent disappearance the user has to infer from the text appearing.
         case inserted(Int)
@@ -144,6 +148,15 @@ private struct OverlayView: View {
                 Text("Transcribing…")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
+            case .transcribingChunk(let done, let total):
+                ProgressView(value: Double(done), total: Double(max(total, 1)))
+                    .progressViewStyle(.linear)
+                    .tint(.white)
+                    .frame(width: 76)
+                Text("Transcribing… part \(min(done + 1, total)) of \(total)")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .monospacedDigit()
             case .inserted(let characters):
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)

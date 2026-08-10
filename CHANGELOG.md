@@ -41,6 +41,19 @@ release yet, so everything below is unreleased.
 - **Optional rewrite on a second hotkey** — formal, concise or bullets, for turning a dictated
   paragraph into an email. The verbatim transcript is always produced and stored first, and the
   inspector shows both versions together, so what you actually said stays recoverable.
+- **Long dictations are split across concurrent requests.** Cuts land in the middle of the
+  quietest 100 ms near the target, so no chunk starts or ends mid-word, and every chunk carries the
+  *same* screen context — which is what keeps a name spelled the same on both sides of a seam.
+  Under 90 seconds nothing changes, so an ordinary dictation pays nothing for this. The overlay
+  shows "part 2 of 5" rather than sitting on "Transcribing…", which is the difference between slow
+  and hung.
+- **Timings, per dictation and in aggregate.** Each history row shows the wait, measured from key
+  release rather than from the request — the screen-context read, a failed pre-upload and any retry
+  are all time the user spends looking at the overlay, and a figure that excluded them would
+  flatter the app. A Stats tab reports median and p95 wait, wait per second spoken, success rate,
+  retries, and a per-model breakdown, so switching model shows its effect instead of being taken on
+  faith. Median rather than mean throughout: one retry storm should not make the typical case look
+  bad.
 - **Undo and revert-to-verbatim.** `⌘⇧Z` removes the last insertion; `⌘⌥Z` replaces a rewrite with
   the verbatim transcript. Cheap only because the original is always stored. Expires after a
   minute, since deleting characters from a field the caret has since left would destroy unrelated

@@ -13,6 +13,8 @@ struct SettingsView: View {
                 .tabItem { Label("Grounding", systemImage: "text.viewfinder") }
             HistoryTab(model: model)
                 .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+            StatsView(records: model.allRecords)
+                .tabItem { Label("Stats", systemImage: "chart.bar") }
             PromptTab(model: model)
                 .tabItem { Label("Prompt", systemImage: "text.quote") }
         }
@@ -364,6 +366,27 @@ private struct HistoryRow: View {
     @Bindable var model: SettingsModel
     var onInspect: () -> Void
 
+    /// Splits the wait into its parts, so a slow dictation can be blamed on the right thing.
+    private var timingBreakdown: String {
+        var lines: [String] = []
+        if let total = record.latencySeconds {
+            lines.append("Total wait: \(PerformanceStats.formatDuration(total))")
+        }
+        if let request = record.requestSeconds {
+            lines.append("Transcription: \(PerformanceStats.formatDuration(request))")
+        }
+        if let rewrite = record.rewriteSeconds {
+            lines.append("Rewrite: \(PerformanceStats.formatDuration(rewrite))")
+        }
+        if record.durationSeconds > 0 {
+            lines.append("Spoken: \(PerformanceStats.formatDuration(record.durationSeconds))")
+        }
+        if let audio = record.usage?.audioTokens {
+            lines.append("Audio tokens: \(audio)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: icon)
@@ -378,6 +401,15 @@ private struct HistoryRow: View {
                 HStack(spacing: 6) {
                     Text(record.createdAt, format: .dateTime.hour().minute())
                     if let app = record.appName { Text("· \(app)") }
+                    // How long the user waited. Shown per row rather than only in aggregate,
+                    // because "that one felt slow" is a claim you should be able to check.
+                    if let latency = record.latencySeconds {
+                        Text("· \(PerformanceStats.formatDuration(latency))")
+                            .monospacedDigit()
+                            .foregroundStyle(latency > 8 ? Color.orange : Color.secondary)
+                            .help(timingBreakdown)
+                    }
+                    if let chunks = record.chunkCount, chunks > 1 { Text("· \(chunks) parts") }
                     if record.retryCount > 0 { Text("· retried \(record.retryCount)×") }
                     if let style = record.style { Text("· \(style.rawValue)") }
                     if record.context != nil { Text("· grounded") }

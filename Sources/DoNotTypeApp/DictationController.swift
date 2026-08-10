@@ -185,13 +185,19 @@ final class DictationController {
 
         state = .transcribing
         overlay.update(phase: .transcribing)
+        // Started here, not at the request: the wait the user experiences includes the screen
+        // context read and any fallback, and a figure that skipped those would flatter the app.
+        let releasedAt = Date()
         Task { [weak self] in
             guard let self else { return }
-            await transcribe(audio: audio, context: await grounding.finishCapture())
+            await transcribe(
+                audio: audio, context: await grounding.finishCapture(), releasedAt: releasedAt)
         }
     }
 
-    private func transcribe(audio: AudioFile, context: ScreenContext?) async {
+    private func transcribe(
+        audio: AudioFile, context: ScreenContext?, releasedAt: Date = Date()
+    ) async {
         defer { try? FileManager.default.removeItem(at: audio.url) }
 
         let style = pendingStyle
@@ -211,6 +217,7 @@ final class DictationController {
             fidelity: settings.fidelity,
             appName: context?.appName ?? frontmost,
             windowTitle: context?.windowTitle,
+            durationSeconds: audio.durationSeconds ?? 0,
             context: context)
 
         // Offline is worth knowing *before* spending fifteen seconds on a timeout: the dictation
@@ -228,8 +235,19 @@ final class DictationController {
             // Pre-uploaded if the session opened and the upload landed; inline otherwise. The
             // fallback is silent by design — a flaky network should cost latency, never words.
             let audioPart = try await resolveAudioPart(audio)
-            let result = try await coordinator.service.transcribeWithRetry(
-                audio: audio, context: context, audioPart: audioPart)
+            let requestStart = Date()
+            // Long recordings are split across concurrent requests; short ones — every ordinary
+            // dictation — take the single-request path unchanged.
+            let result = try await coordinator.service.transcribeLong(
+                audio: audio, context: context, audioPart: audioPart
+            ) { [weak self] done, total in
+                Task { @MainActor in
+                    self?.overlay.update(phase: .transcribingChunk(done: done, of: total))
+                }
+            }
+            record.requestSeconds = Date().timeIntervalSince(requestStart)
+            record.usage = result.usage
+            record.chunkCount = result.chunkCount
             let text = result.transcript.transcript
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -247,13 +265,16 @@ final class DictationController {
             var delivered = text
             if style.isRewrite, let instruction = rewriteInstruction(for: style) {
                 overlay.update(phase: .transcribing)
+                let rewriteStart = Date()
                 if let styled = try? await coordinator.service.rewrite(text, instruction: instruction) {
                     record.styledText = styled
                     record.style = style
                     delivered = styled
                 }
+                record.rewriteSeconds = Date().timeIntervalSince(rewriteStart)
             }
 
+            record.latencySeconds = Date().timeIntervalSince(releasedAt)
             await store.insert(record, audio: settings.keepAudio ? try? Data(contentsOf: audio.url) : nil)
             onHistoryChange?()
 

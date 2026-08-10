@@ -21,6 +21,25 @@ public struct AudioFile: Sendable {
 
     public var part: InputPart { .audio(data: data, mimeType: mimeType) }
 
+    /// Length in seconds, read from the WAV header. Nil for compressed formats, whose duration
+    /// cannot be known without decoding — not worth doing for a statistic.
+    public var durationSeconds: Double? {
+        guard mimeType == "audio/wav",
+            let body = AudioChunker.pcmBody(of: data),
+            data.count > 34
+        else { return nil }
+
+        let channels = Int(
+            UInt16(data[22]) | (UInt16(data[23]) << 8))
+        let sampleRate = Int(
+            UInt32(data[24]) | (UInt32(data[25]) << 8) | (UInt32(data[26]) << 16)
+                | (UInt32(data[27]) << 24))
+        let bitsPerSample = Int(UInt16(data[34]) | (UInt16(data[35]) << 8))
+
+        let bytesPerSecond = sampleRate * channels * bitsPerSample / 8
+        return bytesPerSecond > 0 ? Double(body.count) / Double(bytesPerSecond) : nil
+    }
+
     /// Roughly what the model will bill, at the documented 32 tokens per audio second.
     public func estimatedTokens(durationSeconds: Double) -> Int {
         Int((durationSeconds * 32).rounded(.up))

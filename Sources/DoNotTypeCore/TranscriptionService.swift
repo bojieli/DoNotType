@@ -110,6 +110,70 @@ public struct TranscriptionService: Sendable {
         }
         throw lastError
     }
+
+    /// Transcribes a recording of any length, splitting long ones across concurrent requests.
+    ///
+    /// A nine-minute dictation is roughly 17,000 audio tokens in one request, and the user is
+    /// sitting there waiting after they have already stopped talking. Splitting on silence turns
+    /// the wait into roughly the slowest chunk rather than the sum of all of them.
+    ///
+    /// Every chunk carries the *same* screen context. That is what stops chunk three spelling a
+    /// name differently from chunk two — a real risk, since each request is independent and has no
+    /// idea what the others produced.
+    ///
+    /// Short recordings take the ordinary single-request path untouched, so this is safe to call
+    /// unconditionally.
+    public func transcribeLong(
+        audio: AudioFile,
+        context: ScreenContext?,
+        audioPart: InputPart? = nil,
+        attempts: Int = 3,
+        maxConcurrent: Int = 3,
+        onProgress: (@Sendable (Int, Int) -> Void)? = nil
+    ) async throws -> TranscriptionResult {
+        let chunks = AudioChunker.split(wav: audio.data)
+        guard chunks.count > 1 else {
+            return try await transcribeWithRetry(
+                audio: audio, context: context, audioPart: audioPart, attempts: attempts)
+        }
+
+        var results = [TranscriptionResult?](repeating: nil, count: chunks.count)
+        var finished = 0
+
+        // Bounded concurrency: a ten-minute dictation is ten simultaneous requests otherwise,
+        // which is the fastest way to hit a rate limit and turn a slow dictation into a failed one.
+        try await withThrowingTaskGroup(of: (Int, TranscriptionResult).self) { group in
+            var next = 0
+            func submit() {
+                guard next < chunks.count else { return }
+                let chunk = chunks[next]
+                next += 1
+                group.addTask {
+                    let piece = AudioFile(data: chunk.data, mimeType: "audio/wav")
+                    let result = try await transcribeWithRetry(
+                        audio: piece, context: context, attempts: attempts)
+                    return (chunk.index, result)
+                }
+            }
+
+            for _ in 0..<min(maxConcurrent, chunks.count) { submit() }
+            while let (index, result) = try await group.next() {
+                results[index] = result
+                finished += 1
+                onProgress?(finished, chunks.count)
+                submit()
+            }
+        }
+
+        let pieces = results.compactMap { $0 }
+        return TranscriptionResult(
+            transcript: Transcript(
+                transcript: AudioChunker.stitch(pieces.map(\.transcript.transcript)),
+                language: pieces.first?.transcript.language ?? ""),
+            usage: pieces.map(\.usage).reduce(TokenUsage(), +),
+            rawOutput: pieces.map(\.rawOutput).joined(separator: "\n"),
+            chunkCount: pieces.count)
+    }
 }
 
 /// Drains everything that failed while the network was down.
