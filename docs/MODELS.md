@@ -202,6 +202,11 @@ As a second independent public real-speech check, Qwen3-ASR transcribed the 11.0
 temperatures (35 and minus 20 degrees) and the proper noun Barcelona. Its file hash and transcript
 are included in the machine-readable result.
 
+The same Barcelona clip was also used as a negative control for Gemma 4. Its no-context output was
+unusable in all 15 trials (repeated fragments such as "rush rush about flash"), so the hostile-context
+run is recorded but deliberately excluded from any grounding score: a model that cannot transcribe
+the audio without context cannot measure context substitution.
+
 To exercise context handling on genuine speech while the DoNotType fixtures were unavailable, the
 four downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
 recording says **Chicago** in its opening sentence; the context repeated **Seattle** eight times.

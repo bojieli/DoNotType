@@ -18,6 +18,27 @@
       "runtime": "Transformers 5.15.0.dev0, bf16 CUDA",
       "latency_seconds": 0.6739,
       "transcript": "Yesterday it was 35 degrees in Barcelona, but today the temperature will go down to minus 20 degrees."
+    },
+    {
+      "source": "patrickvonplaten/audio_samples/bcn_weather.mp3",
+      "duration_seconds": 11.04,
+      "sha256": "47f2f8c2382b7b78fa7e8427a0fc7d33e8f997a0a9a9bc93c803eba218813130",
+      "model": "google/gemma-4-E4B-it",
+      "revision": "ee0ef6023621cff504d758262d4e04895a5af4a2",
+      "runtime": "Transformers 5.15.0.dev0, bf16 CUDA",
+      "no_context": {
+        "trials": 15,
+        "usable_transcript": "0/15",
+        "mean_latency_seconds": 0.2826,
+        "sample": "rush rush about flash rush up uh rush"
+      },
+      "hostile_context": {
+        "trials": 15,
+        "usable_transcript": "0/15",
+        "mean_latency_seconds": 0.2624,
+        "sample": "shura shabahto flash shur"
+      },
+      "status": "excluded_from_context_score_because_no_context_baseline_did_not_transcribe_the_real_clip"
     }
   ],
   "task": {
