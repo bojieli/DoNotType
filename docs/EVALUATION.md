@@ -150,7 +150,14 @@ Two consequences worth keeping in view:
   and it is exactly when people dictate corrections.
 
 Case 13 is kept as a failing case, since the default encoding does fail it. What changed is the
-explanation attached to it.
+explanation attached to it. Case 16 is its twin with the spelling moved to the caret window and
+passes 3/3 — the pair is what protects the finding, because case 13 already fails and so could not
+notice an encoder change that dropped the caret sections entirely.
+
+**Read single suite runs with care.** Two consecutive runs of the same 16 cases gave `improved 5,
+regressed 1` and `improved 7, regressed 3`. The direction is stable — every regression in both runs
+was numeric — but the counts are not, and a change that moves them by one or two has not been
+shown to do anything.
 
 **What this does not settle.** The benefit cases are synthesized, so they measure spelling transfer
 rather than transfer under ambiguous human speech. The one remaining suite regression is still

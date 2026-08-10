@@ -1,0 +1,15 @@
+{
+  "id": "benefit-caret-channel",
+  "note": "The same audio and the same novel name as case 13, with the correct spelling moved into the caret window instead of the visible text. Case 13 fails 0/12 and this passes 12/12, and that pair is the sharpest measurement in the project: the caret sections hold a tenth of the visible-text budget and dominate it. Kept as a case, not just a note, because the finding lives in the encoder's section ordering and caps — anything that shrinks or drops the caret window would silently destroy grounding's only demonstrated benefit, and case 13 alone would not notice, since it already fails.",
+  "audio": "../audio/novel-name.wav",
+  "mustContain": ["Kaelith"],
+  "mustNotContain": ["Keyleth"],
+  "context": {
+    "appName": "Slack",
+    "windowTitle": "#platform",
+    "role": "AXTextArea",
+    "isEditable": true,
+    "visibleText": "Jonas: the deploy is queued behind the migration.\nJonas: I'll ping the on-call once it drains.\nJonas: standup is at ten as usual.",
+    "textBeforeCaret": "Message #platform\nReplying to Kaelith: "
+  }
+}
