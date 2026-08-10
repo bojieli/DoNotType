@@ -127,11 +127,14 @@ jobs:
           Copy-Item PROMPT.md publish/PROMPT.md
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path publish/* -DestinationPath dist/DoNotType-Windows-x64.zip
-          # Written in the same "<hash>  <filename>" shape as the other platforms, and as ASCII:
-          # Out-File defaults to UTF-16 with a BOM, which sha256sum cannot read at all.
+          # Written byte-for-byte rather than through Out-File, which appends a CRLF even with
+          # -Encoding ascii. The trailing \r becomes part of the filename as far as `shasum -c` is
+          # concerned, so verification fails with "No such file or directory" while the hash itself
+          # is perfectly correct — a failure that reads as corruption and is not.
           $hash = (Get-FileHash dist/DoNotType-Windows-x64.zip -Algorithm SHA256).Hash.ToLower()
-          "$hash  DoNotType-Windows-x64.zip" `
-            | Out-File -Encoding ascii dist/DoNotType-Windows-x64.zip.sha256
+          [System.IO.File]::WriteAllText(
+            "$PWD/dist/DoNotType-Windows-x64.zip.sha256",
+            "$hash  DoNotType-Windows-x64.zip`n")
 
       - uses: actions/upload-artifact@v4
         with:
