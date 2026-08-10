@@ -144,6 +144,21 @@ a password page inside an allowed browser must still be excluded.
 iOS is not an unfinished port. It is a different product shaped by one restriction, which is why the
 platform order was macOS → Android → iOS.
 
+## The harness runs the product
+
+`EvalRunner` does not build its own requests. It constructs a `TranscriptionService` — the same
+object the app dictates through — and calls it.
+
+This is load-bearing rather than tidy. Twice in one day the harness measured something the product
+does not do: it uploaded raw PCM after the app had moved to Opus, and separately it bypassed
+compression entirely by assembling its own parts. Both times every measured number improved and no
+user would have seen any of it. A measurement harness on a different code path measures the
+harness.
+
+The one deliberate divergence is chunking: the eval calls `transcribeWithRetry` rather than
+`transcribeLong`, because a suite that measured stitched output could not attribute a difference to
+grounding. Every eval clip is far below the chunking threshold, so nothing is skipped in practice.
+
 ## Testing layers
 
 - **Unit** (`swift test`, `dotnet test`, `gradle test`) — pure logic, no network. 182 + 53 + 24

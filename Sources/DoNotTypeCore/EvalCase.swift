@@ -111,37 +111,35 @@ public struct EvalRunner: Sendable {
         self.encoder = encoder
     }
 
+    /// The exact object the app dictates through.
+    ///
+    /// The harness used to build its own request and call the provider directly, which meant it
+    /// could — and twice did — measure something the product does not do: once uploading raw PCM
+    /// after the app had moved to Opus, and once bypassing compression entirely. Both times every
+    /// number improved and no user saw any of it.
+    ///
+    /// Routing through `TranscriptionService` makes that class of bug impossible rather than
+    /// merely fixed. Anything added to the request — a codec, a header, a part — reaches the
+    /// measurement automatically, because there is only one place that builds one.
+    private var service: TranscriptionService {
+        TranscriptionService(
+            provider: provider, model: model, systemInstruction: systemInstruction,
+            encoder: encoder)
+    }
+
     /// Transcribes once. `context` of `nil` produces the no-context baseline.
     ///
     /// Retries transient failures rather than aborting. A suite run costs twenty minutes and real
     /// money, and losing it to one dropped connection is a harness defect, not a finding.
+    ///
+    /// Deliberately *not* `transcribeLong`: chunking would split a long fixture across requests
+    /// and stitch the results, and a suite that measured stitched output could not attribute a
+    /// difference to grounding. The eval clips are all well under the chunking threshold anyway.
     public func transcribe(audio: AudioFile, context: ScreenContext?) async throws
         -> TranscriptionResult
     {
-        var parts: [InputPart] = []
-        if let context {
-            parts.append(contentsOf: encoder.encode(context))
-        }
-        // Compressed, so the harness measures what the app actually uploads rather than a
-        // heavier payload the product never sends.
-        parts.append(audio.compressedForUpload().part)
-
-        var delay = Duration.milliseconds(800)
-        var lastError: any Error = ProviderError.emptyOutput
-
-        for attempt in 1...4 {
-            do {
-                return try await provider.transcribe(
-                    TranscriptionRequest(
-                        model: model, systemInstruction: systemInstruction, parts: parts))
-            } catch {
-                lastError = error
-                guard attempt < 4, TranscriptionService.isTransient(error) else { throw error }
-                try? await Task.sleep(for: delay)
-                delay = delay * 2
-            }
-        }
-        throw lastError
+        try await service.transcribeWithRetry(
+            audio: audio, context: context, attempts: 4, initialDelay: .milliseconds(800))
     }
 
     public func run(_ testCase: EvalCase, caseFile: URL) async throws -> EvalOutcome {
