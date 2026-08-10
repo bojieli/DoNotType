@@ -126,6 +126,11 @@ is hard. A model that does well on it may do worse elsewhere. Adding more real c
 A local model removes the API key, network dependency, and data-sharing question. These are the
 results from the RTX PRO 6000 Blackwell workstation (`nvidia-smi`: 97,887 MiB VRAM) on 2026-08-10.
 
+The non-Mistral campaign is complete. Mistral/Voxtral Transcribe 2 was explicitly excluded from the
+remaining work by user direction, so its unavailable decoder-biasing endpoint is not a blocker and
+was not probed or downloaded during this campaign. Earlier Voxtral measurements in this document
+remain historical results.
+
 The authoritative real-speech fixtures are now supplied under `eval/audio/`. The older table below
 is explicitly labelled **synthetic stand-ins** and remains useful only for transport/scorer smoke
 tests. The exact uploaded-fixture campaign, run against downloaded immutable checkpoints, follows
@@ -600,7 +605,7 @@ a control observation, but not on the uploaded hard real-speech clip.
 | `google/gemma-4-E4B-it` (vLLM) | vLLM failed before loading: Transformers 4.57.6 does not recognize `model_type: gemma4`. The isolated Transformers run above is the compatible fallback. |
 | `fixie-ai/ultravox-v0_5-llama-3_1-8b` | Its config names the gated `meta-llama/Llama-3.1-8B-Instruct` backbone (HTTP 403). A complete compatible real backbone, `unsloth/Meta-Llama-3.1-8B-Instruct`, was downloaded and wired into a temporary local snapshot; the resulting real-audio smoke test is recorded above. |
 | `mistralai/Voxtral-Small-24B-2507` (vLLM) | vLLM 0.19.0 failed while loading current `audio_tower.*` weights into `LlamaForCausalLM`; direct Transformers succeeded. |
-| `voxtral-mini-transcribe-26-02` (Voxtral Transcribe 2) | Mistral documents this as an API model, not a public Hub snapshot. The checkpoint helper returned 404 for the corresponding Hub ID and no `MISTRAL_API_KEY` is configured, so the decoder-level context-biasing A/B remains unavailable. |
+| `voxtral-mini-transcribe-26-02` (Voxtral Transcribe 2) | **Excluded by user scope.** Mistral documents this as an API model rather than a public Hub snapshot; no API credential or checkpoint was used for the remaining campaign. |
 
 The installed Voxtral Small processor/transcription request exposes no `context_biasing` parameter.
 That decoder-level control belongs to a separate Voxtral Transcribe 2 serving surface, so the
@@ -633,9 +638,9 @@ The third row is the notable one. `mimo-v2.5` is advertised as audio-capable, ac
 returned a confident, entirely invented transcript — the second time that exact failure has been
 caught by that check, on a different provider.
 
-To test the remaining blocked models, widen the provider allowlist in OpenRouter's account
-settings or provide a complete local backbone. See **[GPU-TESTING.md](GPU-TESTING.md)** for the
-serving and measurement procedure. `--provider local` points the client at a local
+To test any remaining **non-Mistral** blocked models, widen the provider allowlist in OpenRouter's
+account settings or provide a complete local backbone. Mistral work is out of scope for this
+campaign. See **[GPU-TESTING.md](GPU-TESTING.md)** for the serving and measurement procedure. `--provider local` points the client at a local
 `/v1/chat/completions` endpoint, so no new client code is needed.
 
 ## Recommendation
@@ -649,8 +654,8 @@ useful for models Google does not serve directly.
 The open-weight path remains worth watching, but the exact-fixture result is a negative one rather
 than a transport-only caveat. Voxtral Transcribe 2's context biasing is the same idea this project
 implements by prompt, done inside the decoder where a prior can be weighted rather than merely
-requested — and it remains the most promising follow-up experiment. It needs the Transcribe 2
-serving surface (the Small checkpoint tested here does not expose that parameter).
+requested. That follow-up is intentionally out of scope for this campaign; the Small checkpoint
+tested here does not expose the parameter.
 
 ## Latency against fidelity (2026-08-10)
 

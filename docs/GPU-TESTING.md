@@ -3,6 +3,13 @@
 Everything you need to run DoNotType against a locally hosted model and get numbers comparable to
 the hosted ones already in [MODELS.md](MODELS.md).
 
+**Scope note (2026-08-10).** The requested non-Mistral GPU campaign is complete. The uploaded real
+WAV fixtures were tested with six downloaded, pinned checkpoints; see the exact results in
+[`eval/results/local-real-audio-2026-08-10.json`](../eval/results/local-real-audio-2026-08-10.json).
+Mistral/Voxtral Transcribe 2 work is intentionally excluded by user direction and is not a blocker
+for the results below. The older Voxtral commands and observations in this handoff are retained as
+historical context only; do not run additional Mistral experiments for this scope.
+
 **Why this is worth doing.** The failure this project is stuck on — screen context overwriting a
 spoken version number, ~36% of runs against a ~21% no-context baseline — may not be fixable by
 instruction at all. Whisper's `initial_prompt` is famously leaky in exactly the same way, which
@@ -196,7 +203,7 @@ context substitution comparison is meaningful; the uploaded campaign records tha
 
 ## 5. Voxtral's context biasing specifically
 
-This is the experiment that motivated the doc. The Transcribe 2 serving surface exposes context
+This was the experiment that motivated the original doc. The Transcribe 2 serving surface exposes context
 biasing as a first-class input rather than as prose in the prompt, so the intended comparison is:
 
 - **A.** Screen context passed as prompt text, exactly as DoNotType does today (`dnt-eval ablate`
@@ -206,11 +213,9 @@ biasing as a first-class input rather than as prose in the prompt, so the intend
 If B substitutes less than A at equal baseline accuracy, the answer is decoder-level biasing and
 this project's whole approach should change. The cached `Voxtral-Small-24B-2507` checkpoint tested
 here does **not** expose that parameter in either its Transformers processor or Mistral
-transcription request, so B could not be run. A future run needs the separate Transcribe 2 model
-and serving surface; a short Python script comparing the two on the same clip is enough once that
-checkpoint is available. The installed `mistralai` SDK does expose `context_bias` on
-`/v1/audio/transcriptions`, confirming the intended API shape, but no `MISTRAL_API_KEY` is configured
-and the corresponding Hub checkpoint request returns HTTP 404.
+transcription request, so B was not run. Transcribe 2/Mistral is intentionally out of scope for the
+current campaign; no API credential or Hub checkpoint was requested. The installed `mistralai` SDK
+surface and the unavailable model are recorded only as historical provenance.
 
 The downloaded Small checkpoint did permit a related real-speech control: on the public SEAME
 decimal clip, the same hostile text was tested both **after** the audio block and in DoNotType's
@@ -261,7 +266,7 @@ and still be unusable.
 Results belong in [MODELS.md](MODELS.md) under a new "Local / open-weight" section. Raw output
 pasted into an issue is fine — the table can be written from it.
 
-The uploaded-fixture handoff is now complete for every listed downloadable candidate/control. The
+The uploaded-fixture handoff is now complete for every in-scope downloadable candidate/control. The
 exact reference and suite records are in
 [`eval/results/local-real-audio-2026-08-10.json`](../eval/results/local-real-audio-2026-08-10.json):
 Voxtral Small, Qwen3-Omni, Gemma 4, Whisper large-v3, Ultravox, Qwen3-ASR, and MiniCPM-o 4.5 each
