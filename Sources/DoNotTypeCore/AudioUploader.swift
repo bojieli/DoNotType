@@ -74,13 +74,17 @@ public actor AudioUploader {
     ///
     /// Called at hotkey-down. `contentLength` is a guess at that point — the API only uses it as a
     /// hint, and the finalize step reports the real size.
-    /// A generous guess at the compressed size, used only as a hint when opening the session.
+    /// Opens the resumable session. Called at hotkey-down, before any audio exists.
     ///
-    /// 16 kbps Opus is about 2 kB per second, so this covers roughly two minutes. The finalize
-    /// step reports the real length, and the API treats the header as advisory.
-    public static let estimatedUploadBytes = 250_000
-
-    public func prepare(estimatedBytes: Int, mimeType: String = "audio/ogg") {
+    /// Deliberately declares no content length. The obvious thing is to send
+    /// `X-Goog-Upload-Header-Content-Length` with a guess, and that is what this did — but the
+    /// header is not a hint, it is a contract: finalising with a different number of bytes fails
+    /// with *"Can not finalize upload. Current size is 44770. Expected final size is 704078."*
+    ///
+    /// That is unfixable by guessing better, because the size cannot be known here. The recording
+    /// has not happened yet, and compression happens after it. Omitting the header is accepted and
+    /// the finalise step reports the real length.
+    public func prepare(mimeType: String = "audio/ogg") {
         guard sessionTask == nil else { return }
         sessionTask = Task { [apiKey, baseURL, session, log] in
             do {
@@ -90,8 +94,6 @@ public actor AudioUploader {
                 request.httpMethod = "POST"
                 request.setValue("resumable", forHTTPHeaderField: "X-Goog-Upload-Protocol")
                 request.setValue("start", forHTTPHeaderField: "X-Goog-Upload-Command")
-                request.setValue(
-                    String(estimatedBytes), forHTTPHeaderField: "X-Goog-Upload-Header-Content-Length")
                 request.setValue(
                     mimeType, forHTTPHeaderField: "X-Goog-Upload-Header-Content-Type")
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")

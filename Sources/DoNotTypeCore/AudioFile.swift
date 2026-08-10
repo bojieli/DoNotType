@@ -35,6 +35,10 @@ public struct AudioFile: Sendable {
     /// Returns `self` unchanged if encoding is unavailable or fails. A compression optimisation
     /// must never be able to cost someone their words.
     public func compressedForUpload() -> AudioFile {
+        // Escape hatch for measurement: comparing compressed against uncompressed transcription
+        // needs a way to turn this off without editing code, and the question of whether a lossy
+        // codec costs fidelity is one that has to be re-asked whenever the bitrate or model moves.
+        if ProcessInfo.processInfo.environment["DNT_NO_COMPRESSION"] != nil { return self }
         guard mimeType == "audio/wav", OpusEncoder.isAvailable else { return self }
         guard let ogg = try? OpusEncoder().encode(wav: data), ogg.count < data.count else {
             return self

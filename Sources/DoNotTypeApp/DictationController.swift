@@ -126,7 +126,6 @@ final class DictationController {
                 // content type is fixed when it opens, not when the bytes arrive.
                 Task {
                     await uploader.prepare(
-                        estimatedBytes: AudioUploader.estimatedUploadBytes,
                         mimeType: OpusEncoder.isAvailable ? "audio/ogg" : "audio/wav")
                 }
             }

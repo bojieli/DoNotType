@@ -173,6 +173,27 @@ change that moves a count by less than it has not been shown to do anything. Thi
 changelog is largely a record of confident predictions that measurement destroyed; an instrument
 that reported bare totals was an invitation to add more of them.
 
+### Does compressing the upload cost fidelity?
+
+Opus was adopted for latency, and the check that the transcript was unaffected was done on
+synthesized clips — where the number is pronounced cleanly, which is the easy case. The reference
+recording is the opposite: an unstressed "one point five" mid-sentence, exactly the cue a lossy
+codec might discard. Re-measured against it, no context, 10 trials each:
+
+| upload | transcribed the number correctly |
+|---|---|
+| uncompressed WAV | 7 / 10 |
+| Opus 16 kbps | 8 / 10 |
+
+No cost. The one-point difference is well inside the noise at this sample size, and the compressed
+run was nominally the better of the two. `DNT_NO_COMPRESSION=1` re-runs this comparison, and it is
+worth re-running whenever the bitrate or the model changes — the answer is not obviously stable
+across either.
+
+Note also what the two rows say about the clip: the model gets this right roughly 7–8 times in 10
+**with no screen context at all**. Every substitution figure here should be read against that, not
+against an assumption of a perfect baseline.
+
 ### Acting on it: the guard is aimed at the caret window
 
 Every earlier digit-guard measurement put the decoy in visible text — the weak channel. Re-run with

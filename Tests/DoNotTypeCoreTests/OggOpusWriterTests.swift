@@ -249,9 +249,14 @@ final class UploadCompressionTests: XCTestCase {
         XCTAssertEqual(data.prefix(4), Data("OggS".utf8))
     }
 
-    /// The session's content type is fixed when it opens, before the bytes exist, so the default
-    /// has to match what will actually be sent.
-    func testSessionDefaultsToTheFormatThatWillBeSent() {
-        XCTAssertGreaterThan(AudioUploader.estimatedUploadBytes, 0)
+    /// The session cannot declare a byte count, because the recording has not happened when it
+    /// opens and compression happens after it. Declaring one made every pre-upload fail at
+    /// finalise with a size mismatch, silently falling back to inline.
+    func testCompressionShrinksTheUploadEnoughToMatter() throws {
+        try XCTSkipUnless(OpusEncoder.isAvailable, "no Opus encoder on this system")
+
+        let wav = speechWav(seconds: 10)
+        let compressed = AudioFile(data: wav, mimeType: "audio/wav").compressedForUpload()
+        XCTAssertLessThan(compressed.data.count * 8, wav.count, "expected roughly an order of magnitude")
     }
 }
