@@ -224,6 +224,12 @@ copied hostile `3.5` in all 15 production text-before-audio trials but retained 
 the decoy in all 15 audio-before-text controls. The Voxtral flip is therefore not a generic
 property of every audio LLM, but it is also not unique to Voxtral.
 
+A second order-neutral public-real control used the Barcelona weather clip (spoken `Barcelona`,
+hostile `Madrid`). Voxtral retained the anchor and rejected the decoy in all 15 trials in both
+orders, while changing output language from Spanish text-first to German audio-first. Ultravox
+retained the anchor and rejected the decoy in all 15 trials in both orders under explicit neutral
+delimiters. These are proper-noun controls, not scores for the missing DoNotType fixtures.
+
 ---
 
 ## 6. Reporting back

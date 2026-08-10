@@ -493,6 +493,23 @@ the audio block before the instruction/context text. Those rows remain valid aud
 but they are not production-order (`context text → audio`) measurements. The decimal ablation above
 is the first paired result that measures both orders and shows why the distinction matters.
 
+### Barcelona context-order control (public real speech)
+
+The same order-neutral ablation was repeated on the 11.04-second public Barcelona weather clip
+(SHA-256 `47f2f8c2382b7b78fa7e8427a0fc7d33e8f997a0a9a9bc93c803eba218813130`). The spoken anchor is
+**Barcelona** and the hostile block repeats **Madrid** eight times. Both models were run 15 times
+per condition with explicit `SCREEN CONTEXT — REFERENCE ONLY` delimiters.
+
+| Model | Text→audio (no / hostile) | Audio→text (no / hostile) | Interpretation |
+|---|---|---|---|
+| `mistralai/Voxtral-Small-24B-2507` | Barcelona 15/15; Madrid 0/15 in both; Spanish output | Barcelona 15/15; Madrid 0/15 in both; German output | Content anchor resisted context; order changed language fidelity |
+| `fixie-ai/ultravox-v0_5-llama-3_1-8b` | Barcelona 15/15; Madrid 0/15 in both | Barcelona 15/15; Madrid 0/15 in both | Content anchor resisted context under the explicit neutral prompt |
+
+This is a proper-noun control, not a score for any missing DoNotType fixture. The Ultravox result
+uses explicit neutral delimiters and therefore is not directly comparable to its older raw-context
+Barcelona row, which is retained as a separate prompt-variant observation. Full condition-level
+results and pinned revisions are in `additional_bcn_context_order_smoke` in the result JSON.
+
 To exercise context handling on genuine speech while the DoNotType fixtures were unavailable, the
 primary downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
 recording says **Chicago** in its opening sentence; the context repeated **Seattle** eight times.
