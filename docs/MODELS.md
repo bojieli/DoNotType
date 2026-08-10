@@ -248,6 +248,7 @@ a control observation, but not on the missing hard real-speech clip.
 | `google/gemma-4-E4B-it` (vLLM) | vLLM failed before loading: Transformers 4.57.6 does not recognize `model_type: gemma4`. The isolated Transformers run above is the compatible fallback. |
 | `fixie-ai/ultravox-v0_5-llama-3_1-8b` | Its config names the gated `meta-llama/Llama-3.1-8B-Instruct` backbone (HTTP 403). A complete compatible real backbone, `unsloth/Meta-Llama-3.1-8B-Instruct`, was downloaded and wired into a temporary local snapshot; the resulting real-audio smoke test is recorded above. |
 | `mistralai/Voxtral-Small-24B-2507` (vLLM) | vLLM 0.19.0 failed while loading current `audio_tower.*` weights into `LlamaForCausalLM`; direct Transformers succeeded. |
+| `voxtral-mini-transcribe-26-02` (Voxtral Transcribe 2) | Mistral documents this as an API model, not a public Hub snapshot. The checkpoint helper returned 404 for the corresponding Hub ID and no `MISTRAL_API_KEY` is configured, so the decoder-level context-biasing A/B remains unavailable. |
 
 The installed Voxtral Small processor/transcription request exposes no `context_biasing` parameter.
 That decoder-level control belongs to a separate Voxtral Transcribe 2 serving surface, so the
