@@ -41,6 +41,10 @@ release yet, so everything below is unreleased.
 - **Optional rewrite on a second hotkey** — formal, concise or bullets, for turning a dictated
   paragraph into an email. The verbatim transcript is always produced and stored first, and the
   inspector shows both versions together, so what you actually said stays recoverable.
+- **Opus uploads on Windows,** via libopus — the one native dependency in the project, and only on
+  this platform, since it is the only one with no encoder in the box. The container is a port of
+  the same `OggOpusWriter`, checked byte-for-byte against the reference stream the Kotlin port
+  passes. Missing library or failed encode falls back to WAV.
 - **Opus uploads on Android too,** using `MediaCodec`'s native encoder and the same container
   writer as the Apple ports, checked byte-for-byte against a committed reference stream. Below API
   29, or on any encoder failure, it falls back to WAV — a compression optimisation must never be

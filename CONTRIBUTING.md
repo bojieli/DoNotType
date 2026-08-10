@@ -39,10 +39,20 @@ Per platform:
 | macOS | Xcode 26+, Swift 6 | `make app` |
 | Android | Android SDK 35, JDK 17 | `cd android && gradle assembleDebug` |
 | iOS | Xcode 26+, `brew install xcodegen` | `cd ios && xcodegen generate` |
-| Windows | .NET 10 SDK | `cd windows && dotnet build` |
+| Windows | .NET 10 SDK, libopus | `cd windows && dotnet build` |
 
 The Windows core targets plain `net10.0` and its tests run anywhere; `EnableWindowsTargeting` lets
 even the WinForms app compile off-Windows, so you can check a change builds without a Windows box.
+
+**libopus is the one native dependency in the project, and only on Windows.** macOS and iOS encode
+Opus through CoreAudio and Android through `MediaCodec`; Windows ships no Opus encoder, so it needs
+`opus.dll` beside the executable. The binding resolves the library name at load time rather than
+hard-coding `opus.dll`, which means `brew install opus` (or `apt install libopus0`) is enough to
+exercise the whole encoder path — including the P/Invoke layer — on a developer machine and in CI.
+That was not portability for its own sake: a P/Invoke layer that can only be tested by shipping it
+to Windows is not tested, and this one had a real bug that only a live call could find.
+
+If libopus is missing at runtime the app uploads WAV instead. Slower, never broken.
 You cannot *run* it without one.
 
 ## What good looks like here

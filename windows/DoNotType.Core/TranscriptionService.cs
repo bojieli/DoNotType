@@ -31,7 +31,10 @@ public sealed class TranscriptionService(
         {
             parts.AddRange(_encoder.Encode(context));
         }
-        parts.Add(audioPart ?? new InputPart.Audio(wav, "audio/wav"));
+        // Compressed unless the caller already resolved the audio to a pre-uploaded reference.
+        // Falls back to the WAV whenever libopus is unavailable or the encode fails, because a
+        // compression optimisation must never be able to cost someone their words.
+        parts.Add(audioPart ?? CompressedPart(wav));
 
         return await Provider.TranscribeAsync(systemInstruction, parts, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
@@ -132,6 +135,15 @@ public sealed class TranscriptionService(
             results.Length);
     }
 
+    /// <summary>The recording as Ogg Opus, or as WAV if that is not possible.</summary>
+    internal static InputPart CompressedPart(byte[] wav)
+    {
+        var ogg = OpusEncoder.Encode(wav);
+        return ogg is not null
+            ? new InputPart.Audio(ogg, "audio/ogg")
+            : new InputPart.Audio(wav, "audio/wav");
+    }
+
     public static bool IsTransient(Exception error) => error switch
     {
         ProviderException provider => provider.IsTransient,
@@ -182,6 +194,16 @@ public sealed class GeminiAudioUploader(string apiKey, HttpClient? httpClient = 
     {
         var sessionUrl = _session is null ? null : await _session.ConfigureAwait(false);
         _session = null;
+
+        // Compressed here rather than at the call site, so both routes get it. Putting it on the
+        // inline path alone was a real bug on the Apple side: pre-upload is the primary route, so
+        // the saving reached the eval harness and nobody else.
+        var compressed = OpusEncoder.Encode(wav);
+        if (compressed is not null)
+        {
+            wav = compressed;
+            mimeType = "audio/ogg";
+        }
 
         if (sessionUrl is not null)
         {

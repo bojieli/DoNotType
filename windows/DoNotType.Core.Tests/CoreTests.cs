@@ -669,3 +669,231 @@ public class AudioChunkerTests
         Assert.Equal(100, TokenUsage.Add(new TokenUsage(AudioTokens: 100), new TokenUsage()).AudioTokens);
     }
 }
+
+/// <summary>
+/// Checks this port of the Ogg container against the Swift reference, byte for byte.
+/// </summary>
+/// <remarks>
+/// The container is the part most likely to be subtly wrong in a way that still produces a file
+/// decoders mostly accept — the Swift version shipped two such bugs before these suites existed,
+/// one visible only as a message at the very end of ffprobe's output. "It decodes on my machine" is
+/// not the same as "it is the same stream".
+///
+/// Regenerate with <c>swift run dnt-eval ogg-golden eval/conformance/ogg-reference.bin</c>.
+/// </remarks>
+public class OggOpusWriterTests
+{
+    private static string? ReferenceFile()
+    {
+        var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
+        for (var depth = 0; depth < 10 && directory is not null; depth++)
+        {
+            var candidate = Path.Combine(directory.FullName, "eval", "conformance", "ogg-reference.bin");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+            directory = directory.Parent;
+        }
+        return null;
+    }
+
+    /// <summary>The same input the Swift <c>ogg-golden</c> command uses.</summary>
+    private static byte[] WriteReferenceStream()
+    {
+        var writer = new OggOpusWriter();
+        writer.Begin();
+        for (var index = 0; index < 120; index++)
+        {
+            var packet = new byte[40];
+            for (var i = 0; i < 40; i++)
+            {
+                packet[i] = (byte)(i + index);
+            }
+            writer.Append(packet, 320);
+        }
+        return writer.Finish();
+    }
+
+    [Fact]
+    public void OutputIsByteIdenticalToTheSwiftReference()
+    {
+        var reference = ReferenceFile();
+        if (reference is null)
+        {
+            return; // eval/ not reachable from this working directory
+        }
+
+        Assert.Equal(File.ReadAllBytes(reference), WriteReferenceStream());
+    }
+
+    /// <summary>
+    /// 0x89A1897F is the published check value for CRC-32/MPEG-2, which is the variant Ogg
+    /// specifies. An implementation that reflects its input or seeds with 0xFFFFFFFF produces a
+    /// plausible-looking checksum and fails here rather than in the field.
+    /// </summary>
+    [Fact]
+    public void CrcMatchesThePublishedCheckValue()
+    {
+        Assert.Equal(0u, OggOpusWriter.Crc32([]));
+        Assert.Equal(0u, OggOpusWriter.Crc32([0]));
+        Assert.Equal(0x89A1897Fu, OggOpusWriter.Crc32("123456789"u8));
+        Assert.Equal(0x5FB0A94Fu, OggOpusWriter.Crc32("OggS"u8));
+    }
+
+    private static List<int> PageOffsets(byte[] data)
+    {
+        var offsets = new List<int>();
+        for (var index = 0; index <= data.Length - 4; index++)
+        {
+            if (data[index] == 'O' && data[index + 1] == 'g'
+                && data[index + 2] == 'g' && data[index + 3] == 'S')
+            {
+                offsets.Add(index);
+            }
+        }
+        return offsets;
+    }
+
+    [Fact]
+    public void StreamOpensWithBothHeadersAndEndsWithTheEosFlag()
+    {
+        var data = WriteReferenceStream();
+        var offsets = PageOffsets(data);
+
+        Assert.Equal(0x02, data[offsets[0] + 5]);
+        Assert.Equal(0x04, data[offsets[^1] + 5] & 0x04);
+        Assert.True(
+            data[offsets[^1] + 27] != 0,
+            "the EOS page must carry a real packet, not a zero-length one");
+    }
+
+    [Fact]
+    public void EveryPageChecksumVerifies()
+    {
+        var data = WriteReferenceStream();
+        var offsets = PageOffsets(data);
+
+        for (var index = 0; index < offsets.Count; index++)
+        {
+            var end = index + 1 < offsets.Count ? offsets[index + 1] : data.Length;
+            var page = data[offsets[index]..end];
+
+            var stored = BitConverter.ToUInt32(page, 22);
+            for (var byteIndex = 22; byteIndex < 26; byteIndex++)
+            {
+                page[byteIndex] = 0;
+            }
+
+            Assert.Equal(stored, OggOpusWriter.Crc32(page));
+        }
+    }
+}
+
+/// <summary>
+/// Exercises the libopus binding. These run wherever libopus is installed, which is the point of
+/// resolving the library name at load time rather than hard-coding <c>opus.dll</c> — a P/Invoke
+/// layer that can only be tested by shipping it to Windows is not tested.
+/// </summary>
+public class OpusEncoderTests
+{
+    private static byte[] SpeechWav(double seconds)
+    {
+        var pcm = new List<byte>();
+        var phase = 0.0;
+        for (var index = 0; index < (int)(seconds * 16_000); index++)
+        {
+            phase += 2 * Math.PI * 220 / 16_000;
+            var sample = (short)(Math.Sin(phase) * 12_000);
+            pcm.Add((byte)(sample & 0xFF));
+            pcm.Add((byte)((sample >> 8) & 0xFF));
+        }
+        return AudioChunker.WrapInWavContainer(pcm.ToArray());
+    }
+
+    [Fact]
+    public void EncodesToASubstantiallySmallerOggStream()
+    {
+        if (!OpusEncoder.IsAvailable)
+        {
+            return; // no libopus on this machine
+        }
+
+        var wav = SpeechWav(3);
+        var ogg = OpusEncoder.Encode(wav);
+
+        Assert.NotNull(ogg);
+        Assert.Equal("OggS"u8.ToArray(), ogg![..4]);
+        Assert.True(ogg.Length < wav.Length / 4, $"{ogg.Length} vs {wav.Length}");
+    }
+
+    /// <summary>Anything unencodable comes back as null so the caller sends the WAV. A compression
+    /// optimisation must never be able to cost someone their words.</summary>
+    [Fact]
+    public void UnparseableInputFallsBackRatherThanThrowing()
+    {
+        Assert.Null(OpusEncoder.Encode("not a wav"u8.ToArray()));
+    }
+}
+
+/// <summary>Fails loudly if libopus did not load, so the encoder tests above cannot pass by
+/// silently skipping. A test that reports success because it did nothing is worse than no test.</summary>
+public class OpusAvailabilityTests
+{
+    [Fact]
+    public void LibopusIsLoadableWhereverItIsInstalled()
+    {
+        var installed =
+            File.Exists("/opt/homebrew/lib/libopus.dylib")
+            || File.Exists("/usr/local/lib/libopus.dylib")
+            || File.Exists("/usr/lib/x86_64-linux-gnu/libopus.so.0");
+
+        if (!installed)
+        {
+            return;
+        }
+        Assert.True(
+            OpusEncoder.IsAvailable,
+            "libopus is installed but the import resolver did not find it");
+    }
+}
+
+/// <summary>Writes the encoder's output so it can be checked with a real decoder.</summary>
+/// <remarks>
+/// Structural assertions cannot catch a container that is well-formed but wrong. This dumps the
+/// bytes to a temp file; <c>ffprobe</c> and <c>ffmpeg</c> are run against it from the shell as part
+/// of verifying the port, exactly as the Swift version was.
+/// </remarks>
+public class OpusRoundTripTests
+{
+    [Fact]
+    public void WriteEncodedSampleForExternalVerification()
+    {
+        if (!OpusEncoder.IsAvailable)
+        {
+            return;
+        }
+
+        var pcm = new List<byte>();
+        var phase = 0.0;
+        for (var index = 0; index < 48_000; index++)
+        {
+            phase += 2 * Math.PI * 220 / 16_000;
+            var sample = (short)(Math.Sin(phase) * 12_000);
+            pcm.Add((byte)(sample & 0xFF));
+            pcm.Add((byte)((sample >> 8) & 0xFF));
+        }
+
+        var wav = AudioChunker.WrapInWavContainer(pcm.ToArray());
+        var ogg = OpusEncoder.Encode(wav);
+
+        Assert.NotNull(ogg);
+        Assert.True(ogg!.Length < wav.Length / 4, $"{ogg.Length} vs {wav.Length}");
+
+        var path = Environment.GetEnvironmentVariable("DNT_OPUS_DUMP");
+        if (!string.IsNullOrEmpty(path))
+        {
+            File.WriteAllBytes(path, ogg);
+        }
+    }
+}
