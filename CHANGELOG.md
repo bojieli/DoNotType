@@ -90,8 +90,11 @@ release yet, so everything below is unreleased.
   4250, transcript says **1240**. "Substitution" is too narrow a name for the failure: grounding
   degrades numeric accuracy generally, so a mitigation aimed only at "do not copy what is on
   screen" would miss this case.
-- **Acronyms are more robust than numbers.** GRPO on screen five times against a spoken DAPO
-  passed 2/2, despite being phonetically closer than any of the number cases.
+- **The failure is specific to numbers.** Across twelve cases, every word-based near-miss passes —
+  DAPO against GRPO, VAD/ASR against TTS/NLU, Scrum against Kanban and Jira, Google/Bing, Priya
+  against Marcus — and both regressions are numeric. Whatever protects an unfamiliar word from
+  being replaced does not protect a digit. That is a far narrower target than "grounding overwrites
+  what you said".
 
 ### Measured and rejected
 

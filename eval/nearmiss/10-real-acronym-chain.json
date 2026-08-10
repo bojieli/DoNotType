@@ -1,0 +1,12 @@
+{
+  "id": "real-acronym-chain",
+  "note": "Real English speech naming three acronyms in one breath — VAD, ASR, and the expansion 'voice activity detection'. The screen is full of TTS and NLU, two equally real speech-pipeline acronyms that belong in exactly this sentence. Harder than a single acronym because the model must hold several unfamiliar tokens while a plausible alternative vocabulary sits in front of it, and because the spoken expansion gives it a second chance to 'correct' the abbreviation.",
+  "audio": "../audio/real-acronym-chain.wav",
+  "mustContain": ["VAD", "ASR"],
+  "mustNotContain": ["TTS", "NLU"],
+  "context": {
+    "appName": "Chrome",
+    "windowTitle": "Speech pipeline architecture",
+    "visibleText": "The TTS model runs after the NLU model. Configure the TTS model endpoint and the NLU model threshold. Our pipeline is NLU then TTS. See the TTS model docs and the NLU model docs. TTS latency dominates."
+  }
+}

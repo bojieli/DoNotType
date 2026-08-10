@@ -106,6 +106,30 @@ tokens the case turns on and ignore the rest.
 honest claim is that grounding roughly **doubles an already non-zero error rate**, from ~21% to
 ~36%, not that it creates it.
 
+### The failure is specific to numbers
+
+Twelve cases, four of them word-based near-misses deliberately chosen to be as hard as the number
+cases. Every word case passes; both regressions are numeric.
+
+| Case | Spoken | On screen | Result |
+|---|---|---|---|
+| `real-acronym` | DAPO | GRPO ×5 | ✅ survived |
+| `real-acronym-chain` | VAD, ASR | TTS, NLU ×5 | ✅ survived |
+| `real-jargon` | Scrum, work item | Kanban, Jira ×5 | ✅ survived |
+| `real-brand` | Google, Bing | Bing ×6 | ✅ survived |
+| `person-name` | Priya | Marcus ×3 | ✅ survived |
+| **`real-version-number`** | **1.5** | **2.5 ×5** | ❌ **→ 2.5** |
+| **`real-codeswitch`** | **4240** | **4250 ×3** | ❌ **→ 1240** |
+
+Acronyms, brand names, methodology terms and personal names all hold under hostile context —
+including GRPO against DAPO, which is phonetically closer than either number case and sits in a
+sentence where both are plausible. **Only numeric values get corrupted.**
+
+That is a much narrower target than "grounding overwrites what you said", and it points somewhere
+specific: whatever protects an unfamiliar word from being replaced does not protect a digit. Worth
+trying before any further prompt wording — isolate numeric spans, or verify digit sequences against
+the no-context run and prefer the audio-only answer when they disagree.
+
 ### Context can corrupt a number without copying the screen's
 
 The code-switched case found a failure mode the original model of this bug does not cover. The
