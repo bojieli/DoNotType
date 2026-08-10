@@ -186,11 +186,21 @@ struct Suite: AsyncParsableCommand {
 
         var errored: [String] = []
 
+        // Outcomes grouped by which pass produced them. Every case is run `repeatCount` times, so
+        // pass 0 across all cases is a complete, independent suite result — as is pass 1, and pass
+        // 2. Reporting the spread between them costs nothing and is the only thing standing between
+        // a reader and the mistake this project keeps making: treating a two-point move in a noisy
+        // count as evidence that a change did something.
+        var byPass = [[EvalOutcome]](repeating: [], count: max(1, repeatCount))
+        var unstable: [String] = []
+
         for (testCase, url) in cases {
             var runs: [EvalOutcome] = []
-            for _ in 0..<repeatCount {
+            for pass in 0..<repeatCount {
                 do {
-                    runs.append(try await runner.run(testCase, caseFile: url))
+                    let outcome = try await runner.run(testCase, caseFile: url)
+                    byPass[pass].append(outcome)
+                    runs.append(outcome)
                 } catch {
                     // One unreachable case must not discard the whole run. Recorded and reported
                     // rather than swallowed, so a partial suite is never mistaken for a clean one.
@@ -208,6 +218,7 @@ struct Suite: AsyncParsableCommand {
             let verdict =
                 passes == runs.count ? "PASS " : (passes == 0 ? "FAIL " : "FLAKY")
             print("\(verdict) \(testCase.id)  \(passes)/\(runs.count)")
+            if passes != 0 && passes != runs.count { unstable.append(testCase.id) }
 
             // Show one representative failure rather than repeating near-identical output.
             if let failure = runs.first(where: { !$0.passed }) {
@@ -219,12 +230,35 @@ struct Suite: AsyncParsableCommand {
         }
 
         let effect = { (kind: GroundingEffect) in all.count(where: { $0.effect == kind }) }
+
+        /// Smallest and largest count this effect took in any single pass, so the reader can see
+        /// how much one suite run would have moved on its own.
+        func spread(_ kind: GroundingEffect) -> String {
+            let perPass = byPass.filter { !$0.isEmpty }.map { $0.count(where: { $0.effect == kind }) }
+            guard let low = perPass.min(), let high = perPass.max(), perPass.count > 1 else {
+                return ""
+            }
+            return low == high ? "  (\(low) every pass)" : "  (\(low)–\(high) per pass)"
+        }
+
         print("\n─────────────────────────────────────────────")
         print("runs             \(all.count)  (\(all.count(where: \.passed)) matched ground truth)")
-        print("improved         \(effect(.improved))   ← context fixed a wrong baseline")
-        print("neutral-correct  \(effect(.neutralCorrect))")
-        print("neutral-wrong    \(effect(.neutralWrong))   ← context did not help")
-        print("REGRESSED        \(effect(.regressed))   ← must be 0: context broke a correct baseline")
+        print("improved         \(effect(.improved))\(spread(.improved))   ← context fixed a wrong baseline")
+        print("neutral-correct  \(effect(.neutralCorrect))\(spread(.neutralCorrect))")
+        print("neutral-wrong    \(effect(.neutralWrong))\(spread(.neutralWrong))   ← context did not help")
+        print("REGRESSED        \(effect(.regressed))\(spread(.regressed))   ← must be 0: context broke a correct baseline")
+
+        if !unstable.isEmpty {
+            print(
+                "\n\(unstable.count) case(s) gave different answers across passes: "
+                    + unstable.joined(separator: ", "))
+        }
+        if byPass.filter({ !$0.isEmpty }).count > 1 {
+            print(
+                "\nThe per-pass range is this suite's own noise floor. A prompt or model change "
+                    + "that moves a count by less than that range has not been shown to do "
+                    + "anything — re-measure with more passes before believing it.")
+        }
 
         if !errored.isEmpty {
             print("\nerrors (\(errored.count) run(s) did not complete):")

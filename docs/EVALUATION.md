@@ -154,10 +154,24 @@ explanation attached to it. Case 16 is its twin with the spelling moved to the c
 passes 3/3 — the pair is what protects the finding, because case 13 already fails and so could not
 notice an encoder change that dropped the caret sections entirely.
 
-**Read single suite runs with care.** Two consecutive runs of the same 16 cases gave `improved 5,
-regressed 1` and `improved 7, regressed 3`. The direction is stable — every regression in both runs
-was numeric — but the counts are not, and a change that moves them by one or two has not been
-shown to do anything.
+**Read single suite runs with care — the suite now says so itself.** Two consecutive runs of the
+same 16 cases gave `improved 5, regressed 1` and `improved 7, regressed 3`. The direction is stable
+— every regression in both was numeric — but the counts are not.
+
+Because every case runs `--repeat-count` times, pass 0 across all cases is a complete independent
+suite result, as are passes 1 and 2. The summary reports the range those passes took:
+
+```
+improved         7  (2–3 per pass)
+REGRESSED        4  (1–2 per pass)
+
+3 case(s) gave different answers across passes: real-version-number, real-codeswitch, benefit-novel-name
+```
+
+That range is the noise floor, measured from the same data at no extra cost. A prompt or model
+change that moves a count by less than it has not been shown to do anything. This project's
+changelog is largely a record of confident predictions that measurement destroyed; an instrument
+that reported bare totals was an invitation to add more of them.
 
 **What this does not settle.** The benefit cases are synthesized, so they measure spelling transfer
 rather than transfer under ambiguous human speech. The one remaining suite regression is still
