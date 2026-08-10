@@ -119,7 +119,7 @@ The failure this project is about is invisible to ordinary assertions: a substit
 reads as a correctly transcribed technical term. So there is a measurement layer.
 
 ```bash
-swift test                                    # 141 unit tests, no network
+swift test                                    # 162 unit tests, no network
 DNT_INTEGRATION=1 swift test                  # live API on real speech
 swift run dnt-eval suite eval/nearmiss        # near-miss suite
 swift run dnt-eval ablate                     # compare designs on fidelity and latency

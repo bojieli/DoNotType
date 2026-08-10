@@ -27,7 +27,7 @@ reasoning is unclear. A PR with clear reasoning and no numbers will be asked for
 
 ```bash
 git clone https://github.com/bojieli/DoNotType && cd DoNotType
-swift test                     # 73 unit tests, no network, no key needed
+swift test                     # 162 unit tests, no network, no key needed
 export GEMINI_API_KEY=...      # only needed for integration and eval
 make app && open .build/DoNotType.app
 ```

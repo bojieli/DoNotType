@@ -145,7 +145,7 @@ platform order was macOS → Android → iOS.
 
 ## Testing layers
 
-- **Unit** (`swift test`, `dotnet test`, `gradle test`) — pure logic, no network. 141 + 51 + 13
+- **Unit** (`swift test`, `dotnet test`, `gradle test`) — pure logic, no network. 162 + 53 + 15
   tests. Where a type exists on several platforms, the ports assert the same invariants: a stats
   screen that reports different numbers on different platforms is worse than no stats screen.
 - **Integration** (`DNT_INTEGRATION=1 swift test`) — live API on real recorded speech. Opt-in
