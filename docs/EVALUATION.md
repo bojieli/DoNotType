@@ -81,13 +81,46 @@ overlap (grounded 7.0 s, audio-only 16.6 s, wall 17.2 s — wall tracks the slow
 sum) but they contend for the same upload, so the pair still costs roughly double. The guard
 therefore ships **off by default**, with the trade stated in Settings.
 
-**The uncomfortable part.** In that suite run, `improved` was **0** — grounding corrected nothing
-the no-context baseline got wrong, while breaking two things it had right. On this clip, no context
-is better than grounding on both accuracy and latency. That is not yet a verdict on grounding: the
-suite is built from *near-miss* cases, which are adversarial by construction, and it contains no
-case where context is genuinely needed — an unfamiliar name visible on screen and nowhere else. The
-honest reading is that **the benefit of grounding is currently unmeasured**, and until cases exist
-that can show it, the costs are the only quantified half of the trade.
+## Does grounding earn its cost?
+
+For a while the answer looked like no. An earlier run scored `improved` **0** against 2
+regressions — context corrected nothing the no-context baseline got wrong. That turned out to be an
+artefact of the corpus, and finding out why was the most useful thing in this section.
+
+Probing every real clip with **no context at all**, `gemini-3.6-flash` already produces `VAD model,
+which means voice activity detection`, `ASR model`, `Scrum dashboard`, `retrieval pipeline`,
+`gradient`, `minimize`, `next token prediction` — every technical term the suite was built around,
+spelled correctly, unaided. The screen had nothing to offer. Grounding was not failing; it was never
+being asked a question it could answer.
+
+Grounding can only help with a token the model **cannot** know. Cases 13–15 supply three: `Kaelith`,
+`Brindlewood`, `quillmark-sync`, each invented, each with an obvious phonetic fallback, each spelled
+correctly on the simulated screen. With them in place, the same suite:
+
+```
+runs             45  (40 matched ground truth)
+improved          5   ← context fixed a wrong baseline
+neutral-correct  35
+neutral-wrong     4
+REGRESSED         1
+```
+
+So grounding does earn its place — but only where the model is genuinely ignorant, which is a much
+narrower claim than "context improves transcription".
+
+**The one that fails is the most informative.** `Brindlewood` and `quillmark-sync` transfer 3/3.
+`Kaelith` does not: it comes back as **`Keyleth`** — a name the model already knows — even with the
+correct spelling on screen three times. The no-context baseline says `Kileth`, so context moved the
+answer, just to the wrong place: toward a token in its own vocabulary rather than the one on screen.
+
+That is the project's founding complaint one level down. The original objection to Typeless was a
+*user dictionary* overriding the speaker; this is the *model's* dictionary doing the same thing, and
+no amount of screen text dislodges it. Case 13 is kept as a failing case rather than deleted,
+because it marks the honest boundary of what grounding currently does.
+
+**What this does not settle.** The benefit cases are synthesized, so they measure spelling transfer
+rather than transfer under ambiguous human speech. The one remaining regression is still numeric
+(`1.5` → `2.5`), which is what the optional digit guard exists for.
 
 ## Current numbers
 

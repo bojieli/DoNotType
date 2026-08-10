@@ -41,6 +41,18 @@ release yet, so everything below is unreleased.
 - **Optional rewrite on a second hotkey** — formal, concise or bullets, for turning a dictated
   paragraph into an email. The verbatim transcript is always produced and stored first, and the
   inspector shows both versions together, so what you actually said stays recoverable.
+- **Cases that measure whether grounding *helps*,** not only whether it can do harm. The suite
+  scored `improved 0` for a while, which looked like a failure of grounding and was actually a gap
+  in the corpus: probing every clip with no context showed the model already spells VAD, ASR, Scrum
+  and `retrieval pipeline` correctly unaided, so the screen had nothing to add. Three cases now use
+  invented tokens the model cannot know. With them, the suite reports **5 improvements against 1
+  regression** — grounding's benefit is measured for the first time, and it is narrower than
+  "context improves transcription": it helps where the model is genuinely ignorant.
+
+  One of the three fails, and is kept for what it shows: `Kaelith` returns as `Keyleth` — a name
+  the model already knows — despite the correct spelling being on screen three times. That is this
+  project's founding complaint one level down: not a user dictionary overriding the speaker, but
+  the model's own.
 - **Optional number verification.** Every measured grounding regression has been a number, never a
   word. Enabling this runs a second transcription that never sees the screen and takes the digit
   sequences from it, declining to act at all when the two runs disagree on how many numbers there

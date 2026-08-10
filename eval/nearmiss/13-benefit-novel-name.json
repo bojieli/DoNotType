@@ -1,0 +1,16 @@
+{
+  "id": "benefit-novel-name",
+  "note": "A BENEFIT case that FAILS, and it is kept because of what it shows. Context supplied 'Brindlewood' and 'quillmark-sync' reliably (3/3 each), but 'Kaelith' comes back as 'Keyleth' even with the correct spelling on screen three times. 'Keyleth' is a name the model already knows; 'Kaelith' is not. So grounding transfers a novel spelling only when nothing in the model's own vocabulary competes for the same sound -- when something does, the learned token wins over the screen. This is the same failure the project was started to fix, one level down: not a user dictionary overriding the speaker, but the model's own. Fix it and this becomes a passing case; until then it is the honest boundary of what grounding does.",
+  "audio": "../audio/novel-name.wav",
+  "mustContain": [
+    "Kaelith"
+  ],
+  "context": {
+    "appName": "Slack",
+    "windowTitle": "#platform",
+    "role": "AXTextArea",
+    "isEditable": true,
+    "visibleText": "Kaelith: rebased onto main, the conflict is gone.\nKaelith: I'll take the review once CI is green.\nJonas: thanks Kaelith — standup is at ten.",
+    "textBeforeCaret": "Message #platform\n"
+  }
+}
