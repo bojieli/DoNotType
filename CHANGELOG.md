@@ -41,6 +41,14 @@ release yet, so everything below is unreleased.
 - **Optional rewrite on a second hotkey** — formal, concise or bullets, for turning a dictated
   paragraph into an email. The verbatim transcript is always produced and stored first, and the
   inspector shows both versions together, so what you actually said stays recoverable.
+- **Optional number verification.** Every measured grounding regression has been a number, never a
+  word. Enabling this runs a second transcription that never sees the screen and takes the digit
+  sequences from it, declining to act at all when the two runs disagree on how many numbers there
+  are — aligning by position across a mismatch would move a value somewhere it was never spoken.
+  On the reference clip it cuts substitution from 58% to 8%. **Off by default**: the two requests
+  overlap but contend for the same upload, so the pair costs about 17 s against 8.6 s for one, and
+  doubling the wait to fix a failure that only bites when a screen number contradicts a spoken one
+  is the user's call, not the app's.
 - **Cross-platform encoder conformance.** `ContextEncoder` exists four times and nothing checked
   that the ports agreed. A shared fixture set (`eval/conformance/`) is now encoded by Swift as the
   reference and verified byte-for-byte by the Kotlin and C# suites.

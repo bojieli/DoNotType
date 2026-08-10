@@ -50,6 +50,45 @@ from a *wrong* baseline is grounding doing its job.
 `--repeat-count` defaults to 3. One run is an anecdote — an early single-pass run of this suite
 reported 0 regressions and the next reported 2.
 
+## Where grounding goes wrong, and what fixes it
+
+Two results from 2026-08-10, measured on this machine against `gemini-3.6-flash`. **They are not
+reproducible from this checkout** — see *Current numbers* below — so they are recorded as
+observations, not as the project's published figures.
+
+**The failure is numeric, not phonetic.** Across the 12-case near-miss suite (36 runs), every word
+-level case passed: names, an acronym chain (VAD/ASR against TTS/NLU on screen), Scrum against
+Kanban, brands, code-switched Mandarin. Both regressions were numbers, and one of them —
+`4240` → `1024` — is a value that appears in neither the audio nor the screen. A wrong name is
+recoverable by reading it. A wrong version number is not: nothing in the sentence marks it as wrong.
+
+**Ablation on the reference clip** (speaker says "Gemini 1.5", screen says "2.5"), 12–15 trials:
+
+| condition | substituted | correct | rate | mean latency |
+|---|---|---|---|---|
+| grounded | 7/12 | 5 | 58% | 8.6 s |
+| no context at all | 1/13 | 12 | 8% | 8.4 s |
+| grounded + digit guard | 1/12 | 11 | 8% | 17.2 s |
+
+The digit guard runs a second transcription that never sees the screen and takes the digit
+sequences from it, aligning positionally and declining entirely when the two runs disagree on how
+many numbers there are. On this clip it never had to decline (0 of 12), corrected 6 and found the
+runs already agreed on 6.
+
+**A prediction of mine that measurement falsified.** I claimed issuing the two requests
+concurrently would make the guard cost tokens rather than latency. It does not: the legs genuinely
+overlap (grounded 7.0 s, audio-only 16.6 s, wall 17.2 s — wall tracks the slower leg, not their
+sum) but they contend for the same upload, so the pair still costs roughly double. The guard
+therefore ships **off by default**, with the trade stated in Settings.
+
+**The uncomfortable part.** In that suite run, `improved` was **0** — grounding corrected nothing
+the no-context baseline got wrong, while breaking two things it had right. On this clip, no context
+is better than grounding on both accuracy and latency. That is not yet a verdict on grounding: the
+suite is built from *near-miss* cases, which are adversarial by construction, and it contains no
+case where context is genuinely needed — an unfamiliar name visible on screen and nowhere else. The
+honest reading is that **the benefit of grounding is currently unmeasured**, and until cases exist
+that can show it, the costs are the only quantified half of the trade.
+
 ## Current numbers
 
 The authoritative real-speech WAV payloads are not present in this checkout. That includes

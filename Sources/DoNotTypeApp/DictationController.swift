@@ -239,7 +239,8 @@ final class DictationController {
             // Long recordings are split across concurrent requests; short ones — every ordinary
             // dictation — take the single-request path unchanged.
             let result = try await coordinator.service.transcribeLong(
-                audio: audio, context: context, audioPart: audioPart
+                audio: audio, context: context, audioPart: audioPart,
+                verifyNumbers: settings.verifyNumbers
             ) { [weak self] done, total in
                 Task { @MainActor in
                     self?.overlay.update(phase: .transcribingChunk(done: done, of: total))

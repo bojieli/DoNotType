@@ -129,7 +129,49 @@ public struct TranscriptionService: Sendable {
         audioPart: InputPart? = nil,
         attempts: Int = 3,
         maxConcurrent: Int = 3,
+        verifyNumbers: Bool = false,
         onProgress: (@Sendable (Int, Int) -> Void)? = nil
+    ) async throws -> TranscriptionResult {
+        guard verifyNumbers, let context, !context.isEmpty else {
+            return try await transcribeSplitting(
+                audio: audio, context: context, audioPart: audioPart, attempts: attempts,
+                maxConcurrent: maxConcurrent, onProgress: onProgress)
+        }
+
+        // Grounded and audio-only together. The audio-only run cannot have seen the screen, so its
+        // digit sequences are the ones to trust — measured at 8% substitution against 58% for the
+        // grounded run alone on the reference clip.
+        //
+        // Issued concurrently, but measurement says that does *not* make it free: the two requests
+        // contend for the same upload and the pair takes roughly twice as long as one. Which is
+        // why this is opt-in rather than the default.
+        async let grounded = transcribeSplitting(
+            audio: audio, context: context, audioPart: audioPart, attempts: attempts,
+            maxConcurrent: maxConcurrent, onProgress: onProgress)
+        async let audioOnly = transcribeSplitting(
+            audio: audio, context: nil, audioPart: nil, attempts: attempts,
+            maxConcurrent: maxConcurrent, onProgress: nil)
+
+        var result = try await grounded
+        // A failed verification pass must never cost the user their transcript: the grounded run
+        // already succeeded, and its numbers being unverified is better than no text at all.
+        guard let checked = try? await audioOnly else { return result }
+
+        let reconciled = NumericGuard.reconcile(
+            grounded: result.transcript.transcript,
+            audioOnly: checked.transcript.transcript)
+        result.transcript.transcript = reconciled.text
+        result.usage = result.usage + checked.usage
+        return result
+    }
+
+    private func transcribeSplitting(
+        audio: AudioFile,
+        context: ScreenContext?,
+        audioPart: InputPart?,
+        attempts: Int,
+        maxConcurrent: Int,
+        onProgress: (@Sendable (Int, Int) -> Void)?
     ) async throws -> TranscriptionResult {
         let chunks = AudioChunker.split(wav: audio.data)
         guard chunks.count > 1 else {

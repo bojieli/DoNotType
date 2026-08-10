@@ -96,6 +96,10 @@ final class SettingsModel {
         didSet { Settings.shared.screenshotEnabled = screenshotEnabled }
     }
 
+    var verifyNumbers: Bool {
+        didSet { Settings.shared.verifyNumbers = verifyNumbers }
+    }
+
     var blockedBundleIDs: [String] {
         didSet { Settings.shared.blockedBundleIDs = blockedBundleIDs }
     }
@@ -165,6 +169,7 @@ final class SettingsModel {
         launchAtLogin = LaunchAtLogin.isEnabled
         groundingEnabled = settings.groundingEnabled
         screenshotEnabled = settings.screenshotEnabled
+        verifyNumbers = settings.verifyNumbers
         blockedBundleIDs = settings.blockedBundleIDs
         blockedURLPrefixes = settings.blockedURLPrefixes
         retention = settings.retention
