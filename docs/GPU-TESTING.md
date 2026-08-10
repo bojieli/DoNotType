@@ -208,7 +208,9 @@ this project's whole approach should change. The cached `Voxtral-Small-24B-2507`
 here does **not** expose that parameter in either its Transformers processor or Mistral
 transcription request, so B could not be run. A future run needs the separate Transcribe 2 model
 and serving surface; a short Python script comparing the two on the same clip is enough once that
-checkpoint is available.
+checkpoint is available. The installed `mistralai` SDK does expose `context_bias` on
+`/v1/audio/transcriptions`, confirming the intended API shape, but no `MISTRAL_API_KEY` is configured
+and the corresponding Hub checkpoint request returns HTTP 404.
 
 The downloaded Small checkpoint did permit a related real-speech control: on the public SEAME
 decimal clip, the same hostile text was tested both **after** the audio block and in DoNotType's
