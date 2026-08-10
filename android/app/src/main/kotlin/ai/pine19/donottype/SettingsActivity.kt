@@ -4,6 +4,7 @@ import ai.pine19.donottype.accessibility.ScreenReaderService
 import ai.pine19.donottype.core.DictationRecord
 import ai.pine19.donottype.core.DictationService
 import ai.pine19.donottype.core.Fidelity
+import ai.pine19.donottype.core.HistoryQuery
 import ai.pine19.donottype.core.GeminiClient
 import ai.pine19.donottype.core.InputPart
 import ai.pine19.donottype.core.RetentionPolicy
@@ -54,6 +55,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var connectionLabel: TextView
     private lateinit var historyContainer: LinearLayout
     private lateinit var historySummary: TextView
+    private lateinit var searchField: EditText
+    private var query = HistoryQuery()
 
     private val service by lazy { DictationService(this) }
 
@@ -180,6 +183,38 @@ class SettingsActivity : AppCompatActivity() {
             )
         )
 
+        // Search sits above the list because it is the reason history is kept at all.
+        searchField = EditText(this).apply {
+            hint = "Search transcripts, errors, apps"
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    query = query.copy(text = s?.toString().orEmpty())
+                    refreshHistory()
+                }
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+            })
+        }
+        column.addView(searchField)
+
+        column.addView(
+            Spinner(this).apply {
+                val filters = HistoryQuery.StatusFilter.entries
+                adapter = ArrayAdapter(
+                    this@SettingsActivity,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    filters.map { it.label },
+                )
+                onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                    override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                        query = query.copy(status = filters[pos])
+                        refreshHistory()
+                    }
+                    override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                }
+            }
+        )
+
         historySummary = body("")
         column.addView(historySummary)
         column.addView(button("Retry all failed") { retryAll() })
@@ -272,11 +307,16 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun refreshHistory() {
         service.history.configure(Settings.retention, Settings.keepAudio)
-        val records = service.history.all()
-        val retryable = records.count { it.canRetry }
+        val all = service.history.all()
+        val records = query.apply(all)
+        val retryable = all.count { it.canRetry }
 
         historySummary.text = buildString {
-            append("${records.size} dictation${if (records.size == 1) "" else "s"}")
+            if (records.size == all.size) {
+                append("${all.size} dictation${if (all.size == 1) "" else "s"}")
+            } else {
+                append("${records.size} of ${all.size}")
+            }
             if (retryable > 0) append(" · $retryable to retry")
             append(" · ")
             append(Formatter.formatShortFileSize(this@SettingsActivity, service.history.audioBytes()))

@@ -23,6 +23,12 @@ final class DictationModel {
     }
 
     private(set) var state: State = .idle
+    /// Filters applied to the history list. In the core so the rules match the other platforms.
+    var query = HistoryQuery() {
+        didSet { if query != oldValue { applyQuery() } }
+    }
+
+    private(set) var allRecords: [DictationRecord] = []
     private(set) var records: [DictationRecord] = []
     private(set) var level: Double = 0
     private(set) var retryingIDs: Set<UUID> = []
@@ -74,7 +80,8 @@ final class DictationModel {
     }
 
     var hasAppGroup: Bool { TranscriptStore.containerURL != nil }
-    var retryableCount: Int { records.count(where: \.canRetry) }
+    /// Counted over everything, not the filtered view — a queue you cannot see is still a queue.
+    var retryableCount: Int { allRecords.count(where: \.canRetry) }
 
     var keySource: String {
         apiKey.isEmpty ? "not set" : "Keychain"
@@ -82,8 +89,13 @@ final class DictationModel {
 
     func refresh() async {
         await history.configure(retention: retention, keepAudioForCompleted: keepAudio)
-        records = await history.all()
+        allRecords = await history.all()
         audioBytes = await history.audioBytes()
+        applyQuery()
+    }
+
+    private func applyQuery() {
+        records = query.apply(to: allRecords)
     }
 
     /// Drains anything that failed while offline. Called when the app becomes active.

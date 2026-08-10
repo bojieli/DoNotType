@@ -34,6 +34,13 @@ release yet, so everything below is unreleased.
   a signature changes.
 - **Measurement layer.** `dnt-eval` with `probe`, `once`, `suite` and `ablate`, plus
   `eval/model-sweep.sh` and `eval/extract-real-audio.sh`.
+- **Context Inspector** — shows exactly what was sent with any dictation, rendered back through
+  the real `ContextEncoder`: every part in order, the screenshot when one was sent, the token cost,
+  and whether audio was retained. If an app reads your screen you should be able to read what it
+  read.
+- **Optional rewrite on a second hotkey** — formal, concise or bullets, for turning a dictated
+  paragraph into an email. The verbatim transcript is always produced and stored first, and the
+  inspector shows both versions together, so what you actually said stays recoverable.
 - **Cross-vendor model benchmark** (`eval/benchmark-models.sh`, results in
   [docs/MODELS.md](docs/MODELS.md)) covering 36 audio-capable models.
 - 73 Swift unit tests, 24 C# unit tests, and an opt-in integration suite that runs against the live
@@ -54,6 +61,11 @@ release yet, so everything below is unreleased.
   convenience here, not a requirement.
 - **Transcripts truncated by a token limit were discarded entirely.** Partial JSON is now salvaged
   rather than thrown away, because the words in it are words the user actually said.
+- **The Context Inspector was documented but did not exist.** README, SECURITY.md and the
+  architecture table all described it. A false claim in a privacy document is the worst place to
+  have one; it is now built.
+- **History search and the prompt editor were macOS-only.** Both are now on Windows, Android and
+  iOS, with the filtering rules in each platform's core so they are testable without a UI.
 
 ### Known issues
 

@@ -93,10 +93,13 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Providers and keys** — Gemini (default), any OpenAI-compatible gateway, or a server you run
   yourself (vLLM, llama.cpp), with a live connection test. Keys live in the Keychain / DPAPI, never
   in a config file.
-- **Hotkey** — which key, and whether a tap toggles or a hold talks.
+- **Hotkey** — which key, whether a tap toggles or a hold talks, and an optional **second key
+  bound to a rewrite** (formal, concise, bullets) for when you want an email rather than a
+  transcript. Your main key always stays verbatim.
 - **Fidelity** — `raw`, `light` (default), `tidy`. Even `tidy` only changes typography, never words.
 - **Grounding** — on/off, screenshot fallback, and two blocklists evaluated *before* capture.
-- **History** — search, filters, per-item retry and delete, retention policy.
+- **History** — search, filters, per-item retry and delete, retention policy, and a **Context
+  Inspector** showing exactly what was sent with any dictation.
 - **Prompt** — edit the contract in place, validated before saving, restorable to default.
 
 ## Evaluation

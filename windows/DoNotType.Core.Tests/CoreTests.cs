@@ -295,3 +295,75 @@ public class RetryClassificationTests
         Assert.True(TranscriptionService.IsTransient(new HttpRequestException("dropped")));
     }
 }
+
+public class HistoryQueryTests
+{
+    private static DictationRecord Record(
+        string text, DictationStatus status = DictationStatus.Completed,
+        string? app = null, string? error = null, int minutesAgo = 0) =>
+        new()
+        {
+            CreatedAt = DateTimeOffset.Now.AddMinutes(-minutesAgo),
+            Status = status,
+            Text = text,
+            ErrorMessage = error,
+            AppName = app,
+        };
+
+    private static readonly List<DictationRecord> Corpus =
+    [
+        Record("Ship the pricing page today", app: "Slack", minutesAgo: 5),
+        Record("Refactor the ContextEncoder", app: "Notepad", minutesAgo: 60),
+        Record("", DictationStatus.Failed, app: "Slack", error: "Rate limited — saved", minutesAgo: 10),
+        Record("", DictationStatus.Pending, app: "Notepad", error: "Offline when recorded.", minutesAgo: 1),
+    ];
+
+    [Fact]
+    public void EmptyQueryReturnsEverythingNewestFirst()
+    {
+        var results = new HistoryQuery().Apply(Corpus);
+        Assert.Equal(Corpus.Count, results.Count);
+        Assert.Equal("Notepad", results[0].AppName); // the 1-minute-old pending one
+    }
+
+    [Fact]
+    public void TextSearchIsCaseInsensitive() =>
+        Assert.Single(new HistoryQuery { Text = "PRICING" }.Apply(Corpus));
+
+    /// <summary>When hunting a failure the message is what you remember, not the transcript.</summary>
+    [Fact]
+    public void SearchCoversErrorMessages()
+    {
+        var results = new HistoryQuery { Text = "rate limited" }.Apply(Corpus);
+        Assert.Single(results);
+        Assert.Equal(DictationStatus.Failed, results[0].Status);
+    }
+
+    [Fact]
+    public void NeedsAttentionFiltersToRetryableStates()
+    {
+        var results = new HistoryQuery
+        {
+            Status = HistoryQuery.StatusFilter.NeedsAttention,
+        }.Apply(Corpus);
+
+        Assert.Equal(2, results.Count);
+        Assert.All(results, r => Assert.NotEqual(DictationStatus.Completed, r.Status));
+    }
+
+    [Fact]
+    public void FiltersCombine()
+    {
+        var results = new HistoryQuery
+        {
+            AppName = "Slack",
+            Status = HistoryQuery.StatusFilter.NeedsAttention,
+        }.Apply(Corpus);
+
+        Assert.Single(results);
+    }
+
+    [Fact]
+    public void AppNamesAreDeduplicatedAndSorted() =>
+        Assert.Equal(["Notepad", "Slack"], HistoryQuery.AppNames(Corpus));
+}

@@ -229,6 +229,15 @@ struct HistoryView: View {
 
     var body: some View {
         List {
+            Section {
+                Picker("Show", selection: $model.query.status) {
+                    ForEach(HistoryQuery.StatusFilter.allCases, id: \.self) { status in
+                        Text(status.label).tag(status)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
             if model.retryableCount > 0 {
                 Section {
                     Button("Retry \(model.retryableCount) failed") {
@@ -252,11 +261,17 @@ struct HistoryView: View {
             }
         }
         .navigationTitle("History")
+        // Searching is the point of keeping history at all; a log you cannot search is storage.
+        .searchable(text: $model.query.text, prompt: "Transcripts, errors, apps")
         .overlay {
             if model.records.isEmpty {
                 ContentUnavailableView(
-                    "No dictations yet", systemImage: "waveform",
-                    description: Text("Transcripts appear here, and failed ones can be retried."))
+                    model.query.isEmpty ? "No dictations yet" : "No matches",
+                    systemImage: model.query.isEmpty ? "waveform" : "magnifyingglass",
+                    description: Text(
+                        model.query.isEmpty
+                            ? "Transcripts appear here, and failed ones can be retried."
+                            : "Nothing in your history matches that filter."))
             }
         }
     }

@@ -25,6 +25,9 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _grounding = new() { Text = "Ground transcription in screen text", AutoSize = true };
     private readonly ComboBox _retention = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly CheckBox _keepAudio = new() { Text = "Keep audio for successful dictations", AutoSize = true };
+    private readonly TextBox _search = new() { PlaceholderText = "Search transcripts, errors, apps" };
+    private readonly ComboBox _statusFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly HistoryQuery _query = new();
     private readonly ListView _history = new()
     {
         View = View.Details,
@@ -112,6 +115,31 @@ public sealed class SettingsForm : Form
         _history.Columns.Add("Status", 80);
         _history.Columns.Add("Transcript", 380);
 
+        // Search sits above the list because it is the reason history is kept at all.
+        var searchBar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 40,
+            Padding = new Padding(10, 6, 10, 0),
+        };
+        _search.Width = 320;
+        _search.TextChanged += (_, _) =>
+        {
+            _query.Text = _search.Text;
+            RefreshHistory();
+        };
+        searchBar.Controls.Add(_search);
+
+        _statusFilter.Items.AddRange(["All", "Completed", "Needs retry"]);
+        _statusFilter.SelectedIndex = 0;
+        _statusFilter.Width = 130;
+        _statusFilter.SelectedIndexChanged += (_, _) =>
+        {
+            _query.Status = (HistoryQuery.StatusFilter)_statusFilter.SelectedIndex;
+            RefreshHistory();
+        };
+        searchBar.Controls.Add(_statusFilter);
+
         var toolbar = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
@@ -186,6 +214,7 @@ public sealed class SettingsForm : Form
         };
 
         page.Controls.Add(_history);
+        page.Controls.Add(searchBar);
         page.Controls.Add(toolbar);
         return page;
     }
@@ -212,7 +241,8 @@ public sealed class SettingsForm : Form
     private void RefreshHistory()
     {
         _controller.History.Configure(_settings.Retention, _settings.KeepAudio);
-        var records = _controller.History.All();
+        var all = _controller.History.All();
+        var records = _query.Apply(all);
 
         // Rendered in one pass rather than truncated. A capped list that says nothing about the
         // cap reads as "this is your whole history" when it is not — and the retention policy,
@@ -232,10 +262,13 @@ public sealed class SettingsForm : Form
         }
         _history.EndUpdate();
 
-        var retryable = records.Count(r => r.CanRetry);
+        var retryable = all.Count(r => r.CanRetry);
         var bytes = _controller.History.AudioBytes();
+        var shown = records.Count == all.Count
+            ? $"{all.Count} dictations"
+            : $"{records.Count} of {all.Count}";
         _historySummary.Text =
-            $"{records.Count} dictations · {retryable} to retry · {bytes / 1024} KB audio"
+            $"{shown} · {retryable} to retry · {bytes / 1024} KB audio"
             + "   (double-click to retry · Delete key or right-click to remove)";
     }
 
