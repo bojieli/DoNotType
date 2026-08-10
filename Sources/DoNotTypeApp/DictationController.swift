@@ -122,7 +122,13 @@ final class DictationController {
             if let key = Settings.shared.resolvedAPIKey(), Settings.shared.provider == .gemini {
                 let uploader = AudioUploader(apiKey: key)
                 self.uploader = uploader
-                Task { await uploader.prepare(estimatedBytes: 1_000_000) }
+                // Declared as Ogg because that is what will actually be sent; the session's
+                // content type is fixed when it opens, not when the bytes arrive.
+                Task {
+                    await uploader.prepare(
+                        estimatedBytes: AudioUploader.estimatedUploadBytes,
+                        mimeType: OpusEncoder.isAvailable ? "audio/ogg" : "audio/wav")
+                }
             }
 
             overlay.show(phase: .recording, hint: Settings.shared.hotkeyMode.overlayHint)

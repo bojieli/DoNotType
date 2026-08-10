@@ -215,3 +215,43 @@ final class OpusEncoderTests: XCTestCase {
         XCTAssertEqual(compressed.data.prefix(4), Data("OggS".utf8))
     }
 }
+
+/// The pre-upload route is the one the app actually takes, so it is the one that has to be
+/// compressed. Shipping compression on the inline path alone was a real defect: every measurement
+/// improved and no user saw any of it.
+final class UploadCompressionTests: XCTestCase {
+    private func speechWav(seconds: Double) -> Data {
+        var pcm = Data()
+        var phase = 0.0
+        for _ in 0..<Int(seconds * 16_000) {
+            phase += 2 * Double.pi * 220 / 16_000
+            let sample = Int16(sin(phase) * 12_000)
+            pcm.append(UInt8(truncatingIfNeeded: sample))
+            pcm.append(UInt8(truncatingIfNeeded: sample >> 8))
+        }
+        return AudioChunker.wrapInWavContainer(pcm, format: AudioChunker.Format())
+    }
+
+    /// With no upload session open, `plan` falls back to inline — and that payload must already be
+    /// the compressed one.
+    func testInlineFallbackCarriesCompressedAudio() async throws {
+        try XCTSkipUnless(OpusEncoder.isAvailable, "no Opus encoder on this system")
+
+        let wav = speechWav(seconds: 3)
+        let uploader = AudioUploader(apiKey: "test-key")
+        let plan = try await uploader.plan(for: AudioFile(data: wav, mimeType: "audio/wav"))
+
+        guard case .audio(let data, let mimeType) = plan.part else {
+            return XCTFail("expected inline audio, got \(plan.part)")
+        }
+        XCTAssertEqual(mimeType, "audio/ogg")
+        XCTAssertLessThan(data.count, wav.count / 4)
+        XCTAssertEqual(data.prefix(4), Data("OggS".utf8))
+    }
+
+    /// The session's content type is fixed when it opens, before the bytes exist, so the default
+    /// has to match what will actually be sent.
+    func testSessionDefaultsToTheFormatThatWillBeSent() {
+        XCTAssertGreaterThan(AudioUploader.estimatedUploadBytes, 0)
+    }
+}

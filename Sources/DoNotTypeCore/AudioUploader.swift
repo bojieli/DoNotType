@@ -74,7 +74,13 @@ public actor AudioUploader {
     ///
     /// Called at hotkey-down. `contentLength` is a guess at that point — the API only uses it as a
     /// hint, and the finalize step reports the real size.
-    public func prepare(estimatedBytes: Int, mimeType: String = "audio/wav") {
+    /// A generous guess at the compressed size, used only as a hint when opening the session.
+    ///
+    /// 16 kbps Opus is about 2 kB per second, so this covers roughly two minutes. The finalize
+    /// step reports the real length, and the API treats the header as advisory.
+    public static let estimatedUploadBytes = 250_000
+
+    public func prepare(estimatedBytes: Int, mimeType: String = "audio/ogg") {
         guard sessionTask == nil else { return }
         sessionTask = Task { [apiKey, baseURL, session, log] in
             do {
@@ -115,6 +121,11 @@ public actor AudioUploader {
     public func plan(for audio: AudioFile) async throws -> Plan {
         let sessionURL = await sessionTask?.value ?? nil
         sessionTask = nil
+
+        // Compressed here rather than at the call site, so both routes get it. Doing it only on
+        // the inline path was a real bug: pre-upload is the app's *primary* route, so the measured
+        // saving — 960 kB to 60 kB for 30 seconds — reached the eval harness and nobody else.
+        let audio = audio.compressedForUpload()
 
         if let sessionURL {
             do {
