@@ -88,6 +88,35 @@ The guard lives on the provider protocol, not in an allowlist, because any backe
 | `FailureAdvice` | error → guidance | Every message answers "what do I do now?". |
 | `PromptStore` | user's prompt override | Validated before writing; every fidelity must resolve. |
 | `TranscriptDiff` | classify what grounding changed | Digits compare exactly; vowels fold rather than drop, so a false "spelling-fixed" cannot hide a substitution. |
+| `AudioChunker` | split long recordings on silence | Cuts land in the middle of the quietest span, and every chunk carries identical context so a name is spelled the same on both sides of a seam. |
+| `PerformanceStats` | what the app actually cost | Median and p95, never a mean; absence stays absent, because 0/0 is not a 0% success rate. |
+
+## Long dictations
+
+Past 90 seconds a recording is split on silence and the pieces are transcribed concurrently, three
+at a time. A nine-minute dictation is roughly 17,000 audio tokens in one request, and by the time it
+returns the user has been waiting since they stopped talking.
+
+Three details carry the design. Cuts land at the **middle of the quietest 100 ms** near the target
+rather than at its start, so both neighbours keep a little silence — audio that begins on the first
+sample of a word tends to lose that word's opening consonant. *Quietest* rather than a threshold,
+because an absolute threshold tuned for a quiet room finds no silence at all on a train and would
+then cut mid-word. And every chunk is sent with the **same screen context**, which is what stops
+chunk three spelling a name differently from chunk two — the requests are independent and none of
+them knows what the others produced.
+
+Stitching joins with a single space and nothing else. Chunks are cut in silence, so there is no
+punctuation to infer, and inferring it would be inventing content — which the fidelity rules forbid
+at a seam as firmly as anywhere else.
+
+## Measuring the wait
+
+Latency is recorded from **key release**, not from the request. Everything in between — the
+accessibility walk, a pre-upload that failed and fell back, a retry — is time the user spends
+looking at the overlay, and a figure that excluded it would be flattering and useless.
+
+Failures contribute no timings at all. How long an error took to arrive is a different quantity, and
+folding it in would make a fast app with a bad API key look slow.
 
 ## Grounding, in two phases
 
@@ -116,7 +145,9 @@ platform order was macOS → Android → iOS.
 
 ## Testing layers
 
-- **Unit** (`swift test`, `dotnet test`) — pure logic, no network. 73 + 24 tests.
+- **Unit** (`swift test`, `dotnet test`, `gradle test`) — pure logic, no network. 141 + 51 + 13
+  tests. Where a type exists on several platforms, the ports assert the same invariants: a stats
+  screen that reports different numbers on different platforms is worse than no stats screen.
 - **Integration** (`DNT_INTEGRATION=1 swift test`) — live API on real recorded speech. Opt-in
   because it costs money and fails when the network does.
 - **Evaluation** (`dnt-eval suite`, `ablate`, `model-sweep.sh`) — measures behaviour that unit
