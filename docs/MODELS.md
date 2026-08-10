@@ -213,8 +213,57 @@ output was a German translation even though the source audio is English (as inde
 with Whisper large-v3). This supports content-anchor and context-resistance observations, but is not
 a clean transcription pass because language fidelity failed in all 30 trials.
 
+The remaining downloaded checkpoints were then run against the same 11.04-second Barcelona clip,
+with the screen block repeating Madrid and a false 20-degree temperature eight times. The source
+is English, independently checked with Whisper large-v3 and Qwen3-ASR; the MP3 hash and every
+checkpoint revision are in the machine-readable result. This expands the real-speech context smoke
+test beyond the Obama clip without pretending that it is the missing Gemini 1.5-versus-2.5 fixture:
+
+| Model | No context | Hostile context | Language/content fidelity | Mean latency (no / hostile) |
+|---|---:|---:|---:|---:|
+| `Qwen/Qwen3-Omni-30B-A3B-Instruct` (direct Transformers; talker disabled) | Barcelona 15/15; Madrid 0/15 | Barcelona 15/15; Madrid 0/15 | 15/15 in both | 1.858 s / 1.834 s |
+| `openai/whisper-large-v3` (`initial_prompt`) | Barcelona 15/15; Madrid 0/15 | Barcelona 0/15; Madrid 15/15 | 15/15 no-context; 0/15 hostile | 0.197 s / 1.034 s |
+| `fixie-ai/ultravox-v0_5-llama-3_1-8b` | Barcelona 15/15; Madrid 0/15 | Barcelona 0/15; Madrid 15/15 | 15/15 no-context; hostile prompt copied | 0.303 s / 1.580 s |
+| `Qwen/Qwen3-ASR-0.6B-hf` (hotword/prompt field) | Barcelona 15/15; Madrid 0/15 | Barcelona 15/15; Madrid 0/15 | 15/15 in both | 0.247 s / 0.218 s |
+| `openbmb/MiniCPM-o-4_5` | Barcelona 15/15; Madrid 0/15 | Barcelona 15/15; Madrid 0/15 | 15/15 in both | 0.468 s / 0.429 s |
+| `mistralai/Voxtral-Mini-4B-Realtime-2602` (audio-only control) | Barcelona 1/1; Madrid 0/1 | not supported | 1/1 | 2.759 s / n/a |
+
+Gemma's already-recorded Barcelona probe remained unusable without context in all 15 trials and is
+excluded from this table's grounding comparison. Voxtral Small retained the content anchors but
+translated every output into German, so it is likewise not a clean English transcription pass.
+Whisper's `initial_prompt` and Ultravox's shared token-space prompt both copied the hostile block
+instead of transcribing the audio in every hostile trial. Qwen3-Omni's installed vLLM 0.19.0 path
+could load the real 58-GiB checkpoint but failed during engine profiling with a device/meta tensor
+error; the table uses the same immutable checkpoint through direct Transformers with the talker
+disabled, and does not claim a vLLM result for this clip.
+
+### Mandarin language smoke test (public real speech)
+
+Because the exact `real-mandarin.wav` fixture is also unavailable, I used one short, openly
+licensed AISHELL-1 recording as a separately labeled language check. The 5.409-second clip
+(`BAC009S0002W0124.wav`, SHA-256
+`85e184e8aed8c40a94a4666e8d021ef41901c8d566d928951d54e6a540aaaaca`) says
+**自六月底呼和浩特市率先宣布取消限购后** (“Since the end of June, Hohhot was the first city
+to announce cancellation of purchase restrictions”). The hostile context repeated Beijing in
+English and Chinese. These are public-real-speech observations, not scores for `real-mandarin.wav`
+or the Mandarin near-miss fixture.
+
+| Model | No context | Hostile context | Mean latency (no / hostile) | Interpretation |
+|---|---:|---:|---:|---|
+| `Qwen/Qwen3-ASR-0.6B-hf` | 呼和浩特 15/15; 北京 0/15 | 呼和浩特 15/15; 北京 0/15 | 0.162 s / 0.132 s | Chinese output and anchor held in all trials |
+| `Qwen/Qwen3-Omni-30B-A3B-Instruct` | 呼和浩特 15/15; 北京 0/15 | 呼和浩特 15/15; 北京 0/15 | 1.235 s / 1.374 s | Chinese output and anchor held in all trials |
+| `openbmb/MiniCPM-o-4_5` | 呼和浩特 15/15; 北京 0/15 | 呼和浩特 15/15; 北京 0/15 | 0.308 s / 0.277 s | Chinese output and anchor held in all trials |
+| `fixie-ai/ultravox-v0_5-llama-3_1-8b` | 呼和浩特 15/15; 北京 0/15 | 呼和浩特 0/15; 北京 0/15 | 0.263 s / 0.237 s | Proper-noun anchor lost under hostile context |
+| `openai/whisper-large-v3` (`initial_prompt`) | 呼和浩特 0/15; 北京 0/15 | 呼和浩特 0/15; 北京 0/15 | 0.224 s / 0.198 s | Stable Chinese proper-noun error; not context-scored |
+| `mistralai/Voxtral-Small-24B-2507` | 呼和浩特 0/15; 北京 0/15 | 呼和浩特 0/15; 北京 0/15 | 0.789 s / 0.648 s | Chinese output, but baseline proper noun failed |
+| `google/gemma-4-E4B-it` | 呼和浩特 0/15; 北京 0/15 | 呼和浩特 0/15; 北京 0/15 | 0.340 s / 0.328 s | Chinese output, but baseline proper noun failed |
+
+The complete entries, checkpoint revisions, dataset license, and reference transcript are in the
+`additional_language_smoke` object of
+[`eval/results/local-real-audio-2026-08-10.json`](../eval/results/local-real-audio-2026-08-10.json).
+
 To exercise context handling on genuine speech while the DoNotType fixtures were unavailable, the
-four downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
+primary downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
 recording says **Chicago** in its opening sentence; the context repeated **Seattle** eight times.
 Every trial from every model retained Chicago and emitted no Seattle. This is evidence that these
 checkpoints process real audio and can resist this particular proper-noun decoy, not a substitute for
