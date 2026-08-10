@@ -32,6 +32,8 @@ final class DictationController {
     /// Opened at hotkey-down so the upload handshake happens while the user is still speaking.
     private var uploader: AudioUploader?
     private var levelTimer: Timer?
+    /// Which key started the in-flight recording decides whether it is rewritten.
+    private var pendingStyle: RewriteStyle = .verbatim
 
     init(store: HistoryStore) {
         self.store = store
@@ -48,7 +50,11 @@ final class DictationController {
         }
         hotkey.trigger = Settings.shared.trigger
         hotkey.mode = Settings.shared.hotkeyMode
+        hotkey.secondaryTrigger = Settings.shared.secondaryTrigger
         hotkey.isRecording = { [weak self] in self?.state == .recording }
+        hotkey.onPressStyled = { [weak self] isStyled in
+            self?.pendingStyle = isStyled ? Settings.shared.secondaryStyle : .verbatim
+        }
         hotkey.onPress = { [weak self] in self?.beginRecording() }
         hotkey.onRelease = { [weak self] in self?.finishRecording() }
         hotkey.onCancel = { [weak self] in self?.cancelRecording() }
@@ -65,6 +71,7 @@ final class DictationController {
         hotkey.stop()
         hotkey.trigger = Settings.shared.trigger
         hotkey.mode = Settings.shared.hotkeyMode
+        hotkey.secondaryTrigger = Settings.shared.secondaryTrigger
         _ = hotkey.start()
     }
 
@@ -166,6 +173,8 @@ final class DictationController {
     private func transcribe(audio: AudioFile, context: ScreenContext?) async {
         defer { try? FileManager.default.removeItem(at: audio.url) }
 
+        let style = pendingStyle
+        pendingStyle = .verbatim
         let settings = Settings.shared
         let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName
 
@@ -211,14 +220,27 @@ final class DictationController {
 
             record.status = .completed
             record.text = text
+
+            // The rewrite is a second pass over a transcript that already exists, so the verbatim
+            // version is stored either way and "what did I actually say" stays answerable.
+            var delivered = text
+            if style.isRewrite, let instruction = rewriteInstruction(for: style) {
+                overlay.update(phase: .transcribing)
+                if let styled = try? await coordinator.service.rewrite(text, instruction: instruction) {
+                    record.styledText = styled
+                    record.style = style
+                    delivered = styled
+                }
+            }
+
             await store.insert(record, audio: settings.keepAudio ? try? Data(contentsOf: audio.url) : nil)
             onHistoryChange?()
 
             state = .idle
-            await TextInjector.insert(text)
+            await TextInjector.insert(delivered)
             // Confirm rather than vanish: a silent disappearance leaves the user checking whether
             // anything happened, especially when the target app scrolled.
-            overlay.confirmInserted(characters: text.count)
+            overlay.confirmInserted(characters: delivered.count)
         } catch {
             log.error("transcription failed: \(error.localizedDescription)")
 
@@ -233,6 +255,13 @@ final class DictationController {
                 error, isOnline: await Reachability.shared.isOnline)
             fail(advice.message)
         }
+    }
+
+    private func rewriteInstruction(for style: RewriteStyle) -> String? {
+        guard let promptURL = SettingsModel.bundledPromptURL() else { return nil }
+        return try? PromptStore(directory: HistoryStore.defaultDirectory())
+            .builder(default: promptURL)
+            .rewriteInstruction(style: style)
     }
 
     /// Chooses the upload route, degrading to inline rather than failing.

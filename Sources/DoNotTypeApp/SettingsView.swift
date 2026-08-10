@@ -86,6 +86,30 @@ private struct GeneralTab: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
+                Picker("Second key", selection: $model.secondaryTrigger) {
+                    Text("None").tag(HotkeyMonitor.Trigger?.none)
+                    ForEach(HotkeyMonitor.Trigger.allCases, id: \.self) { trigger in
+                        Text(trigger.label).tag(HotkeyMonitor.Trigger?.some(trigger))
+                    }
+                }
+                if model.secondaryTrigger != nil {
+                    Picker("Second key writes", selection: $model.secondaryStyle) {
+                        ForEach(RewriteStyle.allCases.filter(\.isRewrite), id: \.self) { style in
+                            Text(style.label).tag(style)
+                        }
+                    }
+                }
+                Text(
+                    model.secondaryTrigger == nil
+                        ? "Optionally bind a second key to a rewrite, for when you want an email "
+                            + "rather than a transcript. Your main key always stays verbatim."
+                        : "\(model.trigger.label) transcribes verbatim; "
+                            + "\(model.secondaryTrigger!.label) rewrites. The verbatim transcript "
+                            + "is stored either way, so you can always see what you actually said."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
                 Picker("Fidelity", selection: $model.fidelity) {
                     Text("Raw — every um and false start").tag(Fidelity.raw)
                     Text("Light — drop fillers, keep your words").tag(Fidelity.light)
@@ -186,6 +210,7 @@ private struct ListEditor: View {
 private struct HistoryTab: View {
     @Bindable var model: SettingsModel
     @State private var selection: DictationRecord.ID?
+    @State private var inspecting: DictationRecord?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -204,7 +229,7 @@ private struct HistoryTab: View {
                             : "Nothing in your history matches that filter."))
             } else {
                 List(model.records, selection: $selection) { record in
-                    HistoryRow(record: record, model: model)
+                    HistoryRow(record: record, model: model) { inspecting = record }
                 }
                 .listStyle(.inset)
             }
@@ -301,6 +326,7 @@ private struct HistoryTab: View {
 private struct HistoryRow: View {
     let record: DictationRecord
     @Bindable var model: SettingsModel
+    var onInspect: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -317,6 +343,7 @@ private struct HistoryRow: View {
                     Text(record.createdAt, format: .dateTime.hour().minute())
                     if let app = record.appName { Text("· \(app)") }
                     if record.retryCount > 0 { Text("· retried \(record.retryCount)×") }
+                    if let style = record.style { Text("· \(style.rawValue)") }
                     if record.context != nil { Text("· grounded") }
                 }
                 .font(.caption)
@@ -324,6 +351,14 @@ private struct HistoryRow: View {
             }
 
             Spacer()
+
+            // The point of keeping the context is being able to look at it. If an app reads your
+            // screen, you should be able to read what it read.
+            Button(action: onInspect) {
+                Image(systemName: "eye")
+            }
+            .buttonStyle(.borderless)
+            .help("Show exactly what was sent")
 
             if model.retryingIDs.contains(record.id) {
                 ProgressView().controlSize(.small)

@@ -81,6 +81,16 @@ final class HotkeyMonitor {
     var trigger: Trigger = .rightCommand
     var mode: Mode = .automatic
 
+    /// Optional second key bound to a rewrite style.
+    ///
+    /// Two keys rather than a mode toggle because the choice is per-utterance, not per-session:
+    /// the same person wants verbatim for a chat message and formal for the email they write ten
+    /// seconds later. A toggle would make them remember which mode they left it in.
+    var secondaryTrigger: Trigger?
+
+    /// Fires with `true` when the secondary key started the recording.
+    var onPressStyled: ((Bool) -> Void)?
+
     var onPress: (() -> Void)?
     var onRelease: (() -> Void)?
     /// Fires when the user taps Escape while recording.
@@ -96,6 +106,8 @@ final class HotkeyMonitor {
     private var pressedAt: Date?
     /// Whether the in-flight recording began with this press, for `automatic` mode.
     private var startedByTap = false
+    /// Which key began the in-flight recording, so release routes to the same style.
+    private var usedSecondary = false
     private(set) var restartCount = 0
 
     func start() -> Bool {
@@ -159,12 +171,20 @@ final class HotkeyMonitor {
             reviveIfDisabled()
 
         case .flagsChanged:
-            guard CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode)) == trigger.keyCode
-            else { return }
-            let down = event.flags.contains(trigger.flag)
+            let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+            let isSecondary = secondaryTrigger.map { $0.keyCode == keyCode } ?? false
+            guard keyCode == trigger.keyCode || isSecondary else { return }
+
+            let active = isSecondary ? secondaryTrigger! : trigger
+            let down = event.flags.contains(active.flag)
             guard down != isHeld else { return }
             isHeld = down
-            down ? handlePress() : handleRelease()
+            if down {
+                usedSecondary = isSecondary
+                handlePress()
+            } else {
+                handleRelease()
+            }
 
         case .keyDown:
             // Escape aborts a recording in flight without inserting anything.
@@ -181,6 +201,7 @@ final class HotkeyMonitor {
 
     private func handlePress() {
         pressedAt = Date()
+        onPressStyled?(usedSecondary)
         switch mode {
         case .pushToTalk:
             onPress?()

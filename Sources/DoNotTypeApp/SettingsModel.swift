@@ -47,6 +47,17 @@ final class SettingsModel {
         }
     }
 
+    var secondaryTrigger: HotkeyMonitor.Trigger? {
+        didSet {
+            Settings.shared.secondaryTrigger = secondaryTrigger
+            onHotkeyChange?()
+        }
+    }
+
+    var secondaryStyle: RewriteStyle {
+        didSet { Settings.shared.secondaryStyle = secondaryStyle }
+    }
+
     var onHotkeyChange: (() -> Void)?
 
     // MARK: - Grounding
@@ -121,6 +132,8 @@ final class SettingsModel {
         fidelity = settings.fidelity
         trigger = settings.trigger
         hotkeyMode = settings.hotkeyMode
+        secondaryTrigger = settings.secondaryTrigger
+        secondaryStyle = settings.secondaryStyle
         groundingEnabled = settings.groundingEnabled
         screenshotEnabled = settings.screenshotEnabled
         blockedBundleIDs = settings.blockedBundleIDs

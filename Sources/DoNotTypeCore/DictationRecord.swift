@@ -22,7 +22,15 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
     public let id: UUID
     public let createdAt: Date
     public var status: Status
+    /// Always the verbatim transcript, whatever style was applied afterwards.
+    ///
+    /// Keeping this separate from `styledText` is the whole difference from the tool this project
+    /// replaces: rewriting is allowed, but it is a derived artifact and what you actually said
+    /// remains recoverable.
     public var text: String
+    /// The rewritten version, when a style other than verbatim was used.
+    public var styledText: String?
+    public var style: RewriteStyle?
     public var errorMessage: String?
 
     /// Which backend produced it, so a change of provider is visible in the history.
@@ -47,6 +55,8 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         createdAt: Date = Date(),
         status: Status,
         text: String = "",
+        styledText: String? = nil,
+        style: RewriteStyle? = nil,
         errorMessage: String? = nil,
         provider: String,
         model: String,
@@ -62,6 +72,8 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         self.createdAt = createdAt
         self.status = status
         self.text = text
+        self.styledText = styledText
+        self.style = style
         self.errorMessage = errorMessage
         self.provider = provider
         self.model = model
@@ -77,9 +89,12 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
     /// Retryable only while the recording still exists.
     public var canRetry: Bool { status.isRetryable && audioFileName != nil }
 
+    /// What gets inserted: the styled version when one exists, otherwise the transcript.
+    public var deliveredText: String { styledText ?? text }
+
     public var summary: String {
         switch status {
-        case .completed: text
+        case .completed: deliveredText
         case .failed: errorMessage ?? "Failed"
         case .pending: "Waiting to send"
         }

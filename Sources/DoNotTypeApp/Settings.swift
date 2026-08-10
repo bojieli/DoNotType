@@ -24,6 +24,8 @@ final class Settings {
         static let blockedURLPrefixes = "blockedURLPrefixes"
         static let retention = "retention"
         static let hotkeyMode = "hotkeyMode"
+        static let secondaryTrigger = "secondaryTrigger"
+        static let secondaryStyle = "secondaryStyle"
     }
 
     /// Shipped non-empty. A blocklist that starts empty is a blocklist nobody ever fills in, and
@@ -53,7 +55,25 @@ final class Settings {
             Key.blockedURLPrefixes: Self.defaultBlockedURLPrefixes,
             Key.retention: RetentionPolicy.forever.rawValue,
             Key.hotkeyMode: HotkeyMonitor.Mode.automatic.rawValue,
+            Key.secondaryStyle: RewriteStyle.formal.rawValue,
         ])
+    }
+
+    /// Second key bound to a rewrite style. Off unless the user picks one, because a key that
+    /// silently rewrites what you said would be the exact failure this project exists to avoid.
+    var secondaryTrigger: HotkeyMonitor.Trigger? {
+        get {
+            guard let raw = defaults.string(forKey: Key.secondaryTrigger) else { return nil }
+            return HotkeyMonitor.Trigger(rawValue: raw)
+        }
+        set { defaults.set(newValue?.rawValue, forKey: Key.secondaryTrigger) }
+    }
+
+    var secondaryStyle: RewriteStyle {
+        get {
+            RewriteStyle(rawValue: defaults.string(forKey: Key.secondaryStyle) ?? "") ?? .formal
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.secondaryStyle) }
     }
 
     var hotkeyMode: HotkeyMonitor.Mode {
