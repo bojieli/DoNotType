@@ -200,6 +200,39 @@ constant.
 **What this does not settle.** The benefit cases are synthesized, so they measure spelling transfer
 rather than transfer under ambiguous human speech.
 
+## Latency
+
+Measured end to end on this machine, median of repeated runs, `gemini-3.6-flash`. For comparison,
+Typeless is roughly 2 s at 10 s of speech and 5 s at 30 s.
+
+| clip | PCM upload | Opus upload |
+|---|---|---|
+| 10 s | 6.9 s | **4.9 s** |
+| 30 s | 13.1 s | **9.9 s** |
+
+Opus at 16 kbps is 16× smaller than 16 kHz PCM — 60 kB against 960 kB for 30 seconds — and the
+transcript does not change: the same fixtures come back identical as WAV, FLAC and Opus, billed the
+same audio-token count. That is the whole of the win; the remaining gap to Typeless is not upload.
+
+**A prediction of mine that measurement reversed.** I expected the structured-output JSON schema to
+cost latency, and suggested dropping it as the next optimisation. It is the opposite:
+
+| clip | with schema | without |
+|---|---|---|
+| 10 s | **5.3 s** | 12.0 s |
+| 30 s | **9.8 s** | 10.2 s |
+
+Unconstrained, the model writes prose around the transcript, and the extra output tokens cost far
+more than the constraint saves. The schema is a latency *feature*, most visibly on short clips
+where the wrapper text is a large fraction of the output. `DNT_NO_SCHEMA=1` exists only to re-run
+this measurement; it is not a supported configuration, since unconstrained output occasionally
+arrives wrapped in "Here is the transcript:", and a dictation tool that sometimes types that is
+broken.
+
+Note the `35.42` outlier in that run's no-schema column, against a 10 s median — a reminder that
+single latency measurements on a live API are worth very little, which is a lesson this document
+has now learned twice.
+
 ## Current numbers
 
 The authoritative real-speech WAV payloads are not present in this checkout. That includes

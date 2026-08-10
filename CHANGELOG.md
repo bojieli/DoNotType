@@ -41,6 +41,10 @@ release yet, so everything below is unreleased.
 - **Optional rewrite on a second hotkey** — formal, concise or bullets, for turning a dictated
   paragraph into an email. The verbatim transcript is always produced and stored first, and the
   inspector shows both versions together, so what you actually said stays recoverable.
+- **Opus uploads on Android too,** using `MediaCodec`'s native encoder and the same container
+  writer as the Apple ports, checked byte-for-byte against a committed reference stream. Below API
+  29, or on any encoder failure, it falls back to WAV — a compression optimisation must never be
+  able to cost someone their words.
 - **Uploads are Opus now, not PCM.** A 30-second dictation was 960 kB and is now about 60 kB —
   16× less to send. End-to-end latency fell from 6.9 s to 4.9 s at 10 s of speech, and 13.1 s to
   9.9 s at 30 s. The transcript is unaffected: the same fixtures transcribe identically as WAV,

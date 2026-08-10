@@ -13,17 +13,26 @@ public struct GeminiProvider: TranscriptionProvider {
     /// tokens bill as output and buy nothing here.
     public let thinkingLevel: String
 
+    /// Whether to constrain output to the `Transcript` JSON schema.
+    ///
+    /// On by default and worth keeping: unconstrained output occasionally arrives wrapped in
+    /// prose or a code fence, and a transcription tool that sometimes inserts "Here is the
+    /// transcript:" is broken. Exposed only so `dnt-eval` can measure what the constraint costs.
+    public let usesStructuredOutput: Bool
+
     private let session: URLSession
 
     public init(
         apiKey: String,
         endpoint: URL = URL(string: "https://generativelanguage.googleapis.com/v1beta/interactions")!,
         thinkingLevel: String = "minimal",
+        usesStructuredOutput: Bool = true,
         session: URLSession = .shared
     ) {
         self.apiKey = apiKey
         self.endpoint = endpoint
         self.thinkingLevel = thinkingLevel
+        self.usesStructuredOutput = usesStructuredOutput
         self.session = session
     }
 
@@ -76,22 +85,25 @@ public struct GeminiProvider: TranscriptionProvider {
     // MARK: - Private
 
     private func body(for request: TranscriptionRequest) -> [String: Any] {
-        [
+        var body: [String: Any] = [
             "model": request.model,
             // Server-side retention is on by default and these requests carry screen contents.
             "store": false,
             "system_instruction": request.systemInstruction,
             "input": request.parts.map(Self.encode),
-            "response_format": [
-                "type": "text",
-                "mime_type": "application/json",
-                "schema": Transcript.jsonSchema,
-            ],
             "generation_config": [
                 "thinking_level": thinkingLevel,
                 "max_output_tokens": request.maxOutputTokens,
             ],
         ]
+        if usesStructuredOutput {
+            body["response_format"] = [
+                "type": "text",
+                "mime_type": "application/json",
+                "schema": Transcript.jsonSchema,
+            ]
+        }
+        return body
     }
 
     private static func encode(_ part: InputPart) -> [String: Any] {

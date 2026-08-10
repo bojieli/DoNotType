@@ -26,3 +26,29 @@ struct Encode: AsyncParsableCommand {
         print("\(wav.count) B wav → \(ogg.count) B ogg  (\(String(format: "%.1f", 1 / max(ratio, 0.0001)))× smaller)")
     }
 }
+
+/// Emits a deterministic Ogg stream from synthetic packets, for the cross-platform check.
+///
+/// The Kotlin port has to produce identical bytes: the container is the part most likely to be
+/// subtly wrong in a way that still looks like a valid file, and "it decodes on my machine" is not
+/// the same as "it is the same stream".
+struct OggGolden: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "ogg-golden",
+        abstract: "Write the reference Ogg stream the Kotlin port is checked against.")
+
+    @Argument(help: "Where to write the reference bytes.")
+    var output: String
+
+    mutating func run() async throws {
+        var writer = OggOpusWriter()
+        writer.begin()
+        for index in 0..<120 {
+            let packet = Data((0..<40).map { UInt8(truncatingIfNeeded: $0 &+ index) })
+            writer.append(packet: packet, frameCount: 320)
+        }
+        let data = writer.finish()
+        try data.write(to: URL(fileURLWithPath: output))
+        print("\(data.count) bytes")
+    }
+}

@@ -3,6 +3,7 @@ package app.donottype.core
 import android.content.Context
 import app.donottype.PromptAssets
 import app.donottype.Settings
+import app.donottype.audio.OpusEncoder
 import app.donottype.audio.WavRecorder
 import java.io.File
 import kotlinx.coroutines.async
@@ -89,8 +90,20 @@ class DictationService(private val context: Context) {
             val chunks = AudioChunker.split(wav)
             val requestStart = System.currentTimeMillis()
 
+            // Compressed for upload only. History keeps the WAV: a retry re-runs the whole
+            // pipeline and the chunker needs PCM to find silence in, so re-deriving that from a
+            // lossy copy would make a retried dictation worse than the first attempt.
+            fun audioPart(pcmWav: ByteArray): InputPart {
+                val ogg = OpusEncoder.encode(pcmWav)
+                return if (ogg != null) {
+                    InputPart.Audio(ogg, "audio/ogg")
+                } else {
+                    InputPart.Audio(pcmWav, "audio/wav")
+                }
+            }
+
             val results = if (chunks.size == 1) {
-                listOf(client.transcribe(instruction, contextParts + InputPart.Audio(wav, "audio/wav")))
+                listOf(client.transcribe(instruction, contextParts + audioPart(wav)))
             } else {
                 coroutineScope {
                     // Bounded, because a ten-minute dictation fired all at once is the fastest way
@@ -101,7 +114,7 @@ class DictationService(private val context: Context) {
                             gate.withPermit {
                                 client.transcribe(
                                     instruction,
-                                    contextParts + InputPart.Audio(chunk.data, "audio/wav"),
+                                    contextParts + audioPart(chunk.data),
                                 )
                             }
                         }

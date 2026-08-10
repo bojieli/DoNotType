@@ -72,7 +72,13 @@ public enum ProviderFactory {
                 extraHeaders: ["HTTP-Referer": appURL, "X-Title": appTitle]
             )
         case .gemini:
-            return GeminiProvider(apiKey: key)
+            // DNT_NO_SCHEMA exists so `dnt-eval` can measure what the structured-output
+            // constraint costs in latency. Not a supported configuration: unconstrained output
+            // sometimes arrives wrapped in prose, and a dictation tool that occasionally types
+            // "Here is the transcript:" is broken.
+            return GeminiProvider(
+                apiKey: key,
+                usesStructuredOutput: environment["DNT_NO_SCHEMA"] == nil)
 
         case .local:
             let base = environment["DNT_LOCAL_BASE_URL"]
