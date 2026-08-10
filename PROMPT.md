@@ -199,6 +199,33 @@ What this means, stated plainly:
 The failing case is kept in the integration suite deliberately. It is the only test in the project
 that has ever caught the bug the project is about.
 
+### 2026-08-10 — the caret window carries the weight
+
+Two prompt-adjacent findings, both from moving text between sections without changing a word of it.
+
+| where the correct spelling of a novel name sits | transcribed correctly |
+|---|---|
+| visible text | 0 / 12 |
+| text before caret | 12 / 12 |
+
+| where a contradicting value sits | substituted for what was spoken |
+|---|---|
+| visible text | 3 / 10 |
+| text before caret | 7 / 10 |
+
+The caret sections are a tenth of the visible-text budget and dominate it in both directions.
+
+**A third prediction of mine, falsified.** I had recorded that a novel name losing to a name the
+model already knows (`Kaelith` → `Keyleth`) showed the model's own vocabulary was immovable —
+that *"no amount of screen text dislodges it"*. It dislodges completely when the same text is
+placed near the caret. The correction had never been given a fair hearing; nothing about the
+model's priors was demonstrated. Prompt work aimed at overpowering a "learned token" would have
+been aimed at a phantom.
+
+The practical warning this leaves: dictating a correction into a field that already contains the
+wrong value is the worst case for substitution, and that is exactly when people dictate
+corrections.
+
 ### 2026-08-09 — measured, and two predictions falsified
 
 `swift run dnt-eval ablate`, 15 trials per condition, `gemini-3.6-flash`, on the real clip:

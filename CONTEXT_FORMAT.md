@@ -70,6 +70,13 @@ The audio that follows is the ONLY thing to transcribe.
    target after a potentially long block of untrusted text, some of which may contain imperative
    sentences.
 
+   **These caps are budget, not influence.** Measured on `gemini-3.6-flash`: a correct spelling in
+   the visible-text section transferred 0/12 times, and the same word in the caret window
+   transferred 12/12. A contradicting value substituted 3/10 from visible text and 7/10 from the
+   caret window. The caret sections are a tenth of the budget and carry most of the weight, in both
+   directions — see [docs/EVALUATION.md](docs/EVALUATION.md). Anyone retuning these numbers should
+   know that enlarging the visible-text cap buys much less than it looks like it should.
+
 ## Capture timing
 
 Two phases, so grounding costs no perceived latency:

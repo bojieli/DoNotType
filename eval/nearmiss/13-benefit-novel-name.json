@@ -1,6 +1,6 @@
 {
   "id": "benefit-novel-name",
-  "note": "A BENEFIT case that FAILS, and it is kept because of what it shows. Context supplied 'Brindlewood' and 'quillmark-sync' reliably (3/3 each), but 'Kaelith' comes back as 'Keyleth' even with the correct spelling on screen three times. 'Keyleth' is a name the model already knows; 'Kaelith' is not. So grounding transfers a novel spelling only when nothing in the model's own vocabulary competes for the same sound -- when something does, the learned token wins over the screen. This is the same failure the project was started to fix, one level down: not a user dictionary overriding the speaker, but the model's own. Fix it and this becomes a passing case; until then it is the honest boundary of what grounding does.",
+  "note": "A BENEFIT case that FAILS under the default encoding, kept for what it shows. 'Kaelith' comes back as 'Keyleth' -- a name the model already knows -- with the correct spelling in the visible text three times. The first explanation recorded here was that the model's own vocabulary is immovable; that was measured and is wrong. Moving the identical text into the caret window takes it from 0/12 to 12/12. The visible-text section is comparatively inert: it holds ten times the budget and carries far less weight, in both the helpful and the harmful direction. This case therefore measures the weak channel on purpose -- it is the one real apps mostly have.",
   "audio": "../audio/novel-name.wav",
   "mustContain": [
     "Kaelith"

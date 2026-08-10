@@ -108,19 +108,54 @@ REGRESSED         1
 So grounding does earn its place — but only where the model is genuinely ignorant, which is a much
 narrower claim than "context improves transcription".
 
-**The one that fails is the most informative.** `Brindlewood` and `quillmark-sync` transfer 3/3.
-`Kaelith` does not: it comes back as **`Keyleth`** — a name the model already knows — even with the
-correct spelling on screen three times. The no-context baseline says `Kileth`, so context moved the
-answer, just to the wrong place: toward a token in its own vocabulary rather than the one on screen.
+**The one that fails is the most informative — but not for the reason first recorded here.**
+`Brindlewood` and `quillmark-sync` transfer 3/3. `Kaelith` does not: it comes back as **`Keyleth`**,
+a name the model already knows, even with the correct spelling in the visible text three times.
 
-That is the project's founding complaint one level down. The original objection to Typeless was a
-*user dictionary* overriding the speaker; this is the *model's* dictionary doing the same thing, and
-no amount of screen text dislodges it. Case 13 is kept as a failing case rather than deleted,
-because it marks the honest boundary of what grounding currently does.
+The first conclusion written here was that this is the model's own vocabulary overriding the screen,
+and that *"no amount of screen text dislodges it"*. **That was wrong, and measuring it was the most
+useful thing in this document.** The correct spelling was never given a fair hearing — it was in the
+wrong channel.
+
+## Channel weight: the caret window dominates
+
+The same word, the same audio, moved only between the sections the encoder already emits:
+
+| where the correct spelling sits | `Kaelith` transcribed correctly |
+|---|---|
+| visible text (10,000-char section) | **0 / 12** |
+| text before caret (1,000-char section) | **12 / 12** |
+| both | 12 / 12 |
+
+And the same asymmetry in the harm direction, with the reference clip's `2.5` decoy:
+
+| where the decoy sits | `2.5` substituted for the spoken `1.5` |
+|---|---|
+| visible text | 3 / 10 |
+| text before caret | **7 / 10** |
+
+So the caret window is far stronger in **both** directions. It is the high-signal *and* high-risk
+channel, and the sprawling visible-text section — ten times the budget — is comparatively inert.
+Every near-miss case in this suite puts its decoy in visible text, which means **the substitution
+rates recorded here understate the failure**: the same contradiction sitting in the user's own field
+is roughly twice as likely to overwrite what they said.
+
+Two consequences worth keeping in view:
+
+- The model's vocabulary is not immovable. It just needs the correction somewhere it is actually
+  reading. `Keyleth` is not a floor.
+- You cannot exploit this directly. The caret window is whatever the user's field already contains —
+  the app's screen text cannot be relocated into it. The finding is therefore mostly a warning:
+  dictating a correction into a document that already contains the wrong value is the worst case,
+  and it is exactly when people dictate corrections.
+
+Case 13 is kept as a failing case, since the default encoding does fail it. What changed is the
+explanation attached to it.
 
 **What this does not settle.** The benefit cases are synthesized, so they measure spelling transfer
-rather than transfer under ambiguous human speech. The one remaining regression is still numeric
-(`1.5` → `2.5`), which is what the optional digit guard exists for.
+rather than transfer under ambiguous human speech. The one remaining suite regression is still
+numeric (`1.5` → `2.5`), which is what the optional digit guard exists for — and the channel result
+says that guard matters most precisely when the caret window contains numbers.
 
 ## Current numbers
 
