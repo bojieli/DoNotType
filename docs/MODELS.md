@@ -622,3 +622,22 @@ baseline until the real reference WAV is supplied. Voxtral Transcribe 2's contex
 same idea this project implements by prompt, done inside the decoder where a prior can be weighted
 rather than merely requested — and it remains the most promising follow-up experiment. It needs the
 Transcribe 2 serving surface (the Small checkpoint tested here does not expose that parameter).
+
+## Latency against fidelity (2026-08-10)
+
+The default model is the slow one on purpose. Measured on this machine, same clip, everything else
+held constant:
+
+| model | 10 s | 30 s | substitution, no context |
+|---|---|---|---|
+| `gemini-3.6-flash` | 5.9 s | 9.3 s | **8%** |
+| `gemini-3.5-flash` | 2.6 s | 3.2 s | **83%** |
+| `gemini-3-flash-preview` | 2.5 s | 3.5 s | not measured |
+| `gemini-2.5-flash` | errors | errors | — |
+
+`gemini-3.5-flash` is roughly 3× faster and writes the wrong version number in 83% of runs *with no
+screen context at all* — it cannot hear the number on this audio, which is the failure this project
+exists to prevent. Speed here is bought with the only thing that matters.
+
+Check the no-context column before the clock when evaluating any replacement:
+`dnt-eval ablate --model <id> --conditions verbatim,no-context`.

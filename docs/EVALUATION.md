@@ -214,6 +214,41 @@ Opus at 16 kbps is 16× smaller than 16 kHz PCM — 60 kB against 960 kB for 30 
 transcript does not change: the same fixtures come back identical as WAV, FLAC and Opus, billed the
 same audio-token count. That is the whole of the win; the remaining gap to Typeless is not upload.
 
+### The remaining gap is the model, and it is buying something
+
+Sweeping the same clip across model IDs with everything else held constant:
+
+| model | 10 s clip | 30 s clip |
+|---|---|---|
+| `gemini-3.6-flash` (default) | 5.9 s | 9.3 s |
+| `gemini-3.5-flash` | **2.6 s** | **3.2 s** |
+| `gemini-3-flash-preview` | 2.5 s | 3.5 s |
+| `gemini-2.5-flash` | errors on every request | — |
+
+So the gap to Typeless is entirely the model — and `gemini-3.5-flash` does not merely close it, it
+beats those figures. Which makes the obvious move look very attractive, right up until you measure
+what it costs. On the reference clip, 12 trials:
+
+| model | grounded | no context at all |
+|---|---|---|
+| `gemini-3.6-flash` | 58% substituted | **8%** |
+| `gemini-3.5-flash` | 75% substituted | **83%** |
+
+Read the no-context column. `gemini-3.5-flash` writes the wrong number 83% of the time **with no
+screen context at all** — it simply cannot hear "one point five" on this audio. That is not a
+grounding failure that better prompting could fix; it is the transcription being wrong, which is
+the one thing this project exists to prevent.
+
+**So the latency is a purchase, not a defect.** DoNotType is roughly 2× slower than Typeless
+because it runs a model that gets the number right 92% of the time unaided, instead of one that
+gets it wrong 83% of the time three times faster. Anyone tempted to close the gap by switching
+models should run `dnt-eval ablate --model <id>` first and look at the no-context column before
+looking at the clock.
+
+This also reframes the comparison. A tool being faster is not evidence that it is better engineered
+if it is fast for this reason, and nothing here establishes which model Typeless runs — only that
+whatever produces 2 s at 10 s of speech is in the performance class where this failure lives.
+
 **A prediction of mine that measurement reversed.** I expected the structured-output JSON schema to
 cost latency, and suggested dropping it as the next optimisation. It is the opposite:
 
