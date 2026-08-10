@@ -138,6 +138,9 @@ revisions used for the measurements:
 | `mistralai/Voxtral-Small-24B-2507` | `da5b42409f279fdd92febee0511a6c32828569c1` | 11 / 48,527,546,144 |
 | `google/gemma-4-E4B-it` | `ee0ef6023621cff504d758262d4e04895a5af4a2` | 1 / 15,992,595,884 |
 | `Qwen/Qwen3-Omni-30B-A3B-Instruct` | `26291f793822fb6be9555850f06dfe95f2d7e695` | 15 / 70,523,299,202 |
+| `fixie-ai/ultravox-v0_5-llama-3_1-8b` adapter | `94aa77f70ca548e669ea61f737e159b2fddbb7f7` | adapter + real backbone below |
+| `unsloth/Meta-Llama-3.1-8B-Instruct` backbone | `a2856192dd7c25b842431f39c179a6c2c2f627d1` | 4 shards / downloaded |
+| `openai/whisper-large-v3-turbo` audio encoder | `41f01f3fe87f28c78e2fbf8b568835947dd65ed9` | downloaded |
 
 No synthetic checkpoint, randomly initialized model, or generated weights were used.
 
@@ -149,6 +152,7 @@ No synthetic checkpoint, randomly initialized model, or generated weights were u
 | `google/gemma-4-E4B-it`, isolated Transformers 5.15.0.dev0, bf16 | yes (decoded 16 kHz samples; token usage not exposed), ~15.5 GiB loaded | 15/15 (`Gemini 1.5`) | 15/15; 0/15 substitutions | 3/15 grounded; 3/15 no-context | ~0.97 s no-context; ~0.84 s hostile |
 | `Qwen/Qwen3-Omni-30B-A3B-Instruct`, vLLM 0.19.0, bf16 | yes (transcript quality; usage did not report audio tokens), ~59.3 GiB loaded | 1/1 judged correct on probe; full synthetic scorer often saw number words | 0/15 substitutions (15/15 judged correct) | 5/15 exact matches (strict synthetic strings) | ~1.36 s no-context; ~2.56 s two-pass |
 | `openai/whisper-large-v3`, openai-whisper 20240930, fp16 CUDA | yes; token usage unavailable, ~5.9 GiB allocated | 15/15 (`Gemini 1.5`) | 15/15; 0/15 substitutions | 0/15 grounded with `initial_prompt`; 12/15 no-context | ~0.59 s no-context; ~0.54 s hostile |
+| `fixie-ai/ultravox-v0_5-llama-3_1-8b` + real Llama/Whisper, Transformers 4.57.6, bf16 | yes; 12 s opening segment, ~8.1B params | Chicago 15/15 | Chicago 15/15; Seattle 0/15 | not run (architecture has no benchmark fixture) | ~0.68 s no-context; ~0.42 s hostile |
 
 Voxtral and Gemma were run through their native Transformers processors rather than vLLM. Voxtral
 used the model's dedicated transcription mode for the reference check and audio-instruct mode for
@@ -178,12 +182,14 @@ accepts audio only and exposes no screen-context or context-biasing input. The e
 The same 203.52-second Obama recording was also sent through the previously downloaded priority
 weights: Gemma produced a coherent transcript in 2.49 seconds, Voxtral Small in 6.52 seconds,
 Qwen through vLLM in 4.98 seconds (3,314 prompt tokens; audio-token usage was not reported), and
-Whisper large-v3 in 18.48 seconds. All four processed the real audio and returned the same opening
-sentence. These are recognition smoke-test observations only; there is no paired screen context or
-verified word-level reference for this sample.
+Whisper large-v3 in 18.48 seconds. Ultravox was loaded from its real adapter plus the downloaded
+unsloth Llama backbone and Whisper large-v3-turbo encoder; its 12-second opening-segment probe
+returned the same Chicago sentence in 0.98 seconds. All five processed real audio. These are
+recognition smoke-test observations only; there is no paired screen context or verified word-level
+reference for this sample.
 
 To exercise context handling on genuine speech while the DoNotType fixtures were unavailable, the
-three priority checkpoints were each run 15 times with and without a hostile context block. The
+four downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
 recording says **Chicago** in its opening sentence; the context repeated **Seattle** eight times.
 Every trial from every model retained Chicago and emitted no Seattle. This is evidence that these
 checkpoints process real audio and can resist this particular proper-noun decoy, not a substitute for
@@ -197,10 +203,12 @@ including the WAV hash and checkpoint revisions, is in
 | `google/gemma-4-E4B-it` (Transformers) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 2.08 s / 2.04 s |
 | `mistralai/Voxtral-Small-24B-2507` (Transformers, 128-token cap) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 4.63 s / 4.64 s |
 | `openai/whisper-large-v3` (12-second opening segment, `initial_prompt`) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 0.58 s / 0.52 s |
+| `fixie-ai/ultravox-v0_5-llama-3_1-8b` (12-second opening segment, chat-template prompt) | Chicago 15/15; Seattle 0/15 | Chicago 15/15; Seattle 0/15 | 0.68 s / 0.42 s |
 
 Whisper used the first 12 seconds of the same recording because the anchor occurs in its opening
-sentence; its segment hash is recorded in the result file. The three multimodal checkpoints used
-the full 203.52-second WAV. These cells are intentionally labeled as a separate real-audio smoke
+sentence; its segment hash is recorded in the result file. The three priority checkpoints used the
+full 203.52-second WAV; Ultravox used the 12-second opening segment because its encoder context is
+shorter. These cells are intentionally labeled as a separate real-audio smoke
 test: they do not establish the DoNotType substitution rate, because the speech says Chicago, not
 the missing Gemini 1.5 reference phrase.
 

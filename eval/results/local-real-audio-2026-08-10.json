@@ -53,6 +53,24 @@
       "no_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.5807},
       "hostile_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.5153},
       "context_mechanism": "initial_prompt"
+    },
+    {
+      "model": "fixie-ai/ultravox-v0_5-llama-3_1-8b",
+      "adapter_revision": "94aa77f70ca548e669ea61f737e159b2fddbb7f7",
+      "backbone": "unsloth/Meta-Llama-3.1-8B-Instruct",
+      "backbone_revision": "a2856192dd7c25b842431f39c179a6c2c2f627d1",
+      "audio_encoder": "openai/whisper-large-v3-turbo",
+      "audio_encoder_revision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
+      "runtime": "Transformers 4.57.6, bf16, CUDA; chat template with <|audio|>",
+      "audio_segment": {
+        "source": "patrickvonplaten/audio_samples/obama.mp3",
+        "duration_seconds": 12.0,
+        "sha256": "4004049d1a2966b67e0fdc0497755118f97822c7f275dc4ed96f5ef71d55f552",
+        "reason": "the spoken anchor is in the opening sentence; short segment keeps the control run practical"
+      },
+      "no_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.6847},
+      "hostile_context": {"anchor": "15/15", "decoy": "0/15", "mean_latency_seconds": 0.4183},
+      "context_mechanism": "screen text before audio in user turn"
     }
   ]
 }
