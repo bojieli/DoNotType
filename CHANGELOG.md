@@ -41,9 +41,9 @@ release yet, so everything below is unreleased.
 - **Optional rewrite on a second hotkey** — formal, concise or bullets, for turning a dictated
   paragraph into an email. The verbatim transcript is always produced and stored first, and the
   inspector shows both versions together, so what you actually said stays recoverable.
-- **Long dictations are split across concurrent requests.** Cuts land in the middle of the
-  quietest 100 ms near the target, so no chunk starts or ends mid-word, and every chunk carries the
-  *same* screen context — which is what keeps a name spelled the same on both sides of a seam.
+- **Long dictations are split across concurrent requests** on macOS, iOS and Windows. Cuts land in
+  the middle of the quietest 100 ms near the target, so no chunk starts or ends mid-word, and every
+  chunk carries the *same* screen context — which is what keeps a name spelled the same on both sides of a seam.
   Under 90 seconds nothing changes, so an ordinary dictation pays nothing for this. The overlay
   shows "part 2 of 5" rather than sitting on "Transcribing…", which is the difference between slow
   and hung.

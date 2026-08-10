@@ -73,6 +73,65 @@ public sealed class TranscriptionService(
         throw last;
     }
 
+    /// <summary>
+    /// Transcribes a recording of any length, splitting long ones across concurrent requests.
+    /// </summary>
+    /// <remarks>
+    /// Every chunk carries the <em>same</em> screen context. That is what stops chunk three
+    /// spelling a name differently from chunk two -- the requests are independent and have no idea
+    /// what the others produced.
+    ///
+    /// Short recordings take the ordinary single-request path untouched, so this is safe to call
+    /// unconditionally.
+    /// </remarks>
+    public async Task<TranscriptionResult> TranscribeLongAsync(
+        byte[] wav,
+        ScreenContext? context,
+        InputPart? audioPart = null,
+        int attempts = 3,
+        int maxConcurrent = 3,
+        Action<int, int>? onProgress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var chunks = AudioChunker.Split(wav);
+        if (chunks.Count <= 1)
+        {
+            return await TranscribeWithRetryAsync(wav, context, audioPart, attempts, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        // Bounded concurrency: a ten-minute dictation is ten simultaneous requests otherwise, which
+        // is the fastest way to hit a rate limit and turn a slow dictation into a failed one.
+        using var gate = new SemaphoreSlim(maxConcurrent);
+        var finished = 0;
+
+        var tasks = chunks.Select(async chunk =>
+        {
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var result = await TranscribeWithRetryAsync(
+                        chunk.Data, context, null, attempts, cancellationToken)
+                    .ConfigureAwait(false);
+                onProgress?.Invoke(Interlocked.Increment(ref finished), chunks.Count);
+                return result;
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+
+        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+        return new TranscriptionResult(
+            new Transcript(
+                AudioChunker.Stitch(results.Select(result => result.Transcript.Text)),
+                results.FirstOrDefault()?.Transcript.Language ?? string.Empty),
+            results.Aggregate(new TokenUsage(), (total, result) => TokenUsage.Add(total, result.Usage)),
+            string.Join("\n", results.Select(result => result.RawOutput)),
+            results.Length);
+    }
+
     public static bool IsTransient(Exception error) => error switch
     {
         ProviderException provider => provider.IsTransient,

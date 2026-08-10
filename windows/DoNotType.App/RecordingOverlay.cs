@@ -119,7 +119,9 @@ public sealed class RecordingOverlay : Form
                 g.DrawString(_hint, font, textBrush, 108, Height / 2 - 8);
                 break;
             case Phase.Transcribing:
-                g.DrawString("Transcribing…", font, textBrush, 24, Height / 2 - 8);
+                // The hint carries "part 2 of 5" for a split dictation, and is empty otherwise.
+                var label = _hint.Length == 0 ? "Transcribing…" : $"Transcribing… {_hint}";
+                g.DrawString(label, font, textBrush, 24, Height / 2 - 8);
                 break;
             default:
                 using (var warn = new SolidBrush(Color.FromArgb(230, 240, 160, 90)))

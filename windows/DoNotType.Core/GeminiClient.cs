@@ -56,9 +56,27 @@ public sealed record Transcript(string Text, string Language = "")
     }
 }
 
-public sealed record TokenUsage(int? PromptTokens = null, int? CompletionTokens = null, int? AudioTokens = null);
+public sealed record TokenUsage(int? PromptTokens = null, int? CompletionTokens = null, int? AudioTokens = null)
+{
+    /// <summary>Totals the cost of a dictation that took more than one request.</summary>
+    /// <remarks>
+    /// Null means "not reported" and must not become zero: zero audio tokens is the specific signal
+    /// that a provider dropped the audio, so inventing one would fire that alarm falsely.
+    /// </remarks>
+    public static TokenUsage Add(TokenUsage left, TokenUsage right) => new(
+        Sum(left.PromptTokens, right.PromptTokens),
+        Sum(left.CompletionTokens, right.CompletionTokens),
+        Sum(left.AudioTokens, right.AudioTokens));
 
-public sealed record TranscriptionResult(Transcript Transcript, TokenUsage Usage, string RawOutput);
+    private static int? Sum(int? left, int? right) =>
+        left is null && right is null ? null : (left ?? 0) + (right ?? 0);
+}
+
+/// <param name="ChunkCount">
+/// How many requests the audio was split across. 1 for every ordinary dictation.
+/// </param>
+public sealed record TranscriptionResult(
+    Transcript Transcript, TokenUsage Usage, string RawOutput, int ChunkCount = 1);
 
 public sealed class ProviderException(string message) : Exception(message)
 {

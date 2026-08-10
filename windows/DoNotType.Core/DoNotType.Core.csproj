@@ -13,4 +13,13 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
 
+  <!--
+    The chunker's WAV arithmetic is internal because nothing outside needs it, but it is exactly
+    the code most worth testing: a header written wrong corrupts audio silently. Swift's @testable
+    covers the same ground on the other side.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="DoNotType.Core.Tests" />
+  </ItemGroup>
+
 </Project>

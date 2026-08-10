@@ -31,6 +31,16 @@ public sealed class DictationController : IDisposable
     public string? LastError { get; private set; }
 
     public event Action<State>? StateChanged;
+
+    /// <summary>
+    /// Fires as each part of a long dictation lands, as (done, total).
+    /// </summary>
+    /// <remarks>
+    /// Only raised when a recording was long enough to split -- "1 of 1" is noise. A nine-minute
+    /// recording that sits on "Transcribing…" for half a minute looks hung, and this is what
+    /// distinguishes slow from stuck.
+    /// </remarks>
+    public event Action<int, int>? ChunkProgress;
     public event Action? HistoryChanged;
 
     public HistoryStore History => _history;
@@ -192,7 +202,11 @@ public sealed class DictationController : IDisposable
             }
 
             var requestStart = Stopwatch.GetTimestamp();
-            var result = await service.TranscribeWithRetryAsync(wav, context, audioPart)
+            // Long recordings split across concurrent requests; short ones -- every ordinary
+            // dictation -- take the single-request path unchanged.
+            var result = await service.TranscribeLongAsync(
+                    wav, context, audioPart,
+                    onProgress: (done, total) => ChunkProgress?.Invoke(done, total))
                 .ConfigureAwait(false);
             record.RequestSeconds = Stopwatch.GetElapsedTime(requestStart).TotalSeconds;
             record.AudioTokens = result.Usage.AudioTokens;

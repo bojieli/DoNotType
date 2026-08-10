@@ -508,3 +508,164 @@ public class PerformanceStatsTests
         Assert.Equal(2, breakdown[0].Stats.Total);
     }
 }
+
+/// <summary>
+/// Mirrors <c>AudioChunkerTests.swift</c>. Getting the WAV arithmetic subtly wrong would silently
+/// corrupt audio, and nothing downstream would notice a missing second of speech.
+/// </summary>
+public class AudioChunkerTests
+{
+    /// <summary>
+    /// Builds a WAV whose loud passages are separated by true silence, so a correct splitter has
+    /// somewhere obvious to cut and an incorrect one has somewhere obvious to be caught.
+    /// </summary>
+    private static byte[] Speech(params (double Loud, double Silence)[] segments)
+    {
+        var pcm = new List<byte>();
+        var phase = 0.0;
+
+        foreach (var (loud, silence) in segments)
+        {
+            for (var i = 0; i < (int)(loud * 16_000); i++)
+            {
+                phase += 2 * Math.PI * 220 / 16_000;
+                var sample = (short)(Math.Sin(phase) * 12_000);
+                pcm.Add((byte)(sample & 0xFF));
+                pcm.Add((byte)((sample >> 8) & 0xFF));
+            }
+            pcm.AddRange(new byte[(int)(silence * 16_000) * 2]);
+        }
+        return AudioChunker.WrapInWavContainer(pcm.ToArray());
+    }
+
+    private static byte[] Seconds(double value) => Speech((value, 0));
+
+    [Fact]
+    public void ShortRecordingsAreNotSplit()
+    {
+        var chunks = AudioChunker.Split(Seconds(20));
+        Assert.Single(chunks);
+        Assert.Equal(20, chunks[0].DurationSeconds, 1);
+    }
+
+    /// <summary>Unparseable data is passed through whole rather than mangled.</summary>
+    [Fact]
+    public void NonWavDataIsPassedThroughUntouched()
+    {
+        var junk = "not a wav file at all"u8.ToArray();
+        var chunks = AudioChunker.Split(junk);
+        Assert.Single(chunks);
+        Assert.Equal(junk, chunks[0].Data);
+    }
+
+    /// <summary>
+    /// Every sample must appear in exactly one chunk. A splitter that drops a second of audio loses
+    /// a word, and nothing downstream would ever notice.
+    /// </summary>
+    [Fact]
+    public void NoAudioIsLostOrDuplicated()
+    {
+        var original = Seconds(300);
+        var chunks = AudioChunker.Split(original);
+
+        var rejoined = chunks.SelectMany(chunk => AudioChunker.PcmBody(chunk.Data)!).ToArray();
+        Assert.Equal(AudioChunker.PcmBody(original)!, rejoined);
+    }
+
+    [Fact]
+    public void ChunkOffsetsAreContiguous()
+    {
+        var chunks = AudioChunker.Split(Seconds(300));
+        Assert.True(chunks.Count > 1);
+        for (var i = 1; i < chunks.Count; i++)
+        {
+            Assert.Equal(
+                chunks[i - 1].StartSeconds + chunks[i - 1].DurationSeconds,
+                chunks[i].StartSeconds, 2);
+        }
+    }
+
+    /// <summary>The point of the whole exercise: cuts land in silence, not mid-word.</summary>
+    [Fact]
+    public void CutsLandInSilence()
+    {
+        var segments = Enumerable.Repeat((55.0, 4.0), 6).ToArray();
+        var chunks = AudioChunker.Split(Speech(segments));
+        Assert.True(chunks.Count > 1);
+
+        foreach (var chunk in chunks.SkipLast(1))
+        {
+            var body = AudioChunker.PcmBody(chunk.Data)!;
+            var tail = body[^1600..]; // final 50 ms
+            var peak = 0;
+            for (var i = 0; i + 1 < tail.Length; i += 2)
+            {
+                peak = Math.Max(peak, Math.Abs((short)(tail[i] | (tail[i + 1] << 8))));
+            }
+            Assert.True(peak < 500, $"chunk {chunk.Index} ends mid-speech (peak {peak})");
+        }
+    }
+
+    /// <summary>A trailing two-second fragment transcribes badly, so the last cut is skipped.</summary>
+    [Fact]
+    public void FinalChunkIsNotAStub()
+    {
+        var chunks = AudioChunker.Split(Seconds(185));
+        Assert.True(chunks[^1].DurationSeconds > 15);
+    }
+
+    [Fact]
+    public void GeneratedChunksAreValidWavFiles()
+    {
+        foreach (var chunk in AudioChunker.Split(Seconds(300)))
+        {
+            Assert.Equal("RIFF"u8.ToArray(), chunk.Data[..4]);
+            Assert.Equal("WAVE"u8.ToArray(), chunk.Data[8..12]);
+
+            // The RIFF size field must match the real length or strict decoders reject the file.
+            var declared = BitConverter.ToInt32(chunk.Data, 4);
+            Assert.Equal(chunk.Data.Length - 8, declared);
+            Assert.Equal(0, AudioChunker.PcmBody(chunk.Data)!.Length % 2);
+        }
+    }
+
+    /// <summary>Real recorders emit LIST/INFO chunks before the data.</summary>
+    [Fact]
+    public void DataChunkIsFoundPastExtraMetadataChunks()
+    {
+        var plain = Seconds(2);
+        var body = AudioChunker.PcmBody(plain)!;
+
+        var withMetadata = new List<byte>(plain[..36]);
+        withMetadata.AddRange("LIST"u8.ToArray());
+        withMetadata.AddRange(BitConverter.GetBytes(4));
+        withMetadata.AddRange("INFO"u8.ToArray());
+        withMetadata.AddRange("data"u8.ToArray());
+        withMetadata.AddRange(BitConverter.GetBytes(body.Length));
+        withMetadata.AddRange(body);
+
+        Assert.Equal(body.Length, AudioChunker.PcmBody(withMetadata.ToArray())!.Length);
+    }
+
+    [Fact]
+    public void StitchJoinsWithASingleSpaceAndDropsEmptyPieces()
+    {
+        Assert.Equal("one two three four", AudioChunker.Stitch(["one two", "three four"]));
+        Assert.Equal("one two", AudioChunker.Stitch(["  one  ", "", "\n", " two"]));
+        Assert.Equal(string.Empty, AudioChunker.Stitch([]));
+    }
+
+    /// <summary>
+    /// Zero audio tokens is the signal a provider dropped the audio. Summing two unreported values
+    /// into zero would fire that alarm on a provider that simply does not report usage.
+    /// </summary>
+    [Fact]
+    public void UsageAddsAcrossChunksWithoutInventingZeroes()
+    {
+        var total = TokenUsage.Add(new TokenUsage(10, 4, 100), new TokenUsage(10, 6, 200));
+        Assert.Equal(new TokenUsage(20, 10, 300), total);
+
+        Assert.Null(TokenUsage.Add(new TokenUsage(), new TokenUsage()).AudioTokens);
+        Assert.Equal(100, TokenUsage.Add(new TokenUsage(AudioTokens: 100), new TokenUsage()).AudioTokens);
+    }
+}

@@ -32,6 +32,8 @@ internal sealed class TrayApplication : ApplicationContext
     {
         _controller = new DictationController(_settings);
         _controller.StateChanged += OnStateChanged;
+        _controller.ChunkProgress += (done, total) => _overlay.BeginInvoke(() =>
+            _overlay.SetPhase(RecordingOverlay.Phase.Transcribing, $"part {Math.Min(done + 1, total)} of {total}"));
         _controller.HistoryChanged += () => BeginInvokeOnTray(RebuildMenu);
 
         _tray = new NotifyIcon
