@@ -41,6 +41,16 @@ release yet, so everything below is unreleased.
 - **Optional rewrite on a second hotkey** — formal, concise or bullets, for turning a dictated
   paragraph into an email. The verbatim transcript is always produced and stored first, and the
   inspector shows both versions together, so what you actually said stays recoverable.
+- **Tap to talk, hold to talk — on every platform.** The Android keyboard was hold-only, which
+  means keeping a finger down for the length of a thought: fine for a sentence, miserable for a
+  paragraph. It now behaves like the desktop hotkey — a quick tap starts and a second tap stops,
+  while holding past 350 ms records only while held. iOS gained the hold half of the same gesture.
+  Recording begins on touch-down either way, because waiting to classify the gesture would clip
+  the first word, which is the one people say fastest.
+- **A distinct "thinking" animation once speech stops,** on all four platforms. Deliberately unlike
+  the recording waveform: after you stop talking there is no input left to reflect, so a
+  level-driven animation would be decoration pretending to be a signal. It exists to prevent one
+  specific failure — deciding nothing happened and pressing the key again mid-request.
 - **Cases that measure whether grounding *helps*,** not only whether it can do harm. The suite
   scored `improved 0` for a while, which looked like a failure of grounding and was actually a gap
   in the corpus: probing every clip with no context showed the model already spells VAD, ASR, Scrum
