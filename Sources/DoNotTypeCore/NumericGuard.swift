@@ -78,3 +78,69 @@ public enum NumericGuard {
         text.matches(of: pattern).map { String($0.output) }
     }
 }
+
+extension NumericGuard {
+    /// When a dictation is in the regime where a screen number is likely to overwrite a spoken one.
+    ///
+    /// Measured, and the two channels are not close. The same contradicting value substitutes for
+    /// what the speaker said 3/10 of the time from the visible-text section and 7/10 from the caret
+    /// window — the text the user has already typed into the field they are dictating into. The
+    /// guard is worth its second request in both, but it is worth it far more in the second:
+    ///
+    /// | decoy in | without guard | with guard |
+    /// |---|---|---|
+    /// | visible text | 30% | 8% |
+    /// | caret window | 75% | 20% |
+    ///
+    /// So the trigger is digits near the caret, not digits anywhere on screen. The visible text is
+    /// ten times the budget and routinely contains numbers that have nothing to do with the
+    /// utterance — a sidebar, a timestamp, a row count — and spending a second request on those
+    /// would make the cost constant while the benefit stayed occasional.
+    ///
+    /// The worst case this identifies is also the most ordinary one: dictating a correction into a
+    /// document that already shows the value being corrected.
+    public static func isHighRisk(_ context: ScreenContext?) -> Bool {
+        guard let context else { return false }
+        return [context.textBeforeCaret, context.textAfterCaret, context.selectedText]
+            .contains { $0?.contains(where: \.isNumber) == true }
+    }
+}
+
+/// When to spend a second, screen-blind request to check the numbers.
+public enum NumberCheckPolicy: String, Codable, Sendable, CaseIterable {
+    case never
+    /// Only when the text around the caret contains digits — where substitution is worst.
+    case whenCaretHasNumbers
+    case always
+
+    public var label: String {
+        switch self {
+        case .never: "Never"
+        case .whenCaretHasNumbers: "When the text you're editing contains numbers"
+        case .always: "Always"
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .never:
+            "Fastest. A number on screen can overwrite a number you said."
+        case .whenCaretHasNumbers:
+            """
+            Spends a second request only in the case that measurably needs it: a value on screen \
+            beside your caret substitutes for the one you spoke 75% of the time, and the check \
+            cuts that to 20%.
+            """
+        case .always:
+            "Checks every dictation, including the ones with no numbers to check."
+        }
+    }
+
+    public func applies(to context: ScreenContext?) -> Bool {
+        switch self {
+        case .never: false
+        case .always: true
+        case .whenCaretHasNumbers: NumericGuard.isHighRisk(context)
+        }
+    }
+}

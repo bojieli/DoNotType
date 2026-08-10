@@ -240,7 +240,7 @@ final class DictationController {
             // dictation — take the single-request path unchanged.
             let result = try await coordinator.service.transcribeLong(
                 audio: audio, context: context, audioPart: audioPart,
-                verifyNumbers: settings.verifyNumbers
+                verifyNumbers: settings.numberCheck.applies(to: context)
             ) { [weak self] done, total in
                 Task { @MainActor in
                     self?.overlay.update(phase: .transcribingChunk(done: done, of: total))

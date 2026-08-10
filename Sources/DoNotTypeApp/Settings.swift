@@ -147,16 +147,18 @@ final class Settings {
         set { defaults.set(newValue, forKey: Key.screenshotEnabled) }
     }
 
-    /// Cross-checks digit sequences against a second, audio-only transcription.
+    /// When to spend a second, screen-blind request to check the numbers.
     ///
-    /// Off by default, and the reason is measured rather than assumed. On the reference clip it
-    /// cuts substitution from 58% to 8% — but the two requests, even issued together, take about
-    /// 17 s against 8.6 s for one, because they contend for the same upload. It doubles the wait
-    /// to fix a failure that only bites when a number on screen differs from a number you said.
-    /// That is a real trade, and it is the user's to make.
-    var verifyNumbers: Bool {
-        get { defaults.bool(forKey: Key.verifyNumbers) }
-        set { defaults.set(newValue, forKey: Key.verifyNumbers) }
+    /// Defaults to the measured middle: only when the text around the caret contains digits. That
+    /// is the regime where a screen value overwrites a spoken one 75% of the time, against 30%
+    /// when the contradiction is off in the visible text — so the request buys the most where it
+    /// is spent, and ordinary dictation into an empty field never pays for it.
+    var numberCheck: NumberCheckPolicy {
+        get {
+            defaults.string(forKey: Key.verifyNumbers)
+                .flatMap(NumberCheckPolicy.init(rawValue:)) ?? .whenCaretHasNumbers
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.verifyNumbers) }
     }
 
     var keepAudio: Bool {

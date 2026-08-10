@@ -53,6 +53,13 @@ release yet, so everything below is unreleased.
   the model already knows — despite the correct spelling being on screen three times. That is this
   project's founding complaint one level down: not a user dictionary overriding the speaker, but
   the model's own.
+- **Number checking now aims at the caret window, and is on by default there.** The channel result
+  changed what this feature should do. Re-measured with the contradicting value beside the caret
+  rather than off in the visible text: substitution is **75%** unguarded and **20%** guarded, against
+  30%/8% in the weak channel. So the check is worth its extra request precisely where the text
+  being edited already contains numbers, and `When the text you're editing contains numbers` is the
+  default. Digits in the visible text alone do not trigger it — a sidebar or a row count would make
+  the cost constant while the benefit stayed occasional.
 - **Optional number verification.** Every measured grounding regression has been a number, never a
   word. Enabling this runs a second transcription that never sees the screen and takes the digit
   sequences from it, declining to act at all when the two runs disagree on how many numbers there

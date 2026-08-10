@@ -173,10 +173,32 @@ change that moves a count by less than it has not been shown to do anything. Thi
 changelog is largely a record of confident predictions that measurement destroyed; an instrument
 that reported bare totals was an invitation to add more of them.
 
+### Acting on it: the guard is aimed at the caret window
+
+Every earlier digit-guard measurement put the decoy in visible text — the weak channel. Re-run with
+the decoy in the caret window, where substitution actually bites:
+
+| decoy in | without guard | with guard | guard latency |
+|---|---|---|---|
+| visible text | 30% | 8% | — |
+| **caret window** | **75%** | **20%** | 9.4 s vs 7.9 s |
+
+The guard works where it is needed most. `NumberCheckPolicy.whenCaretHasNumbers` is therefore the
+default: it spends the second request only when the text around the caret contains digits, and
+never for ordinary dictation into an empty field. Digits in the visible text alone do not trigger
+it — a sidebar, a timestamp or a row count would make the cost constant while the benefit stayed
+occasional.
+
+**A latency claim of mine that needs correcting.** I recorded that the guard "roughly doubles the
+wait" from 8.6 s to 17.2 s. The run above shows 9.4 s against 7.9 s — about 1.5 s of overhead. Both
+were real measurements of the same code; the difference is network variance, which is precisely the
+trap the suite's new noise-floor reporting exists to prevent, and I walked into it. **The honest
+statement is that the overhead is one extra concurrent request, somewhere between negligible and a
+doubling depending on the connection**, and a single measurement of it should not be quoted as a
+constant.
+
 **What this does not settle.** The benefit cases are synthesized, so they measure spelling transfer
-rather than transfer under ambiguous human speech. The one remaining suite regression is still
-numeric (`1.5` → `2.5`), which is what the optional digit guard exists for — and the channel result
-says that guard matters most precisely when the caret window contains numbers.
+rather than transfer under ambiguous human speech.
 
 ## Current numbers
 

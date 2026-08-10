@@ -184,21 +184,27 @@ private struct GroundingTab: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-                Toggle("Check numbers against a second, screen-blind pass", isOn: $model.verifyNumbers)
-                    .disabled(!model.groundingEnabled)
+                Picker("Check numbers", selection: $model.numberCheck) {
+                    ForEach(NumberCheckPolicy.allCases, id: \.self) { policy in
+                        Text(policy.label).tag(policy)
+                    }
+                }
+                .disabled(!model.groundingEnabled)
 
                 // The trade is stated rather than implied, because it is the whole reason this is
-                // a setting and not the default.
+                // a choice and not a fixed behaviour.
                 Text(
                     "Every measured grounding regression has been a number, never a word — a "
-                        + "version on screen overriding the one you said. A second transcription "
-                        + "that never sees the screen supplies the digits. On the reference clip "
-                        + "this cut substitution from 58% to 8%, and roughly doubled the wait: the "
-                        + "two requests contend for the same upload, so they cost about 17s "
-                        + "against 8.6s."
+                        + "value on screen overriding the one you said. A second transcription "
+                        + "that never sees the screen supplies the digits, at the cost of one "
+                        + "extra request."
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+
+                Text(model.numberCheck.detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Never read these apps") {

@@ -72,8 +72,9 @@ final class VerifyNumbersTests: XCTestCase {
         XCTAssertEqual(result.transcript.transcript, "Deploy SwiftUI on port 9090.")
     }
 
-    /// Off by default, and off means one request — the whole reason it is opt-in is the second one.
-    func testDisabledByDefaultAndCostsOnlyOneRequest() async throws {
+    /// Not requested means one request — the whole point of the policy is choosing when to spend
+    /// the second one.
+    func testNotRequestedCostsOnlyOneRequest() async throws {
         let provider = ContextSensitiveProvider(grounded: "grounded 2.5", audioOnly: "spoken 1.5")
 
         let result = try await service(provider).transcribeLong(audio: audio, context: context)
@@ -128,5 +129,63 @@ final class VerifyNumbersTests: XCTestCase {
             audio: audio, context: context, verifyNumbers: true)
 
         XCTAssertEqual(result.transcript.transcript, "Ports 80 and 443 are open.")
+    }
+}
+
+/// The trigger is digits *near the caret*, and the reason is measured: the same contradicting
+/// value substitutes 3/10 of the time from visible text and 7/10 from the caret window.
+final class NumberCheckPolicyTests: XCTestCase {
+    private func context(
+        visible: String? = nil, before: String? = nil, after: String? = nil, selected: String? = nil
+    ) -> ScreenContext {
+        ScreenContext(
+            appName: "App", visibleText: visible, textBeforeCaret: before,
+            textAfterCaret: after, selectedText: selected)
+    }
+
+    func testCaretTextWithDigitsIsHighRisk() {
+        XCTAssertTrue(NumericGuard.isHighRisk(context(before: "Upgrade to Gemini 2.5 because")))
+        XCTAssertTrue(NumericGuard.isHighRisk(context(after: " — see the 3.5 migration notes")))
+        XCTAssertTrue(NumericGuard.isHighRisk(context(selected: "port 8080")))
+    }
+
+    func testCaretTextWithoutDigitsIsNot() {
+        XCTAssertFalse(NumericGuard.isHighRisk(context(before: "Replying to Kaelith: ")))
+        XCTAssertFalse(NumericGuard.isHighRisk(nil))
+    }
+
+    /// Visible text routinely contains numbers with nothing to do with the utterance — a sidebar,
+    /// a timestamp, a row count. Triggering on those makes the cost constant and the benefit rare.
+    func testDigitsInVisibleTextAloneDoNotTrigger() {
+        XCTAssertFalse(
+            NumericGuard.isHighRisk(context(visible: "1,204 results · updated 3 minutes ago")))
+    }
+
+    func testPolicyNeverAndAlwaysIgnoreContent() {
+        let risky = context(before: "Gemini 2.5")
+        XCTAssertFalse(NumberCheckPolicy.never.applies(to: risky))
+        XCTAssertTrue(NumberCheckPolicy.always.applies(to: risky))
+        XCTAssertTrue(NumberCheckPolicy.always.applies(to: context(before: "no digits")))
+    }
+
+    func testPolicyWhenCaretHasNumbersFollowsTheMeasuredTrigger() {
+        XCTAssertTrue(
+            NumberCheckPolicy.whenCaretHasNumbers.applies(to: context(before: "version 2.5 of")))
+        XCTAssertFalse(
+            NumberCheckPolicy.whenCaretHasNumbers.applies(to: context(before: "version two of")))
+    }
+
+    /// Ordinary dictation into an empty field must never pay for the check.
+    func testAnEmptyFieldIsNotRisky() {
+        XCTAssertFalse(NumberCheckPolicy.whenCaretHasNumbers.applies(to: context()))
+        XCTAssertFalse(NumberCheckPolicy.whenCaretHasNumbers.applies(to: nil))
+    }
+
+    /// Every option must be explicable in the UI, or the setting is a coin flip.
+    func testEveryPolicyExplainsItself() {
+        for policy in NumberCheckPolicy.allCases {
+            XCTAssertFalse(policy.label.isEmpty)
+            XCTAssertFalse(policy.detail.isEmpty)
+        }
     }
 }

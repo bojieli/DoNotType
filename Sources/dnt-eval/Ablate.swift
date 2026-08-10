@@ -18,6 +18,12 @@ struct Ablate: AsyncParsableCommand {
     @Option(name: .long, help: "Recording to test against.")
     var audio: String = "eval/audio/real-talk-gemini15.wav"
 
+    /// Which channel the contradiction arrives through, because they are not equivalent: the same
+    /// decoy substitutes 3/10 from visible text and 7/10 from the caret window. A guard measured
+    /// only in the weak channel has not been measured where the failure actually bites.
+    @Flag(name: .long, help: "Put the contradicting text before the caret instead of in visible text.")
+    var decoyBeforeCaret = false
+
     @Option(name: .long, help: "Screen text that contradicts the audio.")
     var visibleText: String =
         "Gemini 2.5 Flash is the current model. See the Gemini 2.5 guide. Gemini 2.5 Flash "
@@ -98,14 +104,19 @@ struct Ablate: AsyncParsableCommand {
         guard let promptURL else { throw ValidationError("Could not find PROMPT.md") }
         let builder = try PromptBuilder(contentsOf: promptURL)
 
-        let context = ScreenContext(
-            appName: "Safari", windowTitle: "Documentation", visibleText: visibleText)
+        let context = decoyBeforeCaret
+            ? ScreenContext(
+                appName: "Safari", windowTitle: "Documentation", textBeforeCaret: visibleText)
+            : ScreenContext(
+                appName: "Safari", windowTitle: "Documentation", visibleText: visibleText)
         let selected = conditions.split(separator: ",").map {
             $0.trimmingCharacters(in: .whitespaces)
         }
 
         print("provider \(kind.rawValue) · model \(runner.model) · \(trials) trials per condition")
-        print("audio \(file.url.lastPathComponent) · spoken \"\(spoken)\" · decoy \"\(decoy)\"\n")
+        print(
+            "audio \(file.url.lastPathComponent) · spoken \"\(spoken)\" · decoy \"\(decoy)\" · "
+                + "decoy in \(decoyBeforeCaret ? "the caret window" : "visible text")\n")
 
         let diagnostics = Diagnostics()
         var results: [(String, Outcome)] = []
