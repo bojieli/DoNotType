@@ -137,6 +137,13 @@ release yet, so everything below is unreleased.
   [docs/MODELS.md](docs/MODELS.md)) covering 36 audio-capable models.
 - 73 Swift unit tests, 24 C# unit tests, and an opt-in integration suite that runs against the live
   API on real recorded speech.
+- **UI tests that run where the app runs.** Every test in this project used to stop at the core, so
+  nothing knew whether the apps worked — which is how an iOS bundle that no device could install
+  stayed green in CI. iOS gets an XCUITest target that installs and drives the app through
+  settings, the API key round trip, history, the prompt editor and fidelity; Android gets
+  instrumented tests including one asserting the scroll viewport is inset by the system bars; and
+  the Windows job launches the real tray app and fails if it is not still running with its
+  settings window open. All three run in CI, the last two on an emulator and a Windows runner.
 - **An app icon** — a text insertion caret whose stem is a microphone, its lower serif doubling as
   the mic's base. It replaces the three placeholders that shipped before it: macOS drew SF Symbols
   in the menu bar and had no bundle icon at all, Windows showed the generic
@@ -147,6 +154,26 @@ release yet, so everything below is unreleased.
   [Resources/Icon/README.md](Resources/Icon/README.md).
 
 ### Fixed
+
+- **The iOS app could not be installed.** Neither `Info.plist` declared `CFBundleIdentifier` or
+  `CFBundleExecutable`. Xcode only synthesises those for targets that let it generate the whole
+  file, and `xcodebuild build` does not check them, so CI was green for the life of the project
+  while every installer rejected the bundle it produced: "Missing bundle ID". Found by trying to
+  install it in a simulator, which nothing had ever done.
+- **The Android settings screen drew under the status bar.** API 35 hands an app the area behind
+  the system bars whether it asked for it or not, and a layout built in code gets no insets
+  applied for it, so the heading sat behind the clock. The inset padding belongs on the scroll
+  view rather than on the column inside it — padding the column fixes only the resting position
+  and scrolled rows still run under the clock. The action bar is gone too, since the screen draws
+  its own title and it was appearing twice, and the status bar icons are now tinted for the
+  background they sit on instead of staying light on light.
+- **The Android keyboard's only button was half covered** by the navigation bar. The IME window
+  extends behind it; a gesture pill is thin enough to miss "Tap to talk", a three-button bar is
+  not.
+- **The iOS record button was invisible to VoiceOver.** It is a bare gesture on a `ZStack`, which
+  exposes nothing, so the one control the app exists for could not be operated by anyone driving
+  it that way. It now reports as a button, carries a label and hint, and toggles on activation,
+  since press-and-hold is not a gesture VoiceOver can forward.
 
 - **A gateway that silently discarded audio.** One OpenAI-compatible provider accepted an
   `input_audio` block, returned HTTP 200, billed 14 prompt tokens for a 6-second clip, and

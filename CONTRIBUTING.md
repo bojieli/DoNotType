@@ -27,10 +27,23 @@ reasoning is unclear. A PR with clear reasoning and no numbers will be asked for
 
 ```bash
 git clone https://github.com/bojieli/DoNotType && cd DoNotType
-swift test                     # 162 unit tests, no network, no key needed
+swift test                     # 170 unit tests, no network, no key needed
 export GEMINI_API_KEY=...      # only needed for integration and eval
 make app && open .build/DoNotType.app
 ```
+
+The apps have UI tests, which run where the app runs rather than on a build machine:
+
+```bash
+cd ios && xcodebuild test -scheme DoNotType \
+  -destination 'platform=iOS Simulator,name=iPhone 17'   # installs and drives the app
+cd android && gradle connectedDebugAndroidTest           # needs a device or emulator attached
+```
+
+Both are worth running before touching anything a window draws. A unit test cannot see that a
+screen renders under the status bar, or that a bundle has no identifier and no installer will
+take it — those were real bugs here, and both survived a green CI for months because every test
+this project had stopped at the core.
 
 Per platform:
 

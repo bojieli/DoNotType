@@ -41,8 +41,16 @@ writes the on-screen version number instead of the spoken one in roughly **36%**
 non-zero error rate on hard audio. Full numbers, method and two falsified mitigations are in
 [docs/EVALUATION.md](docs/EVALUATION.md).
 
-Everything else works and is tested. The Windows app compiles and its core is tested but **has
-never been run on Windows**.
+Everything else works and is tested. Each app is now driven by a UI test on the platform it ships
+to — the iOS app is installed and exercised in a simulator, the Android app in an emulator, and the
+Windows tray app is launched on a Windows runner and has to still be alive with its settings window
+open before the build passes. That last one is new: for most of this project's life the Windows app
+compiled and had **never been started on Windows**, and until recently the iOS app could not be
+installed anywhere at all.
+
+Still unexercised by any test: the iOS keyboard extension, which needs the keyboard enabling in iOS
+Settings before a test can reach it, and dictation itself on every platform, which needs a
+microphone and a paid API call.
 
 ## Platforms
 
@@ -127,7 +135,7 @@ The failure this project is about is invisible to ordinary assertions: a substit
 reads as a correctly transcribed technical term. So there is a measurement layer.
 
 ```bash
-swift test                                    # 162 unit tests, no network
+swift test                                    # 170 unit tests, no network
 DNT_INTEGRATION=1 swift test                  # live API on real speech
 swift run dnt-eval suite eval/nearmiss        # near-miss suite
 swift run dnt-eval ablate                     # compare designs on fidelity and latency
