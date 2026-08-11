@@ -44,7 +44,7 @@ app: build
 	@cp PROMPT.md "$(CONTENTS)/Resources/PROMPT.md"
 	@# Both rendered from Resources/Icon/DoNotType.svg; see Resources/Icon/make-icons.sh.
 	@cp Resources/AppIcon.icns "$(CONTENTS)/Resources/AppIcon.icns"
-	@cp Resources/MenuBar/*.pdf "$(CONTENTS)/Resources/"
+	@cp Resources/MenuBar/*.png "$(CONTENTS)/Resources/"
 	@printf 'APPL????' > "$(CONTENTS)/PkgInfo"
 	@codesign --force --deep --options runtime \
 		--entitlements Resources/$(APP).entitlements \

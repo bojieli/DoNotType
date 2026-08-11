@@ -125,17 +125,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.image = image
     }
 
-    /// Menu-bar art ships as PDF so the status bar can draw it at whatever backing scale the
-    /// display has. The SF Symbol fallback is for `swift run`, which produces a bare executable
-    /// with no bundle to load resources from -- a missing image there would leave an invisible
-    /// status item rather than an obviously broken one.
+    /// Menu-bar art ships as an 18pt PNG and its 2x twin, assembled here into one image with two
+    /// representations so AppKit picks the right one for the display it lands on. Both reps are
+    /// declared 18pt: that is what marks the 36px bitmap as the 2x variant rather than as a
+    /// separate, larger image.
+    ///
+    /// The SF Symbol fallback is for `swift run`, which produces a bare executable with no bundle
+    /// to load resources from -- a missing image there would leave an invisible status item rather
+    /// than an obviously broken one.
     private static func statusImage(_ name: String, fallback: String) -> NSImage? {
-        guard let url = Bundle.main.url(forResource: name, withExtension: "pdf"),
-              let image = NSImage(contentsOf: url)
-        else {
+        let size = NSSize(width: 18, height: 18)
+        let reps = [name, "\(name)@2x"].compactMap { file -> NSImageRep? in
+            guard let url = Bundle.main.url(forResource: file, withExtension: "png") else {
+                return nil
+            }
+            let rep = NSImageRep(contentsOf: url)
+            rep?.size = size
+            return rep
+        }
+        guard !reps.isEmpty else {
             return NSImage(systemSymbolName: fallback, accessibilityDescription: "DoNotType")
         }
-        image.size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size)
+        reps.forEach(image.addRepresentation)
         image.accessibilityDescription = "DoNotType"
         return image
     }

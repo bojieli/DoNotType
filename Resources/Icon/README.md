@@ -21,12 +21,17 @@ brew install librsvg imagemagick
 ./Resources/Icon/make-icons.sh squircle # print the macOS corner path, for pasting into the SVG
 ```
 
-Re-rendering is a manual step, deliberately: rasterised output is not byte-identical across
-librsvg versions, so a CI job diffing the committed PNGs against a fresh render would fail on the
-day GitHub bumped a runner image rather than on the day someone forgot to re-run this. That is the
-same reason the integration tests are not in CI — a check that fails for reasons unrelated to the
-change is a coin flip, not a signal. Editing the SVG without re-running the script is caught in
-review instead.
+Running the script twice produces byte-identical output, so a re-run with no edit leaves a clean
+tree and anything it does change is a change you made. Keeping that true is why the menu-bar images
+are PNG rather than PDF, and why the one ImageMagick step passes `-strip`: cairo stamps a
+timestamp into every PDF, and ImageMagick writes one into a PNG text chunk.
+
+Re-rendering is still a manual step rather than a CI check, because the guarantee stops at the
+machine: output is not byte-identical across librsvg versions, so a job diffing the committed
+assets against a fresh render would fail on the day GitHub bumped a runner image rather than on
+the day someone forgot to re-run this. That is the same reason the integration tests are not in CI
+— a check that fails for reasons unrelated to the change is a coin flip, not a signal. Editing the
+SVG without re-running the script is caught in review instead.
 
 ## Variants
 
@@ -55,7 +60,7 @@ brand.
 
 | Path | Built by |
 |---|---|
-| `Resources/AppIcon.icns`, `Resources/MenuBar/*.pdf` | copied into the bundle by the `Makefile` |
+| `Resources/AppIcon.icns`, `Resources/MenuBar/*.png` | copied into the bundle by the `Makefile` |
 | `windows/DoNotType.App/Assets/DoNotType.ico` | `ApplicationIcon` and an `EmbeddedResource`; read back at runtime by `AppIcon.cs` |
 | `android/app/src/main/res/mipmap-*/` | `mipmap-anydpi-v26/ic_launcher.xml` |
 | `ios/App/Assets.xcassets/AppIcon.appiconset/` | `ASSETCATALOG_COMPILER_APPICON_NAME` in `ios/project.yml` |

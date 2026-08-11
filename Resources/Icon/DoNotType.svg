@@ -71,10 +71,12 @@
     <rect id="capsule-hollow" x="-76" y="-219" width="152" height="315" rx="76" fill="none"
           stroke-width="46"/>
     <!-- Transcribing: the capsule gives way to a level meter, inside the same caret. -->
+    <!-- Spread wider than the capsule it replaces: at 18pt the gaps between these bars are what
+         has to survive, and at the capsule's width they closed up into a single blob. -->
     <g id="meter">
-      <rect x="-99" y="-115" width="52" height="230" rx="26"/>
+      <rect x="-125" y="-115" width="52" height="230" rx="26"/>
       <rect x="-26" y="-190" width="52" height="380" rx="26"/>
-      <rect x="47" y="-115" width="52" height="230" rx="26"/>
+      <rect x="73" y="-115" width="52" height="230" rx="26"/>
     </g>
 
     <!-- ===== tile =================================================================== -->

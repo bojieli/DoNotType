@@ -73,24 +73,67 @@ render icon-macos 512 512 "$ICONSET/icon_512x512.png"
 render icon-macos 1024 1024 "$ICONSET/icon_512x512@2x.png"
 iconutil --convert icns "$ICONSET" --output Resources/AppIcon.icns
 
-# Menu-bar images. PDF rather than PNG because a status item is drawn at whatever backing scale
-# the display has, and a template image is tinted by the system from its alpha alone.
+# Menu-bar images, at the 18pt the status bar draws and again at 2x for Retina. A template image
+# is tinted by the system from its alpha alone, so these carry no colour.
+#
+# PDF would scale to any backing store from one file, and was the first thing tried, but cairo
+# stamps a creation timestamp into every PDF it writes -- so re-running this script produced three
+# changed files whether or not the artwork had moved, which makes "commit what changed" useless
+# advice. Rendering the two sizes rsvg emits byte-identically is worth more than the third scale
+# factor macOS does not have.
 mkdir -p Resources/MenuBar
 for state in idle recording transcribing; do
-  out=Resources/MenuBar/Status$(echo "${state:0:1}" | tr '[:lower:]' '[:upper:]')${state:1}.pdf
-  rsvg-convert --export-id="status-$state" --format=pdf --width=64 --height=64 \
-    "$ROOT/$SVG" --output "$out"
+  name=Status$(echo "${state:0:1}" | tr '[:lower:]' '[:upper:]')${state:1}
+  render "status-$state" 18 18 "Resources/MenuBar/$name.png"
+  render "status-$state" 36 36 "Resources/MenuBar/$name@2x.png"
 done
 
 echo "==> Windows"
 # One .ico holding every size Windows asks for: 16 in the tray at 100% DPI, 24 at 150%, 32 in the
 # task switcher, 256 in Explorer's largest view.
 mkdir -p windows/DoNotType.App/Assets
+ICO=windows/DoNotType.App/Assets/DoNotType.ico
 for size in 16 20 24; do render icon-small "$size" "$size" "$TMP/win-$size.png"; done
 for size in 32 48 64 128 256; do render icon "$size" "$size" "$TMP/win-$size.png"; done
 magick "$TMP/win-16.png" "$TMP/win-20.png" "$TMP/win-24.png" "$TMP/win-32.png" \
-       "$TMP/win-48.png" "$TMP/win-64.png" "$TMP/win-128.png" "$TMP/win-256.png" \
-       windows/DoNotType.App/Assets/DoNotType.ico
+       "$TMP/win-48.png" "$TMP/win-64.png" "$TMP/win-128.png" "$ICO"
+
+# The 256 slot is appended by hand because it has to hold a PNG rather than the uncompressed DIB
+# ImageMagick writes for every size. That is what Windows has read since Vista and what every icon
+# toolchain emits at this size, and it costs 34KB where the raw bitmap cost 270KB.
+#
+# Nothing at runtime asks for it: System.Drawing tops out below 256 and hands back the 128 entry
+# whatever this slot contains, which is a GDI+ limit rather than anything about the file. The
+# reader that does use it is the shell's, behind Explorer's Extra Large Icons.
+python3 - "$ICO" "$TMP/win-256.png" <<'PY'
+import struct, sys
+
+ico_path, png_path = sys.argv[1], sys.argv[2]
+with open(ico_path, "rb") as f:
+    ico = f.read()
+with open(png_path, "rb") as f:
+    png = f.read()
+
+_, kind, count = struct.unpack_from("<HHH", ico, 0)
+assert kind == 1, f"not an icon file: type {kind}"
+
+# Every existing payload slides down by the one directory entry being inserted.
+old_header = 6 + 16 * count
+entries = []
+for i in range(count):
+    w, h, colours, res, planes, bpp, size, offset = struct.unpack_from("<BBBBHHII", ico, 6 + 16 * i)
+    entries.append((w, h, colours, res, planes, bpp, size, offset + 16))
+payloads = ico[old_header:]
+
+# A width and height of zero is how the format spells 256; a byte cannot hold the number itself.
+entries.append((0, 0, 0, 0, 1, 32, len(png), 6 + 16 * (count + 1) + len(payloads)))
+
+out = struct.pack("<HHH", 0, 1, count + 1)
+for entry in entries:
+    out += struct.pack("<BBBBHHII", *entry)
+with open(ico_path, "wb") as f:
+    f.write(out + payloads + png)
+PY
 
 echo "==> Android"
 # Adaptive icon layers are 108dp regardless of density, and the launcher masks them to its own
@@ -112,8 +155,10 @@ echo "==> iOS"
 # One 1024 image; Xcode derives every size the system needs from it. Flattened because App Store
 # Connect rejects an app icon with an alpha channel, even a fully opaque one.
 mkdir -p ios/App/Assets.xcassets/AppIcon.appiconset
+# -strip because ImageMagick otherwise writes the current time into a PNG text chunk, which would
+# make this file differ on every run for no reason anyone could see.
 render icon 1024 1024 "$TMP/ios-1024.png"
-magick "$TMP/ios-1024.png" -background black -alpha remove -alpha off \
+magick "$TMP/ios-1024.png" -background black -alpha remove -alpha off -strip \
   ios/App/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
 
 echo "==> docs"
