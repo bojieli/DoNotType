@@ -7,44 +7,17 @@ public struct TranscriptionRequest: Sendable {
     /// Context parts followed by exactly one audio part. Order matters — see `CONTEXT_FORMAT.md`.
     public var parts: [InputPart]
     public var maxOutputTokens: Int
-    /// How much cleanup the transcript may receive.
-    ///
-    /// Redundant for a model provider, where the same dial is already baked into
-    /// `systemInstruction` by `PromptBuilder`. It is carried separately because a speech
-    /// recognition endpoint has no system instruction to bake it into: Deepgram spells `raw`
-    /// as `filler_words=true&punctuate=false`, and the only way it can honour the user's
-    /// setting is to be told what the setting is.
-    public var fidelity: Fidelity
-    /// Spellings to bias recognition toward, for backends whose only grounding channel is a
-    /// word list. Empty for model providers, which get the screen text itself.
-    ///
-    /// Populated by `TranscriptionService`, never by a provider — deriving these requires the
-    /// `ScreenContext`, which providers deliberately never see.
-    public var keyterms: [String]
 
     public init(
         model: String,
         systemInstruction: String,
         parts: [InputPart],
-        maxOutputTokens: Int = 2048,
-        fidelity: Fidelity = .default,
-        keyterms: [String] = []
+        maxOutputTokens: Int = 2048
     ) {
         self.model = model
         self.systemInstruction = systemInstruction
         self.parts = parts
         self.maxOutputTokens = maxOutputTokens
-        self.fidelity = fidelity
-        self.keyterms = keyterms
-    }
-
-    /// The recording, when there is one. Speech recognition endpoints send exactly this and
-    /// nothing else.
-    var audioPart: (data: Data, mimeType: String)? {
-        for part in parts {
-            if case .audio(let data, let mimeType) = part { return (data, mimeType) }
-        }
-        return nil
     }
 
     var containsAudio: Bool {
@@ -107,12 +80,6 @@ public enum ProviderError: Error, LocalizedError, Sendable {
     /// Audio was sent, the call succeeded, and the provider billed zero audio tokens.
     case audioSilentlyDropped(provider: String, model: String)
     case missingAPIKey(envVar: String)
-    /// A text-only request reached a backend that only accepts audio.
-    ///
-    /// Its own error case rather than an HTTP 400 because the fix is a product decision, not a
-    /// request fix: rewriting a finished transcript needs a language model, and a speech
-    /// recognition endpoint is not one. See `RewriteStyle`.
-    case audioRequired(provider: String)
 
     public var errorDescription: String? {
         switch self {
@@ -130,55 +97,13 @@ public enum ProviderError: Error, LocalizedError, Sendable {
                 """
         case .missingAPIKey(let envVar):
             return "No API key: set \(envVar)"
-        case .audioRequired(let provider):
-            return """
-                \(provider) is a speech recognition endpoint and only accepts audio. It cannot \
-                rewrite or reformat text that has already been transcribed — switch to a model \
-                provider for that.
-                """
         }
     }
 }
 
-/// What a backend can do with what is on screen.
-///
-/// This exists because the two kinds of backend are not interchangeable, and the difference is
-/// invisible at the call site. A model provider reads `PROMPT.md`, the labelled context sections
-/// and the screenshot. A speech recognition endpoint reads none of them — it has no system
-/// instruction, no eyes, and no notion of a conversation. Handing it a `ScreenContext` and
-/// carrying on would produce a transcript that looks grounded, is billed as grounded, is recorded
-/// in history as grounded, and was in fact produced by a model that never saw the screen.
-///
-/// That is the same class of failure as `audioSilentlyDropped`, which this codebase already
-/// refuses to let pass quietly, so it gets the same treatment: the capability is declared, and
-/// `TranscriptionService` sends each backend only what it can actually use.
-public enum GroundingSupport: Sendable, Equatable {
-    /// Reads everything: system instruction, labelled screen text, screenshot.
-    case multimodal
-    /// A recogniser that accepts a list of spellings to bias toward, and nothing else.
-    ///
-    /// - Parameters:
-    ///   - maxTerms: how many the endpoint accepts before it starts rejecting or ignoring them.
-    ///   - maxCharsPerTerm: longest single term the endpoint accepts.
-    case keyterms(maxTerms: Int, maxCharsPerTerm: Int)
-    /// A recogniser with no biasing channel at all. Screen context is unusable, full stop.
-    case none
-
-    /// Whether the system instruction — and therefore `PROMPT.md` and the fidelity ladder it
-    /// encodes — reaches the model at all.
-    public var readsSystemInstruction: Bool { self == .multimodal }
-}
-
 public protocol TranscriptionProvider: Sendable {
     var name: String { get }
-    /// Defaulted so the existing model providers, for which `.multimodal` is the truth, say
-    /// nothing extra.
-    var grounding: GroundingSupport { get }
     func transcribe(_ request: TranscriptionRequest) async throws -> TranscriptionResult
-}
-
-extension TranscriptionProvider {
-    public var grounding: GroundingSupport { .multimodal }
 }
 
 extension TranscriptionProvider {
