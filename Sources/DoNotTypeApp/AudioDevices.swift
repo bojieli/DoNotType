@@ -127,9 +127,8 @@ enum AudioDevices {
 
 /// Optional start/stop tones.
 ///
-/// Off by default. A sound on every dictation is welcome to some people and maddening to others,
-/// and the overlay already conveys the same information visually — this exists for the case where
-/// the user is not looking at the screen.
+/// On by default, so recording boundaries remain clear when the overlay is behind another window.
+/// The setting is still exposed for people who prefer silent dictation.
 @MainActor
 enum InteractionSounds {
     private static var start: NSSound? = NSSound(named: "Tink")

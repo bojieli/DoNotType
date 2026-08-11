@@ -108,8 +108,8 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   transcript. Your main key always stays verbatim.
 - **Shortcuts** — `⌘⇧Z` undoes the last insertion, `⌘⌥Z` reverts a rewrite to what you actually
   said, `⌘⌃V` pastes the last transcript again.
-- **Audio** — pin a microphone rather than following the system default, and optional start/stop
-  tones.
+- **Audio** — pin a microphone rather than following the system default; start/stop tones are on
+  by default and can be disabled.
 - **Fidelity** — `raw`, `light` (default), `tidy`. Even `tidy` only changes typography, never words.
 - **Grounding** — on/off, screenshot fallback, and two blocklists evaluated *before* capture.
 - **History** — search, filters, per-item retry and delete, retention policy, per-dictation

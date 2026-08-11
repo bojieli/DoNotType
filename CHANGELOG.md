@@ -132,7 +132,7 @@ release yet, so everything below is unreleased.
   back silently when the device is unplugged.
 - **Launch at login** via `SMAppService`, so the toggle also appears in System Settings › Login
   Items where someone would look to remove it.
-- **Optional start/stop tones**, off by default.
+- **Start/stop tones enabled by default**, with an Audio setting for silent dictation.
 - **Cross-vendor model benchmark** (`eval/benchmark-models.sh`, results in
   [docs/MODELS.md](docs/MODELS.md)) covering 36 audio-capable models.
 - 73 Swift unit tests, 24 C# unit tests, and an opt-in integration suite that runs against the live

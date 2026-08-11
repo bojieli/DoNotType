@@ -59,6 +59,9 @@ final class Settings {
             Key.retention: RetentionPolicy.forever.rawValue,
             Key.hotkeyMode: HotkeyMonitor.Mode.automatic.rawValue,
             Key.secondaryStyle: RewriteStyle.formal.rawValue,
+            // Audible boundaries make it clear when capture has begun and ended, even when the
+            // recording overlay is behind another window. Users can still turn them off below.
+            Key.interactionSounds: true,
         ])
     }
 
@@ -71,8 +74,8 @@ final class Settings {
         set { defaults.set(newValue, forKey: Key.microphoneUID) }
     }
 
-    /// Off by default: the overlay already conveys start and stop visually, and a tone on every
-    /// dictation is maddening to some people.
+    /// On by default so recording boundaries are audible even when the overlay is not visible.
+    /// Users who find a tone on every dictation distracting can turn it off in Audio settings.
     var interactionSounds: Bool {
         get { defaults.bool(forKey: Key.interactionSounds) }
         set { defaults.set(newValue, forKey: Key.interactionSounds) }
