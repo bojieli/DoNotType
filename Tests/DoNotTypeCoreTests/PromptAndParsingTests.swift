@@ -172,3 +172,36 @@ final class AudioAndProviderTests: XCTestCase {
         XCTAssertEqual(GeminiProvider.extractText(from: root), "the transcript")
     }
 }
+
+/// A provider error a user cannot read is a provider error a user cannot act on.
+final class GeminiErrorDecodingTests: XCTestCase {
+    /// The real shape: a top-level array, which is why a naive object decode produced nothing and
+    /// the raw JSON ended up truncated in the UI.
+    func testMessageIsExtractedFromTheTopLevelArray() {
+        let body = Data(
+            """
+            [{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.",\
+            "status":"INVALID_ARGUMENT"}}]
+            """.utf8)
+        XCTAssertEqual(
+            GeminiProvider.errorMessage(from: body),
+            "API key not valid. Please pass a valid API key. (INVALID_ARGUMENT)")
+    }
+
+    func testSingleObjectShapeIsAlsoAccepted() {
+        let body = Data(#"{"error":{"message":"Quota exceeded","status":"RESOURCE_EXHAUSTED"}}"#.utf8)
+        XCTAssertEqual(
+            GeminiProvider.errorMessage(from: body), "Quota exceeded (RESOURCE_EXHAUSTED)")
+    }
+
+    func testMessageAloneIsEnough() {
+        let body = Data(#"[{"error":{"message":"Unsupported model"}}]"#.utf8)
+        XCTAssertEqual(GeminiProvider.errorMessage(from: body), "Unsupported model")
+    }
+
+    /// An unparseable error is still better than a swallowed one.
+    func testUnparseableBodiesFallBackToTheRawText() {
+        XCTAssertEqual(GeminiProvider.errorMessage(from: Data("gateway timeout".utf8)), "gateway timeout")
+        XCTAssertEqual(GeminiProvider.errorMessage(from: Data("[]".utf8)), "[]")
+    }
+}

@@ -51,7 +51,7 @@ public struct GeminiProvider: TranscriptionProvider {
         // Errors arrive as a top-level JSON *array*, unlike the success shape.
         guard (200..<300).contains(http.statusCode) else {
             throw ProviderError.http(
-                status: http.statusCode, body: String(decoding: data, as: UTF8.self))
+                status: http.statusCode, body: Self.errorMessage(from: data))
         }
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw ProviderError.malformedResponse(
@@ -83,6 +83,44 @@ public struct GeminiProvider: TranscriptionProvider {
     }
 
     // MARK: - Private
+
+    /// Pulls the human-readable message out of an error response.
+    ///
+    /// Worth the parsing. Raw, the body reads `[{ "error": { "code": 400, "message": "API key not
+    /// valid…` — and anywhere it is shown to a user it is truncated long before the sentence that
+    /// says what went wrong. A settings panel reporting `HTTP 400: [{ "error": {…` tells someone
+    /// nothing they can act on, which is the opposite of the point of showing them an error.
+    ///
+    /// Falls back to the raw body: an unparseable error is still better than a swallowed one.
+    static func errorMessage(from data: Data) -> String {
+        let raw = String(decoding: data, as: UTF8.self)
+        let parsed = try? JSONSerialization.jsonObject(with: data)
+
+        // Errors come back as a top-level array; a single object is accepted too, since that is
+        // the shape most of the API's siblings use and costs one line to support.
+        let candidates: [Any]
+        switch parsed {
+        case let array as [Any]: candidates = array
+        case let object as [String: Any]: candidates = [object]
+        default: return raw
+        }
+
+        let messages = candidates.compactMap { entry -> String? in
+            guard let object = entry as? [String: Any],
+                let error = object["error"] as? [String: Any]
+            else { return nil }
+
+            let message = error["message"] as? String
+            let status = error["status"] as? String
+            switch (message, status) {
+            case (let message?, let status?): return "\(message) (\(status))"
+            case (let message?, nil): return message
+            case (nil, let status?): return status
+            default: return nil
+            }
+        }
+        return messages.isEmpty ? raw : messages.joined(separator: "; ")
+    }
 
     private func body(for request: TranscriptionRequest) -> [String: Any] {
         var body: [String: Any] = [

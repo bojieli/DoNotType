@@ -53,10 +53,16 @@ private struct GeneralTab: View {
                     if model.isCheckingConnection {
                         ProgressView().controlSize(.small)
                     } else if let status = model.connectionStatus {
+                        // Selectable and unclipped. A failure here is the one message a user most
+                        // needs to read in full and most likely wants to paste into a search box
+                        // or an issue; truncating it to two lines defeats the purpose of showing
+                        // it at all.
                         Text(status)
                             .font(.callout)
                             .foregroundStyle(status.hasPrefix("✓") ? .green : .red)
-                            .lineLimit(2)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
 
