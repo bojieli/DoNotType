@@ -35,11 +35,15 @@ struct ContentView: View {
                     NavigationLink { HistoryView(model: model) } label: {
                         Image(systemName: "clock.arrow.circlepath")
                     }
+                    .accessibilityLabel("History")
+                    .accessibilityIdentifier("open-history")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink { SettingsView(model: model) } label: {
                         Image(systemName: "gearshape")
                     }
+                    .accessibilityLabel("Settings")
+                    .accessibilityIdentifier("open-settings")
                 }
             }
         }
@@ -88,6 +92,22 @@ struct ContentView: View {
                 .onEnded { _ in model.pressEnded() }
         )
         .disabled(model.state == .transcribing)
+        // A raw gesture is invisible to VoiceOver, which had left the one control this app exists
+        // for unusable by anyone driving it that way. Activating announces itself as a button and
+        // toggles, since press-and-hold is not a gesture VoiceOver can forward.
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("record")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel(model.state == .recording ? "Stop dictating" : "Dictate")
+        .accessibilityHint("Double tap to start and stop. Touch and hold to record only while held.")
+        .accessibilityAction {
+            if model.state == .recording {
+                model.pressEnded()
+            } else {
+                model.pressBegan()
+                model.pressEnded()
+            }
+        }
     }
 
     private var statusLine: some View {

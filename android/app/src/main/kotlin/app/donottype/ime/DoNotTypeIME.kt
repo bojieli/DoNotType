@@ -19,6 +19,8 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -87,11 +89,20 @@ class DoNotTypeIME : InputMethodService() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(48, 56, 48, 56)
+            setPadding(PAD_SIDE, PAD_TOP, PAD_SIDE, PAD_BOTTOM)
             setBackgroundColor(Color.parseColor("#111417"))
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
             )
+
+            // The keyboard window extends behind the navigation bar. A gesture pill is thin enough
+            // to miss the button below it; a three-button bar is not, and covered the bottom half
+            // of "Tap to talk" -- the only control this keyboard has.
+            ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
+                val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+                view.setPadding(PAD_SIDE, PAD_TOP, PAD_SIDE, PAD_BOTTOM + nav.bottom)
+                insets
+            }
         }
 
         statusLabel = TextView(this).apply {
@@ -327,6 +338,10 @@ class DoNotTypeIME : InputMethodService() {
 
     private companion object {
         const val TAG = "DoNotTypeIME"
+
+        const val PAD_SIDE = 48
+        const val PAD_TOP = 56
+        const val PAD_BOTTOM = 56
 
         /**
          * How long a press has to last before releasing it ends the recording.

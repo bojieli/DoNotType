@@ -90,6 +90,26 @@ jobs:
           unzip -p app/build/outputs/apk/debug/app-debug.apk assets/PROMPT.md \
             | grep -q "Context corrects SPELLING, never CONTENT"
 
+      # Window insets only exist once there is a window on a screen, so this class of bug is
+      # invisible to every test above. On API 35 the settings screen was drawing underneath the
+      # status bar and the keyboard's only button underneath the navigation bar.
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Instrumented UI tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          working-directory: android
+          script: gradle connectedDebugAndroidTest --no-daemon
+
   ios:
     name: iOS
     runs-on: macos-15
@@ -102,9 +122,13 @@ jobs:
         working-directory: ios
         run: xcodegen generate
 
-      - name: Build app and keyboard extension
+      # `build` is not evidence that anything works. It passed for the whole life of this project
+      # while producing a bundle with no CFBundleIdentifier and no CFBundleExecutable, which no
+      # device could install. `test` installs the app in a simulator and drives it, so that class
+      # of failure cannot pass again.
+      - name: Test app and keyboard extension
         working-directory: ios
         run: |
-          xcodebuild -project DoNotType.xcodeproj -scheme DoNotType \
-            -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 16' \
-            -configuration Debug CODE_SIGNING_ALLOWED=NO build
+          xcodebuild test -project DoNotType.xcodeproj -scheme DoNotType \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -configuration Debug CODE_SIGNING_ALLOWED=NO

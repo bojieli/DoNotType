@@ -12,6 +12,7 @@ import app.donottype.core.RetentionPolicy
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -36,6 +37,9 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 
@@ -65,6 +69,16 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         Settings.initialise(this)
         setContentView(buildLayout())
+
+        // Edge to edge means the app owns the area behind the status bar, including whether its
+        // clock and icons are drawn dark or light. Left alone they stay light, which on this
+        // screen's light background made them almost invisible.
+        val night = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !night
+            isAppearanceLightNavigationBars = !night
+        }
     }
 
     override fun onResume() {
@@ -76,7 +90,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun buildLayout(): ScrollView {
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(56, 64, 56, 96)
+            setPadding(HORIZONTAL_PADDING, TOP_PADDING, HORIZONTAL_PADDING, BOTTOM_PADDING)
         }
 
         column.addView(heading("DoNotType", 24f))
@@ -269,7 +283,22 @@ class SettingsActivity : AppCompatActivity() {
             }
         )
 
-        return ScrollView(this).apply { addView(column) }
+        return ScrollView(this).apply {
+            addView(column)
+            // Android 15 draws every app edge to edge whether it asked to or not, and a layout
+            // built in code gets no insets applied for it. Without this the heading sits behind
+            // the status bar and the last row behind the navigation bar -- which is exactly how
+            // this screen looked on an API 35 device.
+            //
+            // The padding goes on the scroll view rather than on the column inside it, so that
+            // clipToPadding keeps scrolled rows out from under the bars too. Padding the column
+            // fixes only the resting position: scroll down and the text runs under the clock.
+            ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
+                val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                insets
+            }
+        }
     }
 
     // MARK: - Sections
@@ -498,5 +527,11 @@ class SettingsActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
         )
         setOnClickListener { onClick() }
+    }
+
+    private companion object {
+        const val HORIZONTAL_PADDING = 56
+        const val TOP_PADDING = 64
+        const val BOTTOM_PADDING = 96
     }
 }

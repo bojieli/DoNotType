@@ -1,0 +1,117 @@
+import XCTest
+
+/// Drives the shipped app in a simulator.
+///
+/// The unit tests cover the core; nothing covered the app. `xcodebuild build` succeeded for the
+/// whole life of the project while producing a bundle with no `CFBundleIdentifier` and no
+/// `CFBundleExecutable` -- an app that compiled, linked, passed CI and could not be installed on
+/// anything. A test that launches it catches that class of failure on the first run.
+final class DoNotTypeUITests: XCTestCase {
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func launch() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-ui-testing"]
+        app.launch()
+        return app
+    }
+
+    /// Settings is a long form and a `List` only builds the rows it is showing, so anything below
+    /// the fold does not exist until it is scrolled to.
+    @discardableResult
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        for _ in 0..<8 {
+            if element.exists { return true }
+            app.swipeUp()
+        }
+        return element.exists
+    }
+
+    /// The one that would have caught the missing plist keys: installing and launching is the
+    /// assertion.
+    func testLaunchesToTheDictationScreen() {
+        let app = launch()
+        XCTAssertTrue(app.navigationBars["DoNotType"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["record"].exists, "the dictation button should be on screen")
+        XCTAssertTrue(app.staticTexts["Tap to dictate, or hold to talk"].exists)
+    }
+
+    func testSettingsOpensAndShowsEverySection() {
+        let app = launch()
+        app.buttons["open-settings"].tap()
+
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+        for section in ["Setup", "Provider", "Dictation", "History", "Prompt", "About"] {
+            XCTAssertTrue(
+                reveal(app.staticTexts[section], in: app),
+                "the \(section) section should be reachable by scrolling")
+        }
+    }
+
+    /// Typing a key and leaving the screen has to persist it. This is the setting without which
+    /// the app cannot do anything at all, so "it looked like it saved" is not good enough.
+    func testAPIKeySurvivesLeavingSettings() {
+        let app = launch()
+        app.buttons["open-settings"].tap()
+
+        let field = app.secureTextFields["api-key"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("test-key-12345")
+
+        app.navigationBars["Settings"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["DoNotType"].waitForExistence(timeout: 5))
+
+        app.buttons["open-settings"].tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertEqual(field.value as? String, "••••••••••••••",
+                       "the key should still be there after leaving and coming back")
+    }
+
+    func testHistoryOpensAndIsEmptyOnAFreshInstall() {
+        let app = launch()
+        app.buttons["open-history"].tap()
+        XCTAssertTrue(app.navigationBars["History"].waitForExistence(timeout: 5))
+    }
+
+    /// The prompt is the product. Being able to read it in the app is the claim the README makes,
+    /// so it has to actually open and contain the contract.
+    func testPromptEditorOpensWithTheShippedContract() {
+        let app = launch()
+        app.buttons["open-settings"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+
+        let prompt = app.descendants(matching: .any)["open-prompt"].firstMatch
+        XCTAssertTrue(reveal(prompt, in: app), "the prompt row should be reachable")
+        prompt.tap()
+
+        let editor = app.textViews["prompt-editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        let text = (editor.value as? String) ?? ""
+        XCTAssertTrue(
+            text.contains("SPELLING"),
+            "the editor should be showing the shipped PROMPT.md, not an empty box")
+    }
+
+    /// Changing fidelity has to stick: it is the setting that decides whether the app rewrites
+    /// you, which is the whole argument the project makes.
+    func testFidelitySelectionPersists() {
+        let app = launch()
+        app.buttons["open-settings"].tap()
+
+        let picker = app.buttons["fidelity"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        picker.tap()
+        app.buttons["Raw — every um and false start"].tap()
+
+        app.navigationBars["Settings"].buttons.firstMatch.tap()
+        app.buttons["open-settings"].tap()
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            picker.label.contains("Raw"),
+            "fidelity should still read Raw, was \(picker.label)")
+    }
+}

@@ -15,6 +15,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // Signed with the upload keystore when one is present, which in practice means CI with the
@@ -57,6 +58,7 @@ android {
     }
 
     sourceSets["main"].java.srcDir("src/main/kotlin")
+    sourceSets["androidTest"].java.srcDir("src/androidTest/kotlin")
     // The contract is shared, not duplicated: PROMPT.md is copied out of the repo root at build
     // time so Android cannot drift from macOS or from what the eval harness measures.
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/assets"))
@@ -75,4 +77,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.json:json:20240303")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
 }

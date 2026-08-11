@@ -6,6 +6,16 @@
 	<string>DoNotType</string>
 	<key>CFBundleName</key>
 	<string>DoNotTypeKeyboard</string>
+	<!-- See App/Info.plist: nothing here is synthesised, and an extension missing either of these
+	     cannot be embedded or installed. -->
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
 	<key>CFBundleShortVersionString</key>

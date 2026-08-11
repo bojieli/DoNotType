@@ -71,10 +71,12 @@ struct SettingsView: View {
             SecureField("Gemini API key", text: $model.apiKey)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .accessibilityIdentifier("api-key")
 
             TextField("Model", text: $model.model)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .accessibilityIdentifier("model")
 
             LabeledContent("Key") { Text(model.keySource).foregroundStyle(.secondary) }
 
@@ -113,6 +115,7 @@ struct SettingsView: View {
                 Text("Light — drop fillers, keep your words").tag(Fidelity.light)
                 Text("Tidy — light, plus punctuation").tag(Fidelity.tidy)
             }
+            .accessibilityIdentifier("fidelity")
         } header: {
             Text("Dictation")
         } footer: {
@@ -165,6 +168,7 @@ struct SettingsView: View {
                         .foregroundStyle(model.isPromptCustom ? .orange : .secondary)
                 }
             }
+            .accessibilityIdentifier("open-prompt")
         } header: {
             Text("Prompt")
         } footer: {
@@ -404,6 +408,7 @@ struct PromptEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             TextEditor(text: $model.promptText)
+                .accessibilityIdentifier("prompt-editor")
                 .font(.system(.caption, design: .monospaced))
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)

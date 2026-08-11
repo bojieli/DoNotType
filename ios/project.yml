@@ -48,6 +48,22 @@ targets:
       - package: DoNotTypeCore
         product: DoNotTypeCore
 
+  # Drives the real app in a simulator. This exists because `xcodebuild build` is not evidence
+  # that anything works: it stayed green for the whole life of the project while the bundle it
+  # produced had no CFBundleIdentifier and no CFBundleExecutable, so the app could not be
+  # installed on any device at all.
+  DoNotTypeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: DoNotType
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.donottype.uitests
+        TEST_TARGET_NAME: DoNotType
+
   # The keyboard. No microphone, by platform design -- it reads finished transcripts out of the
   # shared container and inserts them.
   DoNotTypeKeyboard:
@@ -61,3 +77,18 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.donottype.keyboard
         INFOPLIST_FILE: Keyboard/Info.plist
         CODE_SIGN_ENTITLEMENTS: Keyboard/DoNotTypeKeyboard.entitlements
+
+# Explicit so that `xcodebuild test -scheme DoNotType` runs the UI tests, rather than the UI tests
+# living in a scheme nobody invokes.
+schemes:
+  DoNotType:
+    build:
+      targets:
+        DoNotType: all
+        DoNotTypeUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - DoNotTypeUITests
