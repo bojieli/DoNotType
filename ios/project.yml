@@ -39,6 +39,9 @@ targets:
         INFOPLIST_FILE: App/Info.plist
         CODE_SIGN_ENTITLEMENTS: App/DoNotType.entitlements
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # App/Assets.xcassets is picked up by the App source path above. Its one image is rendered
+        # from Resources/Icon/DoNotType.svg; iOS derives every other size it needs from that.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - target: DoNotTypeKeyboard
         embed: true

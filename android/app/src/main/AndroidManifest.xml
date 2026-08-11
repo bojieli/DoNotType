@@ -6,7 +6,7 @@
 
     <application
         android:allowBackup="false"
-        android:icon="@android:drawable/ic_btn_speak_now"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.DayNight">

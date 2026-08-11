@@ -42,6 +42,7 @@ public sealed class SettingsForm : Form
         _controller = controller;
 
         Text = "DoNotType Settings";
+        Icon = AppIcon.Window;
         Size = new Size(660, 620);
         StartPosition = FormStartPosition.CenterScreen;
         MinimizeBox = false;

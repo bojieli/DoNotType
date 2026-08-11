@@ -107,17 +107,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Menu bar
 
+    /// The app mark, in the three states it has something to say about. Failure keeps the system
+    /// warning glyph on purpose: an error is the one moment where being instantly recognisable
+    /// matters more than being on brand.
     private func setIcon(for state: DictationController.State) {
         guard let button = statusItem.button else { return }
-        let name: String
+        let image: NSImage?
         switch state {
-        case .idle: name = "mic"
-        case .recording: name = "mic.fill"
-        case .transcribing: name = "waveform"
-        case .failed: name = "exclamationmark.triangle"
+        case .idle: image = Self.statusImage("StatusIdle", fallback: "mic")
+        case .recording: image = Self.statusImage("StatusRecording", fallback: "mic.fill")
+        case .transcribing: image = Self.statusImage("StatusTranscribing", fallback: "waveform")
+        case .failed:
+            image = NSImage(systemSymbolName: "exclamationmark.triangle",
+                            accessibilityDescription: "DoNotType")
         }
-        button.image = NSImage(systemSymbolName: name, accessibilityDescription: "DoNotType")
-        button.image?.isTemplate = true
+        image?.isTemplate = true
+        button.image = image
+    }
+
+    /// Menu-bar art ships as PDF so the status bar can draw it at whatever backing scale the
+    /// display has. The SF Symbol fallback is for `swift run`, which produces a bare executable
+    /// with no bundle to load resources from -- a missing image there would leave an invisible
+    /// status item rather than an obviously broken one.
+    private static func statusImage(_ name: String, fallback: String) -> NSImage? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "pdf"),
+              let image = NSImage(contentsOf: url)
+        else {
+            return NSImage(systemSymbolName: fallback, accessibilityDescription: "DoNotType")
+        }
+        image.size = NSSize(width: 18, height: 18)
+        image.accessibilityDescription = "DoNotType"
+        return image
     }
 
     private func rebuildMenu() {

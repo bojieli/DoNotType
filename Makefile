@@ -42,6 +42,9 @@ app: build
 	@cp Resources/Info.plist "$(CONTENTS)/Info.plist"
 	@# The contract ships inside the bundle so the app does not depend on the source tree.
 	@cp PROMPT.md "$(CONTENTS)/Resources/PROMPT.md"
+	@# Both rendered from Resources/Icon/DoNotType.svg; see Resources/Icon/make-icons.sh.
+	@cp Resources/AppIcon.icns "$(CONTENTS)/Resources/AppIcon.icns"
+	@cp Resources/MenuBar/*.pdf "$(CONTENTS)/Resources/"
 	@printf 'APPL????' > "$(CONTENTS)/PkgInfo"
 	@codesign --force --deep --options runtime \
 		--entitlements Resources/$(APP).entitlements \

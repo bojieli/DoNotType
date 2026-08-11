@@ -38,7 +38,7 @@ internal sealed class TrayApplication : ApplicationContext
 
         _tray = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = AppIcon.Small,
             Visible = true,
             Text = "DoNotType",
         };

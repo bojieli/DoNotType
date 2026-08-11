@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The launcher icon in layers, so the launcher can mask it to whatever shape the device uses and
+  parallax the mark against its background. All three layers are rendered from
+  Resources/Icon/DoNotType.svg by Resources/Icon/make-icons.sh.
+
+  monochrome is the Android 13 themed icon, tinted from the wallpaper. Releases before 13 ignore
+  the tag, which is why it can sit in the same file rather than needing a -v33 variant.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
+</adaptive-icon>

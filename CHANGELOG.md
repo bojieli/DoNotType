@@ -137,6 +137,14 @@ release yet, so everything below is unreleased.
   [docs/MODELS.md](docs/MODELS.md)) covering 36 audio-capable models.
 - 73 Swift unit tests, 24 C# unit tests, and an opt-in integration suite that runs against the live
   API on real recorded speech.
+- **An app icon** — a text insertion caret whose stem is a microphone, its lower serif doubling as
+  the mic's base. It replaces the three placeholders that shipped before it: macOS drew SF Symbols
+  in the menu bar and had no bundle icon at all, Windows showed the generic
+  `SystemIcons.Application` in the tray, and Android used the platform's built-in
+  `ic_btn_speak_now`. All four platforms now render from one file, `Resources/Icon/DoNotType.svg`,
+  the same way they all copy one `PROMPT.md` — including the macOS menu-bar states, where the
+  capsule is hollow when idle, solid while recording and a level meter while transcribing. See
+  [Resources/Icon/README.md](Resources/Icon/README.md).
 
 ### Fixed
 

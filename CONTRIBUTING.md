@@ -79,6 +79,11 @@ contract files are copied into each bundle at build time specifically so the pla
 — if you find yourself editing a duplicated copy of a rule, that is a bug in the build, not
 something to work around.
 
+The app icon works the same way. Every platform's copy is rendered from
+`Resources/Icon/DoNotType.svg`; edit that file and re-run `./Resources/Icon/make-icons.sh`, and
+never touch a rendered `.icns`, `.ico`, `.png` or asset catalogue by hand. See
+[Resources/Icon/README.md](Resources/Icon/README.md).
+
 Not everything ports. iOS has no screen grounding and never will; Windows needs no accessibility
 permission. Those differences are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and are
 not defects.

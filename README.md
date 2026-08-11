@@ -1,3 +1,5 @@
+<img src="Resources/Icon/rendered/appicon.png" alt="" width="92" align="right">
+
 # DoNotType
 
 A voice input method that **transcribes what you said** instead of rewriting it, and reads your
@@ -166,6 +168,7 @@ predicted. See [CONTRIBUTING.md](CONTRIBUTING.md).
 | [docs/MODELS.md](docs/MODELS.md) | which models and providers can actually do this job |
 | [docs/GPU-TESTING.md](docs/GPU-TESTING.md) | running open-weight models locally, and what to measure |
 | [docs/RELEASING.md](docs/RELEASING.md) | cutting a release, and which signing secrets change what |
+| [Resources/Icon/README.md](Resources/Icon/README.md) | the app icon, and the one file every platform's copy is rendered from |
 | [PLAN.html](PLAN.html) | the original reverse-engineering survey this design came from |
 
 ## License

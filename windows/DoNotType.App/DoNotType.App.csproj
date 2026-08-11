@@ -16,6 +16,7 @@
     <AssemblyName>DoNotType</AssemblyName>
     <RootNamespace>DoNotType.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\DoNotType.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,6 +32,12 @@
   <ItemGroup>
     <!-- The same contract file macOS, Android and iOS ship. Copied, never duplicated. -->
     <None Include="..\..\PROMPT.md" Link="PROMPT.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ApplicationIcon above gives the .exe its icon in Explorer; embedding the same file lets
+         AppIcon.cs read it back at runtime for the tray and the settings window. -->
+    <EmbeddedResource Include="Assets\DoNotType.ico" LogicalName="DoNotType.ico" />
   </ItemGroup>
 
 </Project>
