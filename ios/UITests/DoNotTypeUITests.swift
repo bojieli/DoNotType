@@ -6,13 +6,15 @@ import XCTest
 /// whole life of the project while producing a bundle with no `CFBundleIdentifier` and no
 /// `CFBundleExecutable` -- an app that compiled, linked, passed CI and could not be installed on
 /// anything. A test that launches it catches that class of failure on the first run.
+/// `@MainActor` on the whole class because every `XCUIApplication` member is main-actor isolated,
+/// and the CI toolchain compiles this at Swift 6 strictness where that is an error rather than a
+/// warning. Setting `continueAfterFailure` in `launch()` rather than overriding `setUp()` keeps
+/// the isolation of the override from having to match the nonisolated superclass declaration.
+@MainActor
 final class DoNotTypeUITests: XCTestCase {
 
-    override func setUp() {
-        continueAfterFailure = false
-    }
-
     private func launch() -> XCUIApplication {
+        continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments += ["-ui-testing"]
         app.launch()
