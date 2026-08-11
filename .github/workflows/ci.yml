@@ -64,6 +64,48 @@ jobs:
       - name: Build the tray app
         run: dotnet build windows/DoNotType.App/DoNotType.App.csproj -c Release
 
+      # Building a WinForms app proves nothing about whether it starts. This launches the real
+      # tray app, waits, and fails if it is not still running -- which covers the tray icon, the
+      # global hotkey install, settings load and the first window it opens. Screenshots are
+      # uploaded so a person can look at what it actually drew.
+      - name: Launch it and check it stays up
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName System.Drawing, System.Windows.Forms
+          New-Item -ItemType Directory -Force -Path shots | Out-Null
+
+          $exe = "$PWD\windows\DoNotType.App\bin\Release\net10.0-windows\DoNotType.exe"
+          $err = "$PWD\shots\stderr.txt"
+          $proc = Start-Process $exe -PassThru -RedirectStandardError $err
+          Start-Sleep -Seconds 25
+
+          if ($proc.HasExited) {
+            Write-Host "exit code $($proc.ExitCode)"
+            if (Test-Path $err) { Get-Content $err }
+            throw "the tray app died within 25 seconds of starting"
+          }
+
+          $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
+          $bmp = New-Object System.Drawing.Bitmap($b.Width, $b.Height)
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.X, $b.Y, 0, 0, $bmp.Size)
+          $bmp.Save("$PWD\shots\desktop.png", [System.Drawing.Imaging.ImageFormat]::Png)
+
+          # With no API key configured the app opens Settings on first run, so that window
+          # existing is also the check that the settings form builds without throwing.
+          $settings = (Get-Process -Id $proc.Id).MainWindowTitle
+          Write-Host "main window: '$settings'"
+          if ($settings -ne "DoNotType Settings") {
+            throw "expected the settings window to open on a first run with no key, got '$settings'"
+          }
+
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-screenshots
+          path: shots/
+
   android:
     name: Android
     runs-on: ubuntu-latest
