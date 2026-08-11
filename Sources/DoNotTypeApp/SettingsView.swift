@@ -53,16 +53,45 @@ private struct GeneralTab: View {
                     if model.isCheckingConnection {
                         ProgressView().controlSize(.small)
                     } else if let status = model.connectionStatus {
-                        // Selectable and unclipped. A failure here is the one message a user most
-                        // needs to read in full and most likely wants to paste into a search box
-                        // or an issue; truncating it to two lines defeats the purpose of showing
-                        // it at all.
+                        // Selectable, unclipped, and copyable in one click. A failure here is the
+                        // one message a user most needs to read in full and most likely wants to
+                        // paste into a search or an issue; truncating it to two lines defeated the
+                        // entire purpose of showing it.
                         Text(status)
                             .font(.callout)
                             .foregroundStyle(status.hasPrefix("✓") ? .green : .red)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if !status.hasPrefix("✓") {
+                            Button {
+                                Diagnostics.copyToPasteboard(status)
+                                model.note("Error copied")
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Copy the full error")
+                        }
+                    }
+                }
+
+                HStack {
+                    Button("Copy diagnostics") {
+                        Diagnostics.copyToPasteboard(
+                            Diagnostics.report(model: model, history: model.allRecords))
+                        model.note("Diagnostics copied")
+                    }
+                    .help(
+                        "Version, model, key fingerprint, permissions and recent failures — "
+                            + "everything needed to explain a problem, with no secrets in it.")
+
+                    Button("Reveal logs") { Diagnostics.revealLogs() }
+                        .help("Opens Console filtered to this app")
+
+                    if let note = model.transientNote {
+                        Text(note).font(.callout).foregroundStyle(.secondary)
                     }
                 }
 
@@ -475,6 +504,21 @@ private struct HistoryRow: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Copy transcript")
+            }
+
+            // A failed row's summary *is* its error, and it is the thing worth pasting into an
+            // issue. Copying the truncated label off the screen is not an option, so give it a
+            // button of its own.
+            if record.status != .completed, let message = record.errorMessage {
+                Button {
+                    Diagnostics.copyToPasteboard(
+                        "\(record.createdAt.ISO8601Format()) [\(record.status.rawValue)] "
+                            + "\(record.provider)/\(record.model): \(message)")
+                } label: {
+                    Image(systemName: "exclamationmark.bubble")
+                }
+                .buttonStyle(.borderless)
+                .help("Copy the full error")
             }
 
             Button {

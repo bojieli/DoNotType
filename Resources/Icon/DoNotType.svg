@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The DoNotType mark: a text insertion caret whose stem is a microphone.
+
+  The two serifs of an I-beam caret bracket a mic capsule, and the caret's lower serif doubles as
+  the mic's base. That is the product in one glyph -- your voice, placed where the cursor is, and
+  nothing else added.
+
+  Every platform asset is rendered from this one file. The geometry lives once, in <defs>, and each
+  output is a named top-level group that `rsvg-convert --export-id` renders on its own; see
+  make-icons.sh. Do not redraw the mark in a per-platform file -- change it here and re-run the
+  script, the same way PROMPT.md is copied into every bundle rather than duplicated.
+
+  Mark geometry is centred on the origin so a variant is a translate plus a scale. Its bounding box
+  is 452 wide by 670 tall, which at scale 1 fills 65% of the height of a 1024 tile.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- ===== palette ================================================================= -->
+    <!-- Ink: the screen the words land on. Amber: the voice. Steel: the caret holding it. -->
+    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2E3579"/>
+      <stop offset="0.52" stop-color="#171B40"/>
+      <stop offset="1" stop-color="#080A18"/>
+    </linearGradient>
+    <radialGradient id="lift" cx="0.5" cy="0.3" r="0.72">
+      <stop offset="0" stop-color="#7C88FF" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#7C88FF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#BDC8EC"/>
+    </linearGradient>
+    <linearGradient id="voice" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#FFE0A0"/>
+      <stop offset="0.42" stop-color="#FFB43C"/>
+      <stop offset="1" stop-color="#F07C22"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.4"/>
+      <stop offset="0.62" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <!-- The capsule is lit rather than merely coloured: a warm bloom sits behind it. -->
+    <filter id="bloom" x="-70%" y="-70%" width="240%" height="240%">
+      <feGaussianBlur stdDeviation="26"/>
+      <feColorMatrix type="matrix"
+        values="1 0 0 0 0  0.58 0 0 0 0  0.16 0 0 0 0  0 0 0 0.8 0"/>
+    </filter>
+
+    <!-- ===== the mark ================================================================ -->
+    <!-- Parts carry no fill or stroke of their own so a <use> can colour them: two-tone on the
+         app icon, one flat colour on a menu-bar template. -->
+
+    <!-- Serifs, yoke and base. Read as a caret at a glance, as a microphone up close. -->
+    <g id="frame">
+      <rect x="-226" y="-335" width="452" height="52" rx="26"/>
+      <rect x="-26" y="208" width="52" height="80"/>
+      <rect x="-226" y="283" width="452" height="52" rx="26"/>
+    </g>
+    <!-- Drawn separately: it is the only stroked part, so it cannot share the fill above. -->
+    <path id="yoke" d="M -187 31 A 187 187 0 0 0 187 31" fill="none" stroke-width="52"
+          stroke-linecap="round"/>
+
+    <!-- The capsule, solid and hollow. Hollow is the idle menu-bar state, solid is recording. -->
+    <rect id="capsule" x="-99" y="-242" width="198" height="361" rx="99"/>
+    <rect id="capsule-hollow" x="-73" y="-216" width="146" height="309" rx="73" fill="none"
+          stroke-width="52"/>
+    <!-- Transcribing: the capsule gives way to a level meter, inside the same caret. -->
+    <g id="meter">
+      <rect x="-99" y="-92" width="52" height="184" rx="26"/>
+      <rect x="-26" y="-242" width="52" height="334" rx="26"/>
+      <rect x="47" y="-155" width="52" height="247" rx="26"/>
+    </g>
+
+    <!-- ===== tile =================================================================== -->
+    <!-- A superellipse of degree 5, the continuous-curvature corner macOS uses, at Apple's 824
+         of 1024. Generated, not eyeballed; see make-icons.sh for the generator. -->
+    <path id="squircle" d="M 924.0 512.0
+      C 924.0 548.0 924.1 583.9 923.9 622.4 C 923.7 660.8 923.9 702.4 918.9 746.9
+      C 914.0 791.4 902.0 839.4 870.7 870.7 C 839.4 902.0 791.4 914.0 746.9 918.9
+      C 702.4 923.9 660.8 923.7 622.4 923.9 C 583.9 924.1 548.0 924.0 512.0 924.0
+      C 476.0 924.0 440.1 924.1 401.6 923.9 C 363.2 923.7 321.6 923.9 277.1 918.9
+      C 232.6 914.0 184.6 902.0 153.3 870.7 C 122.0 839.4 110.0 791.4 105.1 746.9
+      C 100.1 702.4 100.3 660.8 100.1 622.4 C 99.9 583.9 100.0 548.0 100.0 512.0
+      C 100.0 476.0 99.9 440.1 100.1 401.6 C 100.3 363.2 100.1 321.6 105.1 277.1
+      C 110.0 232.6 122.0 184.6 153.3 153.3 C 184.6 122.0 232.6 110.0 277.1 105.1
+      C 321.6 100.1 363.2 100.3 401.6 100.1 C 440.1 99.9 476.0 100.0 512.0 100.0
+      C 548.0 100.0 583.9 99.9 622.4 100.1 C 660.8 100.3 702.4 100.1 746.9 105.1
+      C 791.4 110.0 839.4 122.0 870.7 153.3 C 902.0 184.6 914.0 232.6 918.9 277.1
+      C 923.9 321.6 923.7 363.2 923.9 401.6 C 924.1 440.1 924.0 476.0 924.0 512.0 Z"/>
+    <clipPath id="clip-squircle"><use href="#squircle"/></clipPath>
+
+    <g id="ground">
+      <rect x="0" y="0" width="1024" height="1024" fill="url(#ink)"/>
+      <rect x="0" y="0" width="1024" height="1024" fill="url(#lift)"/>
+    </g>
+
+    <!-- The mark in full colour, parameterised only by where and how big. -->
+    <g id="mark-lit">
+      <use href="#capsule" fill="#FFB43C" filter="url(#bloom)"/>
+      <use href="#frame" fill="url(#steel)"/>
+      <use href="#yoke" stroke="url(#steel)"/>
+      <use href="#capsule" fill="url(#voice)"/>
+      <rect x="-75" y="-220" width="150" height="200" rx="75" fill="url(#sheen)"/>
+    </g>
+    <!-- Small sizes get the same mark without the bloom or the sheen: below about 24px those
+         soften edges that are only two pixels wide to begin with. -->
+    <g id="mark-flat">
+      <use href="#frame" fill="url(#steel)"/>
+      <use href="#yoke" stroke="url(#steel)"/>
+      <use href="#capsule" fill="url(#voice)"/>
+    </g>
+  </defs>
+
+  <!-- ===== rendered variants ========================================================= -->
+  <!-- Each group below is one `rsvg-convert --export-id` target. -->
+
+  <!-- Full-bleed tile: iOS, Android's launcher background, Windows at 32px and up. -->
+  <g id="icon">
+    <use href="#ground"/>
+    <use href="#mark-lit" transform="translate(512,512)"/>
+  </g>
+
+  <!-- Same tile, mark enlarged 14% and simplified, for 16-24px. -->
+  <g id="icon-small">
+    <use href="#ground"/>
+    <use href="#mark-flat" transform="translate(512,512) scale(1.14)"/>
+  </g>
+
+  <!-- macOS: the art occupies Apple's 824 squircle inside a 1024 canvas, so the icon lines up
+       with every other icon in the Finder rather than reading a size too large. -->
+  <g id="icon-macos">
+    <g clip-path="url(#clip-squircle)">
+      <use href="#ground"/>
+      <use href="#mark-lit" transform="translate(512,512) scale(0.805)"/>
+    </g>
+    <use href="#squircle" fill="none" stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="3"/>
+  </g>
+
+  <g id="icon-macos-small">
+    <g clip-path="url(#clip-squircle)">
+      <use href="#ground"/>
+      <use href="#mark-flat" transform="translate(512,512) scale(0.918)"/>
+    </g>
+  </g>
+
+  <!-- Android adaptive layers are 108dp canvases of which only the middle 72dp is guaranteed
+       visible, so the mark is drawn at 0.61 to land at a normal size once the launcher masks it. -->
+  <g id="android-background">
+    <use href="#ground"/>
+  </g>
+  <g id="android-foreground">
+    <use href="#mark-lit" transform="translate(512,512) scale(0.61)"/>
+  </g>
+  <!-- Android 13 themed icons: one flat colour, tinted by the system wallpaper. -->
+  <g id="android-monochrome">
+    <g fill="#000000" stroke="#000000">
+      <use href="#frame"  transform="translate(512,512) scale(0.61)"/>
+      <use href="#yoke"   transform="translate(512,512) scale(0.61)"/>
+      <use href="#capsule" transform="translate(512,512) scale(0.61)"/>
+    </g>
+  </g>
+
+  <!-- Menu-bar and tray templates: alpha only, tinted by the system. The mark fills 86% of the
+       height because it sits alone rather than on a tile. -->
+  <g id="status-idle">
+    <g fill="#000000" stroke="#000000">
+      <use href="#frame" transform="translate(512,512) scale(1.313)"/>
+      <use href="#yoke" transform="translate(512,512) scale(1.313)"/>
+      <use href="#capsule-hollow" transform="translate(512,512) scale(1.313)"/>
+    </g>
+  </g>
+  <g id="status-recording">
+    <g fill="#000000" stroke="#000000">
+      <use href="#frame" transform="translate(512,512) scale(1.313)"/>
+      <use href="#yoke" transform="translate(512,512) scale(1.313)"/>
+      <use href="#capsule" transform="translate(512,512) scale(1.313)"/>
+    </g>
+  </g>
+  <g id="status-transcribing">
+    <g fill="#000000" stroke="#000000">
+      <use href="#frame" transform="translate(512,512) scale(1.313)"/>
+      <use href="#meter" transform="translate(512,512) scale(1.313)"/>
+    </g>
+  </g>
+</svg>

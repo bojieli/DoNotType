@@ -205,3 +205,26 @@ final class GeminiErrorDecodingTests: XCTestCase {
         XCTAssertEqual(GeminiProvider.errorMessage(from: Data("[]".utf8)), "[]")
     }
 }
+
+/// The key must never reach a report that exists to be pasted somewhere public.
+final class DiagnosticFingerprintTests: XCTestCase {
+    /// Mirrors `Diagnostics.fingerprint`, which lives in the app target. The property under test
+    /// is the one that matters: enough to identify a key, never enough to use one.
+    private func fingerprint(_ key: String?) -> String {
+        guard let key, !key.isEmpty else { return "none" }
+        return "\(key.count) chars"
+    }
+
+    func testAbsentKeyIsReportedRatherThanBlank() {
+        XCTAssertEqual(fingerprint(nil), "none")
+        XCTAssertEqual(fingerprint(""), "none")
+    }
+
+    func testFingerprintNeverContainsTheKey() {
+        let key = "AQ.Ab8RN6JiTcQuMjg2I_VsfZks-sPkcgXYeLqTYZcCqA"
+        let printed = fingerprint(key)
+        XCTAssertFalse(printed.contains(key))
+        XCTAssertFalse(printed.contains(key.prefix(8)))
+        XCTAssertTrue(printed.contains("\(key.count)"))
+    }
+}

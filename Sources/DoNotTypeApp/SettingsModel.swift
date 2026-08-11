@@ -245,6 +245,17 @@ final class SettingsModel {
         await store.configure(retention: retention, keepAudioForCompleted: keepAudio)
     }
 
+    /// A short-lived confirmation, so a button that silently succeeds still says so.
+    var transientNote: String?
+
+    func note(_ message: String) {
+        transientNote = message
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            if transientNote == message { transientNote = nil }
+        }
+    }
+
     func checkConnection() async {
         isCheckingConnection = true
         connectionStatus = nil
