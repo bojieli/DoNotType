@@ -23,13 +23,19 @@ final class DoNotTypeUITests: XCTestCase {
 
     /// Settings is a long form and a `List` only builds the rows it is showing, so anything below
     /// the fold does not exist until it is scrolled to.
+    ///
+    /// It has to wait before each swipe, not just check. Checking first and swiping immediately
+    /// scrolls straight past a row that simply had not been built yet, and because the list is
+    /// lazy the row is then gone behind us and never comes back -- which is how this passed on a
+    /// fast machine and failed on a CI runner looking for the very first section on screen.
     @discardableResult
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        if element.waitForExistence(timeout: 3) { return true }
         for _ in 0..<8 {
-            if element.exists { return true }
             app.swipeUp()
+            if element.waitForExistence(timeout: 1) { return true }
         }
-        return element.exists
+        return false
     }
 
     /// The one that would have caught the missing plist keys: installing and launching is the
