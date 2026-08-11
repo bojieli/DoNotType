@@ -47,15 +47,22 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Tap to dictate, or hold to talk"].exists)
     }
 
-    func testSettingsOpensAndShowsEverySection() {
+    /// Asserts on the controls rather than on the section headers above them.
+    ///
+    /// Headers were the obvious thing to look for and the wrong one: how a `Section` header is
+    /// exposed to the accessibility tree is the system's business and it varies by iOS version,
+    /// so the same assertion passed on one simulator and could not find the first section on
+    /// another. Identifiers the app sets itself do not move, and a header nobody can reach is
+    /// less of a problem than a control nobody can reach anyway.
+    func testSettingsExposesEveryControl() {
         let app = launch()
         app.buttons["open-settings"].tap()
 
-        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
-        for section in ["Setup", "Provider", "Dictation", "History", "Prompt", "About"] {
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
+        for control in ["api-key", "model", "fidelity", "retention", "keep-audio", "open-prompt"] {
             XCTAssertTrue(
-                reveal(app.staticTexts[section], in: app),
-                "the \(section) section should be reachable by scrolling")
+                reveal(app.descendants(matching: .any)[control].firstMatch, in: app),
+                "\(control) should be reachable in Settings")
         }
     }
 

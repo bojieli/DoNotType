@@ -132,7 +132,9 @@ struct SettingsView: View {
                     Text(policy.label).tag(policy)
                 }
             }
+            .accessibilityIdentifier("retention")
             Toggle("Keep audio", isOn: $model.keepAudio)
+                .accessibilityIdentifier("keep-audio")
 
             LabeledContent("Stored audio") {
                 Text(
