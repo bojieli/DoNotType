@@ -8,10 +8,6 @@ import android.widget.EditText
 import android.widget.ScrollView
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.core.app.ActivityScenario
-import androidx.test.espresso.Espresso.onView
-import androidx.test.espresso.assertion.ViewAssertions.matches
-import androidx.test.espresso.matcher.ViewMatchers.isEnabled
-import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import org.junit.Assert.assertEquals
@@ -26,6 +22,10 @@ import org.junit.runner.RunWith
  * The unit tests cover the core and never open a window, so nothing caught that on Android 15 this
  * screen drew underneath the status bar: the heading was half hidden behind the clock and scrolled
  * rows ran under it. Insets are only observable with a window on a screen, which is what this is.
+ *
+ * Deliberately no Espresso. Every assertion here is about the app -- what the layout built, what it
+ * persisted -- and routing those through a framework that additionally requires a particular screen
+ * height and a focused window only adds ways for the harness to fail instead of the code.
  */
 @RunWith(AndroidJUnit4::class)
 @LargeTest
@@ -75,17 +75,24 @@ class SettingsActivityTest {
 
     @Test
     fun everySetupActionIsBuilt() {
-        ActivityScenario.launch(SettingsActivity::class.java).use {
-            // Existence in the hierarchy rather than `scrollTo()` plus `isDisplayed()`. Espresso's
-            // scroll action additionally demands the view end up 90% visible, which depends on how
-            // tall the device is -- these passed on a phone-sized emulator and failed on CI's.
-            // What is being asserted is that the layout builds every setup action and leaves it
-            // usable, and that does not need a particular screen height to be true.
-            for (label in listOf(
-                "Grant microphone access", "Enable the keyboard",
-                "Enable screen grounding (optional)", "Save", "Test connection",
-            )) {
-                onView(withText(label)).check(matches(isEnabled()))
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            // Walks the hierarchy rather than going through Espresso. Espresso first demanded the
+            // view end up 90% visible, which depends on how tall the device is, and then demanded
+            // the window have focus, which a headless CI emulator does not reliably give it --
+            // both are facts about the harness rather than about the app. What is being asserted
+            // is that the layout builds every setup action and leaves it usable, and neither the
+            // height of the screen nor which window the emulator focused changes that.
+            scenario.onActivity { activity ->
+                val root = activity.findViewById<ViewGroup>(android.R.id.content)
+                for (label in listOf(
+                    "Grant microphone access", "Enable the keyboard",
+                    "Enable screen grounding (optional)", "Save", "Test connection",
+                )) {
+                    val button = root.firstDescendant(Button::class.java) {
+                        it.text.toString() == label
+                    }
+                    assertTrue("$label should be enabled", button.isEnabled)
+                }
             }
         }
     }

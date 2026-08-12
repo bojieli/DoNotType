@@ -48,9 +48,14 @@ open before the build passes. That last one is new: for most of this project's l
 compiled and had **never been started on Windows**, and until recently the iOS app could not be
 installed anywhere at all.
 
-Still unexercised by any test: the iOS keyboard extension, which needs the keyboard enabling in iOS
-Settings before a test can reach it, and dictation itself on every platform, which needs a
-microphone and a paid API call.
+The iOS keyboard extension is covered where it can be. Its interface cannot be reached by a UI
+test — a custom keyboard runs in its own process and its views never enter the host app's
+accessibility tree — so the tests cover what it actually does instead: the shared container the app
+writes transcripts into and the keyboard reads them out of, which is the part that can silently
+stop working.
+
+Still unexercised: dictation itself, on every platform, which needs a microphone and a paid API
+call.
 
 ## Platforms
 
@@ -66,6 +71,11 @@ duplicated, so no platform can quietly drift from what the evaluation measures.
 
 iOS is the odd one out for a reason: a keyboard extension cannot open a microphone — "Allow Full
 Access" grants network and a shared container, not the mic. See [ios/README.md](ios/README.md).
+
+That also makes iOS the one platform where a **speech recognition** backend costs nothing: there is
+no screen grounding to give up, so Deepgram or Voxtral are simply several times faster and cheaper
+than a model, with no trade at all. All four platforms let you pick the backend, and store the key
+and model per provider so switching is one dropdown.
 
 ## Install
 
@@ -110,9 +120,18 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Settings
 
-- **Providers and keys** — Gemini (default), any OpenAI-compatible gateway, or a server you run
-  yourself (vLLM, llama.cpp), with a live connection test. Keys live in the Keychain / DPAPI, never
-  in a config file.
+- **Providers and keys** — Gemini (default), any OpenAI-compatible gateway, a server you run
+  yourself (vLLM, llama.cpp), or a speech recognition service (Deepgram, Mistral Voxtral, xAI),
+  with a live connection test. Keys **and models are stored per provider**, so switching backends
+  to compare them is one dropdown rather than a re-typing exercise. Keys live in the Keychain /
+  DPAPI / private prefs, never in a config file.
+- **Recognition services are a different trade, and the app says so.** They return a transcript in
+  roughly 1.5 s against 6.5 s for a model — but they cannot read your screen, cannot rewrite, and
+  mis-spell exactly the hard words grounding exists for (`koffi` → `coffee`, `--amend` → `dash dash
+  amend`). Selecting one states this under the picker rather than leaving grounding controls that
+  quietly do nothing. Numbers on screen are **never** sent as spelling hints. Deepgram cannot
+  transcribe Chinese under any autodetecting setting; Voxtral handles Mandarin and English together
+  without being told which is coming. Measured in [docs/EVALUATION.md](docs/EVALUATION.md).
 - **Hotkey** — which key, whether a tap toggles or a hold talks, and an optional **second key
   bound to a rewrite** (formal, concise, bullets) for when you want an email rather than a
   transcript. Your main key always stays verbatim.
