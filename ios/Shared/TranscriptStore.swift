@@ -35,18 +35,26 @@ public struct TranscriptStore: Sendable {
     private static let fileName = "transcripts.json"
     private static let limit = 25
 
-    public init() {}
+    /// Where the transcripts file lives. Defaults to the App Group container, which is the only
+    /// place the app and the keyboard can both reach; a test passes a temporary directory instead,
+    /// because a unit test has no App Group and would otherwise be asserting against `nil` and
+    /// passing for the wrong reason.
+    private let directory: URL?
+
+    public init(directory: URL? = TranscriptStore.containerURL) {
+        self.directory = directory
+    }
 
     public static var containerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)
     }
 
-    private static var fileURL: URL? {
-        containerURL?.appendingPathComponent(fileName)
+    private var fileURL: URL? {
+        directory?.appendingPathComponent(Self.fileName)
     }
 
     public func load() -> [Entry] {
-        guard let url = Self.fileURL, let data = try? Data(contentsOf: url) else { return [] }
+        guard let url = fileURL, let data = try? Data(contentsOf: url) else { return [] }
         return (try? JSONDecoder().decode([Entry].self, from: data)) ?? []
     }
 
@@ -59,7 +67,12 @@ public struct TranscriptStore: Sendable {
         let entry = Entry(text: trimmed)
         var entries = load()
         entries.insert(entry, at: 0)
-        write(Array(entries.prefix(Self.limit)))
+
+        // Reports the write, rather than returning the entry whatever happened. Without a shared
+        // container -- no Full Access, or an entitlement that did not survive a signing change --
+        // there is nowhere to put this, and saying so beats handing back an entry that was never
+        // stored and letting the app believe the keyboard has it.
+        guard write(Array(entries.prefix(Self.limit))) else { return nil }
         Self.postDidUpdate()
         return entry
     }
@@ -76,11 +89,18 @@ public struct TranscriptStore: Sendable {
         Self.postDidUpdate()
     }
 
-    private func write(_ entries: [Entry]) {
-        guard let url = Self.fileURL, let data = try? JSONEncoder().encode(entries) else { return }
+    @discardableResult
+    private func write(_ entries: [Entry]) -> Bool {
+        guard let url = fileURL, let data = try? JSONEncoder().encode(entries) else { return false }
         // .completeUntilFirstUserAuthentication so the keyboard can still read after a reboot the
         // user has not yet unlocked into.
-        try? data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        do {
+            try data.write(
+                to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return true
+        } catch {
+            return false
+        }
     }
 
     // MARK: - Darwin notifications

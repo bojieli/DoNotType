@@ -1,5 +1,6 @@
 package app.donottype
 
+import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -95,7 +96,13 @@ class SettingsActivityTest {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val root = activity.findViewById<ViewGroup>(android.R.id.content)
-                val field = root.firstDescendant(EditText::class.java) { it.hint == "Gemini API key" }
+                // Matched on being the password field rather than on its hint. The hint is prose
+                // and prose gets rewritten -- it has already changed from "Gemini API key" to
+                // "API key" now that there is more than one provider -- whereas the key field is
+                // the only masked input on the screen and that is what makes it the key field.
+                val field = root.firstDescendant(EditText::class.java) {
+                    it.inputType and InputType.TYPE_TEXT_VARIATION_PASSWORD != 0
+                }
                 val save = root.firstDescendant(Button::class.java) { it.text.toString() == "Save" }
 
                 field.setText("k-123")

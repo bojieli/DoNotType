@@ -48,6 +48,22 @@ targets:
       - package: DoNotTypeCore
         product: DoNotTypeCore
 
+  # The app/keyboard bridge. A keyboard extension runs in its own process and does not appear in
+  # the host app's accessibility tree, so a UI test cannot reach inside it; what it actually does
+  # is read a file out of the shared container, and that is testable here.
+  DoNotTypeSharedTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: SharedTests
+    dependencies:
+      - target: DoNotType
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.donottype.sharedtests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/DoNotType.app/DoNotType
+        BUNDLE_LOADER: $(TEST_HOST)
+
   # Drives the real app in a simulator. This exists because `xcodebuild build` is not evidence
   # that anything works: it stayed green for the whole life of the project while the bundle it
   # produced had no CFBundleIdentifier and no CFBundleExecutable, so the app could not be
@@ -85,10 +101,12 @@ schemes:
     build:
       targets:
         DoNotType: all
+        DoNotTypeSharedTests: [test]
         DoNotTypeUITests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
+        - DoNotTypeSharedTests
         - DoNotTypeUITests

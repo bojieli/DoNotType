@@ -47,15 +47,19 @@ final class KeyboardViewController: UIInputViewController {
         statusLabel.textColor = .secondaryLabel
         statusLabel.numberOfLines = 0
         statusLabel.textAlignment = .center
+        statusLabel.accessibilityIdentifier = "kb-status"
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
 
         tableView.dataSource = self
         tableView.delegate = self
         tableView.backgroundColor = .clear
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "transcript")
+        tableView.accessibilityIdentifier = "kb-transcripts"
         tableView.translatesAutoresizingMaskIntoConstraints = false
 
         nextKeyboardButton.setTitle("🌐", for: .normal)
+        nextKeyboardButton.accessibilityIdentifier = "kb-next"
+        nextKeyboardButton.accessibilityLabel = "Next keyboard"
         nextKeyboardButton.titleLabel?.font = .systemFont(ofSize: 22)
         nextKeyboardButton.addTarget(
             self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
