@@ -30,6 +30,8 @@ final class Settings {
         static let microphoneUID = "microphoneUID"
         static let interactionSounds = "interactionSounds"
         static let keytermBiasing = "keytermBiasing"
+        static let fallbackProvider = "fallbackProvider"
+        static let fallbackAfterSeconds = "fallbackAfterSeconds"
     }
 
     /// Shipped non-empty. A blocklist that starts empty is a blocklist nobody ever fills in, and
@@ -146,6 +148,37 @@ final class Settings {
 
     private func modelKey(for kind: ProviderKind) -> String { "\(Key.model)-\(kind.rawValue)" }
 
+    /// Backend to start alongside the primary when it has not answered in time. Nil disables it.
+    ///
+    /// Off by default. Hedging costs a second request and can hand you a less accurate transcript,
+    /// so it is something to turn on after being bitten by the primary's tail rather than a thing
+    /// that quietly happens to everyone.
+    var fallbackProvider: ProviderKind? {
+        get {
+            guard let raw = defaults.string(forKey: Key.fallbackProvider), !raw.isEmpty else {
+                return nil
+            }
+            let kind = ProviderKind(rawValue: raw)
+            // A fallback identical to the primary would double the cost to no purpose.
+            return kind == provider ? nil : kind
+        }
+        set { defaults.set(newValue?.rawValue ?? "", forKey: Key.fallbackProvider) }
+    }
+
+    /// How long the primary gets on its own before the fallback starts alongside it.
+    ///
+    /// This is the accuracy-against-latency dial. Below the primary's normal response time it
+    /// hedges constantly and you mostly get the fallback's transcript; far above it the tail is
+    /// not bounded by much. Clamped rather than validated so a hand-edited plist cannot produce a
+    /// zero-second hedge that races from the start.
+    var fallbackAfterSeconds: Double {
+        get {
+            let stored = defaults.double(forKey: Key.fallbackAfterSeconds)
+            return stored > 0 ? min(max(stored, 1), 120) : 8
+        }
+        set { defaults.set(min(max(newValue, 1), 120), forKey: Key.fallbackAfterSeconds) }
+    }
+
     var fidelity: Fidelity {
         get { Fidelity(rawValue: defaults.string(forKey: Key.fidelity) ?? "") ?? .default }
         set { defaults.set(newValue.rawValue, forKey: Key.fidelity) }
@@ -234,9 +267,24 @@ final class Settings {
     /// Note that the environment here is the *app's*, which for a bundle opened from Finder or
     /// Login Items is launchd's — `~/.zshrc` is read by interactive shells and nothing else. See
     /// `APIKeyStatus.explanation`, which is where a user finds that out.
-    func resolvedAPIKey() -> String? {
-        if let stored = apiKey, !stored.isEmpty { return stored }
-        return Self.environmentAPIKey(for: provider)
+    func resolvedAPIKey() -> String? { resolvedAPIKey(for: provider) }
+
+    /// The same resolution for a backend that is *not* the current selection.
+    ///
+    /// The fallback provider needs its own credentials and is by definition not the one selected,
+    /// so every accessor keyed off `provider` is the wrong one for it. Keys were already stored
+    /// per provider in the Keychain; this reaches one directly.
+    func resolvedAPIKey(for kind: ProviderKind) -> String? {
+        if let stored = Keychain.read(account: kind.rawValue), !stored.isEmpty { return stored }
+        return Self.environmentAPIKey(for: kind)
+    }
+
+    /// The model for a backend that is not the current selection. See `resolvedAPIKey(for:)`.
+    func model(for kind: ProviderKind) -> String {
+        if let stored = defaults.string(forKey: modelKey(for: kind)), !stored.isEmpty {
+            return stored
+        }
+        return kind.defaultModel
     }
 
     /// The name the key was actually found under, for the settings window to report.

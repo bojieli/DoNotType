@@ -98,6 +98,51 @@ private struct GeneralTab: View {
                 LabeledContent("Key source") {
                     Text(model.resolvedKeySource).foregroundStyle(.secondary)
                 }
+            }
+
+            // A second backend, for a primary whose latency has a tail. Its own section because it
+            // has its own key: the pairing only works if both are configured, and burying the
+            // second key under the first one's field is how people end up with a fallback that
+            // silently never fires.
+            Section("Fallback") {
+                Picker("Second service", selection: $model.fallbackProvider) {
+                    Text("None").tag(ProviderKind?.none)
+                    ForEach(model.fallbackChoices, id: \.self) { kind in
+                        Text(kind.rawValue.capitalized).tag(ProviderKind?.some(kind))
+                    }
+                }
+
+                if model.fallbackProvider != nil {
+                    SecureField("Second service API key", text: $model.fallbackAPIKey)
+                        .textContentType(.password)
+
+                    LabeledContent("Start it after") {
+                        HStack {
+                            Slider(value: $model.fallbackAfterSeconds, in: 1...60, step: 1)
+                            Text("\(Int(model.fallbackAfterSeconds))s")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .frame(width: 40, alignment: .trailing)
+                        }
+                    }
+                }
+
+                if let summary = model.fallbackSummary {
+                    Text(summary)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text(
+                        "Off. Worth turning on when the primary is accurate but its latency has a "
+                            + "tail — the first-party Gemini API answered one three-second clip in "
+                            + "5 s and the next in 61 s. The fallback bounds that wait; it does "
+                            + "not improve a transcript the primary would have got right."
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
 
                 HStack {
                     Button("Test connection") {

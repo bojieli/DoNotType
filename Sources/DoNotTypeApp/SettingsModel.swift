@@ -44,6 +44,45 @@ final class SettingsModel {
         didSet { Settings.shared.keytermBiasing = keytermBiasing }
     }
 
+    /// Backend started alongside the primary when it has not answered in time. Nil disables it.
+    var fallbackProvider: ProviderKind? {
+        didSet {
+            Settings.shared.fallbackProvider = fallbackProvider
+            fallbackAPIKey = fallbackProvider.map { Settings.shared.resolvedAPIKey(for: $0) ?? "" }
+                ?? ""
+        }
+    }
+
+    /// The fallback's own key. Stored under its provider, so choosing it here does not disturb the
+    /// primary's credentials and switching back and forth loses nothing.
+    var fallbackAPIKey: String = "" {
+        didSet {
+            // Writing back the value just loaded on a provider switch is a no-op, so this needs no
+            // guard beyond having somewhere to store it.
+            guard let kind = fallbackProvider else { return }
+            Keychain.write(fallbackAPIKey, account: kind.rawValue)
+        }
+    }
+
+    /// How long the primary gets alone before the fallback starts. The accuracy/latency dial.
+    var fallbackAfterSeconds: Double {
+        didSet { Settings.shared.fallbackAfterSeconds = fallbackAfterSeconds }
+    }
+
+    /// Backends that can serve as a fallback: anything except the current primary.
+    var fallbackChoices: [ProviderKind] {
+        ProviderKind.allCases.filter { $0 != provider }
+    }
+
+    /// What the pairing will actually do, in one line, using the numbers behind it.
+    var fallbackSummary: String? {
+        guard let kind = fallbackProvider else { return nil }
+        let seconds = Int(fallbackAfterSeconds.rounded())
+        return "If \(provider.rawValue) has not answered in \(seconds)s, "
+            + "\(kind.rawValue) starts alongside it and whichever finishes first is used. "
+            + "History records which one actually served each dictation."
+    }
+
     /// What the selected backend can do with the screen, for the UI to state plainly instead of
     /// leaving grounding controls that quietly do nothing.
     var grounding: GroundingSupport {
@@ -231,6 +270,10 @@ final class SettingsModel {
         model = settings.model
         fidelity = settings.fidelity
         keytermBiasing = settings.keytermBiasing
+        fallbackProvider = settings.fallbackProvider
+        fallbackAfterSeconds = settings.fallbackAfterSeconds
+        fallbackAPIKey = settings.fallbackProvider
+            .map { settings.resolvedAPIKey(for: $0) ?? "" } ?? ""
         trigger = settings.trigger
         hotkeyMode = settings.hotkeyMode
         secondaryTrigger = settings.secondaryTrigger

@@ -243,7 +243,9 @@ final class DictationController {
             let requestStart = Date()
             // Long recordings are split across concurrent requests; short ones — every ordinary
             // dictation — take the single-request path unchanged.
-            let result = try await coordinator.service.transcribeLong(
+            // Hedged when a fallback backend is configured: the primary gets the whole delay to
+            // itself, and only a stalled one is ever raced. See FallbackTranscriber.
+            let outcome = try await makeTranscriber(primary: coordinator.service).transcribe(
                 audio: audio, context: context, audioPart: audioPart,
                 verifyNumbers: settings.numberCheck.applies(to: context)
             ) { [weak self] done, total in
@@ -251,6 +253,12 @@ final class DictationController {
                     self?.overlay.update(phase: .transcribingChunk(done: done, of: total))
                 }
             }
+            let result = outcome.result
+            // Recorded as the backend that actually answered, not the one that was asked. A
+            // history row claiming Gemini for a transcript xAI produced would make the whole
+            // history untrustworthy for exactly the comparisons it exists to support.
+            record.provider = outcome.attribution.provider
+            record.model = outcome.attribution.model
             record.requestSeconds = Date().timeIntervalSince(requestStart)
             record.usage = result.usage
             record.chunkCount = result.chunkCount
@@ -358,6 +366,31 @@ final class DictationController {
             log.warning("no upload route available: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    /// Wraps the configured primary with a fallback, when one is set.
+    ///
+    /// Built per dictation rather than cached: the fallback provider, its key and the delay are all
+    /// live settings, and a cached transcriber would keep using the previous ones until relaunch.
+    private func makeTranscriber(primary: TranscriptionService) -> FallbackTranscriber {
+        let settings = Settings.shared
+        guard let kind = settings.fallbackProvider,
+            let key = settings.resolvedAPIKey(for: kind), !key.isEmpty,
+            let backend = try? ProviderFactory.make(kind, environment: [kind.apiKeyEnvVar: key]),
+            let promptURL = SettingsModel.bundledPromptURL(),
+            let instruction = try? PromptBuilder(contentsOf: promptURL)
+                .systemInstruction(fidelity: settings.fidelity)
+        else {
+            return FallbackTranscriber(primary: primary)
+        }
+
+        return FallbackTranscriber(
+            primary: primary,
+            secondary: TranscriptionService(
+                provider: backend, model: settings.model(for: kind),
+                systemInstruction: instruction, fidelity: settings.fidelity,
+                keytermBiasing: settings.keytermBiasing),
+            hedgeAfter: .seconds(settings.fallbackAfterSeconds))
     }
 
     private func makeCoordinator() -> RetryCoordinator? {
