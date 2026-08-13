@@ -40,6 +40,33 @@ private struct GeneralTab: View {
                 SecureField("API key", text: $model.apiKey)
                     .textContentType(.password)
 
+                // Stated here rather than left to be discovered: picking a recognition service
+                // silently disables screen grounding, one rung of the fidelity ladder and the
+                // rewrite key, and none of those controls would otherwise say so.
+                if let summary = model.groundingSummary {
+                    Label(summary, systemImage: "info.circle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // Louder than the summary above, because this one predicts lost dictations rather
+                // than describing a trade-off.
+                if let warning = model.providerWarning {
+                    Label(warning, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if case .keyterms = model.grounding {
+                    Toggle("Send screen words as spelling hints", isOn: $model.keytermBiasing)
+                        .help(
+                            "Sends up to 100 names and identifiers from your screen to bias "
+                                + "recognition. Numbers are never sent — a version or port read "
+                                + "off the screen is exactly what must come from your voice.")
+                }
+
                 LabeledContent("Key source") {
                     Text(model.resolvedKeySource).foregroundStyle(.secondary)
                 }

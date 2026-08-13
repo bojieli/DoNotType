@@ -68,7 +68,22 @@ struct SettingsView: View {
 
     private var providerSection: some View {
         Section {
-            SecureField("Gemini API key", text: $model.apiKey)
+            Picker("Service", selection: $model.provider) {
+                ForEach(ProviderKind.allCases, id: \.self) { kind in
+                    Text(kind.rawValue.capitalized).tag(kind)
+                }
+            }
+            .accessibilityIdentifier("provider")
+
+            // Recognition backends give up screen grounding, which iOS never had, so the note here
+            // says what they buy rather than what they cost.
+            if let note = model.providerNote {
+                Text(note)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            SecureField("API key", text: $model.apiKey)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("api-key")

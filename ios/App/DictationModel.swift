@@ -36,11 +36,46 @@ final class DictationModel {
     private(set) var connectionStatus: String?
     private(set) var isCheckingConnection = false
 
+    /// The backend, chosen per install.
+    ///
+    /// Recognition services are a better trade here than anywhere else in this project. A keyboard
+    /// extension cannot read the screen, so iOS has no grounding to give up — the thing that makes
+    /// Deepgram and Voxtral a compromise on macOS costs nothing on iOS, and what is left is that
+    /// they are several times faster and cheaper. See `ios/README.md`.
+    var provider: ProviderKind {
+        didSet {
+            UserDefaults.standard.set(provider.rawValue, forKey: "provider")
+            // Keys and models are stored per provider, so switching reloads rather than carrying
+            // one backend's settings into another's fields.
+            apiKey = KeychainStore.read(account: provider.rawValue) ?? ""
+            model = Self.storedModel(for: provider)
+        }
+    }
+
     var apiKey: String {
-        didSet { KeychainStore.write(apiKey, account: "gemini") }
+        didSet { KeychainStore.write(apiKey, account: provider.rawValue) }
     }
     var model: String {
-        didSet { UserDefaults.standard.set(model, forKey: "model") }
+        didSet { UserDefaults.standard.set(model, forKey: "model-\(provider.rawValue)") }
+    }
+
+    /// A recogniser cannot rewrite, and on iOS it cannot be grounded either, so the only thing to
+    /// say about one is what it is good at.
+    var providerNote: String? {
+        guard provider.isSpeechRecognition else { return nil }
+        return provider == .mistral
+            ? "Transcription only, and faster for it. Handles Mandarin and English together."
+            : "Transcription only, and faster for it. Screen grounding is unavailable on iOS "
+                + "either way, so nothing is lost here."
+    }
+
+    static func storedModel(for provider: ProviderKind) -> String {
+        UserDefaults.standard.string(forKey: "model-\(provider.rawValue)")
+            .flatMap { $0.isEmpty ? nil : $0 }
+            // The pre-provider-choice install stored one flat model, and it was Gemini's.
+            ?? (provider == .gemini
+                ? UserDefaults.standard.string(forKey: "model") : nil)
+            ?? provider.defaultModel
     }
     var fidelity: Fidelity {
         didSet { UserDefaults.standard.set(fidelity.rawValue, forKey: "fidelity") }
@@ -72,8 +107,11 @@ final class DictationModel {
 
     init() {
         let defaults = UserDefaults.standard
-        apiKey = KeychainStore.read(account: "gemini") ?? ""
-        model = defaults.string(forKey: "model") ?? ProviderKind.gemini.defaultModel
+        let kind = ProviderKind(rawValue: defaults.string(forKey: "provider") ?? "")
+            ?? .defaultForNewInstalls
+        provider = kind
+        apiKey = KeychainStore.read(account: kind.rawValue) ?? ""
+        model = Self.storedModel(for: kind)
         fidelity = Fidelity(rawValue: defaults.string(forKey: "fidelity") ?? "") ?? .default
         retention = RetentionPolicy(rawValue: defaults.string(forKey: "retention") ?? "")
             ?? .forever
@@ -270,7 +308,7 @@ final class DictationModel {
         let releasedAt = Date()
         let audioDuration = (try? AudioFile(contentsOf: url))?.durationSeconds ?? 0
         var record = DictationRecord(
-            status: .pending, provider: ProviderKind.gemini.rawValue,
+            status: .pending, provider: provider.rawValue,
             model: model, fidelity: fidelity, durationSeconds: audioDuration)
 
         do {
@@ -362,11 +400,25 @@ final class DictationModel {
             return
         }
         do {
-            _ = try await GeminiProvider(apiKey: apiKey).transcribe(
+            let backend = try ProviderFactory.make(
+                provider, environment: [provider.apiKeyEnvVar: apiKey])
+            // A recognition backend rejects a text-only request by design, so probing one with the
+            // text round trip would report a working key as broken. It gets a fraction of a second
+            // of silence instead — enough to exercise auth, the URL and the response shape.
+            let parts: [InputPart] =
+                backend.grounding(forModel: model) == .multimodal
+                ? [.text("Pretend the audio said: ok. Transcribe it.")]
+                : [.audio(data: Self.silentProbeWAV, mimeType: "audio/wav")]
+
+            _ = try await backend.transcribe(
                 TranscriptionRequest(
                     model: model,
                     systemInstruction: "You are a transcription engine.",
-                    parts: [.text("Pretend the audio said: ok. Transcribe it.")]))
+                    parts: parts))
+            connectionStatus = "✓ Reachable, key accepted"
+        } catch ProviderError.emptyOutput {
+            // Silence transcribes to nothing, which is the correct answer and proves the round
+            // trip worked. Only the recognition path can reach this.
             connectionStatus = "✓ Reachable, key accepted"
         } catch {
             connectionStatus = "✗ \(error.localizedDescription)"
@@ -380,12 +432,37 @@ final class DictationModel {
                 .systemInstruction(fidelity: fidelity)
         else { return nil }
 
+        guard let backend = try? ProviderFactory.make(
+            provider, environment: [provider.apiKeyEnvVar: apiKey])
+        else { return nil }
+
         return RetryCoordinator(
             service: TranscriptionService(
-                provider: GeminiProvider(apiKey: apiKey), model: model,
-                systemInstruction: instruction),
+                provider: backend, model: model,
+                systemInstruction: instruction, fidelity: fidelity),
             store: history)
     }
+
+    /// A quarter-second of 16 kHz mono silence for the connection test, built rather than shipped
+    /// as a resource used by one button.
+    static let silentProbeWAV: Data = {
+        let sampleRate = 16_000
+        let dataBytes = sampleRate / 4 * 2
+        var wav = Data()
+        func text(_ value: String) { wav.append(Data(value.utf8)) }
+        func u32(_ value: UInt32) {
+            withUnsafeBytes(of: value.littleEndian) { wav.append(contentsOf: $0) }
+        }
+        func u16(_ value: UInt16) {
+            withUnsafeBytes(of: value.littleEndian) { wav.append(contentsOf: $0) }
+        }
+
+        text("RIFF"); u32(UInt32(36 + dataBytes)); text("WAVEfmt ")
+        u32(16); u16(1); u16(1); u32(UInt32(sampleRate)); u32(UInt32(sampleRate * 2)); u16(2); u16(16)
+        text("data"); u32(UInt32(dataBytes))
+        wav.append(Data(repeating: 0, count: dataBytes))
+        return wav
+    }()
 }
 
 /// Keychain wrapper. The key never goes in `UserDefaults` — this is a bring-your-own-key app, so

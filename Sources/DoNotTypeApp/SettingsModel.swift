@@ -31,6 +31,51 @@ final class SettingsModel {
         didSet { Settings.shared.fidelity = fidelity }
     }
 
+    var keytermBiasing: Bool {
+        didSet { Settings.shared.keytermBiasing = keytermBiasing }
+    }
+
+    /// What the selected backend can do with the screen, for the UI to state plainly instead of
+    /// leaving grounding controls that quietly do nothing.
+    var grounding: GroundingSupport {
+        guard let provider = try? ProviderFactory.make(
+            self.provider, environment: [self.provider.apiKeyEnvVar: "placeholder"])
+        else { return .multimodal }
+        return provider.grounding(forModel: model)
+    }
+
+    /// One line under the provider picker explaining what selecting it gives up.
+    var groundingSummary: String? {
+        guard provider.isSpeechRecognition else { return nil }
+
+        let shared = "Transcription only — this service cannot read your screen, and rewriting is "
+            + "unavailable."
+        switch provider {
+        case .mistral:
+            return shared + " It has no spelling-hint channel either, and it is the one that "
+                + "handles Mandarin and English together without being told which is coming."
+        case .deepgram:
+            return shared + " It also cannot transcribe Chinese under any autodetecting setting — "
+                + "it returned nothing for 44 of 68 Mandarin clips on the dictation corpus. Set "
+                + "DNT_DEEPGRAM_LANGUAGE=zh if you dictate in Chinese."
+        default:
+            return shared
+        }
+    }
+
+    /// A hard warning rather than a description: the difference between "this backend is a
+    /// trade-off" and "this backend will silently lose your dictations".
+    ///
+    /// Deepgram returned an empty transcript for 48 of 100 clips of the maintainer's own speech.
+    /// That surfaces as a failed dictation with a retry button rather than as wrong words, which
+    /// is the good version of the failure — but a user who does not know why should be told
+    /// before they lose an afternoon to it, not after.
+    var providerWarning: String? {
+        guard provider == .deepgram else { return nil }
+        return "Deepgram cannot transcribe Chinese with autodetection. If you dictate in Chinese, "
+            + "choose another service or set DNT_DEEPGRAM_LANGUAGE=zh."
+    }
+
     // MARK: - Hotkey
 
     var trigger: HotkeyMonitor.Trigger {
@@ -160,6 +205,7 @@ final class SettingsModel {
         apiKey = settings.apiKey ?? ""
         model = settings.model
         fidelity = settings.fidelity
+        keytermBiasing = settings.keytermBiasing
         trigger = settings.trigger
         hotkeyMode = settings.hotkeyMode
         secondaryTrigger = settings.secondaryTrigger
@@ -268,16 +314,59 @@ final class SettingsModel {
         do {
             let provider = try ProviderFactory.make(
                 self.provider, environment: [self.provider.apiKeyEnvVar: key])
+
+            // A recognition backend rejects a text-only request by design, so probing one with
+            // the text round trip would report a working key as broken. It gets a fraction of a
+            // second of silence instead — enough to exercise auth, the URL and the response
+            // shape, which is all this button claims to check.
+            let parts: [InputPart] =
+                provider.grounding(forModel: model) == .multimodal
+                ? [.text("Pretend the audio said: ok. Transcribe it.")]
+                : [.audio(data: Self.silentProbeWAV, mimeType: "audio/wav")]
+
             _ = try await provider.transcribe(
                 TranscriptionRequest(
                     model: model,
                     systemInstruction: "You are a transcription engine.",
-                    parts: [.text("Pretend the audio said: ok. Transcribe it.")]))
+                    parts: parts))
+            connectionStatus = "✓ \(self.provider.rawValue) reachable, key accepted"
+        } catch ProviderError.emptyOutput {
+            // Silence transcribes to nothing, which is the correct answer and proves the round
+            // trip worked. Only the recognition path can reach this, since the text probe always
+            // produces output.
             connectionStatus = "✓ \(self.provider.rawValue) reachable, key accepted"
         } catch {
             connectionStatus = "✗ \(error.localizedDescription)"
         }
     }
+
+    /// A quarter-second of 16 kHz mono silence, built rather than shipped as a fixture so the
+    /// bundle does not carry a resource used by one button.
+    private static let silentProbeWAV: Data = {
+        let sampleRate = 16_000
+        let samples = sampleRate / 4
+        let dataBytes = samples * 2
+
+        var wav = Data()
+        func append(_ string: String) { wav.append(Data(string.utf8)) }
+        func append(u32 value: UInt32) { withUnsafeBytes(of: value.littleEndian) { wav.append(contentsOf: $0) } }
+        func append(u16 value: UInt16) { withUnsafeBytes(of: value.littleEndian) { wav.append(contentsOf: $0) } }
+
+        append("RIFF")
+        append(u32: UInt32(36 + dataBytes))
+        append("WAVEfmt ")
+        append(u32: 16)                                  // PCM header length
+        append(u16: 1)                                   // PCM
+        append(u16: 1)                                   // mono
+        append(u32: UInt32(sampleRate))
+        append(u32: UInt32(sampleRate * 2))              // byte rate
+        append(u16: 2)                                   // block align
+        append(u16: 16)                                  // bits per sample
+        append("data")
+        append(u32: UInt32(dataBytes))
+        wav.append(Data(repeating: 0, count: dataBytes))
+        return wav
+    }()
 
     func retry(_ record: DictationRecord) async {
         guard let coordinator = makeCoordinator() else {
@@ -334,7 +423,8 @@ final class SettingsModel {
 
         return RetryCoordinator(
             service: TranscriptionService(
-                provider: provider, model: model, systemInstruction: instruction),
+                provider: provider, model: model, systemInstruction: instruction,
+                fidelity: fidelity, keytermBiasing: keytermBiasing),
             store: store)
     }
 }

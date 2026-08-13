@@ -373,7 +373,8 @@ final class DictationController {
 
         return RetryCoordinator(
             service: TranscriptionService(
-                provider: provider, model: settings.model, systemInstruction: instruction),
+                provider: provider, model: settings.model, systemInstruction: instruction,
+                fidelity: settings.fidelity, keytermBiasing: settings.keytermBiasing),
             store: store)
     }
 

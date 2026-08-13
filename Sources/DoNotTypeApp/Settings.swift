@@ -29,6 +29,7 @@ final class Settings {
         static let secondaryStyle = "secondaryStyle"
         static let microphoneUID = "microphoneUID"
         static let interactionSounds = "interactionSounds"
+        static let keytermBiasing = "keytermBiasing"
     }
 
     /// Shipped non-empty. A blocklist that starts empty is a blocklist nobody ever fills in, and
@@ -48,7 +49,7 @@ final class Settings {
 
     private init() {
         defaults.register(defaults: [
-            Key.provider: ProviderKind.gemini.rawValue,
+            Key.provider: ProviderKind.defaultForNewInstalls.rawValue,
             Key.fidelity: Fidelity.default.rawValue,
             Key.trigger: HotkeyMonitor.Trigger.rightCommand.rawValue,
             Key.groundingEnabled: true,
@@ -116,14 +117,34 @@ final class Settings {
     }
 
     var provider: ProviderKind {
-        get { ProviderKind(rawValue: defaults.string(forKey: Key.provider) ?? "") ?? .gemini }
+        get {
+            ProviderKind(rawValue: defaults.string(forKey: Key.provider) ?? "")
+                ?? .defaultForNewInstalls
+        }
         set { defaults.set(newValue.rawValue, forKey: Key.provider) }
     }
 
+    /// Stored per provider, like the Keychain entry above.
+    ///
+    /// A single shared field would send `gemini-3.6-flash` to Deepgram's `/v1/listen` the moment
+    /// someone switched backend to compare them — which is the whole reason there is more than
+    /// one. The legacy flat value is read as Gemini's so an existing install keeps its choice.
     var model: String {
-        get { defaults.string(forKey: Key.model) ?? provider.defaultModel }
-        set { defaults.set(newValue, forKey: Key.model) }
+        get {
+            if let stored = defaults.string(forKey: modelKey(for: provider)), !stored.isEmpty {
+                return stored
+            }
+            if provider == .gemini, let legacy = defaults.string(forKey: Key.model),
+                !legacy.isEmpty
+            {
+                return legacy
+            }
+            return provider.defaultModel
+        }
+        set { defaults.set(newValue, forKey: modelKey(for: provider)) }
     }
+
+    private func modelKey(for kind: ProviderKind) -> String { "\(Key.model)-\(kind.rawValue)" }
 
     var fidelity: Fidelity {
         get { Fidelity(rawValue: defaults.string(forKey: Key.fidelity) ?? "") ?? .default }
@@ -162,6 +183,17 @@ final class Settings {
                 .flatMap(NumberCheckPolicy.init(rawValue:)) ?? .whenCaretHasNumbers
         }
         set { defaults.set(newValue.rawValue, forKey: Key.verifyNumbers) }
+    }
+
+    /// Whether a recognition backend may be given a word list derived from the screen.
+    ///
+    /// Off by default, unlike `groundingEnabled`. The two are not the same feature wearing
+    /// different hats: grounding hands a model the screen text under an explicit "reference only,
+    /// do not transcribe" instruction, while a keyterm list is a bare vocabulary prior with no
+    /// way to say that. See `Keyterms` for what it refuses to send and why.
+    var keytermBiasing: Bool {
+        get { defaults.bool(forKey: Key.keytermBiasing) }
+        set { defaults.set(newValue, forKey: Key.keytermBiasing) }
     }
 
     var keepAudio: Bool {
