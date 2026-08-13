@@ -768,3 +768,68 @@ at all. Identifying a Chinese term needs word segmentation, and emitting an unse
 a keyterm would bias the recogniser toward a string nobody said. For a Mandarin-only dictation,
 keyterm biasing does nothing — which for this corpus is most of it. It is `screenshotPNG`'s
 situation again: the hint channel is narrower than the grounding it stands in for.
+
+## Re-scored under the corrected assertions — 2026-08-13
+
+Everything above was measured through a gate that let one case pass on an empty transcript, and
+`real-acronym` asserted nothing about the acronym it was named for. With both fixed, and native
+Gemini finally reachable, the picture changes in two places that matter.
+
+| backend | matched | improved | **regressed** | latency (22 s clip) |
+|---|---|---|---|---|
+| **gemini · native · grounded** | **44 / 48** ×2 | 3–4 | **1** | 5–60 s, bimodal |
+| gemini · native · ungrounded | 41–42 / 48 | — | — | — |
+| openrouter · same model † | 38–43 / 48 | 4–7 | 2–5 | 6.50 s |
+| xai · keyterms | 25–26 / 48 | 13 | **3** | 1.19 s |
+| xai · no keyterms | 15 / 48 | 0 | **0** | 1.19 s |
+
+† not re-scored under the corrected gate, so its figures are optimistic relative to native's.
+The comparison survives that: native scores higher under a *stricter* gate.
+
+### Native beats the gateway, and it is not close on the number that counts
+
+44/48 twice with **1 regression each**, against 38–43/48 with 2–5. Matched counts are near enough
+to argue about; regressions are the number the contract says must be zero, and the gateway triples
+them. Both routes stay supported — OpenRouter reaches models Google does not serve — but the
+picker now says which is which.
+
+**Native's cost is latency, and it is bimodal rather than slow.** Six sequential requests for the
+same three-second clip: 4.9, 61.6, 50.5, 5.8, 5.9, 30.2 s. Thinking is not the cause — thought
+tokens are 0 at `thinking_level: minimal`, and `low` returns identical token counts in 35 s. This
+looks like account-side queueing rather than model work, so it may not reproduce on a paid key. As
+measured here it is unusable for hold-to-talk: a dictation tool that answers in 5 s most of the
+time and 60 s sometimes is worse than one that always takes 6.5.
+
+### Keyterm biasing regresses, and the mechanism is the one this project is named for
+
+The earlier "9 improved, 0 regressed" and "20 improved, 0 regressed" results were **artefacts of
+the weak gate**. Under the corrected assertions, xAI with biasing regresses **3 runs per suite,
+1 every pass, in both independent sessions**. The case is `real-acronym`, and the cause is exact:
+
+```
+keyterms sent:  GRPO, PPO          ← both are the on-screen decoys
+the speaker said: DAPO
+
+without hints:  ...类似 DAP-DAPo 的方法...     ← passes
+with hints:     ...类似 D A D A P O 的方法...  ← fails
+```
+
+`Keyterms` faithfully extracted what was on screen, and what was on screen was the wrong acronym
+four times over. The digit rule cannot help: `GRPO` contains no digits. **The biasing channel
+carried the decoy straight to the recogniser** — insertion and substitution, arriving through the
+one mechanism that has no way to say "reference only".
+
+This is the case the earlier write-up said the corpus did not contain. It did; the assertion was
+too weak to show it.
+
+**Keyterm biasing should not be used.** It stays in the codebase because it is measurable and off
+by default, but the evidence against it is now threefold: it yields nothing for 60% of realistic
+screen contexts (73% in Chinese), it cannot see a screenshot, and when it does fire it can hand
+the recogniser the very string the user did not say.
+
+### What grounding is worth on native Gemini
+
+41–42/48 ungrounded, 44/48 grounded: **+2 to +3, for 1 regression**. That is a far better trade
+than the gateway's +4 for 3, and unlike keyterms it is a genuine net positive. Grounding through
+the first-party API earns its place; grounding through a gateway is marginal; keyterm biasing is
+negative.

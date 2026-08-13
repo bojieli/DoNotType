@@ -16,8 +16,15 @@ import Foundation
 /// is "extracted terms versus no grounding at all", and pretending otherwise would just mean
 /// shipping a provider that silently ignores the screen.
 ///
-/// It is still the weaker mechanism, and it is **off by default** — see `Settings.keytermBiasing`
-/// and `docs/EVALUATION.md` for what it measures. What follows is the containment.
+/// It is still the weaker mechanism, it is **off by default**, and measurement now argues against
+/// turning it on at all. Under the corrected suite assertions it regresses 3 runs per evaluation,
+/// stably, and the mechanism is the one this project is named for: on `real-acronym` the terms
+/// extracted are `GRPO, PPO` — both decoys on screen — while the speaker said `DAPO`, and the
+/// hints push the recogniser off a spelling it got right unaided. The digit rule cannot help
+/// there, because `GRPO` contains no digits.
+///
+/// Kept because it is measurable and because a recogniser's only grounding channel is worth having
+/// characterised. See `docs/EVALUATION.md`. What follows is the containment.
 ///
 /// ## The one rule that is not negotiable
 ///

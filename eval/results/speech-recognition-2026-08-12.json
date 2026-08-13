@@ -383,5 +383,66 @@
       "Kotlin",
       "C#"
     ]
+  },
+  "correctedAssertions_2026_08_13": {
+    "why": "The scoring gate let any case asserting only mustNotContain pass on an empty transcript, and real-acronym asserted nothing about DAPO. Both fixed; everything below is re-scored.",
+    "gemini_native": {
+      "matched": [
+        44,
+        44
+      ],
+      "ungrounded": [
+        42,
+        41
+      ],
+      "improved": [
+        3,
+        4
+      ],
+      "regressed": [
+        1,
+        1
+      ],
+      "latencySeconds": {
+        "clip3s": [
+          4.9,
+          61.6,
+          50.5,
+          5.8,
+          5.9,
+          30.2
+        ],
+        "clip22sMean": 35.75,
+        "note": "Bimodal: ~5 s or 30-60 s. Thought tokens are 0 at thinking_level=minimal, so this is account-side queueing rather than model work, and may not reproduce on a paid key."
+      }
+    },
+    "xai_keyterms": {
+      "matched": [
+        26,
+        25
+      ],
+      "improved": [
+        13,
+        13
+      ],
+      "regressed": [
+        3,
+        3
+      ],
+      "regressedCase": "real-acronym",
+      "mechanism": "Keyterms sent were GRPO and PPO — both on-screen decoys. The speaker said DAPO. Without hints xAI writes 'DAP-DAPo' and passes; with hints it writes 'D A D A P O' and fails. The digit rule cannot help: GRPO has no digits."
+    },
+    "xai_noKeyterms": {
+      "matched": [
+        15
+      ],
+      "improved": [
+        0
+      ],
+      "regressed": [
+        0
+      ]
+    },
+    "verdict": "Keyterm biasing is negative and should not be used. Grounding on native Gemini is a genuine net positive (+2 to +3 for 1 regression). Grounding through OpenRouter is marginal (2-5 regressions)."
   }
 }

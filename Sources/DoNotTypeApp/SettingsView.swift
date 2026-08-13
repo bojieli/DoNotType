@@ -88,9 +88,11 @@ private struct GeneralTab: View {
                 if case .keyterms = model.grounding {
                     Toggle("Send screen words as spelling hints", isOn: $model.keytermBiasing)
                         .help(
-                            "Sends up to 100 names and identifiers from your screen to bias "
-                                + "recognition. Numbers are never sent — a version or port read "
-                                + "off the screen is exactly what must come from your voice.")
+                            "Not recommended. Numbers are never sent, but names are, and the "
+                                + "hints come from whatever is on screen — including a term you "
+                                + "did not say. Measured at 3 regressions per evaluation run: "
+                                + "with 'GRPO' on screen it pushed the recogniser off the 'DAPO' "
+                                + "it had transcribed correctly without hints.")
                 }
 
                 LabeledContent("Key source") {
