@@ -72,14 +72,26 @@ class ProviderException(message: String) : IOException(message)
  */
 class GeminiClient(
     private val apiKey: String,
-    private val model: String = "gemini-3.6-flash",
+    override val model: String = "gemini-3.6-flash",
     private val endpoint: String = "https://generativelanguage.googleapis.com/v1beta/interactions",
     private val thinkingLevel: String = "minimal",
-) {
-    suspend fun transcribe(
+) : TranscriptionProvider {
+    override val name = "gemini"
+
+    /** A multimodal model: it reads the instruction, the labelled screen text and the screenshot. */
+    override fun grounding(): GroundingSupport = GroundingSupport.Multimodal
+
+    /**
+     * `fidelity` and `keyterms` are ignored here, and that is not an oversight. Fidelity already
+     * reached this backend inside [systemInstruction], and keyterms exist only for endpoints with
+     * no instruction to put them in.
+     */
+    override suspend fun transcribe(
         systemInstruction: String,
         parts: List<InputPart>,
-        maxOutputTokens: Int = 2048,
+        fidelity: Fidelity,
+        keyterms: List<String>,
+        maxOutputTokens: Int,
     ): TranscriptionResult = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("model", model)

@@ -75,13 +75,30 @@ class DictationService(private val context: Context) {
         )
 
         return try {
+            val instruction = PromptAssets.systemInstruction(context, Settings.fidelity)
+            val client = ProviderFactory.create(Settings.provider, key, Settings.model)
+
+            // Each backend is sent only what it can use. Encoding ten thousand characters of
+            // screen text for an endpoint whose request body is raw audio would not merely be
+            // wasted — it would put a "grounded" request in the history for a transcript that was
+            // produced without grounding.
+            var keyterms = emptyList<String>()
             val contextParts = buildList {
-                if (screenContext != null && !screenContext.isEmpty) {
-                    addAll(ContextEncoder().encode(screenContext))
+                val grounding = client.grounding()
+                if (screenContext == null || screenContext.isEmpty) return@buildList
+                when (grounding) {
+                    is GroundingSupport.Multimodal -> addAll(ContextEncoder().encode(screenContext))
+                    is GroundingSupport.Keyterms ->
+                        if (Settings.keytermBiasing) {
+                            keyterms = Keyterms.derive(
+                                screenContext,
+                                grounding.maxTerms,
+                                grounding.maxCharsPerTerm,
+                            )
+                        }
+                    is GroundingSupport.None -> Unit
                 }
             }
-            val instruction = PromptAssets.systemInstruction(context, Settings.fidelity)
-            val client = GeminiClient(apiKey = key, model = Settings.model)
 
             // Long recordings are split on silence and transcribed concurrently; anything under
             // the threshold comes back as one chunk and takes the ordinary path unchanged. Every
@@ -103,7 +120,14 @@ class DictationService(private val context: Context) {
             }
 
             val results = if (chunks.size == 1) {
-                listOf(client.transcribe(instruction, contextParts + audioPart(wav)))
+                listOf(
+                    client.transcribe(
+                        instruction,
+                        contextParts + audioPart(wav),
+                        Settings.fidelity,
+                        keyterms,
+                    ),
+                )
             } else {
                 coroutineScope {
                     // Bounded, because a ten-minute dictation fired all at once is the fastest way
@@ -115,6 +139,8 @@ class DictationService(private val context: Context) {
                                 client.transcribe(
                                     instruction,
                                     contextParts + audioPart(chunk.data),
+                                    Settings.fidelity,
+                                    keyterms,
                                 )
                             }
                         }
@@ -152,10 +178,14 @@ class DictationService(private val context: Context) {
 
         record.retryCount += 1
         return try {
-            val result = GeminiClient(apiKey = key, model = Settings.model)
+            // Retried through whichever provider is selected *now*, not the one that failed. A
+            // dictation that failed because the backend was wrong for it is exactly the one
+            // someone switches provider and retries.
+            val result = ProviderFactory.create(Settings.provider, key, Settings.model)
                 .transcribe(
                     PromptAssets.systemInstruction(context, record.fidelity),
                     listOf(InputPart.Audio(wav, "audio/wav")),
+                    record.fidelity,
                 )
             record.status = DictationRecord.Status.COMPLETED
             record.text = result.transcript.transcript.trim()

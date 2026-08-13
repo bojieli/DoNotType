@@ -5,9 +5,11 @@ import app.donottype.core.DictationRecord
 import app.donottype.core.DictationService
 import app.donottype.core.Fidelity
 import app.donottype.core.HistoryQuery
-import app.donottype.core.GeminiClient
+import app.donottype.core.GroundingSupport
 import app.donottype.core.InputPart
 import app.donottype.core.PerformanceStats
+import app.donottype.core.ProviderFactory
+import app.donottype.core.ProviderKind
 import app.donottype.core.RetentionPolicy
 import android.Manifest
 import android.content.Intent
@@ -56,6 +58,9 @@ class SettingsActivity : AppCompatActivity() {
 
     private lateinit var apiKeyField: EditText
     private lateinit var modelField: EditText
+    private lateinit var groundingNote: TextView
+    private lateinit var keytermNote: TextView
+    private lateinit var keytermSwitch: Switch
     private lateinit var statusLabel: TextView
     private lateinit var connectionLabel: TextView
     private lateinit var historyContainer: LinearLayout
@@ -83,6 +88,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        refreshProviderNotes()
         refreshStatus()
         refreshHistory()
     }
@@ -127,10 +133,30 @@ class SettingsActivity : AppCompatActivity() {
         // ---- Provider ----
         column.addView(sectionTitle("Provider"))
         column.addView(
-            body("Calls go straight to Google with your key. Nothing routes through a server of ours.")
+            body("Calls go straight to the provider with your key. Nothing routes through a server of ours.")
         )
+        column.addView(buildProviderPicker())
+
+        // Stated rather than left to be discovered: a recognition service silently disables screen
+        // grounding and the rewrite path, and neither control would otherwise say so.
+        groundingNote = body("")
+        column.addView(groundingNote)
+
+        keytermSwitch = Switch(this).apply {
+            text = "Send screen words as spelling hints"
+            isChecked = Settings.keytermBiasing
+            setOnCheckedChangeListener { _, checked -> Settings.keytermBiasing = checked }
+        }
+        column.addView(keytermSwitch)
+        keytermNote = body(
+            "Sends up to 100 names and identifiers from your screen to bias recognition. Numbers "
+                + "are never sent — a version or port read off the screen is exactly what must "
+                + "come from your voice."
+        )
+        column.addView(keytermNote)
+
         apiKeyField = EditText(this).apply {
-            hint = "Gemini API key"
+            hint = "API key"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setText(Settings.apiKey.orEmpty())
         }
@@ -144,8 +170,12 @@ class SettingsActivity : AppCompatActivity() {
 
         column.addView(
             button("Save") {
+                // Keys and models are stored per provider, so this writes to whichever one is
+                // selected rather than to a single shared slot.
                 Settings.apiKey = apiKeyField.text.toString().trim()
-                Settings.model = modelField.text.toString().trim().ifEmpty { "gemini-3.6-flash" }
+                Settings.model = modelField.text.toString().trim()
+                    .ifEmpty { Settings.provider.defaultModel }
+                modelField.setText(Settings.model)
                 Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
                 refreshStatus()
             }
@@ -303,6 +333,64 @@ class SettingsActivity : AppCompatActivity() {
 
     // MARK: - Sections
 
+    /**
+     * Switching provider reloads the key and model fields, because both are stored per provider.
+     * Carrying one provider's key into another's field would look like it had been saved.
+     */
+    private fun buildProviderPicker(): Spinner {
+        val kinds = ProviderKind.entries
+        return Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@SettingsActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                kinds.map { it.displayName },
+            )
+            setSelection(kinds.indexOf(Settings.provider).coerceAtLeast(0))
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    val chosen = kinds[position]
+                    if (chosen == Settings.provider) return
+                    Settings.provider = chosen
+                    apiKeyField.setText(Settings.apiKey.orEmpty())
+                    apiKeyField.hint = "${chosen.displayName} API key"
+                    modelField.setText(Settings.model)
+                    refreshProviderNotes()
+                    refreshStatus()
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            }
+        }
+    }
+
+    /** Says what the selected backend gives up, and hides controls it cannot honour. */
+    private fun refreshProviderNotes() {
+        val kind = Settings.provider
+        val keytermCapable = kind == ProviderKind.DEEPGRAM || kind == ProviderKind.XAI
+
+        groundingNote.text = when {
+            !kind.isSpeechRecognition -> ""
+            kind == ProviderKind.MISTRAL ->
+                "Transcription only — this service cannot read your screen, and has no " +
+                    "spelling-hint channel either. It is the one that handles Mandarin and " +
+                    "English together."
+            // Louder than a trade-off note: this one predicts lost dictations. Deepgram returned
+            // nothing for 44 of 68 Mandarin clips on the dictation corpus.
+            kind == ProviderKind.DEEPGRAM ->
+                "⚠ Transcription only, and it cannot transcribe Chinese with autodetection — it " +
+                    "returned nothing for 44 of 68 Mandarin clips. Choose another service if you " +
+                    "dictate in Chinese."
+            else ->
+                "Transcription only — this service cannot read your screen. Fidelity has two " +
+                    "settings here rather than three."
+        }
+        groundingNote.visibility = if (kind.isSpeechRecognition) View.VISIBLE else View.GONE
+
+        val showKeyterms = keytermCapable
+        keytermSwitch.visibility = if (showKeyterms) View.VISIBLE else View.GONE
+        keytermNote.visibility = if (showKeyterms) View.VISIBLE else View.GONE
+    }
+
     private fun buildFidelityPicker(): RadioGroup {
         val descriptions = mapOf(
             Fidelity.RAW to "Raw — every um and false start",
@@ -353,16 +441,52 @@ class SettingsActivity : AppCompatActivity() {
         }
         connectionLabel.text = "Checking…"
         lifecycleScope.launch {
+            val client = ProviderFactory.create(Settings.provider, key, Settings.model)
+            // A recognition backend rejects a text-only request by design, so probing one with the
+            // text round trip would report a working key as broken. It gets a fraction of a second
+            // of silence instead — enough to exercise auth, the URL and the response shape, which
+            // is all this button claims to check.
+            val parts = if (client.grounding() is GroundingSupport.Multimodal) {
+                listOf(InputPart.Text("Pretend the audio said: ok. Transcribe it."))
+            } else {
+                listOf(InputPart.Audio(silentProbeWav(), "audio/wav"))
+            }
+
             connectionLabel.text = runCatching {
-                GeminiClient(apiKey = key, model = Settings.model).transcribe(
-                    "You are a transcription engine.",
-                    listOf(InputPart.Text("Pretend the audio said: ok. Transcribe it.")),
-                )
+                client.transcribe("You are a transcription engine.", parts)
             }.fold(
                 onSuccess = { "✓ Reachable, key accepted" },
-                onFailure = { "✗ ${it.message}" },
+                onFailure = { error ->
+                    // Silence transcribes to nothing, and on a recogniser that is the correct
+                    // answer — it proves the round trip worked.
+                    if (error.message?.contains("no output", ignoreCase = true) == true) {
+                        "✓ Reachable, key accepted"
+                    } else {
+                        "✗ ${error.message}"
+                    }
+                },
             )
         }
+    }
+
+    /**
+     * A quarter-second of 16 kHz mono silence, built rather than shipped as an asset so the APK
+     * does not carry a resource used by one button.
+     */
+    private fun silentProbeWav(): ByteArray {
+        val sampleRate = 16_000
+        val dataBytes = sampleRate / 4 * 2
+        val out = java.io.ByteArrayOutputStream()
+        fun ascii(value: String) = out.write(value.toByteArray(Charsets.US_ASCII))
+        fun u32(value: Int) =
+            out.write(byteArrayOf(value.toByte(), (value shr 8).toByte(), (value shr 16).toByte(), (value shr 24).toByte()))
+        fun u16(value: Int) = out.write(byteArrayOf(value.toByte(), (value shr 8).toByte()))
+
+        ascii("RIFF"); u32(36 + dataBytes); ascii("WAVEfmt ")
+        u32(16); u16(1); u16(1); u32(sampleRate); u32(sampleRate * 2); u16(2); u16(16)
+        ascii("data"); u32(dataBytes)
+        out.write(ByteArray(dataBytes))
+        return out.toByteArray()
     }
 
     private fun retryAll() {
