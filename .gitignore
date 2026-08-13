@@ -8,10 +8,18 @@ DerivedData/
 # Eval artifacts: audio and results are local, case definitions are committed.
 eval/results/*
 !eval/results/local-real-audio-2026-08-10.json
+# Linked from docs/EVALUATION.md, so it has to exist in a fresh clone.
+!eval/results/speech-recognition-2026-08-12.json
 eval/audio/*.wav
 eval/audio/*.flac
 eval/audio/*.ogg
 eval/audio/*.aiff
+
+# The ordinary-dictation corpus is cut from the maintainer's own recordings: the clips are private
+# speech and the manifest names the source files and offsets they came from. All of it stays on
+# the machine that built it. `eval/build-dictation-corpus.py` rebuilds it from a seed, and only
+# aggregate numbers belong in docs/.
+eval/dictation/
 
 # Never commit a key.
 .env

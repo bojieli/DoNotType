@@ -126,12 +126,13 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   to compare them is one dropdown rather than a re-typing exercise. Keys live in the Keychain /
   DPAPI / private prefs, never in a config file.
 - **Recognition services are a different trade, and the app says so.** They return a transcript in
-  roughly 1.5 s against 6.5 s for a model — but they cannot read your screen, cannot rewrite, and
-  mis-spell exactly the hard words grounding exists for (`koffi` → `coffee`, `--amend` → `dash dash
-  amend`). Selecting one states this under the picker rather than leaving grounding controls that
-  quietly do nothing. Numbers on screen are **never** sent as spelling hints. Deepgram cannot
-  transcribe Chinese under any autodetecting setting; Voxtral handles Mandarin and English together
-  without being told which is coming. Measured in [docs/EVALUATION.md](docs/EVALUATION.md).
+  around 1.2 s against 6.5 s for a model, and cannot read your screen or rewrite. Selecting one
+  states that under the picker rather than leaving grounding controls that quietly do nothing.
+  Where they *can* take spelling hints, numbers on screen are **never** among them — a version read
+  off the screen is exactly what must come from your voice. xAI scores best of the three (29–30/48
+  against a model provider's 40/48, five times faster, no regressions); Deepgram cannot transcribe
+  Chinese under any autodetecting setting; Voxtral and xAI both handle Mandarin and English
+  together. Measured in [docs/EVALUATION.md](docs/EVALUATION.md).
 - **Hotkey** — which key, whether a tap toggles or a hold talks, and an optional **second key
   bound to a rewrite** (formal, concise, bullets) for when you want an email rather than a
   transcript. Your main key always stays verbatim.

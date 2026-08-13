@@ -1,0 +1,366 @@
+{
+  "date": "2026-08-12",
+  "what": "Speech recognition backends (Deepgram, Mistral Voxtral, xAI) against a model provider on the near-miss suite",
+  "suite": "eval/nearmiss",
+  "cases": 16,
+  "passesPerCase": 3,
+  "reproduce": "eval/benchmark-speech.sh",
+  "note": "Native Gemini could not be measured in this session — the GEMINI_API_KEY in the environment was rejected with 'API key not valid'. The model-provider baseline is therefore OpenRouter, which this repository has previously measured as slightly worse than native Gemini on this suite (12/15 versus 15/15 on 2026-08-09). Treat the baseline column as a floor for a model provider, not as Gemini's number.",
+  "suiteResults": [
+    {
+      "backend": "deepgram",
+      "model": "nova-3",
+      "language": "detect_language=true",
+      "keyterms": false,
+      "runsAttempted": 42,
+      "runsErrored": 6,
+      "matched": 12,
+      "improved": 0,
+      "regressed": 0,
+      "neutralCorrect": 12,
+      "neutralWrong": 30,
+      "superseded": true,
+      "supersededBy": "language=multi is now the nova-3 default"
+    },
+    {
+      "backend": "deepgram",
+      "model": "nova-3",
+      "language": "detect_language=true",
+      "keyterms": true,
+      "runsAttempted": 42,
+      "runsErrored": 6,
+      "matched": 17,
+      "improved": 5,
+      "regressed": 0,
+      "neutralCorrect": 12,
+      "neutralWrong": 25,
+      "superseded": true
+    },
+    {
+      "backend": "deepgram",
+      "model": "nova-3",
+      "language": "multi",
+      "keyterms": false,
+      "runsAttempted": 42,
+      "runsErrored": 6,
+      "matched": 18,
+      "improved": 0,
+      "regressed": 0,
+      "neutralCorrect": 18,
+      "neutralWrong": 24
+    },
+    {
+      "backend": "deepgram",
+      "model": "nova-3",
+      "language": "multi",
+      "keyterms": true,
+      "runsAttempted": 42,
+      "runsErrored": 6,
+      "matched": 27,
+      "improved": 9,
+      "improvedPerPassRange": [
+        3,
+        3
+      ],
+      "regressed": 0,
+      "neutralCorrect": 18,
+      "neutralWrong": 15
+    },
+    {
+      "backend": "openrouter",
+      "model": "google/gemini-3.6-flash",
+      "language": "n/a (model provider)",
+      "keyterms": false,
+      "runsAttempted": 48,
+      "runsErrored": 0,
+      "matched": 40,
+      "improved": 4,
+      "improvedPerPassRange": [
+        1,
+        2
+      ],
+      "regressed": 3,
+      "regressedPerPassRange": [
+        0,
+        2
+      ],
+      "neutralCorrect": 36,
+      "neutralWrong": 5,
+      "unstableCases": [
+        "person-name",
+        "jargon-spelling",
+        "real-version-number"
+      ]
+    },
+    {
+      "backend": "mistral",
+      "model": "voxtral-mini-latest",
+      "language": "auto (its own detection; this is what makes code-switching work)",
+      "keyterms": false,
+      "runsAttempted": 48,
+      "runsErrored": 0,
+      "matched": 21,
+      "improved": 0,
+      "regressed": 0,
+      "neutralCorrect": 21,
+      "neutralWrong": 27,
+      "note": "improved/regressed are trivially 0 for an ungrounded backend: both suite arms send byte-identical requests. Only `matched` is comparable. Passes real-mandarin 3/3, which Deepgram cannot attempt at all; fails real-brand and real-codeswitch."
+    },
+    {
+      "backend": "xai",
+      "model": "grok-stt",
+      "language": "auto (default)",
+      "keyterms": false,
+      "runsAttempted": 48,
+      "runsErrored": 0,
+      "matched": 16,
+      "improved": 1,
+      "regressed": 0,
+      "neutralCorrect": 15,
+      "neutralWrong": 32
+    },
+    {
+      "backend": "xai",
+      "model": "grok-stt",
+      "language": "auto (default)",
+      "keyterms": true,
+      "runsAttempted": 48,
+      "runsErrored": 0,
+      "matched": 30,
+      "improved": 14,
+      "regressed": 0,
+      "neutralCorrect": 15,
+      "neutralWrong": 13,
+      "note": "Three independent runs gave 30, 30, 29. xAI's keyterm biasing varies between sessions, not just between passes; treat single-session numbers as ±5 runs.",
+      "matchedRuns": [
+        30,
+        30,
+        29
+      ],
+      "supersededMeasurement": {
+        "matched": 35,
+        "improved": 20,
+        "why": "Measured before Keyterms was repaired, in an earlier session, and not reproducible. Not attributable to the repair: git-command passed then with a term list that did NOT contain --amend and fails now with a list that does, and benefit-novel-name has Kaelith in both. In both failing cases the transcript now equals the ungrounded baseline exactly, so the hints did nothing this session on cases where they landed last session."
+      }
+    },
+    {
+      "backend": "xai",
+      "model": "grok-stt",
+      "language": "en (DNT_XAI_LANGUAGE)",
+      "keyterms": true,
+      "runsAttempted": 48,
+      "runsErrored": 0,
+      "matched": 39,
+      "improved": 18,
+      "regressed": 3,
+      "regressedPerPassRange": [
+        1,
+        1
+      ],
+      "neutralCorrect": 21,
+      "neutralWrong": 6,
+      "note": "Highest matched count of any recogniser, within one run of the model provider — but NOT the default, because regressed must be 0. The regression is stable and is benefit-novel-repo: baseline wrote 'quillmark-sync' correctly, the keyterm hint made it write 'quillmark-dash-sync'. A correct hint produced a wrong transcript."
+    }
+  ],
+  "latency": {
+    "clip": "eval/audio/real-talk-gemini15.wav",
+    "clipSeconds": 22.0,
+    "trials": 15,
+    "meanSeconds": {
+      "deepgram-nova-3-grounded": 1.33,
+      "deepgram-nova-3-no-context": 1.26,
+      "openrouter-gemini-3.6-flash-grounded": 6.5,
+      "openrouter-gemini-3.6-flash-no-context": 5.22,
+      "mistral-voxtral-mini": 1.88,
+      "mistral-voxtral-mini-rerun": 1.47,
+      "deepgram-nova-3-keyterms-grounded-SUPERSEDED": 3.47,
+      "deepgram-nova-3-keyterms-no-context-SUPERSEDED": 2.77,
+      "xai-grok-stt-grounded": 1.19,
+      "xai-grok-stt-no-context": 1.25
+    },
+    "note": "RETRACTED: an earlier version of this file claimed keyterm biasing costs ~2 s because terms are sent as repeated query parameters. Both the cost and the mechanism were unmeasured. Varying term count 0/10/25/50/100 at fixed upload gave 2.40/2.59/2.82/2.80/2.63 s — no trend — and re-running the ablate pair twice gave 1.63 vs 2.34 s on one pass and 1.14 vs 1.09 s on the next. The original gap was network drift. Keyterm biasing has no measurable latency cost; it remains off by default on principle, not performance.",
+    "keytermLatencyRetest": {
+      "byTermCount": {
+        "0": 2.4,
+        "10": 2.59,
+        "25": 2.82,
+        "50": 2.8,
+        "100": 2.63,
+        "runsEach": 5,
+        "upload": "704 kB WAV via curl"
+      },
+      "byPipeline": [
+        {
+          "pass": 1,
+          "noKeyterms": 1.63,
+          "keyterms": 2.34
+        },
+        {
+          "pass": 2,
+          "noKeyterms": 1.14,
+          "keyterms": 1.09
+        }
+      ]
+    }
+  },
+  "substitution": {
+    "clip": "eval/audio/real-talk-gemini15.wav",
+    "spoken": "1.5",
+    "decoy": "2.5",
+    "decoyChannel": "visible text",
+    "trials": 15,
+    "results": {
+      "openrouter-gemini-3.6-flash-grounded": {
+        "substituted": 6,
+        "correct": 9,
+        "rate": 0.4
+      },
+      "openrouter-gemini-3.6-flash-no-context": {
+        "substituted": 8,
+        "correct": 7,
+        "rate": 0.53
+      },
+      "deepgram-nova-3": {
+        "substituted": 0,
+        "correct": 0,
+        "unjudgeable": 15,
+        "why": "Deepgram transcribes neither the spoken 1.5 nor the on-screen 2.5 on this clip — the number never appears, so substitution cannot be scored. Not a pass."
+      },
+      "mistral-voxtral-mini": {
+        "substituted": 10,
+        "correct": 0,
+        "trials": 10,
+        "rate": 1.0,
+        "noContextArm": {
+          "substituted": 10,
+          "trials": 10,
+          "rate": 1.0
+        },
+        "why": "NOT substitution. Voxtral has no grounding, and the no-context arm scores identically, which proves it is mishearing rather than overwriting. It writes 'Gimli 2.5' where the speaker said 'Gemini 1.5', getting brand and number both wrong. For an ungrounded backend this metric measures mishearing."
+      }
+    }
+  },
+  "languageFindings": {
+    "method": "Direct /v1/listen calls, nova-3, one call per cell.",
+    "cells": [
+      {
+        "clip": "real-mandarin.wav",
+        "setting": "detect_language=true",
+        "detected": "fr",
+        "transcript": "",
+        "outcome": "empty"
+      },
+      {
+        "clip": "real-mandarin.wav",
+        "setting": "language=multi",
+        "transcript": "",
+        "outcome": "empty"
+      },
+      {
+        "clip": "real-mandarin.wav",
+        "setting": "language=zh",
+        "outcome": "full correct Mandarin transcript"
+      },
+      {
+        "clip": "real-brand.wav",
+        "setting": "detect_language=true",
+        "detected": "en",
+        "outcome": "empty on one call, correct Mandarin on a later identical call — nondeterministic"
+      },
+      {
+        "clip": "real-brand.wav",
+        "setting": "language=multi",
+        "transcript": "",
+        "outcome": "empty"
+      },
+      {
+        "clip": "real-brand.wav",
+        "setting": "language=zh",
+        "outcome": "full correct Mandarin transcript"
+      },
+      {
+        "clip": "real-codeswitch.wav",
+        "setting": "detect_language=true",
+        "transcript": "Okay.",
+        "outcome": "20 s of speech reduced to one word"
+      },
+      {
+        "clip": "real-codeswitch.wav",
+        "setting": "language=zh",
+        "outcome": "full correct Mandarin transcript"
+      },
+      {
+        "clip": "gemini-version.wav",
+        "setting": "detect_language=true",
+        "transcript": "Should switch to Gemini 3.5 flash for this.",
+        "outcome": "leading 'We' dropped"
+      },
+      {
+        "clip": "gemini-version.wav",
+        "setting": "language=multi",
+        "transcript": "We should switch to Gemini 3.5 flash for this.",
+        "outcome": "correct"
+      }
+    ]
+  },
+  "xai": {
+    "endpoint": "https://api.x.ai/v1/stt",
+    "status": "verified 2026-08-12",
+    "keyEnvVar": "XAI_API_KEY (falls back to GROK_API_KEY)",
+    "undocumentedBehavioursFoundOnFirstLiveRequest": [
+      "format=true is rejected with \"Field 'language' is required when 'format' is true\". The provider defaulted to no language, so every light/tidy request 400'd.",
+      "Form fields written AFTER the file part are silently ignored — HTTP 200, no error, options not applied. Fields-then-file returned '3.5' 3/3; file-then-fields returned 'three point five' 3/3, same request otherwise. Pinned by testEveryFieldIsWrittenBeforeTheFilePart."
+    ],
+    "languageTradeoff": "An explicit language enables inverse text normalisation; auto does not. auto still detects correctly (returned zh with 'retrieval pipeline' and 'OK' kept inline on a code-switched clip)."
+  },
+  "mistralBiasing": {
+    "finding": "No biasing channel exists on the REST transcription endpoint.",
+    "method": "Sent novel-name.wav three ways: no extra field, context=Kaelith, prompt=Kaelith.",
+    "result": "All three returned the identical transcript 'Ask Keyleth to review the merge before stand-up.' The endpoint accepts unknown form fields with HTTP 200 and ignores them.",
+    "consequence": "GroundingSupport is None, not Keyterms. Voxtral Transcribe 2's decoder-level biasing belongs to a separate serving surface this endpoint does not expose."
+  },
+  "providersProbedAndRejected": [
+    {
+      "provider": "OpenAI /v1/audio/transcriptions",
+      "model": "gpt-4o-transcribe",
+      "result": "HTTP 429 billing_not_active — account not usable"
+    },
+    {
+      "provider": "SiliconFlow /v1/audio/transcriptions",
+      "model": "FunAudioLLM/SenseVoiceSmall",
+      "result": "HTTP 402 insufficient balance"
+    },
+    {
+      "provider": "DashScope compatible-mode /audio/transcriptions",
+      "model": "qwen3-asr-flash",
+      "result": "HTTP 404 — not served on that path; Alibaba's ASR needs a file URL or OSS upload, which does not fit a local dictation app's privacy model"
+    },
+    {
+      "provider": "xAI /v1/stt",
+      "model": "grok-stt",
+      "result": "HTTP 400 invalid key on every endpoint and auth scheme, with two distinct keys"
+    }
+  ],
+  "keytermBiasingRevision": {
+    "earlierClaim": "The digit rule makes keyterm biasing structurally safer than prompt grounding — 9 improved, 0 regressed on Deepgram.",
+    "status": "too broad",
+    "evidence": "xai + keyterms + language=en produced 3 regressions, stable at 1 per pass. benefit-novel-repo: ungrounded baseline wrote 'quillmark-sync' correctly; with the (correct) keyterm hint it wrote 'quillmark-dash-sync'.",
+    "revised": "The digit rule makes NUMERIC substitution impossible, which is the failure this project is named for. It does not protect identifiers: a correct hint can still be rendered wrongly, at roughly 1 run in 16. Biasing stays off by default on every backend."
+  },
+  "keytermsExtractorRepair": {
+    "date": "2026-08-12",
+    "defectsFixed": [
+      "Latin terms embedded in CJK were lost: Chinese has no spaces, so a whitespace split glued every Latin term to the Han characters beside it. Real code-switched text yielded one mixed-script blob and lost Kubernetes, quillmark-sync and RAG entirely. Now splits on script boundaries.",
+      "Unbalanced punctuation rode along: koffi.load('libContextHelper.dylib and --author=\"Li were emitted as single terms. Quotes, brackets and = are now boundaries.",
+      "Sentence detection was broken by treating '.' as word-internal for README.md, which let sentence openers (Compare, See) in as proper nouns. Now decided by look-ahead.",
+      "Contractions (I'll, we're) were emitted as proper nouns. Rejected by suffix shape; O'Brien survives.",
+      "Command-line flags were inconsistent: --no-edit qualified as a joined identifier, --author did not."
+    ],
+    "knownLimitation": "Pure Chinese still yields no terms. Identifying a Chinese term needs word segmentation; emitting an unsegmented clause would bias toward a string nobody said.",
+    "portedTo": [
+      "Swift",
+      "Kotlin",
+      "C#"
+    ]
+  }
+}

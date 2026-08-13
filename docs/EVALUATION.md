@@ -396,3 +396,346 @@ context measures nothing.
 **Do not delete a failing case to make the suite green.** `04-jargon-spelling` is kept precisely
 because it exposed a provider difference, and the real-speech substitution case is kept because it
 is the only test in the project that has ever caught the bug the project is about.
+
+## Speech recognition backends — 2026-08-12
+
+Deepgram and xAI are not language models, which changes what the suite is measuring. A recogniser
+cannot substitute a version number it read on screen, because it never saw the screen. So the
+question is not "does grounding corrupt this" but **what does giving up grounding cost, and what
+does it buy** — and, once keyterm biasing exists, whether a word list reintroduces the failure a
+prompt was managing.
+
+Reproduce with `eval/benchmark-speech.sh`. Full numbers in
+[`eval/results/speech-recognition-2026-08-12.json`](../eval/results/speech-recognition-2026-08-12.json).
+
+**The baseline here is OpenRouter, not native Gemini.** The `GEMINI_API_KEY` in this environment
+was rejected as invalid, so the model-provider column could not be measured natively. This
+repository has previously measured OpenRouter as the *worse* of the two on this suite (12/15
+against 15/15 on 2026-08-09), so read that column as a floor for a model provider rather than as
+Gemini's figure.
+
+| backend | matched | improved | **regressed** | mean latency |
+|---|---|---|---|---|
+| openrouter · `google/gemini-3.6-flash` | 40 / 48 | 4 | **3** | 6.50 s |
+| **xai · `grok-stt` · keyterms** | **29–30 / 48** | 13–14 | **0** | **1.19 s** |
+| deepgram · nova-3 · `multi` · keyterms | 27 / 42 | 9 | **0** | 1.1–2.3 s |
+| mistral · `voxtral-mini-latest` | 21 / 48 | 0 | **0** | 1.5–1.9 s |
+| deepgram · nova-3 · `multi` | 18 / 42 | 0 | **0** | 1.33 s |
+| xai · `grok-stt` · no keyterms | 16 / 48 | 1 | **0** | 1.19 s |
+| deepgram · nova-3 · `detect_language` | 12 / 42 | 0 | **0** | 1.26 s |
+
+Deepgram's denominator is 42 rather than 48 because two cases — both Mandarin — error outright
+rather than returning a wrong transcript. Counted against all 48 runs, its best configuration is
+27/48 (56%) against the model provider's 40/48 (83%).
+
+**`improved` and `regressed` mean nothing for an ungrounded backend.** With no grounding the two
+suite arms send byte-identical requests, so both counts are trivially 0. Only the Deepgram
+keyterms row's `9 / 0` is a real result; the rest of that column is an artefact of the harness
+being pointed at something it was not designed for. The comparable column is `matched`.
+
+### Voxtral is the one to pick if you switch languages
+
+Mistral completes all 16 cases where Deepgram errors on two, and the difference is entirely
+Chinese. It transcribes Mandarin correctly *and* keeps the English inside it — `retrieval
+pipeline`, `Google`, `storyline` — without being told which language to expect, from the same
+request as everything else.
+
+On the 14 cases Deepgram can attempt at all, Deepgram with biasing is the stronger of the two
+(27/42 against Voxtral's 18/42). So the choice between them is not about quality in general:
+
+- **English only** → Deepgram with keyterm biasing.
+- **Anything bilingual** → Voxtral, or Deepgram pinned with `DNT_DEEPGRAM_LANGUAGE=zh` and no
+  English.
+
+Voxtral also has no biasing channel at all, which is measured rather than read off the docs:
+`context=` and `prompt=` form fields are both accepted with HTTP 200 and both leave the transcript
+byte-identical, token counts included. It is the only recognition backend here that reports audio
+tokens, so it is the only one where the silent-drop guard can actually fire.
+
+**Its weakness is numbers, and the harness initially mislabelled it.** On the reference clip the
+ablation reports `substituted 100%` — but Voxtral never sees the screen, so it cannot substitute.
+The no-context arm scores the same 100%, which is what proves the point: it is *mis-hearing*, not
+overwriting. It writes `Gimli 2.5` where the speaker said `Gemini 1.5`, getting both the brand and
+the number wrong. For an ungrounded backend that metric measures mishearing, and reading it as
+substitution would be a mistake.
+
+### xAI is the one to beat, and it was nearly not measured at all
+
+`grok-stt` with keyterm biasing is the strongest recognition backend here by a wide margin:
+**29–30/48 against Deepgram's 27/42 and Voxtral's 21/48**, with no errored cases, at **1.19 s** —
+the fastest of everything tested, model providers included.
+
+Biasing is what does it: 16/48 without, 29–30/48 with, and still **0 regressed** across every run.
+That is the same shape as the Deepgram result and the same mechanism — `Keyterms` cannot emit a
+digit, so the decoy that drives every substitution in this suite has no channel to arrive through.
+
+**The range is not rounding, and it is a finding about this backend.** Three independent runs of
+the identical suite gave 30, 30 and 29. An earlier session, before `Keyterms` was repaired, gave
+35 — and that number is not reproducible. It is tempting to read the drop as damage from the
+repair, and the per-case evidence says otherwise: the two cases that flipped are `git-command` and
+`benefit-novel-name`, and
+
+- `git-command` passed *before* with a term list that did **not** contain `--amend`, and fails
+  *now* with a list that does. A term that was absent cannot explain the earlier pass.
+- `benefit-novel-name` has `Kaelith` in the list in both configurations.
+
+In both failing cases the transcript now equals the ungrounded baseline exactly, meaning the hints
+did nothing at all this session, on cases where they demonstrably landed in the last one. So
+**xAI's keyterm biasing is not reliable between sessions**: same audio, same terms, different
+outcome. The suite's per-pass range cannot see that, because all three passes of one run share a
+session. Treat any single-session recogniser number here as ±5 runs.
+
+**This provider spent a day in the tree unverified, and verification immediately found two bugs.**
+Both keys available when it was written were rejected, so it was implemented blind to the
+specification and shipped with a warning. When a working key arrived, the first live request
+failed — and so would every `light` and `tidy` dictation any user made:
+
+- `format=true` is rejected with *"Field 'language' is required when 'format' is true"*. The
+  default language was absent, so the default configuration 400'd.
+- **Form fields written after the file part are silently ignored** — HTTP 200, no error, options
+  simply not applied. Fields-then-file returns `3.5` three runs out of three; file-then-fields
+  returns `three point five` three out of three, same request otherwise.
+
+Neither is in the published documentation. `ProviderRegistry` requires new backends be verified
+with `dnt-eval probe --audio` before being trusted, and this is what that rule is for. The second
+behaviour is now pinned by `testEveryFieldIsWrittenBeforeTheFilePart`, because a reordering that
+disabled formatting and biasing would otherwise be invisible in a diff and silent at runtime.
+
+**Its one trade is language against numbers, and the higher-scoring side of it fails this
+project's own bar.** An explicit `language` enables inverse text normalisation, so `auto` writes
+"three point five" where `en` writes "3.5" — which is why `gemini-version` fails under the default.
+Pinning English scores dramatically better:
+
+| xai · keyterms | matched | improved | **regressed** |
+|---|---|---|---|
+| `language=auto` (default) | 29–30 / 48 | 13–14 | **0** |
+| `DNT_XAI_LANGUAGE=en` | **39 / 48** | 18 | **3** |
+
+39/48 is within one run of the model provider's 40/48, at a fifth of the latency. It is still not
+the default, because `regressed` is the number this suite exists to report and the bar for it is
+zero. The regression is stable — one every pass, never noise — and it is `benefit-novel-repo`:
+
+```
+got       Clone quillmark-dash-sync and run the setup script.
+baseline  Clone quillmark-sync and run the setup script.
+```
+
+The ungrounded run got it right. `quillmark-sync` was supplied as a keyterm, and the bias made the
+model spell the hyphen out as the word "dash". **A correct hint produced a wrong transcript.**
+
+### That falsifies something this document claimed two sections ago
+
+The Deepgram result was written up as evidence that keyterm biasing is *structurally* safer than
+prompt grounding, because `Keyterms` cannot emit a digit and every substitution in this suite is
+driven by a number on screen. The reasoning was right and the conclusion was too broad. The digit
+rule makes numeric substitution impossible; it says nothing about a **name** being mangled, and
+`quillmark-dash-sync` is a name being mangled by a hint that was itself correct.
+
+The caveat attached to that earlier claim — "it says nothing about names being biased wrongly,
+which this corpus does not probe" — turns out to have been the important sentence. The corpus does
+probe it, just not in the way expected: the damage did not need a *wrong* spelling on screen, only
+a correct one the recogniser rendered differently.
+
+So the honest version is narrower. Keyterm biasing reliably buys a lot (+19 runs on xAI, +9 on
+Deepgram) and cannot cause the numeric failure this project is named for. It can still corrupt an
+identifier, and does, at roughly 1 run in 16. It stays **off by default** on all backends, and
+`auto` stays the xAI default, for the same reason: this project reports `regressed` as the headline
+number and does not ship a configuration that raises it.
+
+### What the recogniser buys: about five times the speed
+
+1.33 s against 6.50 s on the same 22-second clip. For dictation that difference is felt directly,
+because it is entirely post-release latency — the user has stopped talking and is waiting.
+
+### What it costs: the hard words, which are the ones that matter
+
+Every Deepgram failure is a word a model provider gets right, and they are exactly the words this
+project exists to get right:
+
+| said | deepgram wrote |
+|---|---|
+| `koffi` | `coffee` |
+| `git commit --amend` | `git commit dash dash amend` |
+| `quillmark-sync` | `Quillmark dash sync` |
+| `Kaelith` | `Keyleth` |
+
+`Keyleth` is the same substitution `gemini-3.6-flash` makes, from the same cause: a name the model
+already knows displacing one it does not.
+
+### Keyterm biasing: 9 improved, 0 regressed
+
+The result that surprised me. Biasing was expected to reintroduce substitution — it is the
+vocabulary prior the README argues against, and it arrives with no way to say "reference only".
+Across three passes it fixed nine runs and broke none, stably (3 improved every pass, never a
+regression). It resolves all four `benefit-*` cases: `Kaelith`, `Brindlewood`, `quillmark-sync`
+and the caret-channel twin.
+
+**The mechanism is the digit rule, and it is structural rather than lucky.** `Keyterms` refuses to
+emit any token containing a digit, so the decoy that drives every substitution in this suite — a
+version number sitting on screen — cannot reach the biasing channel at all. A prompt cannot make
+that guarantee, because a prompt carries the screen text verbatim and has to *ask* the model to
+treat numbers as untrustworthy. On this suite the guarantee holds where the request does not:
+0 regressions against the model provider's 3.
+
+That is a narrow claim. It says nothing about names being biased wrongly, which the rule does not
+prevent and this corpus does not probe — every `benefit-*` case supplies a spelling that is
+*correct*. A case where the screen shows the wrong name for what was said would be the honest test,
+and it does not exist yet.
+
+**Biasing is free, and the first version of this section said otherwise.** It claimed a ~2 s cost
+"because up to 100 terms are sent as repeated query parameters" — a mechanism that was never
+measured, only assumed from one pair of `ablate` runs (1.33 s against 3.47 s). Both halves were
+wrong:
+
+| test | result |
+|---|---|
+| term count 0 → 10 → 25 → 50 → 100, fixed upload, 5 runs each | 2.40 / 2.59 / 2.82 / 2.80 / 2.63 s — no trend |
+| `ablate` with and without `--keyterms`, 15 trials, run twice | pass 1: 1.63 → 2.34 s · **pass 2: 1.14 → 1.09 s** |
+
+The effect does not reproduce: on the second pass biasing was marginally *faster*. The original
+gap was network drift between two sequential runs, and the query-parameter explanation was a
+plausible story invented to fit it. **Keyterm biasing has no measurable latency cost.**
+
+It stays **off by default** anyway, and the reason is now purely a principled one rather than a
+performance one: it is a vocabulary prior of the kind this project argues against, and the
+measurement above cannot see its worst case. Every `benefit-*` case supplies a spelling that is
+*correct*; there is no case where the screen shows the wrong name for what was spoken, which is
+precisely where a prior would do damage. Until that case exists, 9-improved/0-regressed is
+evidence that biasing helps when the screen is right, and no evidence at all about when it is
+wrong.
+
+This is the second time in this document a confident mechanism has been recorded before it was
+measured, and the second time measurement destroyed it.
+
+### `detect_language` fails by returning success
+
+The largest single improvement here was not the backend, it was one parameter. nova-3's `multi`
+scored 18/42 against detection's 12/42, and 27 against 17 with keyterms.
+
+Detection does not merely score worse — it fails in the worst available way. It is a per-request
+classification, and a wrong guess produces **HTTP 200 with an empty transcript**:
+
+| clip | `detect_language` | `multi` | `zh` |
+|---|---|---|---|
+| `real-mandarin` | detected `fr`, empty | empty | full correct transcript |
+| `real-brand` | detected `en`, empty — then correct on an identical later call | empty | full correct transcript |
+| `real-codeswitch` | `"Okay."` for 20 s of speech | `"Okay."` | full correct transcript |
+| `gemini-version` (English) | leading "We" dropped | correct | — |
+
+nova-3 therefore now defaults to `multi`. **No autodetecting setting transcribes Mandarin at all**;
+`language=zh` transcribes all three Mandarin fixtures perfectly, so a Chinese-speaking user must
+set `DNT_DEEPGRAM_LANGUAGE=zh`. That is a real limitation, not a tuning detail.
+
+The one mercy is that an empty transcript surfaces as `emptyOutput` — a visible failure with a
+retry button — rather than as silently missing words.
+
+### Reproducing any of this
+
+```bash
+export DEEPGRAM_API_KEY=... XAI_API_KEY=... MISTRAL_API_KEY=...
+./eval/benchmark-speech.sh
+swift run dnt-eval probe --provider xai --audio eval/audio/gemini-version.wav
+```
+
+## The ordinary-dictation corpus — 2026-08-12
+
+Everything above this point is measured on the near-miss suite, which is adversarial by
+construction: every case puts a decoy on screen that is almost what was said. That is the right
+instrument for measuring substitution and the wrong one for **choosing a default**, which is what
+it had quietly become. This corpus exists to answer the other question.
+
+**100 clips, 38.3 minutes, cut from 22 distinct real recordings**, at the lengths people actually
+dictate — 30 clips of 3–5 s, 25 of 10 s, 18 of 20 s, 12 of 30 s, 10 of 60 s, 5 of 120 s. The long
+tail is kept because it is the only thing that exercises `AudioChunker`'s split-and-stitch path on
+real speech. Rebuild it with `eval/build-dictation-corpus.py` (fixed seed, clip for clip); the
+audio and manifest stay local, since they are extracts of the maintainer's own recordings.
+
+There is **no ground truth here and none is invented**. Machine-generating one would make every
+number circular. What is measurable without it turns out to be what decides a default:
+
+```
+                    median (p95) latency          ×realtime   failed
+  xai               0.89 s (2.36)                 0.050×      1 / 100
+  mistral           1.31 s (3.63)                 0.073×      3 / 100
+  deepgram          1.97 s (5.15)                 0.116×     48 / 100
+  openrouter        5.66 s (16.93)                0.324×      0 / 100
+```
+
+| clip length | xai | mistral | deepgram | openrouter |
+|---|---|---|---|---|
+| 3 s | 0.52 | 0.79 | 2.61 | 3.56 |
+| 10 s | 0.77 | 1.10 | 1.61 | 4.94 |
+| 30 s | 1.35 | 1.68 | 2.46 | 9.47 |
+| 120 s | 2.83 | 3.42 | 5.15 | **16.93** |
+
+### The finding that decides it
+
+**This corpus is 71% Chinese** — 63% `zh`, 8% `cmn`, 29% `en`, as reported by the backends
+themselves. That is not a quirk of sampling; it is what the maintainer's recordings are, which
+makes it the real dictation distribution for this user.
+
+**Deepgram failed 48 of 100 clips — 44 of the 68 Chinese ones.** Not "transcribed badly": returned
+nothing. Whatever it scores when it works, a backend that silently drops two thirds of one language
+cannot be a default for anyone who speaks it. That single number disqualifies the option that the
+near-miss suite ranked second.
+
+`xai` is the default that falls out: fastest at every clip length, `0.050×` realtime, and 1 failure
+in 100. The model is 5.5× slower for a grounding benefit measured at **+4 improved against 3
+regressed**, and at two minutes of speech the gap is 2.8 s against 16.9 s.
+
+### Agreement, and a metric bug it caught
+
+Where independent backends produce the same words they are probably right; where they diverge, one
+is wrong. That does not say *which*, so it is reported as a **review queue** — the ten clips a human
+should actually listen to — rather than as a score.
+
+Mean pairwise word overlap is **68.1%** across 99 clips.
+
+The first version of that number was 29.3%, and it was wrong for the language this corpus is mostly
+in. The similarity function split on non-alphanumerics, so an entire Mandarin sentence — written
+without spaces — became a single token, and two backends differing by one character scored 0%. The
+review queue was therefore ranking clips by *language* rather than by disagreement, and had put 71%
+of the corpus at the top of it. Tokenizing CJK per character took the mean from 29.3% to 68.1% and
+made the queue mean what it claims.
+
+(`TranscriptDiff.tokenize` splits on whitespace too, and was checked for the same fault. It is
+coarse on Han text, but `improved`/`regressed`/`matched` are all computed from `satisfies()` rather
+than from the aligner, so no number reported anywhere in this document depends on it. Only the
+printed diff detail for a failing case is affected.)
+
+### What this corpus still cannot tell you
+
+Accuracy. Every number here is latency, failure rate or inter-backend agreement — none of it says
+whose transcript is *better*, and agreement can be high because two backends share a mistake. The
+review queue is the path to that answer, ten clips at a time, and it needs a human with the audio.
+
+## The keyterm extractor was broken, and inspecting it is how that surfaced
+
+`dnt-eval keyterms` prints the spelling hints a screen context would send, for the same reason the
+app has a Context Inspector: the biasing list was the one part of a request nobody could read.
+Adding it immediately showed that the list being sent was not the list being described.
+
+On the near-miss corpus it was emitting `I'll` (three cases), `koffi.load('libContextHelper.dylib`
+and `--author="Li`. On real code-switched Chinese it emitted **one** term — `刚才说的RAG方案`, a
+mixed-script blob — and lost `Kubernetes`, `quillmark-sync` and `retrieval` completely.
+
+Five defects, all now fixed and pinned by matching tests in Swift, Kotlin and C#:
+
+| defect | cause | fix |
+|---|---|---|
+| Latin terms lost inside Chinese | whitespace split; Chinese has no spaces | split on script boundaries |
+| `koffi.load('libContextHelper.dylib` | quotes and brackets treated as word characters | they end a term |
+| `Compare`, `See` admitted as names | `.` made word-internal for `README.md`, which silently destroyed sentence detection | look-ahead decides |
+| `I'll`, `we're` admitted as names | capital mid-sentence | rejected by suffix shape; `O'Brien` survives |
+| `--no-edit` qualified, `--author` did not | one is a joined identifier, the other is not | flags qualify explicitly |
+
+**The third one was self-inflicted, introduced while fixing the first.** Moving `.` into the
+word-character set to keep `README.md` intact meant a sentence-ending full stop no longer ended a
+sentence, so every clause opener became a candidate proper noun. It was caught by re-reading the
+output rather than by a test, which is an argument for the inspector rather than against the fix.
+
+**A limitation that remains, stated rather than papered over:** pure Chinese still yields no terms
+at all. Identifying a Chinese term needs word segmentation, and emitting an unsegmented clause as
+a keyterm would bias the recogniser toward a string nobody said. For a Mandarin-only dictation,
+keyterm biasing does nothing — which for this corpus is most of it. It is `screenshotPNG`'s
+situation again: the hint channel is narrower than the grounding it stands in for.

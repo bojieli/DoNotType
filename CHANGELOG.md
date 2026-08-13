@@ -8,7 +8,86 @@ release yet, so everything below is unreleased.
 
 ## Unreleased
 
+### Changed
+
+- **The default backend is now xAI speech-to-text, not Gemini.** Decided on a new 100-clip
+  ordinary-dictation corpus — real speech at the lengths people actually dictate, with nothing on
+  screen contradicting it — because the near-miss suite is adversarial by construction and had
+  quietly become the thing choosing defaults. On that corpus xAI is the fastest backend at every
+  clip length (0.89 s median against the model's 5.66 s; 2.8 s against 16.9 s on two minutes of
+  speech) and fails 1 clip in 100. The model remains one dropdown away, and is the right choice
+  when dictating identifiers with the reference on screen — but it costs 5.5× the wait for a
+  grounding benefit measured at +4 improved against 3 regressed.
+
+  **Deepgram is disqualified as a default by the same corpus**: it returned nothing for 48 of 100
+  clips, including 44 of the 68 Chinese ones. It stays available for English-only use.
+
 ### Added
+
+- **An ordinary-dictation corpus and `dnt-eval dictation`.** 100 clips, 38 minutes, 22 recordings,
+  built by `eval/build-dictation-corpus.py` from a fixed seed. There is no ground truth and none is
+  invented; the harness reports latency against clip length, failure rate, and cross-backend
+  agreement, the last as a review queue rather than a score. Audio and manifest stay local.
+
+- **`dnt-eval keyterms`.** Prints the spelling hints a screen context would send, for the same
+  reason the app has a Context Inspector: the biasing list was the one part of a request nobody
+  could read. It fails loudly if a digit ever reaches the list.
+
+- **Provider choice on every platform.** macOS, Windows and Android all pick a backend from a
+  dropdown that names what each one gives up, and all three store the API key **and the model per
+  provider** — a single shared model field would send `gemini-3.6-flash` to `/v1/listen` the moment
+  anyone switched to compare. Existing single-key installs are read as Gemini's, so nothing needs
+  migrating. The connection test probes a recogniser with a quarter-second of generated silence
+  instead of text, because a text-only round trip reports a working key as broken.
+
+- **Mistral Voxtral (`/v1/audio/transcriptions`).** The recognition backend for anyone who switches
+  language mid-sentence: it transcribes Mandarin and English together, keeping `retrieval pipeline`
+  and `Google` in English inside Han text, without being told which is coming. It completes all 16
+  near-miss cases where Deepgram errors on two. It has **no biasing channel** — `context=` and
+  `prompt=` are accepted with HTTP 200 and leave the transcript byte-identical — so it reports no
+  grounding rather than pretending. It is the only recogniser here that reports audio tokens, so
+  the silent-drop guard is live on it. (This repository had previously marked Mistral out of scope;
+  that was decided when no `MISTRAL_API_KEY` was configured, and `docs/MODELS.md` simultaneously
+  called Voxtral's biasing the most promising follow-up.)
+
+- **Speech recognition backends: Deepgram (`/v1/listen`) and xAI (`/v1/stt`).** The first backends
+  here that are not language models, which the provider protocol now models explicitly rather than
+  papering over. `GroundingSupport` says what a backend can do with the screen, and
+  `TranscriptionService` sends each one only what it can use — so a recogniser never receives ten
+  thousand characters of screen text it cannot read, and a dictation it produced is never recorded
+  as grounded. Fidelity travels on the request rather than only inside the prompt, because a
+  recogniser has no prompt to read it from. Rewriting through one fails with an error that says to
+  switch provider, instead of a bare HTTP 400.
+
+  Measured against a model provider on the near-miss suite (`eval/benchmark-speech.sh`, three
+  passes): Deepgram nova-3 is roughly **five times faster** — 1.33 s against 6.50 s on the same
+  22-second clip — and materially less accurate on the words that matter, writing `coffee` for
+  `koffi` and `dash dash amend` for `--amend`. Two Mandarin cases fail outright: **no autodetecting
+  setting transcribes Chinese**, and `detect_language` fails by returning HTTP 200 with an empty
+  transcript, so nova-3 now defaults to `multi` (18/42 matched against detection's 12/42).
+
+  **xAI turned out to be the strongest of the three** once a working key arrived: 29–30/48 matched
+  with biasing on, against Deepgram's 27/42 and Voxtral's 21/48, at 1.19 s — the fastest backend
+  measured, model providers included. It reads `XAI_API_KEY`, falling back to `GROK_API_KEY`.
+  The range is real: three identical runs gave 30, 30, 29, and an earlier session gave 35, so its
+  keyterm biasing varies between sessions rather than only between passes.
+
+  It also justified the "verify before adding" rule it had been shipped in violation of. The first
+  live request found two undocumented behaviours, both of which broke the default configuration:
+  `format=true` is rejected without a `language` field, and **form fields written after the file
+  part are silently ignored** — HTTP 200, no error, options simply not applied. The second is now
+  pinned by a test, because reordering the body would disable formatting and biasing invisibly.
+
+- **Optional keyterm biasing for recognition backends, off by default.** A recogniser's only
+  grounding channel is a word list, so `Keyterms` derives one from the screen — and **never emits
+  a token containing a digit**, because a version number in a biasing list is a request for the
+  substitution bug, and unlike a prompt there is nowhere to attach "reference only". On the
+  near-miss suite that structural guarantee held: **9 improved, 0 regressed**, against the model
+  provider's 4 improved and 3 regressed. It stays off by default anyway, on principle rather than
+  cost: it is still a vocabulary prior, and the corpus never tests it against a *wrong* on-screen
+  name, which is exactly where a prior would do damage. It has **no measurable latency cost** —
+  an earlier version of this entry claimed ~2 s from sending terms as query parameters, which
+  measurement falsified in both directions (see `docs/EVALUATION.md`).
 
 - **macOS, Windows, Android, iOS apps.** Hold a key, speak, release, get your words back. macOS and
   Windows are menu-bar/tray apps; Android is a keyboard that records in-process; iOS is a
