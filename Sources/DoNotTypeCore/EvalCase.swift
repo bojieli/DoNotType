@@ -98,18 +98,31 @@ public struct EvalRunner: Sendable {
     public var model: String
     public var systemInstruction: String
     public var encoder: ContextEncoder
+    /// Carried as well as baked into `systemInstruction`, because a recognition backend has no
+    /// system instruction to read it out of. Without this the harness would measure every
+    /// `--fidelity` setting as though it were the default on Deepgram and xAI.
+    public var fidelity: Fidelity
+    public var keytermBiasing: Bool
 
     public init(
         provider: any TranscriptionProvider,
         model: String,
         systemInstruction: String,
-        encoder: ContextEncoder = ContextEncoder()
+        encoder: ContextEncoder = ContextEncoder(),
+        fidelity: Fidelity = .default,
+        keytermBiasing: Bool = false
     ) {
         self.provider = provider
         self.model = model
         self.systemInstruction = systemInstruction
         self.encoder = encoder
+        self.fidelity = fidelity
+        self.keytermBiasing = keytermBiasing
     }
+
+    /// What this run's backend can do with the screen, so a report can say whether the
+    /// "with context" arm was grounded at all.
+    public var grounding: GroundingSupport { provider.grounding(forModel: model) }
 
     /// The exact object the app dictates through.
     ///
@@ -124,7 +137,7 @@ public struct EvalRunner: Sendable {
     private var service: TranscriptionService {
         TranscriptionService(
             provider: provider, model: model, systemInstruction: systemInstruction,
-            encoder: encoder)
+            encoder: encoder, fidelity: fidelity, keytermBiasing: keytermBiasing)
     }
 
     /// Transcribes once. `context` of `nil` produces the no-context baseline.

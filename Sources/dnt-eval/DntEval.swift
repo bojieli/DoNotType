@@ -11,7 +11,8 @@ struct DntEval: AsyncParsableCommand {
         commandName: "dnt-eval",
         abstract: "Measure what screen context does to a transcript.",
         subcommands: [
-            Probe.self, Once.self, Suite.self, Ablate.self, Rewrite.self, Conformance.self, Encode.self, OggGolden.self,
+            Probe.self, Once.self, Suite.self, Ablate.self, Rewrite.self, Conformance.self,
+            Encode.self, OggGolden.self, KeytermsCommand.self, Dictation.self,
         ],
         defaultSubcommand: Suite.self
     )
@@ -20,8 +21,20 @@ struct DntEval: AsyncParsableCommand {
 // MARK: - Shared options
 
 struct ProviderOptions: ParsableArguments {
-    @Option(name: .long, help: "Backend: gemini or openrouter.")
-    var provider: String = "gemini"
+    @Option(
+        name: .long,
+        help: "Backend: gemini, openrouter, local, deepgram, xai or mistral.")
+    // Defaults to whatever ships, so `make eval` measures the product rather than a backend
+    // nobody is configured with.
+    var provider: String = ProviderKind.defaultForNewInstalls.rawValue
+
+    @Flag(
+        name: .long,
+        help: """
+            Derive keyterms from the screen context for recognition backends. No effect on model \
+            providers, which receive the screen text itself. Off by default — see Keyterms.
+            """)
+    var keyterms: Bool = false
 
     @Option(name: .long, help: "Model ID. Defaults to the provider's Gemini Flash.")
     var model: String?
@@ -65,7 +78,9 @@ struct ProviderOptions: ParsableArguments {
         let runner = EvalRunner(
             provider: try ProviderFactory.make(kind),
             model: model ?? kind.defaultModel,
-            systemInstruction: try resolveSystemInstruction()
+            systemInstruction: try resolveSystemInstruction(),
+            fidelity: try resolveFidelity(),
+            keytermBiasing: keyterms
         )
         return (runner, kind)
     }
