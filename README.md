@@ -133,6 +133,12 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   against a model provider's 40/48, five times faster, no regressions); Deepgram cannot transcribe
   Chinese under any autodetecting setting; Voxtral and xAI both handle Mandarin and English
   together. Measured in [docs/EVALUATION.md](docs/EVALUATION.md).
+- **Fallback** — an optional second backend, started only once the primary has clearly stalled.
+  The first-party Gemini API is the most accurate measured and its latency is *bimodal*: six
+  sequential requests for one three-second clip took 4.9, 61.6, 50.5, 5.8, 5.9 and 30.2 s. The
+  fallback bounds that tail. You pick both services, both keys and how long the primary gets
+  alone; history records which one actually answered, because a tool whose transcript quality
+  varied invisibly would not be worth trusting.
 - **Hotkey** — which key, whether a tap toggles or a hold talks, and an optional **second key
   bound to a rewrite** (formal, concise, bullets) for when you want an email rather than a
   transcript. Your main key always stays verbatim.

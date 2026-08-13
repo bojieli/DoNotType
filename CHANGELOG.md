@@ -10,6 +10,19 @@ release yet, so everything below is unreleased.
 
 ### Changed
 
+- **An optional fallback backend, on all four platforms.** The first-party Gemini API is the most
+  accurate measured and its latency is bimodal rather than slow — six sequential requests for one
+  three-second clip took 4.9, 61.6, 50.5, 5.8, 5.9 and 30.2 s, with zero thought tokens throughout.
+  A dictation tool that usually answers in five seconds and sometimes in sixty is worse than one
+  that always takes six.
+
+  It **hedges rather than races**: the primary gets the whole configured delay to itself, so a
+  normal response is never second-guessed and never pays for a second request. It is **attributed,
+  not silent** — the history row names the backend that answered, not the one that was asked. It is
+  **off by default**, and the primary, the secondary, its own key and the delay are all
+  configurable, because that delay is the accuracy-against-latency dial and the right value depends
+  on which two backends are paired.
+
 - **The default backend is now xAI speech-to-text, not Gemini.** Decided on a new 100-clip
   ordinary-dictation corpus — real speech at the lengths people actually dictate, with nothing on
   screen contradicting it — because the near-miss suite is adversarial by construction and had
