@@ -15,8 +15,8 @@ namespace DoNotType.App;
 /// </summary>
 public sealed class AppSettings
 {
-    public ProviderKind Provider { get; set; } = ProviderKind.Gemini;
-    public string Model { get; set; } = ProviderKind.Gemini.DefaultModel();
+    public ProviderKind Provider { get; set; } = ProviderFactory.DefaultForNewInstalls;
+    public string Model { get; set; } = ProviderFactory.DefaultForNewInstalls.DefaultModel();
     public Fidelity Fidelity { get; set; } = Fidelity.Light;
     public HotkeyMonitor.Trigger Trigger { get; set; } = HotkeyMonitor.Trigger.RightControl;
     public HotkeyMonitor.Mode HotkeyMode { get; set; } = HotkeyMonitor.Mode.Automatic;
@@ -24,8 +24,31 @@ public sealed class AppSettings
     public RetentionPolicy Retention { get; set; } = RetentionPolicy.Forever;
     public bool KeepAudio { get; set; }
 
-    /// <summary>Base64 DPAPI blob. Never the key itself.</summary>
+    /// <summary>
+    /// Whether a recognition backend may be given a word list derived from the screen.
+    ///
+    /// Off by default, unlike <see cref="GroundingEnabled"/>, and the two are not one feature
+    /// wearing different hats: grounding hands a model the screen text under an explicit
+    /// "reference only" instruction, while a keyterm list is a bare vocabulary prior with no way
+    /// to say that. See <see cref="Keyterms"/> for what it refuses to send.
+    /// </summary>
+    public bool KeytermBiasing { get; set; }
+
+    /// <summary>Base64 DPAPI blob for the legacy single-key setting. Never the key itself.</summary>
     public string? ProtectedApiKey { get; set; }
+
+    /// <summary>
+    /// Per-provider DPAPI blobs, keyed by <see cref="ProviderKind"/> name.
+    ///
+    /// Switching backends to compare them is the whole point of having more than one, and a single
+    /// shared key would make every switch a re-typing exercise — which in practice means nobody
+    /// switches. <see cref="ProtectedApiKey"/> is still read as Gemini's, so an existing settings
+    /// file keeps working without a migration step that could lose someone their key.
+    /// </summary>
+    public Dictionary<string, string> ProtectedApiKeys { get; set; } = [];
+
+    /// <summary>Per-provider model override, so choosing Deepgram does not send a Gemini model ID.</summary>
+    public Dictionary<string, string> Models { get; set; } = [];
 
     /// <summary>
     /// Shipped non-empty. A blocklist that starts empty is one nobody ever fills in, and this app
@@ -106,11 +129,71 @@ public sealed class AppSettings
         }
     }
 
+    /// <summary>The stored key for one provider, falling back to the legacy single-key slot.</summary>
+    public string? KeyFor(ProviderKind kind)
+    {
+        if (ProtectedApiKeys.TryGetValue(kind.ToString(), out var blob) && Unprotect(blob) is { Length: > 0 } key)
+        {
+            return key;
+        }
+        // Before keys were stored per provider there was one slot, and it held Gemini's.
+        return kind == ProviderKind.Gemini ? ApiKey : null;
+    }
+
+    public void SetKeyFor(ProviderKind kind, string? value)
+    {
+        if (string.IsNullOrEmpty(value)) ProtectedApiKeys.Remove(kind.ToString());
+        else ProtectedApiKeys[kind.ToString()] = Protect(value);
+    }
+
+    /// <summary>
+    /// The model for one provider, defaulting to that provider's own default rather than to
+    /// Gemini's — otherwise choosing Deepgram would send <c>gemini-3.6-flash</c> to /v1/listen.
+    /// </summary>
+    public string ModelFor(ProviderKind kind)
+    {
+        if (Models.TryGetValue(kind.ToString(), out var stored) && !string.IsNullOrWhiteSpace(stored))
+        {
+            return stored;
+        }
+        return kind == ProviderKind.Gemini && !string.IsNullOrWhiteSpace(Model)
+            ? Model
+            : kind.DefaultModel();
+    }
+
+    public void SetModelFor(ProviderKind kind, string? value)
+    {
+        var resolved = string.IsNullOrWhiteSpace(value) ? kind.DefaultModel() : value.Trim();
+        Models[kind.ToString()] = resolved;
+        // Kept in step so anything still reading the flat property sees the selected provider's
+        // model rather than a stale one.
+        if (kind == Provider) Model = resolved;
+    }
+
     /// <summary>Falls back to the environment so a developer need not populate settings first.</summary>
     public string? ResolvedApiKey() =>
-        ApiKey is { Length: > 0 } stored
+        KeyFor(Provider) is { Length: > 0 } stored
             ? stored
             : Environment.GetEnvironmentVariable(Provider.ApiKeyEnvVar());
+
+    private static string Protect(string value) =>
+        Convert.ToBase64String(ProtectedData.Protect(
+            Encoding.UTF8.GetBytes(value), null, DataProtectionScope.CurrentUser));
+
+    private static string? Unprotect(string? blob)
+    {
+        if (string.IsNullOrEmpty(blob)) return null;
+        try
+        {
+            return Encoding.UTF8.GetString(ProtectedData.Unprotect(
+                Convert.FromBase64String(blob), null, DataProtectionScope.CurrentUser));
+        }
+        catch (Exception e) when (e is CryptographicException or FormatException)
+        {
+            // Copied between machines or user accounts; treat as absent rather than crashing.
+            return null;
+        }
+    }
 
     /// <summary>Evaluated before capture, never after.</summary>
     public bool IsBlocked(string? processName, string? url)

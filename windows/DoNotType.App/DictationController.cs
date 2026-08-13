@@ -174,7 +174,13 @@ public sealed class DictationController : IDisposable
         }
 
         var service = new TranscriptionService(
-            provider, PromptBuilder.FromFile(promptPath).SystemInstruction(_settings.Fidelity));
+            provider, PromptBuilder.FromFile(promptPath).SystemInstruction(_settings.Fidelity))
+        {
+            // Carried separately as well as baked into the prompt, because a recognition backend
+            // has no system instruction to read it out of.
+            Fidelity = _settings.Fidelity,
+            KeytermBiasing = _settings.KeytermBiasing,
+        };
 
         // From here, not from the request: reading the screen, a failed pre-upload and any retry
         // are all time the user spends watching the overlay, and a figure that skipped them would

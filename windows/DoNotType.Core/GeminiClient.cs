@@ -110,11 +110,18 @@ public sealed class GeminiProvider(
 
     public IAudioUploader CreateUploader() => new GeminiAudioUploader(apiKey, _http);
 
+    /// <remarks>
+    /// <paramref name="fidelity"/> and <paramref name="keyterms"/> are ignored, and that is not an
+    /// oversight: fidelity already reached this backend inside <paramref name="systemInstruction"/>,
+    /// and keyterms exist only for endpoints with no instruction to put them in.
+    /// </remarks>
     public async Task<TranscriptionResult> TranscribeAsync(
         string systemInstruction,
         IReadOnlyList<InputPart> parts,
         int maxOutputTokens = 2048,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Fidelity fidelity = Fidelity.Light,
+        IReadOnlyList<string>? keyterms = null)
     {
         var body = new JsonObject
         {

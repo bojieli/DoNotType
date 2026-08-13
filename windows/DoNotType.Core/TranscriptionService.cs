@@ -20,6 +20,22 @@ public sealed class TranscriptionService(
 
     public ITranscriptionProvider Provider { get; } = provider;
 
+    /// <summary>
+    /// Passed through to backends that have no system instruction to read it from. Model providers
+    /// ignore it, having received the same setting baked into the prompt.
+    /// </summary>
+    public Fidelity Fidelity { get; init; } = Fidelity.Light;
+
+    /// <summary>
+    /// Whether to derive a keyterm list from the screen for recognition backends.
+    ///
+    /// Off by default, and that default is a position rather than caution about a new feature.
+    /// Keyterm biasing is a vocabulary prior — the mechanism the README singles out as the thing
+    /// that makes a dictation tool overrule clear audio — and it arrives without the "reference
+    /// only" framing that makes the same information safe to give a model.
+    /// </summary>
+    public bool KeytermBiasing { get; init; }
+
     public async Task<TranscriptionResult> TranscribeAsync(
         byte[] wav,
         ScreenContext? context,
@@ -27,16 +43,32 @@ public sealed class TranscriptionService(
         CancellationToken cancellationToken = default)
     {
         var parts = new List<InputPart>();
+        IReadOnlyList<string> keyterms = [];
+
+        // Each backend is sent only what it can use. Encoding ten thousand characters of screen
+        // text for an endpoint whose request body is raw audio would not merely be wasted — it
+        // would put a "grounded" request in the history for a transcript produced without it.
         if (context is not null && !context.IsEmpty)
         {
-            parts.AddRange(_encoder.Encode(context));
+            switch (Provider.Grounding)
+            {
+                case GroundingSupport.MultimodalGrounding:
+                    parts.AddRange(_encoder.Encode(context));
+                    break;
+                case GroundingSupport.KeytermGrounding keyterm when KeytermBiasing:
+                    keyterms = Keyterms.Derive(context, keyterm.MaxTerms, keyterm.MaxCharsPerTerm);
+                    break;
+            }
         }
+
         // Compressed unless the caller already resolved the audio to a pre-uploaded reference.
         // Falls back to the WAV whenever libopus is unavailable or the encode fails, because a
         // compression optimisation must never be able to cost someone their words.
         parts.Add(audioPart ?? CompressedPart(wav));
 
-        return await Provider.TranscribeAsync(systemInstruction, parts, cancellationToken: cancellationToken)
+        return await Provider.TranscribeAsync(
+                systemInstruction, parts, cancellationToken: cancellationToken,
+                fidelity: Fidelity, keyterms: keyterms)
             .ConfigureAwait(false);
     }
 

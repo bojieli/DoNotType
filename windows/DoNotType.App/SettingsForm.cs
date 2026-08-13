@@ -18,6 +18,15 @@ public sealed class SettingsForm : Form
     private readonly ComboBox _provider = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox _model = new();
     private readonly TextBox _apiKey = new() { UseSystemPasswordChar = true };
+
+    /// <summary>What the selected backend gives up. Empty and hidden for a model provider.</summary>
+    private readonly Label _providerNote = new() { AutoSize = true, MaximumSize = new Size(430, 0) };
+
+    private readonly CheckBox _keytermBiasing = new()
+    {
+        Text = "Send screen words as spelling hints (numbers are never sent)",
+        AutoSize = true,
+    };
     private readonly Label _connection = new() { AutoSize = true, MaximumSize = new Size(420, 0) };
     private readonly ComboBox _trigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _mode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -73,6 +82,8 @@ public sealed class SettingsForm : Form
 
         layout.Controls.Add(Heading("Provider"));
         layout.Controls.Add(Labelled("Service", _provider));
+        layout.Controls.Add(_providerNote);
+        layout.Controls.Add(_keytermBiasing);
         layout.Controls.Add(Labelled("Model", _model));
         layout.Controls.Add(Labelled("API key", _apiKey));
 
@@ -351,14 +362,86 @@ public sealed class SettingsForm : Form
         return page;
     }
 
+    /// <summary>Says what the selected backend gives up, and hides controls it cannot honour.</summary>
+    private void RefreshProviderNotes()
+    {
+        var kind = (ProviderKind)Math.Max(_provider.SelectedIndex, 0);
+        _providerNote.Text = kind switch
+        {
+            ProviderKind.Mistral =>
+                "Transcription only — this service cannot read your screen, and has no "
+                + "spelling-hint channel either. It is the one that handles Mandarin and English "
+                + "together.",
+            // Louder than a trade-off note: this one predicts lost dictations. Deepgram returned
+            // nothing for 44 of 68 Mandarin clips on the dictation corpus.
+            ProviderKind.Deepgram =>
+                "⚠ Transcription only, and it cannot transcribe Chinese with autodetection — it "
+                + "returned nothing for 44 of 68 Mandarin clips. Choose another service if you "
+                + "dictate in Chinese.",
+            _ when kind.IsSpeechRecognition() =>
+                "Transcription only — this service cannot read your screen, and cannot rewrite. "
+                + "Fidelity has two settings here rather than three.",
+            _ => string.Empty,
+        };
+        _providerNote.Visible = kind.IsSpeechRecognition();
+
+        var keytermCapable = kind is ProviderKind.Deepgram or ProviderKind.XAI;
+        _keytermBiasing.Visible = keytermCapable;
+    }
+
+    /// <summary>
+    /// A quarter-second of 16 kHz mono silence, built rather than shipped as a file so the install
+    /// does not carry a resource used by one button.
+    /// </summary>
+    private static byte[] SilentProbeWav()
+    {
+        const int sampleRate = 16_000;
+        var dataBytes = sampleRate / 4 * 2;
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+
+        writer.Write("RIFF"u8.ToArray());
+        writer.Write(36 + dataBytes);
+        writer.Write("WAVEfmt "u8.ToArray());
+        writer.Write(16);
+        writer.Write((short)1);
+        writer.Write((short)1);
+        writer.Write(sampleRate);
+        writer.Write(sampleRate * 2);
+        writer.Write((short)2);
+        writer.Write((short)16);
+        writer.Write("data"u8.ToArray());
+        writer.Write(dataBytes);
+        writer.Write(new byte[dataBytes]);
+        writer.Flush();
+        return stream.ToArray();
+    }
+
     // ---- Values ------------------------------------------------------------------------------
 
     private void LoadValues()
     {
-        _provider.Items.AddRange(Enum.GetNames<ProviderKind>());
-        _provider.SelectedItem = _settings.Provider.ToString();
-        _model.Text = _settings.Model;
-        _apiKey.Text = _settings.ApiKey ?? string.Empty;
+        // Display names rather than enum names, so the dropdown says what each backend gives up
+        // instead of leaving it to be discovered.
+        foreach (var kind in Enum.GetValues<ProviderKind>())
+        {
+            _provider.Items.Add(kind.DisplayName());
+        }
+        _provider.SelectedIndex = (int)_settings.Provider;
+        _model.Text = _settings.ModelFor(_settings.Provider);
+        _apiKey.Text = _settings.KeyFor(_settings.Provider) ?? string.Empty;
+        _keytermBiasing.Checked = _settings.KeytermBiasing;
+        RefreshProviderNotes();
+
+        // Keys and models are stored per provider; carrying one provider's key into another's
+        // field would look like it had been saved.
+        _provider.SelectedIndexChanged += (_, _) =>
+        {
+            var chosen = (ProviderKind)_provider.SelectedIndex;
+            _model.Text = _settings.ModelFor(chosen);
+            _apiKey.Text = _settings.KeyFor(chosen) ?? string.Empty;
+            RefreshProviderNotes();
+        };
 
         foreach (var trigger in Enum.GetValues<HotkeyMonitor.Trigger>())
         {
@@ -399,11 +482,11 @@ public sealed class SettingsForm : Form
 
     private void SaveValues()
     {
-        _settings.Provider = Enum.Parse<ProviderKind>((string)_provider.SelectedItem!);
-        _settings.Model = string.IsNullOrWhiteSpace(_model.Text)
-            ? _settings.Provider.DefaultModel()
-            : _model.Text.Trim();
-        _settings.ApiKey = _apiKey.Text.Trim();
+        _settings.Provider = (ProviderKind)_provider.SelectedIndex;
+        _settings.SetModelFor(_settings.Provider, _model.Text);
+        _settings.SetKeyFor(_settings.Provider, _apiKey.Text.Trim());
+        _settings.KeytermBiasing = _keytermBiasing.Checked;
+        _model.Text = _settings.ModelFor(_settings.Provider);
         _settings.Trigger = (HotkeyMonitor.Trigger)_trigger.SelectedIndex;
         _settings.HotkeyMode = _mode.SelectedIndex switch
         {
@@ -433,12 +516,25 @@ public sealed class SettingsForm : Form
         _connection.Text = "Checking…";
         try
         {
-            var kind = Enum.Parse<ProviderKind>((string)_provider.SelectedItem!);
+            var kind = (ProviderKind)_provider.SelectedIndex;
             var provider = ProviderFactory.Create(kind, key, _model.Text.Trim());
-            await provider.TranscribeAsync(
-                "You are a transcription engine.",
-                [new InputPart.Text("Pretend the audio said: ok. Transcribe it.")])
-                .ConfigureAwait(true);
+            // A recognition backend rejects a text-only request by design, so probing one with the
+            // text round trip would report a working key as broken. It gets a fraction of a second
+            // of silence instead — enough to exercise auth, the URL and the response shape, which
+            // is all this button claims to check.
+            IReadOnlyList<InputPart> parts = provider.Grounding is GroundingSupport.MultimodalGrounding
+                ? [new InputPart.Text("Pretend the audio said: ok. Transcribe it.")]
+                : [new InputPart.Audio(SilentProbeWav(), "audio/wav")];
+            try
+            {
+                await provider.TranscribeAsync("You are a transcription engine.", parts)
+                    .ConfigureAwait(true);
+            }
+            catch (ProviderException empty) when (empty.Message.Contains("no output", StringComparison.OrdinalIgnoreCase))
+            {
+                // Silence transcribes to nothing, and on a recogniser that is the correct answer —
+                // it proves the round trip worked.
+            }
             _connection.Text = $"✓ {provider.Name} reachable, key accepted";
         }
         catch (Exception error)

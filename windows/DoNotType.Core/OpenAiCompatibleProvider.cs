@@ -33,11 +33,14 @@ public sealed class OpenAiCompatibleProvider(
     /// </summary>
     public bool SupportsPreUpload => false;
 
+    /// <remarks>See <see cref="GeminiProvider"/>: fidelity travels in the system instruction here.</remarks>
     public async Task<TranscriptionResult> TranscribeAsync(
         string systemInstruction,
         IReadOnlyList<InputPart> parts,
         int maxOutputTokens = 2048,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Fidelity fidelity = Fidelity.Light,
+        IReadOnlyList<string>? keyterms = null)
     {
         var content = new JsonArray();
         foreach (var part in parts)
