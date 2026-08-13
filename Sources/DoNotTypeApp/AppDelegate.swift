@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setIcon(for: .idle)
 
         settingsModel.onHotkeyChange = { [weak self] in self?.dictation.reloadHotkey() }
+        settingsModel.onKeyStatusChange = { [weak self] in self?.rebuildMenu() }
         dictation.onStateChange = { [weak self] state in
             self?.setIcon(for: state)
             self?.rebuildMenu()
@@ -70,7 +71,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         await settingsModel.refresh()
         rebuildMenu()
 
-        if Settings.shared.resolvedAPIKey() == nil {
+        // Asked here rather than at the end of the first dictation. A key that is absent or
+        // rejected is a setting, and finding out about it while a recording is in flight costs a
+        // sentence the user has already spoken.
+        await settingsModel.checkConnection()
+        if settingsModel.keyStatus.needsAttention {
             openSettings()
         } else {
             // Anything that failed while the machine was offline goes out now.
@@ -164,6 +169,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(disabled("Transcribing…"))
         case .failed(let message):
             menu.addItem(disabled(String(message.prefix(70))))
+        }
+
+        // Above everything else, because nothing below it can work until this is fixed, and the
+        // menu bar is the only surface a user sees without opening a window.
+        if let keyProblem = settingsModel.keyStatus.menuTitle(provider: settingsModel.provider) {
+            menu.addItem(.separator())
+            let item = NSMenuItem(
+                title: keyProblem, action: #selector(openSettings), keyEquivalent: "")
+            item.image = NSImage(
+                systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
+            item.target = self
+            menu.addItem(item)
         }
 
         let pending = settingsModel.retryableCount

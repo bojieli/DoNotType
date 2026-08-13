@@ -226,9 +226,32 @@ final class Settings {
 
     /// Falls back to the environment so a developer running from a terminal does not have to
     /// populate the Keychain first.
+    ///
+    /// Every spelling `ProviderFactory` accepts is tried, not just the canonical one: the factory
+    /// takes `GROK_API_KEY` for xAI, and when this only looked at `XAI_API_KEY` the app refused to
+    /// start a dictation over a key it would then have used happily.
+    ///
+    /// Note that the environment here is the *app's*, which for a bundle opened from Finder or
+    /// Login Items is launchd's — `~/.zshrc` is read by interactive shells and nothing else. See
+    /// `APIKeyStatus.explanation`, which is where a user finds that out.
     func resolvedAPIKey() -> String? {
         if let stored = apiKey, !stored.isEmpty { return stored }
-        return ProcessInfo.processInfo.environment[provider.apiKeyEnvVar]
+        return Self.environmentAPIKey(for: provider)
+    }
+
+    /// The name the key was actually found under, for the settings window to report.
+    static func environmentAPIKeyName(for provider: ProviderKind) -> String? {
+        provider.apiKeyEnvVars.first { name in
+            let value = ProcessInfo.processInfo.environment[name]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return !(value ?? "").isEmpty
+        }
+    }
+
+    static func environmentAPIKey(for provider: ProviderKind) -> String? {
+        guard let name = environmentAPIKeyName(for: provider) else { return nil }
+        return ProcessInfo.processInfo.environment[name]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

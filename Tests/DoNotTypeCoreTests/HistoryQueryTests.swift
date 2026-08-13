@@ -116,6 +116,28 @@ final class FailureAdviceTests: XCTestCase {
         XCTAssertFalse(advice.isQueued)
     }
 
+    /// The exact response xAI returns for a bad key: a 400, not a 401. Classified by status alone
+    /// it reads as a transient request problem and the user is told to retry a dictation that is
+    /// guaranteed to fail the same way.
+    func testABadKeyReportedAsA400IsStillABadKey() {
+        let advice = FailureAdvice.describe(
+            ProviderError.http(
+                status: 400,
+                body: "Incorrect API key provided. You can obtain an API key from "
+                    + "https://console.x.ai."))
+        XCTAssertTrue(advice.needsUserAction)
+        XCTAssertFalse(advice.isRetryable)
+        XCTAssertTrue(advice.message.contains("Settings"))
+    }
+
+    /// The reattribution above stays narrow: an ordinary 400 is this app's bug, not the user's.
+    func testAnOrdinary400IsNotBlamedOnTheKey() {
+        let advice = FailureAdvice.describe(
+            ProviderError.http(status: 400, body: "unsupported sample rate"))
+        XCTAssertFalse(advice.needsUserAction)
+        XCTAssertTrue(advice.isQueued)
+    }
+
     func testUnavailableModelPointsAtSettings() {
         let advice = FailureAdvice.describe(ProviderError.http(status: 404, body: ""))
         XCTAssertTrue(advice.needsUserAction)

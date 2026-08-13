@@ -16,15 +16,24 @@ final class SettingsModel {
             Settings.shared.provider = provider
             apiKey = Settings.shared.apiKey ?? ""
             model = Settings.shared.model
+            scheduleKeyCheck()
         }
     }
 
     var apiKey: String {
-        didSet { Settings.shared.apiKey = apiKey }
+        didSet {
+            Settings.shared.apiKey = apiKey
+            scheduleKeyCheck()
+        }
     }
 
+    /// Re-checked like the key, because a model this account cannot use fails identically to a bad
+    /// key — at the end of a dictation, with a 404.
     var model: String {
-        didSet { Settings.shared.model = model }
+        didSet {
+            Settings.shared.model = model
+            scheduleKeyCheck()
+        }
     }
 
     var fidelity: Fidelity {
@@ -190,9 +199,17 @@ final class SettingsModel {
     private(set) var retryingIDs: Set<UUID> = []
     private(set) var lastRetrySummary: String?
 
+    /// What is known about the key, checked at launch and after every edit rather than at the end
+    /// of a dictation. See `APIKeyStatus`.
+    private(set) var keyStatus: APIKeyStatus = .unchecked
+    private var keyCheckTask: Task<Void, Never>?
+
+    /// Fires whenever `keyStatus` settles, so the menu bar can say so without an open window.
+    var onKeyStatusChange: (() -> Void)?
+
     /// Live connection check, so "it isn't working" has an answer in the UI.
-    private(set) var connectionStatus: String?
-    private(set) var isCheckingConnection = false
+    var connectionStatus: String? { keyStatus.summary(provider: provider) }
+    var isCheckingConnection: Bool { keyStatus == .checking }
 
     let store: HistoryStore
     let prompts: PromptStore
@@ -264,10 +281,15 @@ final class SettingsModel {
 
     var resolvedKeySource: String {
         if !apiKey.isEmpty { return "Keychain" }
-        if ProcessInfo.processInfo.environment[provider.apiKeyEnvVar] != nil {
-            return "environment (\(provider.apiKeyEnvVar))"
+        if let name = Settings.environmentAPIKeyName(for: provider) {
+            return "environment (\(name))"
         }
         return "not set"
+    }
+
+    /// Shown under the key field when there is nothing to use. See `APIKeyStatus.explanation`.
+    var missingKeyExplanation: String? {
+        keyStatus == .missing ? APIKeyStatus.explanation(for: provider) : nil
     }
 
     /// Counted over everything, not the filtered view — a queue you cannot see is still a queue.
@@ -302,71 +324,54 @@ final class SettingsModel {
         }
     }
 
+    /// The "Test connection" button, and the launch check, and the after-every-edit check. One
+    /// path, so the button and the automatic check can never disagree.
     func checkConnection() async {
-        isCheckingConnection = true
-        connectionStatus = nil
-        defer { isCheckingConnection = false }
+        keyCheckTask?.cancel()
+        let task = Task { await performKeyCheck() }
+        keyCheckTask = task
+        await task.value
+    }
 
-        guard let key = Settings.shared.resolvedAPIKey(), !key.isEmpty else {
-            connectionStatus = "No API key set."
-            return
-        }
-        do {
-            let provider = try ProviderFactory.make(
-                self.provider, environment: [self.provider.apiKeyEnvVar: key])
-
-            // A recognition backend rejects a text-only request by design, so probing one with
-            // the text round trip would report a working key as broken. It gets a fraction of a
-            // second of silence instead — enough to exercise auth, the URL and the response
-            // shape, which is all this button claims to check.
-            let parts: [InputPart] =
-                provider.grounding(forModel: model) == .multimodal
-                ? [.text("Pretend the audio said: ok. Transcribe it.")]
-                : [.audio(data: Self.silentProbeWAV, mimeType: "audio/wav")]
-
-            _ = try await provider.transcribe(
-                TranscriptionRequest(
-                    model: model,
-                    systemInstruction: "You are a transcription engine.",
-                    parts: parts))
-            connectionStatus = "✓ \(self.provider.rawValue) reachable, key accepted"
-        } catch ProviderError.emptyOutput {
-            // Silence transcribes to nothing, which is the correct answer and proves the round
-            // trip worked. Only the recognition path can reach this, since the text probe always
-            // produces output.
-            connectionStatus = "✓ \(self.provider.rawValue) reachable, key accepted"
-        } catch {
-            connectionStatus = "✗ \(error.localizedDescription)"
+    /// Debounced, because `apiKey` is written on every keystroke and a key being pasted would
+    /// otherwise mean one request per character.
+    func scheduleKeyCheck(after delay: Duration = .milliseconds(800)) {
+        keyCheckTask?.cancel()
+        keyCheckTask = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            await self?.performKeyCheck()
         }
     }
 
-    /// A quarter-second of 16 kHz mono silence, built rather than shipped as a fixture so the
-    /// bundle does not carry a resource used by one button.
-    private static let silentProbeWAV: Data = {
-        let sampleRate = 16_000
-        let samples = sampleRate / 4
-        let dataBytes = samples * 2
+    private func performKeyCheck() async {
+        keyStatus = .checking
+        onKeyStatusChange?()
 
-        var wav = Data()
-        func append(_ string: String) { wav.append(Data(string.utf8)) }
-        func append(u32 value: UInt32) { withUnsafeBytes(of: value.littleEndian) { wav.append(contentsOf: $0) } }
-        func append(u16 value: UInt16) { withUnsafeBytes(of: value.littleEndian) { wav.append(contentsOf: $0) } }
+        guard let key = Settings.shared.resolvedAPIKey(), !key.isEmpty else {
+            return settle(.missing)
+        }
+        guard
+            let client = try? ProviderFactory.make(
+                provider, environment: [provider.apiKeyEnvVar: key])
+        else {
+            return settle(.rejected("Could not configure \(provider.rawValue)."))
+        }
 
-        append("RIFF")
-        append(u32: UInt32(36 + dataBytes))
-        append("WAVEfmt ")
-        append(u32: 16)                                  // PCM header length
-        append(u16: 1)                                   // PCM
-        append(u16: 1)                                   // mono
-        append(u32: UInt32(sampleRate))
-        append(u32: UInt32(sampleRate * 2))              // byte rate
-        append(u16: 2)                                   // block align
-        append(u16: 16)                                  // bits per sample
-        append("data")
-        append(u32: UInt32(dataBytes))
-        wav.append(Data(repeating: 0, count: dataBytes))
-        return wav
-    }()
+        switch await ProviderProbe.check(client, model: model) {
+        case .accepted: settle(.valid)
+        case .rejected(let message): settle(.rejected(message))
+        case .inconclusive(let message): settle(.unverified(message))
+        }
+    }
+
+    /// Drops the result of a check that a newer one has already superseded — otherwise a slow
+    /// probe of the old key lands after the new key has been checked and overwrites the truth.
+    private func settle(_ status: APIKeyStatus) {
+        guard !Task.isCancelled else { return }
+        keyStatus = status
+        onKeyStatusChange?()
+    }
 
     func retry(_ record: DictationRecord) async {
         guard let coordinator = makeCoordinator() else {

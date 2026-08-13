@@ -234,6 +234,26 @@ release yet, so everything below is unreleased.
 
 ### Fixed
 
+- **A bad or absent API key was only discovered by losing a dictation.** The key was read at the
+  moment a recording needed it, so the first thing anyone learned about a wrong key was a failed
+  transcript of something they had already said. macOS now checks it at launch and after every edit
+  to the key, provider or model: one round trip, silence for the recognisers and a text probe for
+  the models, with the settings window opening itself and the menu bar saying so when the answer is
+  "fix this". A check that cannot complete — offline, timed out, provider having a bad day — is
+  reported as exactly that and never as a bad key, because a settings window that opens itself on
+  every flaky network is one people learn to close without reading.
+
+  Three things had to be fixed for that answer to be right. **xAI rejects a bad key with HTTP 400,
+  not 401**, and by status alone that read as a transient request failure — "saved, retry from
+  History", advice that could never work for a request guaranteed to fail identically forever; a
+  400 whose body names the API key is now attributed to the key. **The app and the provider factory
+  disagreed about which environment variables hold the key**: the factory accepts `GROK_API_KEY`
+  for xAI and the app only ever looked at `XAI_API_KEY`, so a shell holding the older name was told
+  it had no key at all. They read one list now, and a test walks every name the factory advertises.
+  And the settings window **says where it looked and why a key you are certain you set is not
+  there** — an app opened from Finder or Login Items inherits launchd's environment, not your
+  shell's, so `export XAI_API_KEY=…` in `~/.zshrc` is real in every terminal and invisible to the
+  app. Pasting it into the field puts it in the Keychain, where every launch can find it.
 - **The iOS app could not be installed.** Neither `Info.plist` declared `CFBundleIdentifier` or
   `CFBundleExecutable`. Xcode only synthesises those for targets that let it generate the whole
   file, and `xcodebuild build` does not check them, so CI was green for the life of the project

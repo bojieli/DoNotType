@@ -119,6 +119,13 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         }
     }
 
+    /// Every environment variable consulted for this backend's key, in the order they are tried.
+    ///
+    /// Public because the app resolves the key itself before it ever reaches `ProviderFactory` —
+    /// and when the two lists disagreed, a shell holding only `GROK_API_KEY` was reported as
+    /// having no key at all, by a factory that would have accepted it. One list, one answer.
+    public var apiKeyEnvVars: [String] { [apiKeyEnvVar] + alternateAPIKeyEnvVars }
+
     /// Whether this backend is a language model at all.
     ///
     /// Drives the parts of the UI that would otherwise offer settings with no effect: screen
@@ -143,11 +150,11 @@ public enum ProviderFactory {
         appURL: String = "https://github.com/donottype/donottype",
         appTitle: String = "DoNotType"
     ) throws -> any TranscriptionProvider {
-        var key = environment[kind.apiKeyEnvVar]?.trimmed ?? ""
-        // Fall back to the other spellings before giving up, so a shell that already has the key
-        // under a different name does not look like a missing key.
-        for alternate in kind.alternateAPIKeyEnvVars where key.isEmpty {
-            key = environment[alternate]?.trimmed ?? ""
+        // Every spelling is tried before giving up, so a shell that already has the key under a
+        // different name does not look like a missing key.
+        var key = ""
+        for name in kind.apiKeyEnvVars where key.isEmpty {
+            key = environment[name]?.trimmed ?? ""
         }
         // A self-hosted server usually has no auth at all, so an absent key is normal there
         // rather than a misconfiguration.

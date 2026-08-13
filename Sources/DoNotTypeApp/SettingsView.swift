@@ -19,7 +19,13 @@ struct SettingsView: View {
                 .tabItem { Label("Prompt", systemImage: "text.quote") }
         }
         .frame(width: 620, height: 520)
-        .task { await model.refresh() }
+        .task {
+            await model.refresh()
+            // Only when the launch check never ran — the window opens before the permissions
+            // walkthrough is finished, and a blank key panel there is exactly the confusion this
+            // whole check exists to remove.
+            if model.keyStatus == .unchecked { await model.checkConnection() }
+        }
     }
 }
 
@@ -27,6 +33,8 @@ struct SettingsView: View {
 
 private struct GeneralTab: View {
     @Bindable var model: SettingsModel
+    /// The window opens itself when there is no key, so the caret starts where the fix is.
+    @FocusState private var keyFieldFocused: Bool
 
     var body: some View {
         Form {
@@ -37,8 +45,26 @@ private struct GeneralTab: View {
                     }
                 }
                 TextField("Model", text: $model.model)
+                // No `.textContentType(.password)`: it makes macOS offer saved website logins in
+                // a panel that lands directly on top of the explanation below — which is the one
+                // thing worth reading at the moment the field is empty. A provider key is not a
+                // credential any password manager has, so the panel costs the instructions and
+                // offers nothing back. `SecureField` masks the value regardless.
                 SecureField("API key", text: $model.apiKey)
-                    .textContentType(.password)
+                    .focused($keyFieldFocused)
+                    .onChange(of: model.keyStatus, initial: true) {
+                        if model.keyStatus == .missing { keyFieldFocused = true }
+                    }
+
+                // The paragraph that answers "but I did set it". A key exported in ~/.zshrc is
+                // real in every terminal and invisible to an app opened from Finder, which looks
+                // exactly like the app losing it.
+                if let explanation = model.missingKeyExplanation {
+                    Label(explanation, systemImage: "key.slash")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 // Stated here rather than left to be discovered: picking a recognition service
                 // silently disables screen grounding, one rung of the fidelity ladder and the

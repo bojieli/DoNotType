@@ -319,6 +319,20 @@ final class ProviderRegistrySpeechTests: XCTestCase {
         XCTAssertEqual(mistral.name, "mistral")
     }
 
+    /// The list the app resolves a key from and the list the factory accepts have to be one list.
+    /// While they were two, a shell holding only `GROK_API_KEY` was told it had no key — by an app
+    /// that would have used that key without complaint had it ever got as far as the factory.
+    func testEveryAdvertisedVariableActuallyBuildsAProvider() throws {
+        for kind in ProviderKind.allCases {
+            XCTAssertEqual(kind.apiKeyEnvVars.first, kind.apiKeyEnvVar)
+            for name in kind.apiKeyEnvVars {
+                let provider = try ProviderFactory.make(kind, environment: [name: "k"])
+                XCTAssertEqual(
+                    provider.name, kind.rawValue, "\(name) must be accepted for \(kind.rawValue)")
+            }
+        }
+    }
+
     func testMissingKeyNamesTheVariableToSet() {
         XCTAssertThrowsError(try ProviderFactory.make(.deepgram, environment: [:])) { error in
             guard case ProviderError.missingAPIKey(let envVar) = error else {

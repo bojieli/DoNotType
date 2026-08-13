@@ -117,8 +117,8 @@ public enum FailureAdvice {
                         + "Choose a model provider in Settings to use rewriting.",
                     isQueued: false, isRetryable: false, needsUserAction: true)
 
-            case .http(let status, _):
-                return describeHTTP(status)
+            case .http(let status, let body):
+                return describeHTTP(status, body)
 
             case .emptyOutput:
                 return Guidance(
@@ -147,8 +147,18 @@ public enum FailureAdvice {
             needsUserAction: false)
     }
 
-    private static func describeHTTP(_ status: Int) -> Guidance {
-        switch status {
+    private static func describeHTTP(_ status: Int, _ body: String = "") -> Guidance {
+        // xAI answers a bad key with 400 and a sentence about it, not with 401. Read by status
+        // alone that lands in the default branch below and becomes "saved, retry from History" —
+        // advice that cannot ever work, offered for a request that will fail identically every
+        // time it is retried. Observed live: `HTTP 400: Incorrect API key provided.`
+        if status == 400, mentionsAPIKey(body) {
+            return Guidance(
+                message: "The API key was rejected. Check it in Settings.",
+                isQueued: false, isRetryable: false, needsUserAction: true)
+        }
+
+        return switch status {
         case 401, 403:
             Guidance(
                 message: "The API key was rejected. Check it in Settings.",
@@ -174,5 +184,13 @@ public enum FailureAdvice {
                 message: "Request failed (HTTP \(status)) — saved, retry from History.",
                 isQueued: true, isRetryable: true, needsUserAction: false)
         }
+    }
+
+    /// Deliberately narrow. A 400 is normally a request this app got wrong, which is not the
+    /// user's problem to fix — only one that names the key is reattributed to the key.
+    private static func mentionsAPIKey(_ body: String) -> Bool {
+        let lowered = body.lowercased()
+        return lowered.contains("api key") || lowered.contains("api_key")
+            || lowered.contains("apikey")
     }
 }
