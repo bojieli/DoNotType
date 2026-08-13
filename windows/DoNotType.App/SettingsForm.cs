@@ -28,6 +28,11 @@ public sealed class SettingsForm : Form
         AutoSize = true,
     };
     private readonly Label _connection = new() { AutoSize = true, MaximumSize = new Size(420, 0) };
+
+    private readonly ComboBox _fallback = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly TextBox _fallbackKey = new() { UseSystemPasswordChar = true };
+    private readonly NumericUpDown _fallbackAfter = new() { Minimum = 1, Maximum = 120, Width = 70 };
+    private readonly Label _fallbackNote = new() { AutoSize = true, MaximumSize = new Size(430, 0) };
     private readonly ComboBox _trigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _mode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _fidelity = new() { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -94,6 +99,15 @@ public sealed class SettingsForm : Form
         layout.Controls.Add(Caption(
             "Calls go straight to the provider with your key. Nothing routes through a server of "
             + "ours; the key is encrypted for your Windows account."));
+
+        // Its own section because it has its own key: the pairing only works when both are
+        // configured, and a second key buried under the first one's field is how someone ends up
+        // with a fallback that silently never fires.
+        layout.Controls.Add(Heading("Fallback"));
+        layout.Controls.Add(Labelled("Second service", _fallback));
+        layout.Controls.Add(Labelled("Second API key", _fallbackKey));
+        layout.Controls.Add(Labelled("Start it after (s)", _fallbackAfter));
+        layout.Controls.Add(_fallbackNote);
 
         layout.Controls.Add(Heading("Dictation"));
         layout.Controls.Add(Labelled("Key", _trigger));
@@ -362,9 +376,38 @@ public sealed class SettingsForm : Form
         return page;
     }
 
+    /// <summary>The fallback choices are every backend except the primary.</summary>
+    private ProviderKind? SelectedFallback()
+    {
+        if (_fallback.SelectedIndex <= 0) return null;
+        var choices = Enum.GetValues<ProviderKind>().Where(k => k != _settings.Provider).ToList();
+        var index = _fallback.SelectedIndex - 1;
+        return index >= 0 && index < choices.Count ? choices[index] : null;
+    }
+
+    private int FallbackIndex(ProviderKind? kind)
+    {
+        if (kind is null) return 0;
+        var choices = Enum.GetValues<ProviderKind>().Where(k => k != _settings.Provider).ToList();
+        var index = choices.IndexOf(kind.Value);
+        return index < 0 ? 0 : index + 1;
+    }
+
     /// <summary>Says what the selected backend gives up, and hides controls it cannot honour.</summary>
     private void RefreshProviderNotes()
     {
+        var fallback = SelectedFallback();
+        _fallbackKey.Enabled = fallback is not null;
+        _fallbackAfter.Enabled = fallback is not null;
+        _fallbackNote.Text = fallback is null
+            ? "Off. Worth turning on when the primary is accurate but its latency has a tail — the "
+              + "first-party Gemini API answered one three-second clip in 5 s and the next in 61 s. "
+              + "The fallback bounds that wait; it does not improve a transcript the primary would "
+              + "have got right."
+            : $"If {_settings.Provider} has not answered in {(int)_fallbackAfter.Value}s, "
+              + $"{fallback} starts alongside it and whichever finishes first is used. History "
+              + "records which one served each dictation.";
+
         var kind = (ProviderKind)Math.Max(_provider.SelectedIndex, 0);
         _providerNote.Text = kind switch
         {
@@ -438,6 +481,27 @@ public sealed class SettingsForm : Form
         _model.Text = _settings.ModelFor(_settings.Provider);
         _apiKey.Text = _settings.KeyFor(_settings.Provider) ?? string.Empty;
         _keytermBiasing.Checked = _settings.KeytermBiasing;
+
+        _fallback.Items.Add("None");
+        foreach (var kind in Enum.GetValues<ProviderKind>())
+        {
+            if (kind != _settings.Provider) _fallback.Items.Add(kind.DisplayName());
+        }
+        _fallback.SelectedIndex = FallbackIndex(_settings.ResolvedFallbackProvider());
+        _fallbackKey.Text = _settings.ResolvedFallbackProvider() is { } current
+            ? _settings.KeyFor(current) ?? string.Empty
+            : string.Empty;
+        _fallbackAfter.Value = Math.Clamp(_settings.FallbackAfterSeconds, 1, 120);
+
+        // Keys are per provider, so switching reloads rather than carrying one backend's key into
+        // another's field.
+        _fallback.SelectedIndexChanged += (_, _) =>
+        {
+            var chosen = SelectedFallback();
+            _fallbackKey.Text = chosen is { } kind ? _settings.KeyFor(kind) ?? string.Empty : string.Empty;
+            RefreshProviderNotes();
+        };
+
         RefreshProviderNotes();
 
         // Keys and models are stored per provider; carrying one provider's key into another's
@@ -493,6 +557,12 @@ public sealed class SettingsForm : Form
         _settings.SetModelFor(_settings.Provider, _model.Text);
         _settings.SetKeyFor(_settings.Provider, _apiKey.Text.Trim());
         _settings.KeytermBiasing = _keytermBiasing.Checked;
+        _settings.FallbackProvider = SelectedFallback();
+        _settings.FallbackAfterSeconds = (int)_fallbackAfter.Value;
+        if (SelectedFallback() is { } fallbackKind)
+        {
+            _settings.SetKeyFor(fallbackKind, _fallbackKey.Text.Trim());
+        }
         _model.Text = _settings.ModelFor(_settings.Provider);
         _settings.Trigger = (HotkeyMonitor.Trigger)_trigger.SelectedIndex;
         _settings.HotkeyMode = _mode.SelectedIndex switch

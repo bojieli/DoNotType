@@ -154,6 +154,52 @@ public sealed class DictationController : IDisposable
         await TranscribeAsync(wav).ConfigureAwait(false);
     }
 
+
+    /// <summary>
+    /// Wraps the configured primary with a fallback, when one is set. Built per dictation because
+    /// the provider, its key and the delay are all live settings.
+    /// </summary>
+    private FallbackTranscriber BuildTranscriber(
+        TranscriptionService primary, byte[] wav, ScreenContext? context, InputPart? audioPart)
+    {
+        Task<TranscriptionResult> RunPrimary(CancellationToken token) =>
+            primary.TranscribeLongAsync(
+                wav, context, audioPart,
+                onProgress: (done, total) => ChunkProgress?.Invoke(done, total),
+                cancellationToken: token);
+
+        var kind = _settings.ResolvedFallbackProvider();
+        var key = kind is null
+            ? null
+            : _settings.KeyFor(kind.Value)
+                ?? Environment.GetEnvironmentVariable(kind.Value.ApiKeyEnvVar());
+        var promptPath = PromptBuilder.FindPromptFile();
+
+        if (kind is null || string.IsNullOrEmpty(key) || promptPath is null)
+        {
+            return new FallbackTranscriber(
+                RunPrimary, primary.Provider.Name, primary.Provider.Model);
+        }
+
+        var secondary = new TranscriptionService(
+            ProviderFactory.Create(kind.Value, key, _settings.ModelFor(kind.Value)),
+            PromptBuilder.FromFile(promptPath).SystemInstruction(_settings.Fidelity))
+        {
+            Fidelity = _settings.Fidelity,
+            KeytermBiasing = _settings.KeytermBiasing,
+        };
+
+        // The pre-uploaded reference is Google's Files API and means nothing to another backend,
+        // so the hedge always sends inline bytes.
+        Task<TranscriptionResult> RunSecondary(CancellationToken token) =>
+            secondary.TranscribeLongAsync(wav, context, null, cancellationToken: token);
+
+        return new FallbackTranscriber(
+            RunPrimary, primary.Provider.Name, primary.Provider.Model,
+            RunSecondary, secondary.Provider.Name, secondary.Provider.Model,
+            _settings.ResolvedFallbackDelay());
+    }
+
     private async Task TranscribeAsync(byte[] wav)
     {
         var context = MergeContext();
@@ -210,10 +256,15 @@ public sealed class DictationController : IDisposable
             var requestStart = Stopwatch.GetTimestamp();
             // Long recordings split across concurrent requests; short ones -- every ordinary
             // dictation -- take the single-request path unchanged.
-            var result = await service.TranscribeLongAsync(
-                    wav, context, audioPart,
-                    onProgress: (done, total) => ChunkProgress?.Invoke(done, total))
+            // Hedged when a fallback backend is configured: the primary gets the whole delay to
+            // itself, and only a stalled one is ever raced. See FallbackTranscriber.
+            var outcome = await BuildTranscriber(service, wav, context, audioPart)
+                .TranscribeAsync()
                 .ConfigureAwait(false);
+            var result = outcome.Result;
+            // Recorded as the backend that answered, not the one that was asked: a history row
+            // naming the wrong one would make history useless for the comparisons it exists for.
+            record.Model = outcome.Attribution.Model;
             record.RequestSeconds = Stopwatch.GetElapsedTime(requestStart).TotalSeconds;
             record.AudioTokens = result.Usage.AudioTokens;
             var text = result.Transcript.Text.Trim();
@@ -303,6 +354,7 @@ public sealed class DictationController : IDisposable
         var service = new TranscriptionService(
             ProviderFactory.Create(_settings.Provider, key, _settings.Model),
             PromptBuilder.FromFile(promptPath).SystemInstruction(record.Fidelity));
+
 
         try
         {

@@ -34,6 +34,27 @@ public sealed class AppSettings
     /// </summary>
     public bool KeytermBiasing { get; set; }
 
+    /// <summary>
+    /// Backend started alongside the primary when it has not answered in time. Null disables it.
+    ///
+    /// Off by default. Hedging costs a second request and can hand back a less accurate transcript,
+    /// so it is something to turn on after being bitten by the primary's latency tail.
+    /// </summary>
+    public ProviderKind? FallbackProvider { get; set; }
+
+    /// <summary>
+    /// How long the primary gets alone before the fallback starts — the accuracy-against-latency
+    /// dial. Clamped on read so a hand-edited settings file cannot race from zero.
+    /// </summary>
+    public int FallbackAfterSeconds { get; set; } = 8;
+
+    /// <summary>The fallback, ignored when it is the primary: that would double cost for nothing.</summary>
+    public ProviderKind? ResolvedFallbackProvider() =>
+        FallbackProvider is { } kind && kind != Provider ? kind : null;
+
+    public TimeSpan ResolvedFallbackDelay() =>
+        TimeSpan.FromSeconds(Math.Clamp(FallbackAfterSeconds, 1, 120));
+
     /// <summary>Base64 DPAPI blob for the legacy single-key setting. Never the key itself.</summary>
     public string? ProtectedApiKey { get; set; }
 
