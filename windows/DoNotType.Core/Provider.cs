@@ -167,7 +167,7 @@ public static class ProviderFactory
     public static string DisplayName(this ProviderKind kind) => kind switch
     {
         ProviderKind.Gemini => "Gemini",
-        ProviderKind.OpenRouter => "OpenRouter",
+        ProviderKind.OpenRouter => "OpenRouter (gateway — prefer Gemini for Gemini models)",
         ProviderKind.Deepgram => "Deepgram (transcription only)",
         ProviderKind.Mistral => "Mistral Voxtral (transcription only)",
         ProviderKind.XAI => "xAI (transcription only)",

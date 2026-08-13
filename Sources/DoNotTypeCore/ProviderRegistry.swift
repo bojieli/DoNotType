@@ -23,7 +23,15 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     /// Also measurably better on the near-miss suite than the same model ID through a gateway —
     /// 15/15 versus 12/15 on 2026-08-09, with the gateway regressing the spelling-correction case.
     case gemini
-    /// Verified to forward audio. Useful as a second opinion and for models Google does not serve.
+    /// Any model through OpenRouter. Verified to forward audio, and useful for a second opinion
+    /// or for models Google does not serve directly.
+    ///
+    /// **Prefer `.gemini` for a Gemini model.** The same model ID measures worse through this
+    /// gateway than through the first-party API, consistently and on two separate occasions:
+    /// 12/15 against 15/15 on 2026-08-09, and on the near-miss suite on 2026-08-13, 38–43/48 with
+    /// 2–5 regressions against native's 44/48 with 1. Regressions are the number this project
+    /// exists to report, so a gateway that multiplies them is the wrong default even when its
+    /// matched count is close.
     case openrouter
     /// Any OpenAI-compatible server you run yourself — vLLM, SGLang, llama.cpp.
     ///

@@ -368,6 +368,13 @@ public sealed class SettingsForm : Form
         var kind = (ProviderKind)Math.Max(_provider.SelectedIndex, 0);
         _providerNote.Text = kind switch
         {
+            // Not a capability difference — the gateway forwards audio correctly — but a measured
+            // quality one, and the picker is where someone chooses between two entries that look
+            // identical.
+            ProviderKind.OpenRouter =>
+                "Routes through a gateway. The same Gemini model measures worse this way than "
+                + "through Gemini directly — 2 to 5 regressions per suite run against 1 — so "
+                + "prefer the Gemini service unless you need a model Google does not serve.",
             ProviderKind.Mistral =>
                 "Transcription only — this service cannot read your screen, and has no "
                 + "spelling-hint channel either. It is the one that handles Mandarin and English "
