@@ -19,6 +19,8 @@ object Settings {
     private const val KEY_PROVIDER = "provider"
     private const val KEY_MODEL = "model"
     private const val KEY_KEYTERMS = "keytermBiasing"
+    private const val KEY_FALLBACK = "fallbackProvider"
+    private const val KEY_FALLBACK_AFTER = "fallbackAfterSeconds"
     private const val KEY_FIDELITY = "fidelity"
     private const val KEY_GROUNDING = "grounding"
     private const val KEY_BLOCKED = "blockedPackages"
@@ -87,6 +89,13 @@ object Settings {
         }
         set(value) { if (ready) prefs.edit().putString("$KEY_MODEL-${provider.id}", value).apply() }
 
+    /** The model for a backend that is not the current selection — the fallback needs its own. */
+    fun modelFor(kind: ProviderKind): String {
+        if (!ready) return kind.defaultModel
+        return prefs.getString("$KEY_MODEL-${kind.id}", null)?.takeIf { it.isNotEmpty() }
+            ?: kind.defaultModel
+    }
+
     private fun legacyModelOrDefault(): String {
         val legacy = prefs.getString(KEY_MODEL, null)
         return if (provider == ProviderKind.GEMINI && !legacy.isNullOrEmpty()) legacy
@@ -101,6 +110,30 @@ object Settings {
      * while a keyterm list is a bare vocabulary prior with no way to say that. See [Keyterms] for
      * what it refuses to send.
      */
+    /**
+     * Backend started alongside the primary when it has not answered in time. Null disables it.
+     *
+     * Off by default. Hedging costs a second request and can hand back a less accurate transcript,
+     * so it is something to turn on after being bitten by the primary's latency tail.
+     */
+    var fallbackProvider: ProviderKind?
+        get() {
+            if (!ready) return null
+            val raw = prefs.getString(KEY_FALLBACK, null).orEmpty()
+            if (raw.isEmpty()) return null
+            // A fallback identical to the primary would double the cost to no purpose.
+            return ProviderKind.entries.firstOrNull { it.id == raw }?.takeIf { it != provider }
+        }
+        set(value) { if (ready) prefs.edit().putString(KEY_FALLBACK, value?.id ?: "").apply() }
+
+    /**
+     * How long the primary gets alone before the fallback starts alongside it — the
+     * accuracy-against-latency dial. Clamped so a hand-edited preference cannot race from zero.
+     */
+    var fallbackAfterSeconds: Int
+        get() = if (ready) prefs.getInt(KEY_FALLBACK_AFTER, 8).coerceIn(1, 120) else 8
+        set(value) { if (ready) prefs.edit().putInt(KEY_FALLBACK_AFTER, value.coerceIn(1, 120)).apply() }
+
     var keytermBiasing: Boolean
         get() = ready && prefs.getBoolean(KEY_KEYTERMS, false)
         set(value) { if (ready) prefs.edit().putBoolean(KEY_KEYTERMS, value).apply() }

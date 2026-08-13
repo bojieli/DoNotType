@@ -19,7 +19,14 @@ data class DictationRecord(
     var status: Status = Status.PENDING,
     var text: String = "",
     var errorMessage: String? = null,
-    val model: String = "",
+    /**
+     * The backend that actually produced this transcript.
+     *
+     * `var` because a hedged dictation may be answered by the fallback rather than the primary,
+     * and a history row naming the backend that was *asked* would make history untrustworthy for
+     * exactly the comparisons it exists to support.
+     */
+    var model: String = "",
     val fidelity: Fidelity = Fidelity.DEFAULT,
     val appName: String? = null,
     var retryCount: Int = 0,

@@ -61,6 +61,9 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var groundingNote: TextView
     private lateinit var keytermNote: TextView
     private lateinit var keytermSwitch: Switch
+    private lateinit var fallbackKeyField: EditText
+    private lateinit var fallbackDelayField: EditText
+    private lateinit var fallbackNote: TextView
     private lateinit var statusLabel: TextView
     private lateinit var connectionLabel: TextView
     private lateinit var historyContainer: LinearLayout
@@ -184,6 +187,41 @@ class SettingsActivity : AppCompatActivity() {
         connectionLabel = body("")
         column.addView(connectionLabel)
         column.addView(button("Test connection") { testConnection() })
+
+        // ---- Fallback ----
+        // Its own section because it has its own key: the pairing only works when both are
+        // configured, and a second key buried under the first one's field is how someone ends up
+        // with a fallback that silently never fires.
+        column.addView(sectionTitle("Fallback"))
+        column.addView(buildFallbackPicker())
+        fallbackKeyField = EditText(this).apply {
+            hint = "Fallback API key"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setText(Settings.fallbackProvider?.let { Settings.keyFor(it) }.orEmpty())
+        }
+        column.addView(fallbackKeyField)
+
+        fallbackDelayField = EditText(this).apply {
+            hint = "Start it after (seconds)"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText(Settings.fallbackAfterSeconds.toString())
+        }
+        column.addView(fallbackDelayField)
+
+        column.addView(
+            button("Save fallback") {
+                Settings.fallbackProvider?.let {
+                    Settings.setKey(it, fallbackKeyField.text.toString().trim())
+                }
+                Settings.fallbackAfterSeconds =
+                    fallbackDelayField.text.toString().toIntOrNull() ?: 8
+                fallbackDelayField.setText(Settings.fallbackAfterSeconds.toString())
+                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+                refreshProviderNotes()
+            }
+        )
+        fallbackNote = body("")
+        column.addView(fallbackNote)
 
         // ---- Dictation ----
         column.addView(sectionTitle("Fidelity"))
@@ -363,6 +401,34 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Anything but the primary. A fallback identical to it would double the cost to no purpose.
+     */
+    private fun buildFallbackPicker(): Spinner {
+        val choices = listOf<ProviderKind?>(null) + ProviderKind.entries.filter { it != Settings.provider }
+        return Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@SettingsActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                choices.map { it?.displayName ?: "None" },
+            )
+            setSelection(choices.indexOf(Settings.fallbackProvider).coerceAtLeast(0))
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    val chosen = choices[position]
+                    if (chosen == Settings.fallbackProvider) return
+                    Settings.fallbackProvider = chosen
+                    // Keys are per provider, so switching reloads rather than carrying one
+                    // backend's key into another's field.
+                    fallbackKeyField.setText(chosen?.let { Settings.keyFor(it) }.orEmpty())
+                    refreshProviderNotes()
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            }
+        }
+    }
+
     /** Says what the selected backend gives up, and hides controls it cannot honour. */
     private fun refreshProviderNotes() {
         val kind = Settings.provider
@@ -389,6 +455,20 @@ class SettingsActivity : AppCompatActivity() {
         val showKeyterms = keytermCapable
         keytermSwitch.visibility = if (showKeyterms) View.VISIBLE else View.GONE
         keytermNote.visibility = if (showKeyterms) View.VISIBLE else View.GONE
+
+        val fallback = Settings.fallbackProvider
+        fallbackKeyField.visibility = if (fallback != null) View.VISIBLE else View.GONE
+        fallbackDelayField.visibility = if (fallback != null) View.VISIBLE else View.GONE
+        fallbackNote.text = if (fallback == null) {
+            "Off. Worth turning on when the primary is accurate but its latency has a tail — the " +
+                "first-party Gemini API answered one three-second clip in 5 s and the next in " +
+                "61 s. The fallback bounds that wait; it does not improve a transcript the " +
+                "primary would have got right."
+        } else {
+            "If ${Settings.provider.id} has not answered in ${Settings.fallbackAfterSeconds}s, " +
+                "${fallback.id} starts alongside it and whichever finishes first is used. " +
+                "History records which one served each dictation."
+        }
     }
 
     private fun buildFidelityPicker(): RadioGroup {

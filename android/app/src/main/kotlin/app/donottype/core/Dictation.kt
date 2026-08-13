@@ -119,39 +119,78 @@ class DictationService(private val context: Context) {
                 }
             }
 
-            val results = if (chunks.size == 1) {
-                listOf(
-                    client.transcribe(
-                        instruction,
-                        contextParts + audioPart(wav),
-                        Settings.fidelity,
-                        keyterms,
-                    ),
-                )
-            } else {
-                coroutineScope {
-                    // Bounded, because a ten-minute dictation fired all at once is the fastest way
-                    // to hit a rate limit and turn a slow dictation into a failed one.
-                    val gate = Semaphore(3)
-                    chunks.map { chunk ->
-                        async {
-                            gate.withPermit {
-                                client.transcribe(
-                                    instruction,
-                                    contextParts + audioPart(chunk.data),
-                                    Settings.fidelity,
-                                    keyterms,
-                                )
+            // One backend transcribing the whole recording, chunks and all, as a single unit —
+            // so the fallback can race the finished job rather than individual chunks.
+            suspend fun transcribeAll(
+                backend: TranscriptionProvider,
+                hints: List<String>,
+            ): TranscriptionResult {
+                val pieces = if (chunks.size == 1) {
+                    listOf(
+                        backend.transcribe(
+                            instruction, contextParts + audioPart(wav), Settings.fidelity, hints,
+                        ),
+                    )
+                } else {
+                    coroutineScope {
+                        // Bounded, because a ten-minute dictation fired all at once is the fastest
+                        // way to hit a rate limit and turn a slow dictation into a failed one.
+                        val gate = Semaphore(3)
+                        chunks.map { chunk ->
+                            async {
+                                gate.withPermit {
+                                    backend.transcribe(
+                                        instruction,
+                                        contextParts + audioPart(chunk.data),
+                                        Settings.fidelity,
+                                        hints,
+                                    )
+                                }
                             }
-                        }
-                    }.awaitAll()
+                        }.awaitAll()
+                    }
                 }
+                return TranscriptionResult(
+                    Transcript(
+                        AudioChunker.stitch(pieces.map { it.transcript.transcript }),
+                        pieces.firstOrNull()?.transcript?.language.orEmpty(),
+                    ),
+                    TokenUsage(
+                        audioTokens = pieces.sumOf { it.usage.audioTokens ?: 0 }.takeIf { it > 0 },
+                    ),
+                    pieces.joinToString("\n") { it.rawOutput },
+                )
             }
 
-            record.requestMillis = System.currentTimeMillis() - requestStart
-            record.audioTokens = results.sumOf { it.usage.audioTokens ?: 0 }.takeIf { it > 0 }
+            // Hedged when a fallback is configured: the primary gets the whole delay to itself and
+            // only a stalled one is ever raced. See FallbackTranscriber.
+            val fallbackKind = Settings.fallbackProvider
+            val fallbackClient = fallbackKind
+                ?.let { kind -> Settings.keyFor(kind)?.takeIf { it.isNotEmpty() }?.let { kind to it } }
+                ?.let { (kind, fallbackKey) ->
+                    ProviderFactory.create(kind, fallbackKey, Settings.modelFor(kind))
+                }
 
-            val text = AudioChunker.stitch(results.map { it.transcript.transcript })
+            val outcome = FallbackTranscriber(
+                primary = { transcribeAll(client, keyterms) },
+                secondary = fallbackClient?.let { backend ->
+                    // A fallback with no keyterm channel simply ignores the hints.
+                    FallbackTranscriber.Transcriber { transcribeAll(backend, keyterms) }
+                },
+                hedgeAfterMillis = Settings.fallbackAfterSeconds * 1000L,
+            ).transcribe(
+                primaryName = client.name,
+                primaryModel = client.model,
+                secondaryName = fallbackClient?.name.orEmpty(),
+                secondaryModel = fallbackClient?.model.orEmpty(),
+            )
+
+            record.requestMillis = System.currentTimeMillis() - requestStart
+            record.audioTokens = outcome.result.usage.audioTokens
+            // Recorded as the backend that answered, not the one that was asked.
+            record.model = outcome.attribution.model
+
+            val text = outcome.result.transcript.transcript
             record.status = DictationRecord.Status.COMPLETED
             record.text = text
             record.latencyMillis = System.currentTimeMillis() - releasedAt
