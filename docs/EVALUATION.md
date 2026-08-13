@@ -416,7 +416,7 @@ Gemini's figure.
 
 | backend | matched | improved | **regressed** | mean latency |
 |---|---|---|---|---|
-| openrouter · `google/gemini-3.6-flash` | 40 / 48 | 4 | **3** | 6.50 s |
+| openrouter · `google/gemini-3.6-flash` | 38–43 / 48 | 4–7 | **2–5** | 6.50 s |
 | **xai · `grok-stt` · keyterms** | **29–30 / 48** | 13–14 | **0** | **1.19 s** |
 | deepgram · nova-3 · `multi` · keyterms | 27 / 42 | 9 | **0** | 1.1–2.3 s |
 | mistral · `voxtral-mini-latest` | 21 / 48 | 0 | **0** | 1.5–1.9 s |
@@ -432,6 +432,35 @@ rather than returning a wrong transcript. Counted against all 48 runs, its best 
 suite arms send byte-identical requests, so both counts are trivially 0. Only the Deepgram
 keyterms row's `9 / 0` is a real result; the rest of that column is an artefact of the harness
 being pointed at something it was not designed for. The comparable column is `matched`.
+
+### What grounding is worth to the model, replicated
+
+The model column was originally a single run, which is the mistake this document keeps warning
+about. Three independent runs of the identical suite:
+
+| run | ungrounded | grounded | improved | **regressed** |
+|---|---|---|---|---|
+| 1 | 39 / 48 | 40 / 48 | 4 | **3** |
+| 2 | 39 / 48 | 43 / 48 | 6 | **2** |
+| 3 | 36 / 48 | 38 / 48 | 7 | **5** |
+
+Two things hold across all three, and they point in opposite directions.
+
+**Grounding always helps a little.** Net +1, +4, +2 matched runs. It is never negative.
+
+**It never stops causing regressions.** 3, 2 and 5 — the number this suite exists to report, and
+the one the contract says must be zero. Every run buys its improvements by breaking cases the
+ungrounded baseline had right.
+
+The ungrounded model is the more interesting figure: **36–39/48 with no screen context at all**,
+against the best recogniser's 29–30 *with* hints. `gemini-3.6-flash` already spells `koffi`,
+`VAD`, `Kanban` and `retrieval pipeline` unaided, which is the finding recorded further up this
+document — grounding is not failing, it is rarely being asked a question it cannot already answer.
+
+**These are OpenRouter numbers, not native Gemini.** This repository has measured the same model ID
+as worse through a gateway (12/15 against 15/15 on 2026-08-09, with the gateway regressing the
+`koffi` case). Native could not be measured — the `GEMINI_API_KEY` available was rejected — so read
+this column as a floor.
 
 ### Voxtral is the one to pick if you switch languages
 

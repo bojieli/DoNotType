@@ -90,7 +90,28 @@
         "person-name",
         "jargon-spelling",
         "real-version-number"
-      ]
+      ],
+      "matchedRuns": [
+        40,
+        43,
+        38
+      ],
+      "ungroundedRuns": [
+        39,
+        39,
+        36
+      ],
+      "improvedRuns": [
+        4,
+        6,
+        7
+      ],
+      "regressedRuns": [
+        3,
+        2,
+        5
+      ],
+      "note": "Three independent runs. Grounding is always a small net positive (+1, +4, +2 matched) and never stops causing regressions (3, 2, 5). The ungrounded model scores 36-39/48 with no screen context at all, against the best recogniser's 29-30 with hints. OpenRouter, not native Gemini: this repo has measured the same model ID as worse through a gateway, so read as a floor."
     },
     {
       "backend": "mistral",
