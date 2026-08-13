@@ -6,6 +6,16 @@ import Foundation
 /// that merely *accepts* an audio block without forwarding it is worse than one that rejects it —
 /// see `TranscriptionProvider.assertAudioWasProcessed`. Verify any new backend with
 /// `dnt-eval probe --audio` before adding it here.
+///
+/// They are not interchangeable in a second way since `.deepgram` and `.xai` joined: two of these
+/// are not language models. What that costs is declared by `GroundingSupport` and routed on by
+/// `TranscriptionService`, so the difference is visible in the type system rather than discovered
+/// from a transcript that reads as though the screen was never there — because it was not.
+///
+/// `.xai` was for a time the one entry that did not meet the verification rule above, because
+/// every key available when it was added was rejected. It has since been verified, and the rule
+/// was vindicated: the first live request found two undocumented behaviours that made the default
+/// configuration fail outright. See `XAISpeechProvider`.
 public enum ProviderKind: String, CaseIterable, Sendable {
     /// The default. First-party Interactions API: no gateway between the audio and the model, and
     /// `store: false` is honoured directly, which matters for requests carrying screen contents.
@@ -22,6 +32,51 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     /// `http://your-gpu-box:8000/v1/chat/completions` needs no new client code. It also removes
     /// the API key, the network dependency and the privacy question in one move.
     case local
+    /// Speech recognition rather than a language model. Fast and cheap; cannot see the screen.
+    ///
+    /// Worth having despite giving up grounding, because grounding is the part of this project
+    /// that does not yet work — see the substitution numbers in `docs/EVALUATION.md`. A backend
+    /// that transcribes and nothing else is the honest floor those numbers are measured against,
+    /// and for a user who dictates prose rather than identifiers it may simply be the better
+    /// choice.
+    case deepgram
+    /// xAI's speech-to-text endpoint. Multilingual like Voxtral, and the only recogniser here
+    /// whose formatting and language settings interact — see `XAISpeechProvider`.
+    case xai
+    /// Mistral Voxtral. The recognition backend to pick if you switch languages mid-sentence:
+    /// it is the only one here that transcribes Mandarin and English without being told which is
+    /// coming. No screen grounding of any kind. See `MistralProvider`.
+    case mistral
+
+    /// What a fresh install uses, and the one setting in this file that is a product decision
+    /// rather than a fact about an API.
+    ///
+    /// A recogniser rather than a model, measured on the 100-clip ordinary-dictation corpus —
+    /// real speech with nothing on screen contradicting it, which is the distribution a default
+    /// actually serves. The adversarial near-miss suite says a model is more accurate; it says
+    /// nothing about the dictation people mostly do.
+    ///
+    /// | backend | median latency | ×realtime | failed |
+    /// |---|---|---|---|
+    /// | xai | **0.98 s** | 0.053× | **1 / 100** |
+    /// | deepgram | 1.23 s | 0.066× | 48 / 100 |
+    /// | mistral | 1.29 s | 0.069× | 3 / 100 |
+    /// | openrouter (model) | 5.44 s | 0.282× | 0 / 100 |
+    ///
+    /// `.xai` wins on the two things a default has to get right: it is the fastest, and it is the
+    /// only recogniser that does not fall over on the corpus's actual language. Deepgram failed
+    /// 44 of 68 Chinese clips outright — it is disqualified as a default for anyone who is not
+    /// exclusively English-speaking, whatever it scores when it works.
+    ///
+    /// The model is not gone, it is demoted: it is 5.5× slower for a benefit that measured
+    /// **+4 improved against 3 regressed** on the near-miss suite, which is close to nothing for
+    /// a lot of waiting. Choose it in Settings when dictating identifiers with the reference on
+    /// screen, which is the case where grounding genuinely pays.
+    ///
+    /// Deepgram is deliberately not the fallback here despite being the second recogniser added:
+    /// it returned nothing for 44 of 68 Mandarin clips on that corpus, which disqualifies it as a
+    /// default for anyone who is not exclusively English-speaking.
+    public static let defaultForNewInstalls: ProviderKind = .xai
 
     public var defaultModel: String {
         switch self {
@@ -29,6 +84,15 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         case .gemini: "gemini-3.6-flash"
         // Whatever the server was started with; overridden by --model in practice.
         case .local: ProcessInfo.processInfo.environment["DNT_LOCAL_MODEL"] ?? "local-model"
+        // nova-3 is the only Deepgram model with keyterm biasing, which is this backend's sole
+        // grounding channel. Defaulting to anything older would silently disable it.
+        case .deepgram: "nova-3"
+        // The endpoint serves one model and takes no model parameter; the string exists so the
+        // settings field and history rows have something truthful to show.
+        case .xai: "grok-stt"
+        // `-latest` rather than a pinned date, because this is the alias Mistral documents and a
+        // pin here would silently rot. `voxtral-small-latest` is also accepted.
+        case .mistral: "voxtral-mini-latest"
         }
     }
 
@@ -39,6 +103,30 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         // Most local servers ignore the key entirely; the factory supplies a placeholder so an
         // unauthenticated server does not require inventing one.
         case .local: "DNT_LOCAL_API_KEY"
+        case .deepgram: "DEEPGRAM_API_KEY"
+        // xAI's own name for it. `GROK_API_KEY` is accepted as a fallback by the factory, since
+        // that is what this provider was first written against.
+        case .xai: "XAI_API_KEY"
+        case .mistral: "MISTRAL_API_KEY"
+        }
+    }
+
+    /// Other names the same key is commonly stored under, tried in order after `apiKeyEnvVar`.
+    var alternateAPIKeyEnvVars: [String] {
+        switch self {
+        case .xai: ["GROK_API_KEY"]
+        default: []
+        }
+    }
+
+    /// Whether this backend is a language model at all.
+    ///
+    /// Drives the parts of the UI that would otherwise offer settings with no effect: screen
+    /// grounding, the prompt editor, and the rewrite hotkey all require a model.
+    public var isSpeechRecognition: Bool {
+        switch self {
+        case .deepgram, .xai, .mistral: true
+        case .gemini, .openrouter, .local: false
         }
     }
 }
@@ -56,6 +144,11 @@ public enum ProviderFactory {
         appTitle: String = "DoNotType"
     ) throws -> any TranscriptionProvider {
         var key = environment[kind.apiKeyEnvVar]?.trimmed ?? ""
+        // Fall back to the other spellings before giving up, so a shell that already has the key
+        // under a different name does not look like a missing key.
+        for alternate in kind.alternateAPIKeyEnvVars where key.isEmpty {
+            key = environment[alternate]?.trimmed ?? ""
+        }
         // A self-hosted server usually has no auth at all, so an absent key is normal there
         // rather than a misconfiguration.
         if kind == .local, key.isEmpty { key = "not-required" }
@@ -93,6 +186,26 @@ public enum ProviderFactory {
                 apiKey: key,
                 // Open models generally reject an unknown `reasoning` field outright.
                 reasoningEffort: nil)
+
+        case .deepgram:
+            // Absent means detect per request, which is what a code-switching user wants and what
+            // the near-miss suite's Mandarin and mixed cases need.
+            return DeepgramProvider(
+                apiKey: key, language: environment["DNT_DEEPGRAM_LANGUAGE"]?.trimmed.nilIfEmpty)
+
+        case .xai:
+            return XAISpeechProvider(
+                apiKey: key, language: environment["DNT_XAI_LANGUAGE"]?.trimmed.nilIfEmpty)
+
+        case .mistral:
+            // Absent by design: Voxtral's own detection is what makes the code-switching case
+            // work, so pinning a language here would remove the reason to choose it.
+            return MistralProvider(
+                apiKey: key, language: environment["DNT_MISTRAL_LANGUAGE"]?.trimmed.nilIfEmpty)
         }
     }
+}
+
+extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
