@@ -237,6 +237,23 @@ class SpeechRecognitionClientTest {
         )
     }
 
+    /** Android was the one platform without an OpenAI-compatible client. */
+    @Test
+    fun `openrouter is reachable and reports multimodal grounding`() {
+        val client = ProviderFactory.create(
+            ProviderKind.OPENROUTER, "k", ProviderKind.OPENROUTER.defaultModel,
+        )
+        assertEquals("openrouter", client.name)
+        assertTrue(client.grounding() is GroundingSupport.Multimodal)
+    }
+
+    @Test
+    fun `openai audio format is a bare codec name`() {
+        assertEquals("wav", OpenAiCompatibleClient.audioFormat("audio/wav"))
+        assertEquals("ogg", OpenAiCompatibleClient.audioFormat("audio/ogg"))
+        assertEquals("mp3", OpenAiCompatibleClient.audioFormat("audio/mpeg"))
+    }
+
     @Test
     fun `providers know which are recognition only`() {
         assertTrue(ProviderKind.DEEPGRAM.isSpeechRecognition)

@@ -434,23 +434,30 @@ class SettingsActivity : AppCompatActivity() {
         val kind = Settings.provider
         val keytermCapable = kind == ProviderKind.DEEPGRAM || kind == ProviderKind.XAI
 
-        groundingNote.text = when {
-            !kind.isSpeechRecognition -> ""
-            kind == ProviderKind.MISTRAL ->
+        groundingNote.text = when (kind) {
+            // The gateway forwards audio correctly; this is a measured quality difference, and
+            // the picker is where two identical-looking entries get chosen between.
+            ProviderKind.OPENROUTER ->
+                "Routes through a gateway. The same Gemini model measures worse this way than " +
+                    "through Gemini directly — 2 to 5 regressions per suite run against 1 — so " +
+                    "prefer the Gemini service unless you need a model Google does not serve."
+            ProviderKind.MISTRAL ->
                 "Transcription only — this service cannot read your screen, and has no " +
                     "spelling-hint channel either. It is the one that handles Mandarin and " +
                     "English together."
             // Louder than a trade-off note: this one predicts lost dictations. Deepgram returned
             // nothing for 44 of 68 Mandarin clips on the dictation corpus.
-            kind == ProviderKind.DEEPGRAM ->
+            ProviderKind.DEEPGRAM ->
                 "⚠ Transcription only, and it cannot transcribe Chinese with autodetection — it " +
                     "returned nothing for 44 of 68 Mandarin clips. Choose another service if you " +
                     "dictate in Chinese."
-            else ->
+            ProviderKind.XAI ->
                 "Transcription only — this service cannot read your screen. Fidelity has two " +
                     "settings here rather than three."
+            ProviderKind.GEMINI -> ""
         }
-        groundingNote.visibility = if (kind.isSpeechRecognition) View.VISIBLE else View.GONE
+        groundingNote.visibility =
+            if (groundingNote.text.isNullOrEmpty()) View.GONE else View.VISIBLE
 
         val showKeyterms = keytermCapable
         keytermSwitch.visibility = if (showKeyterms) View.VISIBLE else View.GONE

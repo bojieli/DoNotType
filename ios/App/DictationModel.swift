@@ -62,11 +62,27 @@ final class DictationModel {
     /// A recogniser cannot rewrite, and on iOS it cannot be grounded either, so the only thing to
     /// say about one is what it is good at.
     var providerNote: String? {
+        // The gateway forwards audio correctly; it is a measured quality difference, not a
+        // capability one, and the picker is where two identical-looking entries are chosen between.
+        if provider == .openrouter {
+            return "Routes through a gateway. The same Gemini model measures worse this way than "
+                + "through Gemini directly — 2 to 5 regressions per suite run against 1 — so "
+                + "prefer the Gemini service unless you need a model Google does not serve."
+        }
         guard provider.isSpeechRecognition else { return nil }
-        return provider == .mistral
-            ? "Transcription only, and faster for it. Handles Mandarin and English together."
-            : "Transcription only, and faster for it. Screen grounding is unavailable on iOS "
+
+        switch provider {
+        case .mistral:
+            return "Transcription only, and faster for it. Handles Mandarin and English together."
+        case .deepgram:
+            // Louder than a trade-off note: this one predicts lost dictations.
+            return "⚠ Transcription only, and it cannot transcribe Chinese with autodetection — "
+                + "it returned nothing for 44 of 68 Mandarin clips. Choose another service if you "
+                + "dictate in Chinese."
+        default:
+            return "Transcription only, and faster for it. Screen grounding is unavailable on iOS "
                 + "either way, so nothing is lost here."
+        }
     }
 
     /// Backend started alongside the primary when it has not answered in time. Nil disables it.

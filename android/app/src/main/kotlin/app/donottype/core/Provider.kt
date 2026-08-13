@@ -63,6 +63,20 @@ enum class ProviderKind(
     val isSpeechRecognition: Boolean,
 ) {
     GEMINI("gemini", "Gemini", "gemini-3.6-flash", false),
+
+    /**
+     * Any model through OpenRouter. Verified to forward audio, and the way to reach models Google
+     * does not serve directly.
+     *
+     * **Prefer [GEMINI] for a Gemini model.** The same model ID measures worse through the
+     * gateway: 38-43/48 with 2-5 regressions per suite run against native's 44/48 with 1.
+     */
+    OPENROUTER(
+        "openrouter",
+        "OpenRouter (gateway — prefer Gemini for Gemini models)",
+        "google/gemini-3.6-flash",
+        false,
+    ),
     DEEPGRAM("deepgram", "Deepgram (transcription only)", "nova-3", true),
 
     /**
@@ -99,6 +113,16 @@ object ProviderFactory {
     fun create(kind: ProviderKind, apiKey: String, model: String): TranscriptionProvider =
         when (kind) {
             ProviderKind.GEMINI -> GeminiClient(apiKey = apiKey, model = model)
+            ProviderKind.OPENROUTER -> OpenAiCompatibleClient(
+                name = "openrouter",
+                endpoint = "https://openrouter.ai/api/v1/chat/completions",
+                apiKey = apiKey,
+                model = model,
+                extraHeaders = mapOf(
+                    "HTTP-Referer" to "https://github.com/donottype/donottype",
+                    "X-Title" to "DoNotType",
+                ),
+            )
             ProviderKind.DEEPGRAM -> DeepgramClient(apiKey = apiKey, model = model)
             ProviderKind.MISTRAL -> MistralClient(apiKey = apiKey, model = model)
             ProviderKind.XAI -> XAISpeechClient(apiKey = apiKey, model = model)
