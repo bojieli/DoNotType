@@ -90,6 +90,11 @@ final class AudioRecorder: @unchecked Sendable {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("dnt-\(UUID().uuidString).wav")
         outputURL = url
+        // `settings` fixes the format on disk; `commonFormat`/`interleaved` fix the format the file
+        // accepts from `write(from:)`. Omitting the latter pair leaves it at the default Float32
+        // deinterleaved, and handing that file the Int16 buffers the converter produces trips an
+        // assertion inside CoreAudio — which aborts the process rather than throwing, so the write
+        // in `append` cannot catch it. Both halves have to agree with `target`.
         file = try AVAudioFile(
             forWriting: url,
             settings: [
@@ -99,7 +104,9 @@ final class AudioRecorder: @unchecked Sendable {
                 AVLinearPCMBitDepthKey: 16,
                 AVLinearPCMIsFloatKey: false,
                 AVLinearPCMIsBigEndianKey: false,
-            ])
+            ],
+            commonFormat: target.commonFormat,
+            interleaved: target.isInterleaved)
 
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             self?.append(buffer, target: target)
