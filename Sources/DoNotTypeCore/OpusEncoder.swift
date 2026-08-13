@@ -114,16 +114,21 @@ public final class OpusEncoder {
                 format: outputFormat, packetCapacity: 1,
                 maximumPacketSize: converter.maximumOutputPacketSize)
 
-            var consumed = false
+            // Clearing `pending` offers the packet exactly once — `convert` keeps calling back
+            // until it is told there is nothing more. The annotation is what lets a non-Sendable
+            // `AVAudioPCMBuffer` be handed to a block the SDK types as `@Sendable`: in practice
+            // `convert` runs that block synchronously, on this thread, before returning, so the
+            // buffer never crosses a thread.
+            nonisolated(unsafe) var pending: AVAudioPCMBuffer? = input
             var conversionError: NSError?
             let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
-                if consumed {
+                guard let next = pending else {
                     inputStatus.pointee = .noDataNow
                     return nil
                 }
-                consumed = true
+                pending = nil
                 inputStatus.pointee = .haveData
-                return input
+                return next
             }
 
             if let conversionError {

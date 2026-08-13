@@ -160,16 +160,21 @@ final class AudioRecorder: @unchecked Sendable {
             return
         }
 
-        var consumed = false
+        // Clearing `pending` offers the tap buffer exactly once — `convert` keeps calling back
+        // until it is told there is nothing more. The annotation is what lets a non-Sendable
+        // `AVAudioPCMBuffer` be handed to a block the SDK types as `@Sendable`: in practice
+        // `convert` runs that block synchronously, on this thread, before returning, so nothing
+        // crosses a thread at all, and the lock above covers the only concurrency there is.
+        nonisolated(unsafe) var pending: AVAudioPCMBuffer? = buffer
         var conversionError: NSError?
         converter.convert(to: converted, error: &conversionError) { _, status in
-            if consumed {
+            guard let next = pending else {
                 status.pointee = .noDataNow
                 return nil
             }
-            consumed = true
+            pending = nil
             status.pointee = .haveData
-            return buffer
+            return next
         }
 
         if let conversionError {
