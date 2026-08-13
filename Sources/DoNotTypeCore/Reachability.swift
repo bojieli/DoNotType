@@ -108,6 +108,15 @@ public enum FailureAdvice {
                         + "provider in Settings — the transcript would have been invented.",
                     isQueued: false, isRetryable: false, needsUserAction: true)
 
+            // Reached by the rewrite hotkey while a speech recognition backend is selected. The
+            // dictation itself is unaffected, so this is not a queued failure — there is nothing
+            // to retry until the user picks a different provider.
+            case .audioRequired:
+                return Guidance(
+                    message: "This provider only transcribes audio and cannot rewrite text. "
+                        + "Choose a model provider in Settings to use rewriting.",
+                    isQueued: false, isRetryable: false, needsUserAction: true)
+
             case .http(let status, _):
                 return describeHTTP(status)
 

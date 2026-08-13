@@ -34,7 +34,7 @@ public struct TranscriptionService: Sendable {
             switch providerError {
             case .http(let status, _):
                 return status == 408 || status == 429 || (500...599).contains(status)
-            case .missingAPIKey, .audioSilentlyDropped:
+            case .missingAPIKey, .audioSilentlyDropped, .audioRequired:
                 return false
             case .malformedResponse, .emptyOutput:
                 return true
@@ -52,18 +52,39 @@ public struct TranscriptionService: Sendable {
     public var model: String
     public var systemInstruction: String
     public var encoder: ContextEncoder
+    /// Passed through to backends that have no system instruction to read it from. Model
+    /// providers ignore it, having received the same setting baked into `systemInstruction`.
+    public var fidelity: Fidelity
+    /// Whether to derive a keyterm list from the screen for recognition backends.
+    ///
+    /// Off by default, and that default is a position rather than caution about a new feature.
+    /// Keyterm biasing is a vocabulary prior — the mechanism the README singles out as the thing
+    /// that makes a dictation tool overrule clear audio — and it arrives without the "reference
+    /// only" framing that makes the same information safe to give a model. `Keyterms` refuses to
+    /// emit anything containing a digit for that reason, but the residual risk on names is real.
+    /// Measured in `docs/EVALUATION.md`.
+    public var keytermBiasing: Bool
 
     public init(
         provider: any TranscriptionProvider,
         model: String,
         systemInstruction: String,
-        encoder: ContextEncoder = ContextEncoder()
+        encoder: ContextEncoder = ContextEncoder(),
+        fidelity: Fidelity = .default,
+        keytermBiasing: Bool = false
     ) {
         self.provider = provider
         self.model = model
         self.systemInstruction = systemInstruction
         self.encoder = encoder
+        self.fidelity = fidelity
+        self.keytermBiasing = keytermBiasing
     }
+
+    /// What this service's backend can actually do with the screen, for callers that need to say
+    /// so out loud — the settings panel, and the history row that records whether a dictation was
+    /// grounded.
+    public var grounding: GroundingSupport { provider.grounding(forModel: model) }
 
     /// - Parameter audioPart: overrides how the recording is carried, so a caller that
     ///   pre-uploaded it can pass a URI reference instead of the bytes. Defaults to inline.
@@ -71,15 +92,32 @@ public struct TranscriptionService: Sendable {
         audio: AudioFile, context: ScreenContext?, audioPart: InputPart? = nil
     ) async throws -> TranscriptionResult {
         var parts: [InputPart] = []
-        if let context, !context.isEmpty {
-            parts.append(contentsOf: encoder.encode(context))
+        var keyterms: [String] = []
+
+        // Each backend is sent only what it can use. Encoding ten thousand characters of screen
+        // text for an endpoint that accepts a raw audio body would not merely be wasted — it would
+        // put a "grounded" request in the history for a transcript produced without grounding.
+        switch provider.grounding(forModel: model) {
+        case .multimodal:
+            if let context, !context.isEmpty {
+                parts.append(contentsOf: encoder.encode(context))
+            }
+        case .keyterms(let maxTerms, let maxCharsPerTerm):
+            if keytermBiasing, let context, !context.isEmpty {
+                keyterms = Keyterms.derive(
+                    from: context, maxTerms: maxTerms, maxCharsPerTerm: maxCharsPerTerm)
+            }
+        case .none:
+            break
         }
+
         // Compressed unless the caller already resolved the audio to a pre-uploaded reference.
         parts.append(audioPart ?? audio.compressedForUpload().part)
 
         return try await provider.transcribe(
             TranscriptionRequest(
-                model: model, systemInstruction: systemInstruction, parts: parts))
+                model: model, systemInstruction: systemInstruction, parts: parts,
+                fidelity: fidelity, keyterms: keyterms))
     }
 
     /// Retries with exponential backoff, giving up early on errors that will not change.
@@ -133,7 +171,11 @@ public struct TranscriptionService: Sendable {
         verifyNumbers: Bool = false,
         onProgress: (@Sendable (Int, Int) -> Void)? = nil
     ) async throws -> TranscriptionResult {
-        guard verifyNumbers, let context, !context.isEmpty else {
+        // The second, ungrounded run only means something when the first one was grounded. A
+        // recognition backend never sees the screen, and `Keyterms` cannot emit a digit, so there
+        // is no screen-derived number for the check to catch — it would just bill the audio twice
+        // and compare a run against itself.
+        guard verifyNumbers, grounding == .multimodal, let context, !context.isEmpty else {
             return try await transcribeSplitting(
                 audio: audio, context: context, audioPart: audioPart, attempts: attempts,
                 maxConcurrent: maxConcurrent, onProgress: onProgress)
