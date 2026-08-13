@@ -29,6 +29,39 @@ public struct EvalCase: Sendable, Codable {
     /// Optional note about what this case is probing.
     public var note: String?
 
+    /// Which script the transcript has to be in.
+    ///
+    /// Exists so a case whose point is *"transcribe in the language spoken, never translate"* can
+    /// assert that directly. The alternative was a `mustContain` fragment of Chinese, which would
+    /// mean writing down a transcript nobody verified by ear — machine-generated ground truth,
+    /// scoring machines. This asserts only the thing the case is actually about.
+    public enum Script: String, Sendable, Codable {
+        /// Han characters, i.e. the output is Chinese rather than an English translation.
+        case han
+        /// Latin letters, for the inverse check.
+        case latin
+
+        public func matches(_ text: String) -> Bool {
+            switch self {
+            case .han:
+                return text.unicodeScalars.contains { (0x4E00...0x9FFF).contains($0.value) }
+            case .latin:
+                return text.contains { $0.isLetter && $0.isASCII }
+            }
+        }
+    }
+
+    /// Script the transcript must be written in. See `Script`.
+    public var mustBeScript: Script?
+
+    /// Shortest transcript that could plausibly be this clip.
+    ///
+    /// Guards the failure fragments cannot see: a backend that returns the first two seconds of a
+    /// twenty-second recording satisfies every `mustNotContain` by never reaching the words it
+    /// would have got wrong. Set well below the real length — this is a floor for "did it
+    /// transcribe at all", not an accuracy assertion.
+    public var minCharacters: Int?
+
     public func audioURL(relativeTo caseFile: URL) -> URL {
         URL(fileURLWithPath: audio, relativeTo: caseFile.deletingLastPathComponent())
     }
@@ -59,6 +92,10 @@ public struct EvalOutcome: Sendable {
     /// Fragments required and forbidden, for cases where an exact match is unreasonable.
     public var mustContain: [String] = []
     public var mustNotContain: [String] = []
+    /// Script the transcript must be written in, for cases whose point is *which language*.
+    public var mustBeScript: EvalCase.Script?
+    /// Floor on transcript length, to catch a backend that returned a fragment of the clip.
+    public var minCharacters: Int?
     public var withContext: String
     public var withoutContext: String
     public var report: TranscriptDiff.Report
@@ -70,12 +107,31 @@ public struct EvalOutcome: Sendable {
     var baselineMatchesExpectation: Bool { satisfies(withoutContext) }
 
     private func satisfies(_ text: String) -> Bool {
+        // Nothing transcribed is never a pass, whatever the case asserts.
+        //
+        // This is not defensive coding, it is a hole that was open. `mustContain.allSatisfy` is
+        // vacuously true on an empty list, so a case asserting only `mustNotContain` — as
+        // `real-mandarin` did — passed on *any* output that avoided two forbidden phrases,
+        // including no output at all. A backend that silently returned nothing scored a green.
+        guard !text.trimmed.isEmpty else { return false }
+
         if !expected.isEmpty {
             return TranscriptDiff.normalize(text) == TranscriptDiff.normalize(expected)
         }
+
         // Real-speech cases assert fragments instead. An empty case asserts nothing and would
         // silently pass, so it counts as a failure rather than a free green.
-        guard !mustContain.isEmpty || !mustNotContain.isEmpty else { return false }
+        guard !mustContain.isEmpty || !mustNotContain.isEmpty || mustBeScript != nil else {
+            return false
+        }
+
+        // A twenty-second clip that comes back as "Okay." did not transcribe, and no fragment
+        // assertion catches that on its own — a truncated transcript can satisfy every
+        // `mustNotContain` by simply not reaching the words it would have got wrong.
+        if let minCharacters, text.trimmed.count < minCharacters { return false }
+
+        if let mustBeScript, !mustBeScript.matches(text) { return false }
+
         return mustContain.allSatisfy { text.containsLoosely($0) }
             && mustNotContain.allSatisfy { !text.containsLoosely($0) }
     }
@@ -167,6 +223,8 @@ public struct EvalRunner: Sendable {
             expected: testCase.expectTranscript ?? "",
             mustContain: testCase.mustContain ?? [],
             mustNotContain: testCase.mustNotContain ?? [],
+            mustBeScript: testCase.mustBeScript,
+            minCharacters: testCase.minCharacters,
             withContext: withContext.transcript.transcript,
             withoutContext: withoutContext.transcript.transcript,
             report: TranscriptDiff.compare(

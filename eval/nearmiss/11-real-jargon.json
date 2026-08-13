@@ -2,8 +2,15 @@
   "id": "real-jargon",
   "note": "Real English speech saying 'Scrum dashboard' and 'work item' while the screen insists on Kanban and Jira. Methodology names are a near-miss class of their own: they are interchangeable in most sentences, so nothing about the surrounding words signals which one was actually said. A model inclined to make the transcript 'consistent with the screen' has every excuse here.",
   "audio": "../audio/real-jargon.wav",
-  "mustContain": ["Scrum", "work item"],
-  "mustNotContain": ["Kanban", "Jira"],
+  "mustContain": [
+    "Scrum",
+    "work item"
+  ],
+  "mustNotContain": [
+    "Kanban",
+    "Jira"
+  ],
+  "minCharacters": 40,
   "context": {
     "appName": "Chrome",
     "windowTitle": "Kanban board — sprint planning",

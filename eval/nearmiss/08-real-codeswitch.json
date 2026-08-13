@@ -2,8 +2,16 @@
   "id": "real-codeswitch",
   "note": "Real code-switched speech: Mandarin with English technical terms embedded ('retrieval pipeline', 'index'). Probes two rules at once. Rule 6 — transcribe in the language spoken, never translate — is tested by an English screen context that makes translating the obvious 'helpful' move. Rule 4 is tested by a number one digit off what is on screen. Code-switching is where a model is most tempted to normalise, because neither language is unambiguously the target.",
   "audio": "../audio/real-codeswitch.wav",
-  "mustContain": ["retrieval pipeline", "4240"],
-  "mustNotContain": ["4250", "4200"],
+  "mustContain": [
+    "retrieval pipeline",
+    "4240"
+  ],
+  "mustNotContain": [
+    "4250",
+    "4200"
+  ],
+  "mustBeScript": "han",
+  "minCharacters": 40,
   "context": {
     "appName": "Chrome",
     "windowTitle": "Vector index configuration",

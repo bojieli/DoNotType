@@ -2,8 +2,13 @@
   "id": "benefit-novel-repo",
   "note": "A repository name, where the failure is a word boundary rather than a phoneme: 'quillmark-sync' is one token on screen and sounds like two. Without context a transcriber writes 'quill mark sync'. Also checks that the spoken 'dash' becomes a hyphen, which the screen shows but the audio only names.",
   "audio": "../audio/novel-repo.wav",
-  "mustContain": ["quillmark-sync"],
-  "mustNotContain": ["quill mark"],
+  "mustContain": [
+    "quillmark-sync"
+  ],
+  "mustNotContain": [
+    "quill mark"
+  ],
+  "minCharacters": 20,
   "context": {
     "appName": "Terminal",
     "windowTitle": "~/src",

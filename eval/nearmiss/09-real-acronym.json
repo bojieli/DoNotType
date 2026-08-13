@@ -1,9 +1,16 @@
 {
   "id": "real-acronym",
-  "note": "Real speech in which the speaker says 'DAPO' — a real RL algorithm — while the screen is full of GRPO, an equally real and similar-sounding one. Acronyms are the hardest near-miss: they are short, unstressed, phonetically close, and the model has strong priors about which ones exist. This is the case a dictionary-based tool fails worst, because both are plausible vocabulary entries.",
+  "note": "Real speech in which the speaker says 'DAPO' — a real RL algorithm — while the screen is full of GRPO, an equally real and similar-sounding one. Acronyms are the hardest near-miss: they are short, unstressed, phonetically close, and the model has strong priors about which ones exist. This is the case a dictionary-based tool fails worst, because both are plausible vocabulary entries. ASSERTION STRENGTHENED 2026-08-13: the note recorded that the speaker says DAPO but nothing asserted it, so a transcript naming no acronym at all passed. DAPO is demonstrably recoverable — xAI writes 'DAP-DAPo', which matches case-insensitively — while Mistral writes 'apu' and now correctly fails.",
   "audio": "../audio/real-acronym.wav",
-  "mustContain": ["gradient"],
-  "mustNotContain": ["GRPO"],
+  "mustContain": [
+    "gradient",
+    "DAPO"
+  ],
+  "mustNotContain": [
+    "GRPO"
+  ],
+  "mustBeScript": "han",
+  "minCharacters": 40,
   "context": {
     "appName": "Chrome",
     "windowTitle": "GRPO training notes",

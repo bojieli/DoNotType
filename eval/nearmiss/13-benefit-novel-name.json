@@ -5,6 +5,7 @@
   "mustContain": [
     "Kaelith"
   ],
+  "minCharacters": 20,
   "context": {
     "appName": "Slack",
     "windowTitle": "#platform",

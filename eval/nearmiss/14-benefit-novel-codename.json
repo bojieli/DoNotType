@@ -2,7 +2,11 @@
   "id": "benefit-novel-codename",
   "note": "Two invented internal codenames in one utterance. 'Thessaly' is a real place name and so a weaker test on its own; 'Brindlewood' is the load-bearing one, since a transcriber without context has no reason to prefer it over 'brindle wood' or 'Brindalwood'. Both spellings are on screen.",
   "audio": "../audio/novel-codename.wav",
-  "mustContain": ["Thessaly", "Brindlewood"],
+  "mustContain": [
+    "Thessaly",
+    "Brindlewood"
+  ],
+  "minCharacters": 20,
   "context": {
     "appName": "Linear",
     "windowTitle": "PLAT-812 · Thessaly rollout",

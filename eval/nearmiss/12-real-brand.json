@@ -2,8 +2,16 @@
   "id": "real-brand",
   "note": "Real Mandarin speech comparing two search engines by name — 'Google 的搜索结果就比 Bing 的好'. Both brands are spoken, and the screen is one-sided about which one is the subject. The failure to catch is collapse: dropping the comparison to whichever brand the screen repeats. Also exercises rule 6, since the screen is entirely English while the speech is not.",
   "audio": "../audio/real-brand.wav",
-  "mustContain": ["Google", "Bing"],
-  "mustNotContain": ["Baidu", "DuckDuckGo"],
+  "mustContain": [
+    "Google",
+    "Bing"
+  ],
+  "mustNotContain": [
+    "Baidu",
+    "DuckDuckGo"
+  ],
+  "mustBeScript": "han",
+  "minCharacters": 40,
   "context": {
     "appName": "Chrome",
     "windowTitle": "Bing Webmaster Tools",

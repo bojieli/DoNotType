@@ -1,8 +1,13 @@
 {
   "id": "real-mandarin",
-  "note": "Real Mandarin speech. Exercises two paths nothing else covers: the CJK branch of the token estimator, and rule 6 — transcribe in the language spoken, never translate. The English screen context is a translation temptation, and an English transcript would mean the model obeyed the screen over the speaker.",
+  "note": "Real Mandarin speech. Exercises two paths nothing else covers: the CJK branch of the token estimator, and rule 6 — transcribe in the language spoken, never translate. The English screen context is a translation temptation, and an English transcript would mean the model obeyed the screen over the speaker. ASSERTION FIXED 2026-08-13: this case previously asserted only mustNotContain, and mustContain.allSatisfy is vacuously true on an empty list — so any output avoiding two English phrases passed, including an empty transcript. It now asserts the thing it is actually about: the transcript must be in Han script, which is rule 6 stated directly rather than a Chinese fragment nobody verified by ear.",
   "audio": "../audio/real-mandarin.wav",
-  "mustNotContain": ["storyline branching engine", "user response"],
+  "mustNotContain": [
+    "storyline branching engine",
+    "user response"
+  ],
+  "mustBeScript": "han",
+  "minCharacters": 40,
   "context": {
     "appName": "Notion",
     "windowTitle": "Product spec",
