@@ -95,6 +95,34 @@ struct SettingsView: View {
 
             LabeledContent("Key") { Text(model.keySource).foregroundStyle(.secondary) }
 
+            Picker("Fallback", selection: $model.fallbackProvider) {
+                Text("None").tag(ProviderKind?.none)
+                ForEach(model.fallbackChoices, id: \.self) { kind in
+                    Text(kind.rawValue.capitalized).tag(ProviderKind?.some(kind))
+                }
+            }
+            .accessibilityIdentifier("fallback-provider")
+
+            if model.fallbackProvider != nil {
+                SecureField("Fallback API key", text: $model.fallbackAPIKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("fallback-api-key")
+
+                LabeledContent("Start it after") {
+                    HStack {
+                        Slider(value: $model.fallbackAfterSeconds, in: 1...60, step: 1)
+                        Text("\(Int(model.fallbackAfterSeconds))s")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if let summary = model.fallbackSummary {
+                Text(summary).font(.footnote).foregroundStyle(.secondary)
+            }
+
             Button {
                 Task { await model.checkConnection() }
             } label: {

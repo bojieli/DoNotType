@@ -69,6 +69,47 @@ final class DictationModel {
                 + "either way, so nothing is lost here."
     }
 
+    /// Backend started alongside the primary when it has not answered in time. Nil disables it.
+    ///
+    /// The same trade as on macOS, and it matters more here: a phone keyboard waiting sixty
+    /// seconds is a keyboard someone stops using.
+    var fallbackProvider: ProviderKind? {
+        didSet {
+            UserDefaults.standard.set(fallbackProvider?.rawValue ?? "", forKey: "fallbackProvider")
+            fallbackAPIKey = fallbackProvider
+                .map { KeychainStore.read(account: $0.rawValue) ?? "" } ?? ""
+        }
+    }
+
+    /// The fallback's own key, stored under its own provider so choosing it here never disturbs
+    /// the primary's credentials.
+    var fallbackAPIKey: String = "" {
+        didSet {
+            guard let kind = fallbackProvider else { return }
+            KeychainStore.write(fallbackAPIKey, account: kind.rawValue)
+        }
+    }
+
+    var fallbackAfterSeconds: Double {
+        didSet {
+            UserDefaults.standard.set(
+                min(max(fallbackAfterSeconds, 1), 120), forKey: "fallbackAfterSeconds")
+        }
+    }
+
+    var fallbackChoices: [ProviderKind] { ProviderKind.allCases.filter { $0 != provider } }
+
+    var fallbackSummary: String? {
+        guard let kind = fallbackProvider else { return nil }
+        return "If \(provider.rawValue) has not answered in \(Int(fallbackAfterSeconds))s, "
+            + "\(kind.rawValue) starts alongside it and whichever finishes first is used."
+    }
+
+    static func storedFallbackSeconds() -> Double {
+        let stored = UserDefaults.standard.double(forKey: "fallbackAfterSeconds")
+        return stored > 0 ? min(max(stored, 1), 120) : 8
+    }
+
     static func storedModel(for provider: ProviderKind) -> String {
         UserDefaults.standard.string(forKey: "model-\(provider.rawValue)")
             .flatMap { $0.isEmpty ? nil : $0 }
@@ -112,6 +153,11 @@ final class DictationModel {
         provider = kind
         apiKey = KeychainStore.read(account: kind.rawValue) ?? ""
         model = Self.storedModel(for: kind)
+        let fallbackRaw = defaults.string(forKey: "fallbackProvider") ?? ""
+        let fallbackKind = ProviderKind(rawValue: fallbackRaw).flatMap { $0 == kind ? nil : $0 }
+        fallbackProvider = fallbackKind
+        fallbackAPIKey = fallbackKind.map { KeychainStore.read(account: $0.rawValue) ?? "" } ?? ""
+        fallbackAfterSeconds = Self.storedFallbackSeconds()
         fidelity = Fidelity(rawValue: defaults.string(forKey: "fidelity") ?? "") ?? .default
         retention = RetentionPolicy(rawValue: defaults.string(forKey: "retention") ?? "")
             ?? .forever
@@ -314,7 +360,13 @@ final class DictationModel {
         do {
             let audio = try AudioFile(contentsOf: url)
             let requestStart = Date()
-            let result = try await coordinator.service.transcribeLong(audio: audio, context: nil)
+            // Hedged when a fallback is configured; a transparent pass-through otherwise.
+            let outcome = try await makeTranscriber(primary: coordinator.service)
+                .transcribe(audio: audio, context: nil)
+            let result = outcome.result
+            // Recorded as the backend that answered, not the one that was asked.
+            record.provider = outcome.attribution.provider
+            record.model = outcome.attribution.model
             record.requestSeconds = Date().timeIntervalSince(requestStart)
             record.usage = result.usage
             record.chunkCount = result.chunkCount
@@ -423,6 +475,25 @@ final class DictationModel {
         } catch {
             connectionStatus = "✗ \(error.localizedDescription)"
         }
+    }
+
+    /// Wraps the primary with the configured fallback. Built per dictation, because the provider,
+    /// its key and the delay are all live settings.
+    private func makeTranscriber(primary: TranscriptionService) -> FallbackTranscriber {
+        guard let kind = fallbackProvider,
+            let key = KeychainStore.read(account: kind.rawValue), !key.isEmpty,
+            let backend = try? ProviderFactory.make(kind, environment: [kind.apiKeyEnvVar: key]),
+            let promptURL = Self.bundledPromptURL,
+            let instruction = try? prompts.builder(default: promptURL)
+                .systemInstruction(fidelity: fidelity)
+        else { return FallbackTranscriber(primary: primary) }
+
+        return FallbackTranscriber(
+            primary: primary,
+            secondary: TranscriptionService(
+                provider: backend, model: Self.storedModel(for: kind),
+                systemInstruction: instruction, fidelity: fidelity),
+            hedgeAfter: .seconds(fallbackAfterSeconds))
     }
 
     private func makeCoordinator() -> RetryCoordinator? {
