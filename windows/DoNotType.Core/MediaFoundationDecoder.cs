@@ -37,7 +37,19 @@ public static class MediaFoundationDecoder
     public static bool IsAvailable => OperatingSystem.IsWindows();
 
     /// <summary>Decodes to 16 kHz mono WAV bytes.</summary>
-    public static byte[] DecodeToWav(string path, string name)
+    public static byte[] DecodeToWav(string path, string name) => DecodeWithFormat(path, name).Wav;
+
+    /// <summary>
+    /// The same, also reporting what the decoder handed over.
+    /// </summary>
+    /// <remarks>
+    /// Exists for the Windows-only tests. This path runs on one machine in the world — a CI runner
+    /// — so when it produces the wrong length, the source format is the first thing anyone needs
+    /// and the last thing they can reach. Returning it beats a static field and beats another
+    /// round trip through CI to find out.
+    /// </remarks>
+    internal static (byte[] Wav, AudioDecoder.WavFormat Format) DecodeWithFormat(
+        string path, string name)
     {
         if (!IsAvailable)
         {
@@ -73,7 +85,7 @@ public static class MediaFoundationDecoder
                     ["bytes"] = pcm.Length.ToString(),
                     ["ms"] = ((long)(DateTimeOffset.Now - started).TotalMilliseconds).ToString(),
                 });
-                return AudioChunker.WrapInWavContainer(pcm);
+                return (AudioChunker.WrapInWavContainer(pcm), format);
             }
             finally
             {

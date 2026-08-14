@@ -276,14 +276,18 @@ public sealed class AudioDecoderTests
 
         if (OperatingSystem.IsWindows())
         {
-            // Not merely "it did not throw": a decoder handed the wrong stream index fails here,
-            // and so does one that returns a handful of silent frames. Both looked plausible.
-
-            // On Windows the route is Media Foundation and there is a real decode to check. This
-            // is the only place that COM interop ever executes — the vtable layouts in
+            // On Windows the route is Media Foundation and there is a real decode to check. This is
+            // the only place that COM interop ever executes — the vtable layouts in
             // MediaFoundationDecoder cannot be validated by compiling, so an offset off by one
-            // would otherwise ship and fail on a user's first MP3.
-            AssertDecodesToSpeech(AudioDecoder.Load(path), name);
+            // would otherwise ship and fail on a user's first MP3. One did.
+            //
+            // The source format goes into the message because this path runs on one machine in the
+            // world, and when the length comes out wrong that is the first thing anyone needs.
+            var (wav, format) = MediaFoundationDecoder.DecodeWithFormat(path, name);
+            AssertDecodesToSpeech(
+                wav,
+                $"{name} (decoder gave {format.SampleRate} Hz, {format.Channels} ch, "
+                    + $"{format.BitsPerSample}-bit, float={format.IsFloat})");
             return;
         }
 
