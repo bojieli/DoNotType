@@ -91,6 +91,18 @@ bug here, and it is the kind that erodes trust rather than crashing.
 **Privacy decisions happen before capture, not after.** Filtering a context you already collected
 still means the text was in the process's memory.
 
+## Strings
+
+The interface is English and there are no translations yet. Two conventions keep that from becoming
+permanent, and both cost nothing at the moment you are already editing a line:
+
+- Interpolate rather than concatenate. `Text("Recording… \(hint)")` is one translatable sentence;
+  `Text("Recording… " + hint)` is two fragments no language is obliged to keep in that order.
+- On Android, new user-facing strings go in `strings.xml`.
+
+`./scripts/localizable-report.py` counts what a translator could not reach. See
+[docs/LOCALIZATION.md](docs/LOCALIZATION.md).
+
 ## Ports
 
 A change to one platform's behaviour should usually land in all four, or explain why not. The

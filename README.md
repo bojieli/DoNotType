@@ -328,6 +328,8 @@ predicted. See [CONTRIBUTING.md](CONTRIBUTING.md).
 | [PROMPT.md](PROMPT.md) | the transcription contract, and its measured changelog |
 | [CONTEXT_FORMAT.md](CONTEXT_FORMAT.md) | part order, delimiters, caps, truncation direction |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the pieces fit, and which decisions were measured |
+| [docs/LOCALIZATION.md](docs/LOCALIZATION.md) | translating the interface, and why the prompt is never translated |
+| [docs/MANUAL-CHECKS.md](docs/MANUAL-CHECKS.md) | the four checks a machine cannot do, run once per release |
 | [docs/CLI.md](docs/CLI.md) | `dnt`: file transcription, history, diagnostics — and the logging |
 | [docs/EVALUATION.md](docs/EVALUATION.md) | how quality is measured and what the numbers say |
 | [docs/MODELS.md](docs/MODELS.md) | which models and providers can actually do this job |

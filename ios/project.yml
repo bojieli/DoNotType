@@ -33,6 +33,11 @@ targets:
       - path: Shared
       - path: ../PROMPT.md
         buildPhase: resources
+      # Translations, if any exist. SwiftUI looks a literal up by its English text, so adding a
+      # .lproj here is the whole mechanism — see docs/LOCALIZATION.md.
+      - path: ../Resources/Localizations
+        buildPhase: resources
+        optional: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.donottype

@@ -60,6 +60,9 @@ app: build
 	@# Both rendered from Resources/Icon/DoNotType.svg; see Resources/Icon/make-icons.sh.
 	@cp Resources/AppIcon.icns "$(CONTENTS)/Resources/AppIcon.icns"
 	@cp Resources/MenuBar/*.png "$(CONTENTS)/Resources/"
+	@# Any translations that exist. SwiftUI looks a literal up by its English text, so a .lproj
+	@# dropped in here is the whole mechanism — see docs/LOCALIZATION.md.
+	@[ -d Resources/Localizations ] && cp -R Resources/Localizations/*.lproj "$(CONTENTS)/Resources/" 2>/dev/null || true
 	@printf 'APPL????' > "$(CONTENTS)/PkgInfo"
 	@codesign --force --deep --options runtime \
 		--entitlements Resources/$(APP).entitlements \
