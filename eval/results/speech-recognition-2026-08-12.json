@@ -444,5 +444,74 @@
       ]
     },
     "verdict": "Keyterm biasing is negative and should not be used. Grounding on native Gemini is a genuine net positive (+2 to +3 for 1 regression). Grounding through OpenRouter is marginal (2-5 regressions)."
+  },
+  "gemini_3_7_flash_2026_08_14": {
+    "verdict": "Worse than 3.6 Flash for this job. 3.6 stays recommended.",
+    "clientBreakage": "Rejects thinking_level=minimal, which every client hardcoded: \"'minimal' is not a supported thinking level for this model. Allowed values are: medium, low, high.\" Total outage on the new model until the level was made per-family. Fixed in Swift, Kotlin and C#.",
+    "thinkingCost": "376 thought tokens at medium to produce 13 tokens of transcript; thought tokens bill as output.",
+    "suite": {
+      "matched": [
+        40,
+        41
+      ],
+      "improved": [
+        5,
+        6
+      ],
+      "regressed": [
+        2,
+        1
+      ],
+      "ungrounded": [
+        37,
+        36
+      ],
+      "discardedRun": "22 of 48 requests failed to a local network outage, not the model",
+      "compare_3_6": {
+        "matched": [
+          44,
+          44
+        ],
+        "regressed": [
+          1,
+          1
+        ],
+        "ungrounded": [
+          42,
+          41
+        ]
+      }
+    },
+    "referenceClipSubstitution": {
+      "clip": "real-talk-gemini15.wav",
+      "spoken": "1.5",
+      "decoy": "2.5",
+      "gemini_3_7": {
+        "grounded": "10/10 (100%)",
+        "noContext": "9/11 (82%)"
+      },
+      "gemini_3_6": {
+        "grounded": "1/12 (8%)",
+        "noContext": "3/10 (30%)"
+      },
+      "reading": "The no-context column is mishearing, not substitution — there is no decoy to copy when nothing was on screen. 3.7 writes 2.5 for a spoken 1.5 most of the time unaided; 3.6 hears it correctly 70% of the time."
+    },
+    "latencySeconds": {
+      "grounded": 10.49,
+      "noContext": 21.96,
+      "note": "Native Gemini latency is bimodal on this account; treat as indicative."
+    },
+    "thinkingLevelIsNotTheCause": {
+      "test": "ablate --thinking high, 8 trials per condition",
+      "result": {
+        "grounded": "6/6 (100%)",
+        "noContext": "7/7 (100%)",
+        "meanSeconds": [
+          27.37,
+          11.11
+        ]
+      },
+      "reading": "Raising the thinking level makes it worse, not better. The mishearing is not an artefact of the forced `low` floor."
+    }
   }
 }

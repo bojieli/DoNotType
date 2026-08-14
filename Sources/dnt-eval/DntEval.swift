@@ -45,6 +45,12 @@ struct ProviderOptions: ParsableArguments {
     @Option(name: .long, help: "Path to PROMPT.md. Found by walking up from cwd if omitted.")
     var prompt: String?
 
+    /// Exists to measure what the constraint costs, which is not hypothetical: 3.7 rejects
+    /// `minimal` outright, so the floor moved and the question of what the floor is worth became
+    /// answerable only by overriding it.
+    @Option(name: .long, help: "Gemini thinking level: minimal, low, medium, high.")
+    var thinking: String?
+
     func resolveKind() throws -> ProviderKind {
         guard let kind = ProviderKind(rawValue: provider.lowercased()) else {
             throw ValidationError(
@@ -75,8 +81,21 @@ struct ProviderOptions: ParsableArguments {
 
     func makeRunner() throws -> (EvalRunner, ProviderKind) {
         let kind = try resolveKind()
+        // A thinking override only means anything to the first-party API, so that provider is
+        // built directly rather than threading a Gemini-specific knob through the factory.
+        let backend: any TranscriptionProvider
+        if let thinking, kind == .gemini {
+            let environment = ProcessInfo.processInfo.environment
+            guard let key = environment[kind.apiKeyEnvVar]?.trimmed, !key.isEmpty else {
+                throw ProviderError.missingAPIKey(envVar: kind.apiKeyEnvVar)
+            }
+            backend = GeminiProvider(apiKey: key, thinkingLevel: thinking)
+        } else {
+            backend = try ProviderFactory.make(kind)
+        }
+
         let runner = EvalRunner(
-            provider: try ProviderFactory.make(kind),
+            provider: backend,
             model: model ?? kind.defaultModel,
             systemInstruction: try resolveSystemInstruction(),
             fidelity: try resolveFidelity(),

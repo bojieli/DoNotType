@@ -865,3 +865,69 @@ that it manages on English.
 
 So the honest position is that ordinary-dictation accuracy is **unmeasured**, the agreement data
 is consistent with it being poor on Chinese, and roughly twenty verified clips would settle it.
+
+## Gemini 3.7 Flash — 2026-08-14
+
+Tested through the first-party API as soon as it appeared. It is **worse than 3.6 Flash for this
+job**, on both numbers that matter, and it broke the client before it could be measured at all.
+
+### It rejects the thinking level every client here hardcoded
+
+```
+'minimal' is not a supported thinking level for this model.
+Allowed values are: medium, low, high.
+```
+
+Every request failed the moment the model field was changed to it — a total outage produced by a
+constant that had been correct since the project started, duplicated across Swift, Kotlin and C#.
+The level is now chosen per model family: the cheapest each one accepts, prefix-matched so a point
+release inherits its family's floor rather than silently costing thinking tokens on every
+dictation. Transcription wants as little thinking as allowed — 3.7 spends 376 thought tokens at
+`medium` to produce thirteen tokens of transcript, and thought tokens bill as output.
+
+### Near-miss suite, native, three passes per run
+
+| model | matched | improved | **regressed** | ungrounded |
+|---|---|---|---|---|
+| `gemini-3.6-flash` | **44 / 48** ×2 | 3–4 | **1** | 41–42 |
+| `gemini-3.7-flash` | 40, 41 / 48 | 5–6 | **1–2** | 36–37 |
+
+A third 3.7 run was discarded: a local network outage killed 22 of its 48 requests
+(*"The Internet connection appears to be offline"*), which is a fault in the measurement rather
+than the model.
+
+The gap is about four matched runs, outside the per-pass range, and it is wider on the ungrounded
+column — 36–37 against 41–42. That is the more diagnostic number, because it is the model's own
+hearing with nothing on screen to blame.
+
+### It cannot hear the reference version number
+
+On `real-talk-gemini15.wav`, where the speaker says "Gemini 1.5" and the screen insists on 2.5:
+
+| model | grounded | **no context at all** |
+|---|---|---|
+| `gemini-3.6-flash` | 8% substituted | 30% |
+| `gemini-3.7-flash` | **100%** (10/10) | **82%** (9/11) |
+
+The second column is the damning one. With no screen context there is no decoy to copy, so 82%
+is not substitution — it is **mishearing**. 3.7 writes 2.5 for a spoken 1.5 most of the time on
+its own, and grounding then adds the rest. 3.6 hears the same clip correctly 70% of the time
+unaided.
+
+This is the same distinction that had to be drawn for Voxtral: for a backend that never saw the
+screen, the "substituted" column measures hearing, not overwriting. Reading it as substitution
+would blame grounding for a problem that precedes it.
+
+**It is not the thinking level.** The obvious suspicion is that `low` — forced, since 3.7 rejects
+`minimal` — starves it. Raising the level makes it worse, not better: at `high` the clip comes back
+wrong in **every** trial, 6/6 grounded and 7/7 ungrounded, at 27 s a request. Whatever 3.7 is doing
+with the extra tokens, it is not listening harder.
+
+(`dnt-eval ablate --thinking high` exists for exactly this question. The flag was added here
+because the comment claiming the constraint was measurable had never been true.)
+
+### Verdict
+
+`gemini-3.6-flash` stays the recommended model. 3.7 is available — the model field is free text on
+every platform — but on this corpus it is less accurate, regresses more, and gets the one number
+this project is named for wrong four times out of five with no context at all.
