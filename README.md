@@ -92,7 +92,7 @@ hour's work rather than a project.
 | | Dictation | Screen grounding | WAV·MP3·M4A·Opus | CLI | Build |
 |---|---|---|---|---|---|
 | **macOS** | menu-bar app, hold Right ⌘ | ✅ accessibility tree + screenshot fallback | ✅ | `dnt` | `make app` |
-| **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | ✅ | `dnt.exe` | `cd windows && dotnet build` |
+| **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | no M4A | `dnt.exe` | `cd windows && dotnet build` |
 | **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | ✅ | — | `cd android && gradle assembleDebug` |
 | **iOS** | containing app; keyboard inserts | ❌ not possible in the sandbox | ✅ | — | `cd ios && xcodegen generate` |
 
