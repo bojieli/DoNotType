@@ -66,6 +66,35 @@ jobs:
           .build/release/dnt providers --no-keychain
           test -n "$(.build/release/dnt prompt show --section summary)"
 
+  # The suite this project's claims rest on, re-run for free.
+  #
+  # It needs a recorded cassette to exist, and recording one costs a single paid run — so this job
+  # skips itself until somebody commits one, rather than failing and training people to ignore it.
+  # See docs/EVALUATION.md.
+  replay:
+    name: Replayed eval
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is there a cassette?
+        id: cassette
+        run: |
+          if [ -f eval/cassettes/nearmiss.json ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No cassette committed yet. Record one with:"
+            echo "  swift run dnt-eval suite --record eval/cassettes/nearmiss.json --repeat-count 3"
+          fi
+
+      # No key, no network, no cost. This cannot discover anything about a model — it checks that
+      # the scoring, the diff classification and the prompt still turn those same answers into the
+      # same verdicts.
+      - name: Re-score the recorded run
+        if: steps.cassette.outputs.found == 'true'
+        run: swift run -c release dnt-eval suite --replay eval/cassettes/nearmiss.json
+
   windows-core:
     name: Windows core
     runs-on: ubuntu-latest

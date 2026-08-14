@@ -45,6 +45,22 @@ struct ProviderOptions: ParsableArguments {
     @Option(name: .long, help: "Path to PROMPT.md. Found by walking up from cwd if omitted.")
     var prompt: String?
 
+    @Option(
+        name: .long,
+        help: """
+            Write every provider answer to this file, so the run can be repeated for free. Costs \
+            one ordinary paid run.
+            """)
+    var record: String?
+
+    @Option(
+        name: .long,
+        help: """
+            Answer from a recorded file instead of the network. No key needed, and no money. \
+            Replayed runs re-check the scoring and the prompt, not the model — see docs/EVALUATION.
+            """)
+    var replay: String?
+
     /// Exists to measure what the constraint costs, which is not hypothetical: 3.7 rejects
     /// `minimal` outright, so the floor moved and the question of what the floor is worth became
     /// answerable only by overriding it.
@@ -79,12 +95,31 @@ struct ProviderOptions: ParsableArguments {
         return try PromptBuilder(contentsOf: url).systemInstruction(fidelity: try resolveFidelity())
     }
 
+    func resolveCassetteMode() throws -> CassetteStore.Mode {
+        switch (record, replay) {
+        case (nil, nil): .live
+        case (let path?, nil): .recording(URL(fileURLWithPath: path))
+        case (nil, let path?): .replaying(URL(fileURLWithPath: path))
+        case (.some, .some):
+            throw ValidationError(
+                "--record and --replay are opposites. Record once, then replay that file.")
+        }
+    }
+
     func makeRunner() throws -> (EvalRunner, ProviderKind) {
         let kind = try resolveKind()
+        let mode = try resolveCassetteMode()
+
         // A thinking override only means anything to the first-party API, so that provider is
         // built directly rather than threading a Gemini-specific knob through the factory.
         let backend: any TranscriptionProvider
-        if let thinking, kind == .gemini {
+        if case .replaying = mode {
+            // A replayed run answers from the file and never opens a connection, so demanding a
+            // key would defeat the point of it being free. The provider is constructed and never
+            // called.
+            backend = try ProviderFactory.make(
+                kind, environment: [kind.apiKeyEnvVar: "replaying-no-key-needed"])
+        } else if let thinking, kind == .gemini {
             let environment = ProcessInfo.processInfo.environment
             guard let key = environment[kind.apiKeyEnvVar]?.trimmed, !key.isEmpty else {
                 throw ProviderError.missingAPIKey(envVar: kind.apiKeyEnvVar)
@@ -99,9 +134,46 @@ struct ProviderOptions: ParsableArguments {
             model: model ?? kind.defaultModel,
             systemInstruction: try resolveSystemInstruction(),
             fidelity: try resolveFidelity(),
-            keytermBiasing: keyterms
+            keytermBiasing: keyterms,
+            cassette: mode == .live ? nil : CassetteStore(mode: mode)
         )
         return (runner, kind)
+    }
+
+    /// Opens the cassette, and says which way it is pointing, before any case runs.
+    func openCassette(_ runner: EvalRunner, kind: ProviderKind) async throws {
+        guard let store = runner.cassette else { return }
+        try await store.open(
+            provenance: Cassette.Provenance(
+                provider: kind.rawValue,
+                model: runner.model,
+                fidelity: runner.fidelity.rawValue,
+                recordedAt: Date(),
+                promptDigest: CassetteKey.digest(of: runner.systemInstruction)))
+
+        if await store.isReplaying {
+            print("replaying recorded answers — no requests, no cost, and no new evidence\n")
+        } else if await store.isRecording {
+            print("recording every answer to \(record ?? "")\n")
+        }
+    }
+
+    /// Writes the cassette out, and reports anything a reader of the numbers has to know.
+    func closeCassette(_ runner: EvalRunner) async throws {
+        guard let store = runner.cassette else { return }
+        try await store.close()
+
+        // No silent caps: a reader comparing the per-pass spread has to know some of it was reused.
+        let exhausted = await store.exhaustedKeys
+        if !exhausted.isEmpty {
+            print(
+                """
+
+                \(exhausted.count) request(s) ran out of recorded takes and reused the last one. \
+                The per-pass spread above is therefore narrower than a live run's would be — \
+                record with --repeat-count at least as high as you replay with.
+                """)
+        }
     }
 }
 
@@ -212,6 +284,7 @@ struct Suite: AsyncParsableCommand {
             throw ValidationError("No .json cases found in \(directory)")
         }
 
+        try await options.openCassette(runner, kind: kind)
         print(
             "provider \(kind.rawValue) · model \(runner.model) · \(cases.count) cases × \(repeatCount) runs\n")
 
@@ -298,6 +371,8 @@ struct Suite: AsyncParsableCommand {
             print("\nerrors (\(errored.count) run(s) did not complete):")
             for message in errored.prefix(5) { print("  \(message.prefix(120))") }
         }
+
+        try await options.closeCassette(runner)
 
         if !regressions.isEmpty {
             print("\nregressions:")

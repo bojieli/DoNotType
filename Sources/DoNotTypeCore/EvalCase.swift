@@ -160,13 +160,17 @@ public struct EvalRunner: Sendable {
     public var fidelity: Fidelity
     public var keytermBiasing: Bool
 
+    /// Recorded answers, when the run is recording or replaying. Nil is the live path.
+    public var cassette: CassetteStore?
+
     public init(
         provider: any TranscriptionProvider,
         model: String,
         systemInstruction: String,
         encoder: ContextEncoder = ContextEncoder(),
         fidelity: Fidelity = .default,
-        keytermBiasing: Bool = false
+        keytermBiasing: Bool = false,
+        cassette: CassetteStore? = nil
     ) {
         self.provider = provider
         self.model = model
@@ -174,6 +178,7 @@ public struct EvalRunner: Sendable {
         self.encoder = encoder
         self.fidelity = fidelity
         self.keytermBiasing = keytermBiasing
+        self.cassette = cassette
     }
 
     /// What this run's backend can do with the screen, so a report can say whether the
@@ -207,8 +212,35 @@ public struct EvalRunner: Sendable {
     public func transcribe(audio: AudioFile, context: ScreenContext?) async throws
         -> TranscriptionResult
     {
-        try await service.transcribeWithRetry(
+        guard let cassette else {
+            return try await service.transcribeWithRetry(
+                audio: audio, context: context, attempts: 4, initialDelay: .milliseconds(800))
+        }
+
+        // Keyed on what goes into the request rather than on the bytes that leave, so a cassette
+        // recorded on one machine replays on another. See `CassetteKey`.
+        let key = CassetteKey.make(
+            model: model, fidelity: fidelity, systemInstruction: systemInstruction,
+            context: context, keyterms: derivedKeyterms(for: context), audio: audio.data)
+
+        if await cassette.isReplaying {
+            return try await cassette.take(
+                for: key,
+                hint: context == nil ? "no context" : "with context")
+        }
+
+        let result = try await service.transcribeWithRetry(
             audio: audio, context: context, attempts: 4, initialDelay: .milliseconds(800))
+        await cassette.record(result, for: key)
+        return result
+    }
+
+    /// The keyterm list this run would send, which is part of the request and therefore of the key.
+    private func derivedKeyterms(for context: ScreenContext?) -> [String] {
+        guard keytermBiasing, let context, !context.isEmpty,
+            case .keyterms(let maxTerms, let maxChars) = grounding
+        else { return [] }
+        return Keyterms.derive(from: context, maxTerms: maxTerms, maxCharsPerTerm: maxChars)
     }
 
     public func run(_ testCase: EvalCase, caseFile: URL) async throws -> EvalOutcome {
