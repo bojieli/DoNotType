@@ -2,34 +2,31 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key>
-	<string>DoNotType</string>
 	<key>CFBundleDisplayName</key>
 	<string>DoNotType</string>
+	<key>CFBundleExecutable</key>
+	<string>DoNotType</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>app.donottype</string>
-	<key>CFBundleExecutable</key>
+	<key>CFBundleName</key>
 	<string>DoNotType</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
 	<key>CFBundleShortVersionString</key>
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>100</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
-
-	<!-- Menu-bar only: no Dock icon, no main window. -->
 	<key>LSUIElement</key>
 	<true/>
-
+	<key>NSAppleEventsUsageDescription</key>
+	<string>DoNotType reads the focused text field so it can spell names and terminology the way they appear on your screen.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>DoNotType records your voice only while you hold the dictation key, and sends it to the model you configured using your own API key.</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>DoNotType captures the focused window only when the accessibility tree returns too little text to spell technical terms correctly — for example in Figma or a GPU-rendered terminal.</string>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>DoNotType reads the focused text field so it can spell names and terminology the way they appear on your screen.</string>
 </dict>
 </plist>

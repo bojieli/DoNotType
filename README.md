@@ -95,8 +95,12 @@ and model per provider so switching is one dropdown.
 ## Install
 
 Prebuilt macOS, Windows and Android artifacts are attached to each
-[release](../../releases), with a `.sha256` beside every one. iOS is not distributed — it needs a
-provisioning profile, so build it from source.
+[release](../../releases), with a `.sha256` beside every one. Both desktop archives also contain
+`dnt`, the command line. iOS is not distributed — it needs a provisioning profile, so build it from
+source.
+
+If a build was made without signing secrets, macOS refuses to open it on a double-click: right-click
+the app and choose **Open** once, and Gatekeeper asks instead of refusing.
 
 From source on macOS:
 

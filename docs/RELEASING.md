@@ -11,6 +11,11 @@ That runs [`.github/workflows/release.yml`](../.github/workflows/release.yml), w
 platforms, runs each one's tests first, and opens a **draft** GitHub release with the artifacts
 attached. Read the generated notes, then publish.
 
+Each job stamps the version into its own checkout first, with
+[`scripts/stamp-version.sh`](../scripts/stamp-version.sh) — four platforms keep four version fields,
+and a release that stamps some of them turns every bug report into a question about which build it
+came from. The tag is the only source; nothing is committed back.
+
 To exercise the packaging without cutting a release, run the workflow manually from the Actions tab
 with **publish** unchecked. It builds and uploads everything as workflow artifacts and creates no
 release.

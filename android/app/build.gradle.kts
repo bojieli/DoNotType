@@ -13,7 +13,7 @@ android {
         // coroutine APIs used here available without desugaring.
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = 100
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

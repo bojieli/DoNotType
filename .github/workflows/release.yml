@@ -36,6 +36,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Before the build, never after: `make app` signs the bundle as its last step, and editing a
+      # plist inside a signed bundle invalidates the signature. An app whose About box disagrees
+      # with the tag it was built from is a support conversation nobody can win.
+      - name: Stamp the version
+        run: ./scripts/stamp-version.sh "${GITHUB_REF_NAME#v}"
+
       # A release that fails its own suite should not exist. Cheap insurance against tagging a
       # commit that was never green.
       - name: Unit tests
@@ -96,6 +102,10 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Stamp the version
+        shell: bash
+        run: ./scripts/stamp-version.sh "${GITHUB_REF_NAME#v}"
+
       - name: Unit tests
         run: dotnet test windows/DoNotType.Core.Tests/DoNotType.Core.Tests.csproj -c Release
 
@@ -116,7 +126,16 @@ jobs:
         run: >
           dotnet publish windows/DoNotType.App/DoNotType.App.csproj
           -c Release -r win-x64 --self-contained true
-          -p:PublishSingleFile=true -o publish
+          -p:PublishSingleFile=true -p:Version=${{ github.ref_name }} -o publish
+
+      # The CLI ships beside the app, as it does inside the macOS bundle. Framework-dependent
+      # rather than self-contained: it lands next to an app that already carries the runtime, and a
+      # second copy would double the download for one small executable.
+      - name: Publish the CLI
+        run: >
+          dotnet publish windows/DoNotType.Cli/DoNotType.Cli.csproj
+          -c Release -r win-x64 --self-contained false
+          -p:PublishSingleFile=true -o publish-cli
 
       - name: Package
         shell: pwsh
@@ -125,6 +144,8 @@ jobs:
           # Without it the app still dictates — it just uploads WAV and is slower.
           Copy-Item native/opus.dll publish/opus.dll
           Copy-Item PROMPT.md publish/PROMPT.md
+          # opus.dll is also what lets the CLI read a .opus recording, not only write one.
+          Copy-Item publish-cli/dnt.exe publish/dnt.exe
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path publish/* -DestinationPath dist/DoNotType-Windows-x64.zip
           # Written byte-for-byte rather than through Out-File, which appends a CRLF even with
@@ -155,6 +176,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+
+      - name: Stamp the version
+        run: ./scripts/stamp-version.sh "${GITHUB_REF_NAME#v}"
 
       - name: Unit tests
         working-directory: android
@@ -246,7 +270,12 @@ jobs:
             asked; both are required, and the app checks them at launch.
 
             **Windows** — unzip anywhere and run `DoNotType.exe`. `opus.dll` must stay beside it:
-            without it dictation still works but uploads are ~16× larger and noticeably slower.
+            without it dictation still works but uploads are ~16× larger and noticeably slower, and
+            `.opus` recordings cannot be read at all.
+
+            Both desktop archives also contain **`dnt`**, the command line: transcribe a recording,
+            read the log, check which key is being used. On macOS it is inside the bundle at
+            `DoNotType.app/Contents/MacOS/dnt`. See `docs/CLI.md`.
 
             **Android** — install the APK, then enable the keyboard in Settings › System ›
             Keyboards and grant microphone access from the DoNotType app.
@@ -261,3 +290,15 @@ jobs:
             If this build was produced without signing secrets configured, macOS will refuse to
             open it normally and Android will have signed it with a debug key. See
             `docs/RELEASING.md` for what to set.
+
+            For an unsigned macOS build: right-click the app and choose Open, once. Gatekeeper
+            asks rather than refuses on that path. Note that an ad-hoc signature also means macOS
+            forgets the Accessibility grant on every update, because TCC keys permissions to the
+            signature — so it is fine for trying out and poor for living with.
+
+            ## What it does not do yet
+
+            Read **Status, honestly** in the README before relying on this. The short version:
+            screen grounding currently makes substitution *worse* on hard audio — about 36% of runs
+            against a 21% baseline — and accuracy on ordinary dictation has not been measured
+            against ground truth at all.

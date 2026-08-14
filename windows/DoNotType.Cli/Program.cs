@@ -101,7 +101,7 @@ public static class Program
 
     private static int Version()
     {
-        Out.Line("dnt 1.0.0");
+        Out.Line("dnt 0.1.0");
         return 0;
     }
 
