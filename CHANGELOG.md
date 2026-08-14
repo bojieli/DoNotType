@@ -104,6 +104,23 @@ deliberate:
   no Console or shell to reach it any other way. Every platform keeps its native sink alongside the
   file — `os.Logger`, logcat — so anything that already worked still does.
 
+- **The suite can be re-run for free.** `dnt-eval --record` writes down what each backend said;
+  `--replay` feeds it back with no network and no key. Every take is kept in order so the per-pass
+  spread — this suite's own noise floor — survives, and the system instruction is part of the
+  request key, so editing `PROMPT.md` misses every take rather than answering for a prompt that did
+  not produce it. CI replays on every push once a cassette is committed.
+
+- **Everything a first contributor needs.** Issue forms that ask for the three things a
+  transcription report needs, a PR template that asks for numbers when quality is touched, a code of
+  conduct whose one non-boilerplate clause is that claims here are settled by measurement, a
+  [manual checklist](docs/MANUAL-CHECKS.md) for the four things no runner can do, and
+  [what this project will never do](README.md#what-this-will-never-do).
+
+- **CI runs what ships.** Both CLIs are built and executed, the macOS app is launched and has to
+  still be alive and to have logged its own startup, and the Windows core tests run on Windows —
+  where they immediately found two real bugs in the Media Foundation interop and a third that is now
+  documented rather than silently truncating audio.
+
 ### Fixed
 
 - **The app never passed the environment to `ProviderFactory`, so several documented variables did
