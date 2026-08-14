@@ -35,6 +35,22 @@ jobs:
       - name: Build the menu-bar app
         run: swift build -c release --product DoNotTypeMac
 
+      # Building it proves nothing about whether it starts — the same reasoning as the Windows job
+      # below, which caught an app that had compiled for months and never run. A menu-bar agent
+      # cannot be driven by XCUITest, so this checks the bundle, launches the real thing, and reads
+      # back the line it logs about itself. See scripts/macos-launch-check.sh.
+      - name: Launch the app and check it stays up
+        run: |
+          make app
+          ./scripts/macos-launch-check.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-screenshots
+          path: shots/
+          if-no-files-found: ignore
+
       - name: Build the evaluation harness
         run: swift build -c release --product dnt-eval
 
