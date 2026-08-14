@@ -51,6 +51,40 @@ public sealed class DictationRecord
 
     public int? AudioTokens { get; set; }
 
+    /// <summary>
+    /// The derived text, when a mode other than verbatim produced one.
+    /// </summary>
+    /// <remarks>
+    /// Kept beside <see cref="Text"/> rather than replacing it. That separation is the whole
+    /// difference from the tool this project replaces: a rewrite or a summary is a derived artifact,
+    /// and what you actually said stays recoverable next to it.
+    /// </remarks>
+    public string? StyledText { get; set; }
+
+    /// <summary>Which mode produced <see cref="StyledText"/>. Null on rows written before modes.</summary>
+    public string? Mode { get; set; }
+
+    /// <summary>
+    /// The recording this came from, when it was a file rather than the microphone. Its presence is
+    /// what distinguishes an offline transcription from a dictation, and both live in the same
+    /// history on purpose.
+    /// </summary>
+    public string? SourceFileName { get; set; }
+
+    [JsonIgnore]
+    public bool IsFromFile => SourceFileName is not null;
+
+    /// <summary>What was delivered: the derived text when one exists, otherwise the transcript.</summary>
+    [JsonIgnore]
+    public string DeliveredText => StyledText ?? Text;
+
+    /// <summary>
+    /// The mode, including for rows written before the field existed -- every one of those was a
+    /// verbatim dictation, so the reconstruction is exact rather than a guess.
+    /// </summary>
+    [JsonIgnore]
+    public TranscriptMode ResolvedMode => TranscriptMode.Parse(Mode) ?? TranscriptMode.Verbatim;
+
     [JsonIgnore]
     public bool IsRetryable => Status != DictationStatus.Completed;
 
@@ -60,7 +94,7 @@ public sealed class DictationRecord
     [JsonIgnore]
     public string Summary => Status switch
     {
-        DictationStatus.Completed => Text,
+        DictationStatus.Completed => DeliveredText,
         DictationStatus.Failed => ErrorMessage ?? "Failed",
         _ => "Waiting to send",
     };
@@ -110,6 +144,8 @@ public sealed class HistoryStore(string directory)
         WriteIndented = true,
         Converters = { new JsonStringEnumConverter() },
     };
+
+    private static readonly Log Log = new("history");
 
     private readonly string _indexPath = Path.Combine(directory, "history.json");
     private readonly string _audioDirectory = Path.Combine(directory, "audio");
@@ -166,6 +202,13 @@ public sealed class HistoryStore(string directory)
 
             records.Insert(0, record);
             Persist();
+            Log.Debug(() => "stored", new Dictionary<string, string>
+            {
+                ["status"] = record.Status.ToString().ToLowerInvariant(),
+                ["mode"] = record.ResolvedMode.Id,
+                ["audio"] = record.AudioFileName is null ? "discarded" : "kept",
+                ["source"] = record.SourceFileName ?? "microphone",
+            });
             return record;
         }
     }
@@ -272,6 +315,14 @@ public sealed class HistoryStore(string directory)
         var cutoff = DateTimeOffset.Now - maximumAge;
         var expired = _records.Where(r => r.CreatedAt < cutoff).ToList();
         if (expired.Count == 0) return;
+
+        // Deleting the user's transcripts is worth a line even when they asked for it: "where did
+        // my history go" has a retention policy as its answer, and nothing else records the moment.
+        Log.Info(() => "retention pruned history", new Dictionary<string, string>
+        {
+            ["removed"] = expired.Count.ToString(),
+            ["policy"] = _retention.ToString().ToLowerInvariant(),
+        });
 
         foreach (var record in expired) RemoveAudio(record);
         _records.RemoveAll(r => r.CreatedAt < cutoff);

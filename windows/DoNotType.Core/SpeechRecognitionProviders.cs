@@ -113,7 +113,7 @@ public sealed class DeepgramProvider(
         request.Content = new ByteArrayContent(audio.Data);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue(audio.MimeType);
 
-        using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await Http.SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
@@ -225,7 +225,7 @@ public sealed class MistralProvider(
         using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint) { Content = form };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-        using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await Http.SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
@@ -345,7 +345,7 @@ public sealed class XAISpeechProvider(
         using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint) { Content = form };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-        using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await Http.SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {

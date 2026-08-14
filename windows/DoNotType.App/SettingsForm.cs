@@ -63,8 +63,10 @@ public sealed class SettingsForm : Form
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
         tabs.TabPages.Add(BuildGeneralTab());
+        tabs.TabPages.Add(new FileTranscriptionTab(_settings).Build());
         tabs.TabPages.Add(BuildHistoryTab());
         tabs.TabPages.Add(BuildPromptTab());
+        tabs.TabPages.Add(new LogsTab(_settings).Build());
         Controls.Add(tabs);
 
         LoadValues();

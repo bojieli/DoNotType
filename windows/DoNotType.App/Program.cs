@@ -15,6 +15,9 @@ internal static class Program
         ApplicationConfiguration.Initialize();
         using var context = new TrayApplication();
         Application.Run(context);
+        // The file sink appends through the filesystem; flushing on the way out means the last few
+        // lines before a quit — usually the interesting ones — actually reach the disk.
+        LogRouter.Flush();
     }
 }
 
@@ -30,6 +33,9 @@ internal sealed class TrayApplication : ApplicationContext
 
     public TrayApplication()
     {
+        // Before anything else can log, and before the first request can carry a key.
+        _settings.StartLogging();
+
         _controller = new DictationController(_settings);
         _controller.StateChanged += OnStateChanged;
         _controller.ChunkProgress += (done, total) => _overlay.BeginInvoke(() =>

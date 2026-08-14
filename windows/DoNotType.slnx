@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="DoNotType.App/DoNotType.App.csproj" />
+  <Project Path="DoNotType.Cli/DoNotType.Cli.csproj" />
   <Project Path="DoNotType.Core.Tests/DoNotType.Core.Tests.csproj" />
   <Project Path="DoNotType.Core/DoNotType.Core.csproj" />
 </Solution>

@@ -109,7 +109,7 @@ public sealed class OpenAiCompatibleProvider(
         }
         request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
 
-        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await _http.SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
         var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)

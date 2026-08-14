@@ -214,6 +214,12 @@ public sealed class PromptBuilder(string template)
     private const string Begin = "<!-- BEGIN SYSTEM -->";
     private const string End = "<!-- END SYSTEM -->";
     private const string Placeholder = "{{FIDELITY_RULE}}";
+    private const string RewriteBegin = "<!-- BEGIN REWRITE -->";
+    private const string RewriteEnd = "<!-- END REWRITE -->";
+    private const string StylePlaceholder = "{{STYLE_RULE}}";
+    private const string SummaryBegin = "<!-- BEGIN SUMMARY -->";
+    private const string SummaryEnd = "<!-- END SUMMARY -->";
+    private const string SummaryPlaceholder = "{{SUMMARY_RULE}}";
 
     public static PromptBuilder FromFile(string path) => new(File.ReadAllText(path));
 
@@ -247,9 +253,58 @@ public sealed class PromptBuilder(string template)
         return body.Replace(Placeholder, Clause(fidelity));
     }
 
-    private string Clause(Fidelity fidelity)
+    /// <summary>
+    /// The instruction for whichever second stage a mode asks for, or null when it asks for none.
+    /// </summary>
+    /// <remarks>
+    /// One entry point, so a caller cannot route a summary through the rewrite block by picking the
+    /// wrong method -- which is the mistake the two-block split in PROMPT.md exists to make
+    /// impossible. A rewrite may never drop a fact; a summary exists to.
+    /// </remarks>
+    public string? SecondStageInstruction(TranscriptMode mode) => mode switch
     {
-        var heading = $"### {fidelity.Id()}";
+        TranscriptMode.RewriteMode rewrite =>
+            Block(RewriteBegin, RewriteEnd, "rewrite")
+                .Replace(StylePlaceholder, Clause($"style: {rewrite.Style.Id()}")),
+        TranscriptMode.SummaryMode summary =>
+            Block(SummaryBegin, SummaryEnd, "summary")
+                .Replace(SummaryPlaceholder, Clause($"summary: {summary.Style.Id()}")),
+        _ => null,
+    };
+
+    /// <summary>Whether the prompt in force can run a mode's second stage at all.</summary>
+    public bool SupportsSecondStage(TranscriptMode mode)
+    {
+        try
+        {
+            SecondStageInstruction(mode);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private string Block(string begin, string end, string name)
+    {
+        var start = template.IndexOf(begin, StringComparison.Ordinal);
+        var finish = template.IndexOf(end, StringComparison.Ordinal);
+        if (start < 0 || finish <= start)
+        {
+            throw new InvalidOperationException(
+                $"This prompt has no {name} block. A prompt edited before summaries existed will "
+                + "not have one — restore the shipped prompt, or copy that block across from it.");
+        }
+        return template[(start + begin.Length)..finish].Trim();
+    }
+
+    private string Clause(Fidelity fidelity) => Clause(fidelity.Id());
+
+    /// <summary>The fenced clause under any `### name` heading -- a fidelity, a style, a summary.</summary>
+    private string Clause(string name)
+    {
+        var heading = $"### {name}";
         var start = template.IndexOf(heading, StringComparison.Ordinal);
         if (start < 0) throw new InvalidOperationException($"PROMPT.md has no section {heading}.");
 

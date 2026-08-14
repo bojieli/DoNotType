@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    net10.0-windows rather than plain net10.0 for one reason: the app encrypts its API key with
+    DPAPI, and reading the key the user already configured is what stops this tool being a second
+    place to paste it. EnableWindowsTargeting keeps it compiling on a non-Windows machine, exactly
+    like DoNotType.App, so CI is not Windows-only.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>dnt</AssemblyName>
+    <RootNamespace>DoNotType.Cli</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DoNotType.Core\DoNotType.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      DPAPI, for reading the key the app already stored. The app gets this API from the Windows
+      Desktop framework reference that comes with WinForms; a console tool has no business pulling
+      WinForms in for one call, and this is the first-party package that provides the same type.
+    -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The same contract the app, macOS, iOS and Android ship. Copied, never duplicated. -->
+    <None Include="..\..\PROMPT.md" Link="PROMPT.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

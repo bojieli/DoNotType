@@ -17,8 +17,47 @@ public sealed class TranscriptionService(
     ContextEncoder? encoder = null)
 {
     private readonly ContextEncoder _encoder = encoder ?? new ContextEncoder();
+    private static readonly Log Log = new("transcribe");
 
     public ITranscriptionProvider Provider { get; } = provider;
+
+    /// <summary>
+    /// Rewrites or summarises a finished transcript. Text in, text out -- no audio, no screen.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately a separate call rather than an instruction folded into transcription. The two
+    /// are different jobs with different failure modes, and keeping them apart is what makes the
+    /// verbatim transcript exist before anything is done to it.
+    /// </remarks>
+    public async Task<string> RewriteAsync(
+        string transcript, string instruction, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(transcript)) return transcript;
+
+        var started = DateTimeOffset.Now;
+        var result = await Provider.TranscribeAsync(
+                instruction, [new InputPart.Text(transcript)], cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        var rewritten = result.Transcript.Text.Trim();
+        Log.Debug(() => "second stage", new Dictionary<string, string>
+        {
+            ["provider"] = Provider.Name,
+            ["in"] = transcript.Length.ToString(),
+            ["out"] = rewritten.Length.ToString(),
+            ["ms"] = ((long)(DateTimeOffset.Now - started).TotalMilliseconds).ToString(),
+        });
+
+        // A second stage that comes back empty is a failure of the second stage, not of the
+        // dictation: the words survive either way.
+        if (rewritten.Length == 0)
+        {
+            Log.Warn(() => "second stage returned nothing; keeping the transcript",
+                new Dictionary<string, string> { ["provider"] = Provider.Name });
+            return transcript;
+        }
+        return rewritten;
+    }
 
     /// <summary>
     /// Passed through to backends that have no system instruction to read it from. Model providers

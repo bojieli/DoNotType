@@ -20,6 +20,14 @@
   -->
   <ItemGroup>
     <InternalsVisibleTo Include="DoNotType.Core.Tests" />
+    <!--
+      The CLI builds a quarter-second of silence for `doctor` with `probe`, which needs the same
+      WAV header the chunker writes. Sharing the one implementation beats a second copy that could
+      drift from what the decoder expects; making it public would put a header-writing helper in
+      the surface of a transcription library for the sake of one call.
+    -->
+    <!-- The CLI's assembly name, not its project name: this attribute matches the former. -->
+    <InternalsVisibleTo Include="dnt" />
   </ItemGroup>
 
 </Project>

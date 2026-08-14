@@ -72,6 +72,61 @@ public sealed class AppSettings
     public Dictionary<string, string> Models { get; set; } = [];
 
     /// <summary>
+    /// How much the app writes to its log file.
+    /// </summary>
+    /// <remarks>
+    /// A setting rather than only an environment variable, because a WinExe launched from Explorer
+    /// or from the Startup folder inherits no shell environment at all — DNT_LOG_LEVEL is reachable
+    /// from a terminal and invisible to everyone else, which is exactly backwards from who needs it.
+    /// </remarks>
+    public LogLevel LogLevel { get; set; } = LogLevel.Info;
+
+    /// <summary>
+    /// Whether transcripts and screen text may go into the log.
+    /// </summary>
+    /// <remarks>
+    /// Off, and it stays off unless someone deliberately turns it on: the log file is the artifact
+    /// most likely to be attached to a bug report, and an app whose promise is that your words stay
+    /// yours should not write a second copy of them by default.
+    /// </remarks>
+    public bool LogContent { get; set; }
+
+    /// <summary>Last mode chosen on the Recordings tab, so it opens where it was left.</summary>
+    public string FileMode { get; set; } = "verbatim";
+
+    /// <summary>Where the log file lives, next to the history it explains.</summary>
+    // Fully qualified: this class has its own `Path` property for the settings file.
+    public static string LogDirectory =>
+        System.IO.Path.Combine(HistoryStore.DefaultDirectory(), "logs");
+
+    /// <summary>
+    /// Installs logging for the process, and registers every configured key for masking.
+    /// </summary>
+    /// <remarks>
+    /// Registered up front rather than at the point of use: a key reaches a log by routes nobody
+    /// planned — a provider echoing it back inside an error body, for one — and the only reliable
+    /// defence is knowing the exact bytes before the first request.
+    /// </remarks>
+    public void StartLogging()
+    {
+        var resolved = LogRouter.Bootstrap(LogRouter.Configuration.App(LogDirectory) with
+        {
+            Level = LogLevel,
+            IncludesContent = LogContent,
+        });
+
+        foreach (var kind in Enum.GetValues<ProviderKind>()) LogRouter.Redact(KeyFor(kind));
+
+        new Log("app").Info(() => "started", new Dictionary<string, string>
+        {
+            ["level"] = resolved.Level.Id(),
+            ["log"] = resolved.FilePath ?? "none",
+            ["provider"] = Provider.ToString().ToLowerInvariant(),
+            ["model"] = Model,
+        });
+    }
+
+    /// <summary>
     /// Shipped non-empty. A blocklist that starts empty is one nobody ever fills in, and this app
     /// transmits screen contents.
     /// </summary>
