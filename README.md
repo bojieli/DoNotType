@@ -54,8 +54,16 @@ accessibility tree — so the tests cover what it actually does instead: the sha
 writes transcripts into and the keyboard reads them out of, which is the part that can silently
 stop working.
 
-Still unexercised: dictation itself, on every platform, which needs a microphone and a paid API
-call.
+The dictation pipeline is now covered offline against a stub backend — a transcript is stored with
+the backend that produced it, silence writes no row, a failure keeps its audio and retry recovers
+it, a rewrite is stored beside the verbatim text rather than instead of it, and screen context
+arrives ahead of the audio. Those run in every `swift test`, so CI protects the path a first user
+walks.
+
+Still unexercised: the two ends that need hardware — microphone capture and text injection into
+another app. And **accuracy on ordinary dictation is unmeasured**, because it needs ground truth
+and nobody has verified the corpus by ear yet. `eval/make-review-sheet.py` exists to make that an
+hour's work rather than a project.
 
 ## Platforms
 
