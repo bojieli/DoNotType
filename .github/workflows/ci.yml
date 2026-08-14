@@ -38,6 +38,18 @@ jobs:
       - name: Build the evaluation harness
         run: swift build -c release --product dnt-eval
 
+      - name: Build the CLI
+        run: swift build -c release --product dnt
+
+      # Building a command-line tool proves it compiles, not that it runs. This one exercises the
+      # path most likely to break silently: finding PROMPT.md, parsing every block in it, and
+      # writing to stdout rather than stderr. No key and no network.
+      - name: Run the CLI
+        run: |
+          .build/release/dnt prompt validate
+          .build/release/dnt providers --no-keychain
+          test -n "$(.build/release/dnt prompt show --section summary)"
+
   windows-core:
     name: Windows core
     runs-on: ubuntu-latest
@@ -52,6 +64,16 @@ jobs:
       - name: Core tests
         run: dotnet test windows/DoNotType.Core.Tests/DoNotType.Core.Tests.csproj
 
+      # EnableWindowsTargeting lets the tray app and the CLI compile here too, so a change that
+      # breaks either is caught on the fast runner rather than on the Windows one.
+      - name: Build everything
+        run: dotnet build windows/DoNotType.slnx
+
+      - name: Run the CLI
+        run: |
+          dotnet run --project windows/DoNotType.Cli -- prompt validate
+          dotnet run --project windows/DoNotType.Cli -- providers --no-stored-key
+
   windows-app:
     name: Windows app
     runs-on: windows-2022
@@ -61,8 +83,27 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # The same tests the Linux job runs, run again here — because three of them only mean
+      # something on Windows. Media Foundation decodes MP3 and M4A through COM interop whose vtable
+      # offsets cannot be checked by compiling, and DPAPI cannot be exercised anywhere else. On
+      # Linux those tests assert the refusal message instead; this is where they assert the audio.
+      - name: Core tests, on Windows
+        run: dotnet test windows/DoNotType.Core.Tests/DoNotType.Core.Tests.csproj
+
       - name: Build the tray app
         run: dotnet build windows/DoNotType.App/DoNotType.App.csproj -c Release
+
+      - name: Build the CLI
+        run: dotnet build windows/DoNotType.Cli/DoNotType.Cli.csproj -c Release
+
+      # Media Foundation needs a real Windows session, so this is also the first moment the CLI
+      # decodes a compressed recording end to end.
+      - name: Decode every format through the CLI
+        shell: powershell
+        run: |
+          $dnt = "$PWD\windows\DoNotType.Cli\bin\Release\net10.0-windows\dnt.exe"
+          & $dnt doctor --no-stored-key
+          if ($LASTEXITCODE -ne 0) { throw "dnt doctor reported a problem" }
 
       # Building a WinForms app proves nothing about whether it starts. This launches the real
       # tray app, waits, and fails if it is not still running -- which covers the tray icon, the

@@ -274,11 +274,42 @@ public sealed class AudioDecoderTests
         Assert.False(AudioDecoder.LooksLikeWav(File.ReadAllBytes(path)));
         Assert.False(OggOpusReader.IsOggOpus(File.ReadAllBytes(path)));
 
-        if (OperatingSystem.IsWindows()) return; // the real decoder; nothing to assert about here
+        if (OperatingSystem.IsWindows())
+        {
+            // On Windows the route is Media Foundation and there is a real decode to check. This
+            // is the only place that COM interop ever executes — the vtable layouts in
+            // MediaFoundationDecoder cannot be validated by compiling, so an offset off by one
+            // would otherwise ship and fail on a user's first MP3.
+            AssertDecodesToSpeech(AudioDecoder.Load(path), name);
+            return;
+        }
 
         var error = Assert.Throws<AudioDecoder.DecodeException>(() => AudioDecoder.Load(path));
         Assert.Contains("Windows", error.Message);
         Assert.Contains("ffmpeg", error.Message);
+    }
+
+    /// <summary>
+    /// The fixture is 1.5 seconds of speech. Both halves matter: a decoder that returns silence
+    /// would pass a length check alone, and one that returns a single frame would pass an
+    /// is-it-audible check alone.
+    /// </summary>
+    internal static void AssertDecodesToSpeech(byte[] wav, string name)
+    {
+        Assert.True(AudioDecoder.IsAlreadyTarget(wav), $"{name} should decode to 16 kHz mono");
+
+        var body = AudioChunker.PcmBody(wav);
+        Assert.NotNull(body);
+
+        var seconds = body!.Length / (double)(AudioDecoder.SampleRate * 2);
+        Assert.InRange(seconds, 1.25, 1.75);
+
+        var peak = 0;
+        for (var i = 0; i + 1 < body.Length; i += 2)
+        {
+            peak = Math.Max(peak, Math.Abs(BitConverter.ToInt16(body, i)));
+        }
+        Assert.True(peak > 8_000, $"{name} decoded to something inaudible (peak {peak})");
     }
 
     /// <summary>Shared with the other three platforms; see eval/audio/formats/README.md.</summary>
@@ -322,25 +353,10 @@ public sealed class OggOpusReaderTests
     {
         if (!OpusEncoder.IsAvailable) return; // no libopus on this machine
 
-        var wav = OggOpusReader.DecodeToWav(Fixture("speech.opus"), "speech.opus");
-
-        Assert.True(AudioDecoder.IsAlreadyTarget(wav));
-        var body = AudioChunker.PcmBody(wav);
-        Assert.NotNull(body);
-
-        // The fixture is 1.5 s. Opus declares a pre-skip and pads its last frame, so this is a
-        // tolerance rather than an equality.
-        var seconds = body!.Length / (double)(AudioDecoder.SampleRate * 2);
-        Assert.InRange(seconds, 1.3, 1.7);
-
-        // Speech, not silence. A decoder that returned nothing would pass a length check alone,
-        // which is exactly why the fixtures carry a signal.
-        var peak = 0;
-        for (var i = 0; i + 1 < body.Length; i += 2)
-        {
-            peak = Math.Max(peak, Math.Abs(BitConverter.ToInt16(body, i)));
-        }
-        Assert.True(peak > 8_000, $"decoded audio is inaudible (peak {peak})");
+        // Opus declares a pre-skip and pads its last frame, so the length is a tolerance rather
+        // than an equality — see AssertDecodesToSpeech.
+        AudioDecoderTests.AssertDecodesToSpeech(
+            OggOpusReader.DecodeToWav(Fixture("speech.opus"), "speech.opus"), "speech.opus");
     }
 
     /// <summary>
