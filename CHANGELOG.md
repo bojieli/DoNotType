@@ -83,10 +83,22 @@ deliberate:
 - **A CLI exists on macOS and Windows only.** Android and iOS have no shell to run one from. The
   two are separate tools in separate languages rather than one ported binary, and they take the
   same verbs, flags and output rules — stdout is the transcript, stderr is everything else.
-- **Windows reads WAV only.** macOS and iOS decode through CoreAudio and Android through
-  `MediaCodec`; .NET has no built-in decoder for compressed audio, and adding one means Media
-  Foundation COM interop or a third-party package. Any other format gets an error naming the
-  `ffmpeg` line to run, and there is a test asserting that message.
+- **Every client reads WAV, MP3, M4A/AAC and Opus.** Two of those routes are ours rather than the
+  platform's, and for the same reason both times — the system would not do it everywhere the app
+  runs. Android below API 29 cannot open an Ogg container holding Opus and this app supports API 26,
+  which meant a file the project itself *encodes* could fail to open on a device it supports; it now
+  demuxes Ogg itself and hands packets to `MediaCodec`, which has decoded Opus since API 21. Windows
+  has no Opus decoder at all, so it demuxes the same way and decodes through libopus — already a
+  dependency for the encode side, so this cost a binding rather than a new one. MP3 and M4A on
+  Windows go through Media Foundation.
+
+  The container is sniffed from the bytes rather than the extension, because a `.wav` that is really
+  an MP3 is a thing recorders do.
+
+  Fixtures live in `eval/audio/formats/` and are shared by all four suites rather than copied into
+  each. They carry speech rather than silence deliberately: a decoder that drops every sample still
+  returns the right *length* of silence, so a silent fixture cannot tell a working decoder from one
+  that produced nothing — the tests assert the output is audible as well as the right length.
 - **The log surface differs by what each platform has.** macOS and Windows reveal a file; Android
   and iOS share it, because on a phone a share sheet is how a log reaches a bug report and there is
   no Console or shell to reach it any other way. Every platform keeps its native sink alongside the

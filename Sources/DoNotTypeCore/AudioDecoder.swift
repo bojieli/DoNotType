@@ -27,10 +27,10 @@ public enum AudioDecoder {
         public var errorDescription: String? {
             switch self {
             case .unreadable(let name, let detail):
-                "Could not read \(name): \(detail). Supported: WAV, MP3, M4A/AAC, AIFF, FLAC, CAF."
+                "Could not read \(name): \(detail). Supported: \(AudioDecoder.supportedFormats)."
             case .unsupportedFormat(let name):
-                "\(name) is not audio this system can decode. Supported: WAV, MP3, M4A/AAC, AIFF, "
-                    + "FLAC, CAF."
+                "\(name) is not audio this system can decode. Supported: "
+                    + "\(AudioDecoder.supportedFormats)."
             case .conversionFailed(let detail):
                 "Could not convert the recording to 16 kHz mono: \(detail)"
             case .empty(let name):
@@ -46,10 +46,18 @@ public enum AudioDecoder {
 
     /// Extensions worth offering in a file picker. Not a validation list — anything CoreAudio can
     /// open will decode, and anything it cannot fails with a message that says so.
+    ///
+    /// Ogg Opus is on this list because current CoreAudio reads it, which is worth stating because
+    /// it did not always and the other platforms have to work for it: Windows decodes Opus through
+    /// libopus and its own Ogg reader, and Android below API 29 needs the same. Apple gets it free.
     public static let openableExtensions = [
         "wav", "wave", "mp3", "m4a", "aac", "aiff", "aif", "aifc", "caf", "flac", "mp4", "mov",
         "ogg", "opus",
     ]
+
+    /// What to tell someone whose file did not open. Kept in one place so the two error paths and
+    /// the UI cannot describe different sets of formats.
+    public static let supportedFormats = "WAV, MP3, M4A/AAC, Opus, AIFF, FLAC, CAF"
 
     /// Loads a recording as something the pipeline can chunk, time and compress.
     ///

@@ -14,8 +14,8 @@ namespace DoNotType.App;
 /// cannot drift on what a mode means or on which backend runs the second stage.
 /// </para>
 /// <para>
-/// WAV only here, and the panel says so rather than letting a picked MP3 fail after the fact:
-/// .NET has no built-in decoder for compressed audio. See <see cref="AudioDecoder"/>.
+/// Reads what the other platforms read: WAV in managed code, Opus through libopus, and everything
+/// else through Media Foundation. See <see cref="AudioDecoder"/>.
 /// </para>
 /// </remarks>
 internal sealed class FileTranscriptionTab
@@ -123,7 +123,10 @@ internal sealed class FileTranscriptionTab
         using var dialog = new OpenFileDialog
         {
             Title = "Choose a recording",
-            Filter = "WAV audio (*.wav)|*.wav|All files (*.*)|*.*",
+            Filter =
+                "Audio (*.wav;*.mp3;*.m4a;*.aac;*.opus;*.ogg;*.wma;*.flac)"
+                + "|*.wav;*.mp3;*.m4a;*.aac;*.opus;*.ogg;*.wma;*.flac"
+                + "|All files (*.*)|*.*",
         };
         if (dialog.ShowDialog() != DialogResult.OK) return;
 
@@ -254,8 +257,8 @@ internal sealed class FileTranscriptionTab
         _note.Text = mode.NeedsSecondPass && _settings.Provider.IsSpeechRecognition()
             ? $"{_settings.Provider} only transcribes, so a model backend will write the result in "
                 + "a second request. Add a key for one on the General tab if there is none."
-            : "WAV only on Windows — .NET has no built-in decoder for compressed audio. Convert "
-                + "with ffmpeg first. Long recordings are split on silence and sent in parallel.";
+            : "WAV, MP3, M4A and Opus. Long recordings are split on silence and sent in "
+                + "parallel; the transcript is stored in History like a dictation.";
     }
 
     private void RefreshResult()

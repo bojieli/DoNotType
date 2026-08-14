@@ -93,8 +93,8 @@ public static class Program
               dnt doctor --probe
               dnt logs --follow --level warn
 
-            The Windows build reads WAV only: .NET has no built-in decoder for compressed audio.
-            Convert first with ffmpeg, or use the macOS, iOS or Android build. See docs/CLI.md.
+            Formats: WAV, MP3, M4A/AAC, Opus, and anything else Windows can play. Recordings
+            longer than 90 seconds are split on silence and transcribed concurrently.
             """);
         return 0;
     }

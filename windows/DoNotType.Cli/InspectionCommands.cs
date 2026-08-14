@@ -69,7 +69,8 @@ public static class DoctorCommand
         Row("app settings", Preferences.IsAvailable
             ? Path.Combine(Preferences.Directory, "settings.json")
             : "none stored — using fresh-install defaults");
-        Row("audio formats", "WAV only on Windows — convert others first (see docs/CLI.md)");
+        Row("audio formats", AudioDecoder.SupportedFormats);
+        Row("opus decoder", OpusEncoder.IsAvailable ? "libopus" : "UNAVAILABLE — .opus will fail");
 
         Out.Line("\nLogging");
         Row("level", LogRouter.CurrentLevel.Id());

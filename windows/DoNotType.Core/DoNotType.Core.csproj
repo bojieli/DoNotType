@@ -11,6 +11,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- The Opus decode loop passes packet and PCM pointers straight to libopus; copying through
+         a managed array per 20 ms frame would be pure overhead on the one path that runs per
+         frame of a forty-minute recording. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <!--

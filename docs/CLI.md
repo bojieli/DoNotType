@@ -97,25 +97,32 @@ The audio goes to xAI, the text to Gemini, and the JSON output records both.
 
 ### Formats and length
 
+**WAV, MP3, M4A/AAC and Opus on every platform**, plus whatever else each system happens to play.
 Everything is decoded to 16 kHz mono up front, which is what makes the rest work: recordings over 90
 seconds are split on silence and transcribed concurrently (`--concurrency`, default 3), durations are
 recorded correctly, and the upload is Opus rather than raw PCM.
 
-| platform | reads | via |
-|---|---|---|
-| macOS, iOS | WAV, MP3, M4A/AAC, AIFF, FLAC, CAF — anything the system can play | CoreAudio |
-| Android | the same, plus AMR and OGG | `MediaExtractor` + `MediaCodec` |
-| **Windows** | **WAV only** — any sample rate, channel count, 8/16/24/32-bit int or float | managed code |
+How each platform gets there differs, and the differences are worth knowing when one misbehaves:
 
-Windows is the odd one out because .NET has no built-in decoder for compressed audio, and adding one
-means Media Foundation COM interop or a third-party package — this project keeps its native
-dependencies to one. Convert first, or transcribe from another platform:
+| platform | WAV | MP3, M4A, and the rest | Opus |
+|---|---|---|---|
+| macOS, iOS | CoreAudio | CoreAudio | CoreAudio |
+| Android | `MediaExtractor` | `MediaExtractor` + `MediaCodec` | own Ogg reader + `MediaCodec` |
+| Windows | managed code | Media Foundation | own Ogg reader + libopus |
 
-```bash
-ffmpeg -i meeting.m4a -ar 16000 -ac 1 meeting.wav
-```
+Two of those are ours rather than the platform's, for the same reason in both cases — the system
+would not do it everywhere the app runs:
 
-The error says exactly that when you hand it an `.m4a`, rather than failing somewhere downstream.
+- **Android below API 29** cannot open an Ogg container holding Opus, and this app supports API 26.
+  Since `.opus` is the format the project itself *encodes* to, a file it produced could fail to open
+  on a device it supports. It now demuxes Ogg itself and hands packets to `MediaCodec`, which has
+  decoded Opus since API 21, so the answer is the same on every supported device.
+- **Windows has no Opus decoder at all**, and libopus is already a dependency for the encode side —
+  so the decode side costs a binding and an Ogg reader rather than a new dependency. MP3 and M4A go
+  to Media Foundation, which is on every supported Windows.
+
+The container is sniffed from the bytes, not the extension: a `.wav` that is really an MP3 is a
+thing recorders do, and dispatching on the name would send it to the wrong reader.
 
 ### Screen context
 

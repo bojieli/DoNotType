@@ -17,12 +17,11 @@ namespace DoNotType.Core;
 /// <item><see cref="OpusEncoder"/> takes 16 kHz mono PCM in, so the upload is not compressed.</item>
 /// </list>
 /// <para>
-/// <strong>WAV only, and that is a real platform difference.</strong> macOS, iOS and Android each
-/// have a system decoder this can lean on -- CoreAudio and MediaCodec -- and .NET has none: decoding
-/// MP3 or M4A here means Media Foundation COM interop or a third-party package, and this project has
-/// one native dependency on purpose. So Windows reads WAV of any sample rate, channel count and
-/// common bit depth, and says plainly what to do about anything else. That is the honest version of
-/// the gap; see docs/CLI.md.
+/// Three routes, because .NET has no single decoder and the platform's own are split across two
+/// APIs. WAV is read here in managed code, so it works anywhere and is testable anywhere. Opus goes
+/// through <see cref="OggOpusReader"/> and libopus, which this project already depends on for the
+/// encode side. Everything else -- MP3, M4A/AAC, WMA -- goes to Media Foundation, which is the only
+/// one of the three that cannot run off Windows.
 /// </para>
 /// </remarks>
 public static class AudioDecoder
@@ -35,46 +34,63 @@ public static class AudioDecoder
     public sealed class DecodeException(string message) : Exception(message);
 
     /// <summary>Extensions worth offering in a file dialog.</summary>
-    public static IReadOnlyList<string> OpenableExtensions { get; } = [".wav", ".wave"];
+    public static IReadOnlyList<string> OpenableExtensions { get; } =
+        [".wav", ".wave", ".mp3", ".m4a", ".aac", ".mp4", ".opus", ".ogg", ".wma", ".flac"];
+
+    /// <summary>What to tell someone whose file did not open, in one place.</summary>
+    public const string SupportedFormats = "WAV, MP3, M4A/AAC, Opus, and anything else Windows plays";
 
     /// <summary>Loads a recording as something the pipeline can chunk, time and compress.</summary>
     public static byte[] Load(string path)
     {
         if (!File.Exists(path)) throw new DecodeException($"No such file: {path}");
 
-        var extension = Path.GetExtension(path).ToLowerInvariant();
-        if (extension is not (".wav" or ".wave"))
-        {
-            throw new DecodeException(
-                $"{Path.GetFileName(path)} is {extension}, and the Windows build reads WAV only -- "
-                + ".NET has no built-in decoder for compressed audio and this project keeps its "
-                + "native dependencies to one. Convert it first (ffmpeg -i in.m4a -ar 16000 -ac 1 "
-                + "out.wav), or transcribe it from the macOS, iOS or Android build, which use the "
-                + "system decoder.");
-        }
-
+        var name = Path.GetFileName(path);
         var started = DateTimeOffset.Now;
         var bytes = File.ReadAllBytes(path);
+
+        // Sniffed rather than trusted to the extension: a `.wav` that is really an MP3 is a thing
+        // recorders do, and the container is the fact that matters.
+        if (OggOpusReader.IsOggOpus(bytes)) return OggOpusReader.DecodeToWav(bytes, name);
+
+        if (!LooksLikeWav(bytes))
+        {
+            if (!MediaFoundationDecoder.IsAvailable)
+            {
+                throw new DecodeException(
+                    $"{name} is not WAV, and only Windows has the system decoder for the rest. "
+                    + "Convert it first (ffmpeg -i in.m4a -ar 16000 -ac 1 out.wav).");
+            }
+            return MediaFoundationDecoder.DecodeToWav(path, name);
+        }
+
         if (IsAlreadyTarget(bytes))
         {
             // A re-encode here would be a lossy round trip that changes nothing.
             Log.Debug(() => "recording already in target format", new Dictionary<string, string>
             {
-                ["file"] = Path.GetFileName(path),
+                ["file"] = name,
                 ["bytes"] = bytes.Length.ToString(),
             });
             return bytes;
         }
 
-        var wav = Convert(bytes, Path.GetFileName(path));
+        var wav = Convert(bytes, name);
         Log.Info(() => "decoded recording", new Dictionary<string, string>
         {
-            ["file"] = Path.GetFileName(path),
+            ["file"] = name,
+            ["via"] = "managed wav",
             ["bytes"] = wav.Length.ToString(),
             ["ms"] = ((long)(DateTimeOffset.Now - started).TotalMilliseconds).ToString(),
         });
         return wav;
     }
+
+    /// <summary>A RIFF/WAVE container, whatever is inside it.</summary>
+    internal static bool LooksLikeWav(ReadOnlySpan<byte> bytes) =>
+        bytes.Length > 12
+        && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
+        && bytes[8] == 'W' && bytes[9] == 'A' && bytes[10] == 'V' && bytes[11] == 'E';
 
     /// <summary>True when the bytes are already 16 kHz mono 16-bit PCM WAV.</summary>
     public static bool IsAlreadyTarget(byte[] wav)

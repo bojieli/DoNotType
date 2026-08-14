@@ -59,12 +59,12 @@ call.
 
 ## Platforms
 
-| | Dictation | Screen grounding | Files | CLI | Build |
+| | Dictation | Screen grounding | WAV·MP3·M4A·Opus | CLI | Build |
 |---|---|---|---|---|---|
-| **macOS** | menu-bar app, hold Right ⌘ | ✅ accessibility tree + screenshot fallback | ✅ any format | `dnt` | `make app` |
-| **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | WAV only | `dnt.exe` | `cd windows && dotnet build` |
-| **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | ✅ any format | — | `cd android && gradle assembleDebug` |
-| **iOS** | containing app; keyboard inserts | ❌ not possible in the sandbox | ✅ any format | — | `cd ios && xcodegen generate` |
+| **macOS** | menu-bar app, hold Right ⌘ | ✅ accessibility tree + screenshot fallback | ✅ | `dnt` | `make app` |
+| **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | ✅ | `dnt.exe` | `cd windows && dotnet build` |
+| **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | ✅ | — | `cd android && gradle assembleDebug` |
+| **iOS** | containing app; keyboard inserts | ❌ not possible in the sandbox | ✅ | — | `cd ios && xcodegen generate` |
 
 All four send the **same** `PROMPT.md`, copied into each bundle at build time rather than
 duplicated, so no platform can quietly drift from what the evaluation measures. All four also

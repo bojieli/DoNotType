@@ -33,6 +33,9 @@ object AudioDecoder {
     /** What the models are given regardless of what was recorded. They downsample to this anyway. */
     const val SAMPLE_RATE = 16_000
 
+    /** What to tell someone whose file did not open, in one place so nothing describes a subset. */
+    const val SUPPORTED_FORMATS = "WAV, MP3, M4A/AAC, Opus, AMR, FLAC and Ogg Vorbis"
+
     private val log = Log("audio")
 
     class DecodeException(message: String) : IOException(message)
@@ -44,6 +47,28 @@ object AudioDecoder {
      */
     fun decodeToWav(context: Context, uri: Uri): ByteArray {
         val started = System.currentTimeMillis()
+
+        // Ogg Opus goes through our own reader on every API level rather than through
+        // MediaExtractor, which only learned that container in Android 10 — this app supports 26,
+        // and .opus is the format the project itself encodes to. Sniffed from the bytes rather than
+        // the name, because a file picked from a content provider may have neither an extension nor
+        // an honest MIME type.
+        val head = readHead(context, uri)
+        if (head != null && OggOpusReader.isOggOpus(head)) {
+            val whole = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: throw DecodeException("That file could not be opened.")
+            val pcm = OggOpusReader.decodeToPcm(whole)
+            val wav = WavRecorder.wrapInWavContainer(pcm)
+            log.info(
+                mapOf(
+                    "bytes" to wav.size.toString(),
+                    "via" to "opus",
+                    "ms" to (System.currentTimeMillis() - started).toString(),
+                ),
+            ) { "decoded recording" }
+            return wav
+        }
+
         val extractor = MediaExtractor()
         try {
             context.contentResolver.openFileDescriptor(uri, "r").use { descriptor ->
@@ -53,7 +78,7 @@ object AudioDecoder {
         } catch (error: Exception) {
             throw DecodeException(
                 "Could not read that recording: ${error.message ?: "unsupported file"}. " +
-                    "Supported: WAV, MP3, M4A/AAC, AMR, FLAC, OGG.",
+                    "Supported: $SUPPORTED_FORMATS.",
             )
         }
 
@@ -150,6 +175,27 @@ object AudioDecoder {
         }
         return output.toByteArray()
     }
+
+    /** Enough of the file to recognise a container by, without reading a forty-minute one twice. */
+    private fun readHead(context: Context, uri: Uri): ByteArray? = runCatching {
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            val head = ByteArray(1_024)
+            val read = stream.read(head)
+            if (read <= 0) null else head.copyOf(read)
+        }
+    }.getOrNull()
+
+    /** Shared with [OggOpusReader], which decodes through MediaCodec directly. */
+    internal fun downmixForOpus(buffer: ByteBuffer, channels: Int): ShortArray =
+        downmix(buffer, channels)
+
+    /** Shared with [OggOpusReader]; see [resampleInto] for why linear is enough here. */
+    internal fun resampleForOpus(
+        samples: ShortArray,
+        sourceRate: Int,
+        startPosition: Double,
+        into: ByteArrayOutputStream,
+    ): Double = resampleInto(samples, sourceRate, startPosition, into)
 
     /** Averages the channels. A phone recording in stereo is two copies of the same voice. */
     private fun downmix(buffer: ByteBuffer, channels: Int): ShortArray {

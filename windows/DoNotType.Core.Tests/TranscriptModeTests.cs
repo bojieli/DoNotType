@@ -234,26 +234,131 @@ public sealed class AudioDecoderTests
         File.Delete(path);
     }
 
-    /// <summary>
-    /// The platform difference, asserted rather than left as a comment: .NET has no built-in
-    /// decoder for compressed audio, so the message has to say what to do instead.
-    /// </summary>
     [Fact]
-    public void CompressedFormatsSayWhatToDoInstead()
+    public void AFileThatIsNotAudioAtAllIsRejected()
     {
-        var path = WriteTemp([1, 2, 3], ".m4a");
-        var error = Assert.Throws<AudioDecoder.DecodeException>(() => AudioDecoder.Load(path));
-
-        Assert.Contains("WAV only", error.Message);
-        Assert.Contains("ffmpeg", error.Message);
-        File.Delete(path);
-    }
-
-    [Fact]
-    public void AFileThatIsNotAWavAtAllIsRejected()
-    {
+        // Not WAV and not Ogg, so it goes to the system decoder — which either says it cannot play
+        // it or, off Windows, says which platforms can.
         var path = WriteTemp("not audio at all"u8.ToArray());
         Assert.Throws<AudioDecoder.DecodeException>(() => AudioDecoder.Load(path));
         File.Delete(path);
+    }
+
+    /// <summary>
+    /// The container is sniffed rather than taken from the extension. A `.wav` that is really an
+    /// MP3 is a thing recorders do, and dispatching on the name would send it to the WAV reader.
+    /// </summary>
+    [Fact]
+    public void TheContainerIsSniffedNotAssumedFromTheExtension()
+    {
+        var opus = FormatFixture("speech.opus");
+        Assert.True(AudioDecoder.LooksLikeWav(File.ReadAllBytes(FormatFixture("speech.wav"))));
+        Assert.False(AudioDecoder.LooksLikeWav(File.ReadAllBytes(opus)));
+        Assert.True(OggOpusReader.IsOggOpus(File.ReadAllBytes(opus)));
+        Assert.False(OggOpusReader.IsOggOpus(File.ReadAllBytes(FormatFixture("speech.mp3"))));
+    }
+
+    /// <summary>
+    /// Which of the three routes a file takes.
+    ///
+    /// The Media Foundation route cannot run here, so what is asserted is that MP3 and M4A are
+    /// *sent* to it — and that off Windows the refusal names the platforms that do decode them
+    /// rather than failing somewhere downstream with a malformed-WAV error.
+    /// </summary>
+    [Theory]
+    [InlineData("speech.mp3")]
+    [InlineData("speech.m4a")]
+    public void CompressedFormatsGoToTheSystemDecoder(string name)
+    {
+        var path = FormatFixture(name);
+        Assert.False(AudioDecoder.LooksLikeWav(File.ReadAllBytes(path)));
+        Assert.False(OggOpusReader.IsOggOpus(File.ReadAllBytes(path)));
+
+        if (OperatingSystem.IsWindows()) return; // the real decoder; nothing to assert about here
+
+        var error = Assert.Throws<AudioDecoder.DecodeException>(() => AudioDecoder.Load(path));
+        Assert.Contains("Windows", error.Message);
+        Assert.Contains("ffmpeg", error.Message);
+    }
+
+    /// <summary>Shared with the other three platforms; see eval/audio/formats/README.md.</summary>
+    internal static string FormatFixture(string name)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        for (var i = 0; i < 10 && directory is not null; i++)
+        {
+            var candidate = Path.Combine(directory.FullName, "eval", "audio", "formats", name);
+            if (File.Exists(candidate)) return candidate;
+            directory = directory.Parent;
+        }
+        throw new FileNotFoundException($"fixture {name} not found from {AppContext.BaseDirectory}");
+    }
+}
+
+/// <summary>
+/// Ogg Opus, decoded through libopus.
+/// </summary>
+/// <remarks>
+/// This is the one platform that has to demux and decode Opus itself, and — because the libopus
+/// binding resolves the library by name at load time — it is also the one piece of the Windows
+/// decoder that can be exercised on a developer machine. Which is the whole reason the binding was
+/// written that way: a P/Invoke layer that can only be tested by shipping it is not tested.
+/// </remarks>
+public sealed class OggOpusReaderTests
+{
+    private static byte[] Fixture(string name) =>
+        File.ReadAllBytes(AudioDecoderTests.FormatFixture(name));
+
+    [Fact]
+    public void RecognisesAnOggOpusStream()
+    {
+        Assert.True(OggOpusReader.IsOggOpus(Fixture("speech.opus")));
+        Assert.False(OggOpusReader.IsOggOpus(Fixture("speech.wav")));
+        Assert.False(OggOpusReader.IsOggOpus(Fixture("speech.m4a")));
+    }
+
+    [Fact]
+    public void DecodesToSixteenKilohertzMono()
+    {
+        if (!OpusEncoder.IsAvailable) return; // no libopus on this machine
+
+        var wav = OggOpusReader.DecodeToWav(Fixture("speech.opus"), "speech.opus");
+
+        Assert.True(AudioDecoder.IsAlreadyTarget(wav));
+        var body = AudioChunker.PcmBody(wav);
+        Assert.NotNull(body);
+
+        // The fixture is 1.5 s. Opus declares a pre-skip and pads its last frame, so this is a
+        // tolerance rather than an equality.
+        var seconds = body!.Length / (double)(AudioDecoder.SampleRate * 2);
+        Assert.InRange(seconds, 1.3, 1.7);
+
+        // Speech, not silence. A decoder that returned nothing would pass a length check alone,
+        // which is exactly why the fixtures carry a signal.
+        var peak = 0;
+        for (var i = 0; i + 1 < body.Length; i += 2)
+        {
+            peak = Math.Max(peak, Math.Abs(BitConverter.ToInt16(body, i)));
+        }
+        Assert.True(peak > 8_000, $"decoded audio is inaudible (peak {peak})");
+    }
+
+    /// <summary>
+    /// The round trip that matters: this project encodes Opus for upload, so the reader has to
+    /// read what the writer writes. Anything else means one of the two is wrong about the format.
+    /// </summary>
+    [Fact]
+    public void ReadsWhatTheProjectsOwnEncoderWrites()
+    {
+        if (!OpusEncoder.IsAvailable) return; // no libopus on this machine
+
+        var original = File.ReadAllBytes(AudioDecoderTests.FormatFixture("speech.wav"));
+        var encoded = OpusEncoder.Encode(original);
+        Assert.NotNull(encoded);
+
+        var decoded = OggOpusReader.DecodeToWav(encoded!, "round-trip.opus");
+        var before = AudioChunker.PcmBody(original)!.Length / (double)(AudioDecoder.SampleRate * 2);
+        var after = AudioChunker.PcmBody(decoded)!.Length / (double)(AudioDecoder.SampleRate * 2);
+        Assert.InRange(after, before - 0.2, before + 0.2);
     }
 }
