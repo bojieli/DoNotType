@@ -1,0 +1,31 @@
+PackageIdentifier: bojieli.DoNotType
+PackageVersion: 0.0.0
+PackageLocale: en-US
+Publisher: Bojie Li
+PublisherUrl: https://github.com/bojieli
+PackageName: DoNotType
+PackageUrl: https://github.com/bojieli/DoNotType
+License: MIT
+LicenseUrl: https://github.com/bojieli/DoNotType/blob/main/LICENSE
+ShortDescription: Voice input that transcribes what you said instead of rewriting it
+Description: |-
+  A push-to-talk voice input method. Hold a key, speak, release, and your words appear where the
+  cursor was — verbatim, not rewritten. It reads the focused window through UI Automation so that
+  names, identifiers and jargon are spelled the way they appear on screen, while numbers and
+  version numbers still come from what you actually said.
+
+  Bring your own API key. Requests go straight from the machine to the provider; there is no
+  account, no server in the middle and no telemetry. The prompt that governs all of it is a
+  versioned file in the repository that you can read, edit and measure.
+
+  Ships with dnt, a command line for transcribing recordings you already have, reading the log and
+  checking which key is in use.
+Tags:
+  - dictation
+  - speech-to-text
+  - transcription
+  - voice
+  - accessibility
+ReleaseNotesUrl: https://github.com/bojieli/DoNotType/releases
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

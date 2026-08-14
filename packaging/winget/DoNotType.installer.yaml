@@ -1,0 +1,25 @@
+# winget manifest — installer.
+#
+# Not submitted to microsoft/winget-pkgs yet: submission wants a signed installer and a release
+# history, and this project has neither. Kept here so the shape is reviewable, and so submitting is
+# a matter of filling in a version rather than authoring three files under time pressure.
+#
+# `scripts/update-packaging.sh <version>` writes the version and the SHA256 from a published
+# release. A manifest with a stale hash fails at install with a message about a tampered package,
+# which reads as something far more alarming than a forgotten field.
+PackageIdentifier: bojieli.DoNotType
+PackageVersion: 0.0.0
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: DoNotType.exe
+    PortableCommandAlias: donottype
+  # The CLI ships beside the app, so `dnt` lands on the PATH with it.
+  - RelativeFilePath: dnt.exe
+    PortableCommandAlias: dnt
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/bojieli/DoNotType/releases/download/v0.0.0/DoNotType-Windows-x64.zip
+    InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+ManifestType: installer
+ManifestVersion: 1.6.0

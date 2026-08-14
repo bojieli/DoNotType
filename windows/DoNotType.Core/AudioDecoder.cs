@@ -110,6 +110,21 @@ public static class AudioDecoder
         var body = ReadDataChunk(wav)
             ?? throw new DecodeException($"{name} has no audio data in it.");
 
+        return AudioChunker.WrapInWavContainer(ToTargetPcm(body, format, name));
+    }
+
+    /// <summary>
+    /// Any PCM, in any layout, as 16 kHz mono 16-bit.
+    /// </summary>
+    /// <remarks>
+    /// Shared with <see cref="MediaFoundationDecoder"/>, which cannot ask Windows for this format
+    /// directly: the Source Reader will insert a *decoder* to turn MP3 into PCM, but it will not
+    /// insert a *resampler*, so asking for 16 kHz mono up front fails outright on a 44.1 kHz stereo
+    /// file. It hands back whatever the decoder natively produces and this finishes the job — with
+    /// the same code path the WAV reader uses, which is the one the sample-width tests cover.
+    /// </remarks>
+    internal static byte[] ToTargetPcm(ReadOnlySpan<byte> body, WavFormat format, string name)
+    {
         var mono = ToMonoSamples(body, format, name);
         if (mono.Length == 0) throw new DecodeException($"{name} decoded to no audio at all.");
 
@@ -121,7 +136,7 @@ public static class AudioDecoder
             pcm[i * 2] = (byte)(sample & 0xFF);
             pcm[i * 2 + 1] = (byte)((sample >> 8) & 0xFF);
         }
-        return AudioChunker.WrapInWavContainer(pcm);
+        return pcm;
     }
 
     /// <summary>Reads samples of whatever width the file uses and averages the channels.</summary>

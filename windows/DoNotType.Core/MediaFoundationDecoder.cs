@@ -14,16 +14,18 @@ namespace DoNotType.Core;
 /// supported Windows, decodes everything the OS can play, and costs one file of interop.
 /// </para>
 /// <para>
-/// The Source Reader is asked for 16 kHz mono 16-bit PCM directly rather than for the file's native
-/// format. Media Foundation inserts its own resampler and downmixer to satisfy that, which is both
-/// better than the linear one in <see cref="AudioDecoder"/> and less code here.
+/// The Source Reader is asked for PCM and nothing more. Asking it for 16 kHz mono as well is the
+/// obvious thing and does not work: it will insert a <em>decoder</em> to turn MP3 into PCM, but not
+/// a <em>resampler</em>, so the request is refused with an HRESULT that surfaces as "no decoder
+/// installed" — which is not what happened. What comes back is the decoder's native format, and
+/// <see cref="AudioDecoder.ToTargetPcm"/> finishes the job with the same code the WAV path uses.
 /// </para>
 /// <para>
-/// <b>Compile-verified, not run-verified.</b> These entry points exist only on Windows, so this
-/// path cannot execute on the machine it was written on; what is tested elsewhere is that
-/// everything around it — format detection, the WAV and Opus paths, the error messages — behaves
-/// without it. The vtable layouts below are the risk, which is why each interface declares every
-/// preceding slot rather than only the methods used.
+/// <b>This runs only on Windows, and only CI runs it.</b> The vtable layouts are the risk and
+/// cannot be checked by compiling, which is why every interface declares each preceding slot with
+/// its index in a comment, and why the core tests also run on the windows-2022 runner. The first
+/// version of this file passed review, compiled, and failed on the first real MP3 — at
+/// <c>SetCurrentMediaType</c>, for the reason above.
 /// </para>
 /// </remarks>
 [SupportedOSPlatform("windows")]
@@ -52,17 +54,22 @@ public static class MediaFoundationDecoder
                 "opening the file");
             try
             {
-                Configure(reader, name);
-                var pcm = ReadAll(reader, name);
-                if (pcm.Length == 0)
+                var format = Configure(reader, name);
+                var raw = ReadAll(reader, name);
+                if (raw.Length == 0)
                 {
                     throw new AudioDecoder.DecodeException($"{name} decoded to no audio at all.");
                 }
+
+                // Media Foundation hands back whatever the decoder natively produces — usually
+                // 44.1 kHz stereo — and the managed path finishes the job.
+                var pcm = AudioDecoder.ToTargetPcm(raw, format, name);
 
                 Log.Info(() => "decoded recording", new Dictionary<string, string>
                 {
                     ["file"] = name,
                     ["via"] = "media foundation",
+                    ["from"] = $"{format.SampleRate} Hz, {format.Channels} ch, {format.BitsPerSample}-bit",
                     ["bytes"] = pcm.Length.ToString(),
                     ["ms"] = ((long)(DateTimeOffset.Now - started).TotalMilliseconds).ToString(),
                 });
@@ -80,10 +87,18 @@ public static class MediaFoundationDecoder
     }
 
     /// <summary>
-    /// Selects the first audio stream and asks for the format the pipeline wants. Media Foundation
-    /// fills in the conversion.
+    /// Selects the first audio stream, asks for uncompressed PCM, and reports what that turned out
+    /// to be.
     /// </summary>
-    private static void Configure(IMFSourceReader reader, string name)
+    /// <remarks>
+    /// Only the major type and the subtype are set. Asking for 16 kHz mono as well seems obvious
+    /// and fails: the Source Reader will insert a <em>decoder</em> to turn MP3 into PCM, but it
+    /// will not insert a <em>resampler</em>, so a request the decoder cannot satisfy natively is
+    /// refused outright with a "no decoder installed" HRESULT that means nothing of the kind. That
+    /// is exactly how this first failed on CI. The rate and channel count come back from the reader
+    /// and the managed path converts.
+    /// </remarks>
+    private static AudioDecoder.WavFormat Configure(IMFSourceReader reader, string name)
     {
         // Everything off, then audio on: a video file with a soundtrack must not decode its frames.
         reader.SetStreamSelection(MediaSourceAllStreams, false);
@@ -94,9 +109,6 @@ public static class MediaFoundationDecoder
         {
             type.SetGUID(MajorType, AudioMajorType);
             type.SetGUID(SubType, PcmSubType);
-            type.SetUINT32(BitsPerSample, 16);
-            type.SetUINT32(SamplesPerSecond, AudioDecoder.SampleRate);
-            type.SetUINT32(NumChannels, 1);
 
             var status = reader.SetCurrentMediaType(FirstAudioStream, IntPtr.Zero, type);
             if (status < 0)
@@ -110,7 +122,32 @@ public static class MediaFoundationDecoder
         {
             Marshal.ReleaseComObject(type);
         }
+
+        // What the decoder actually produces, which is usually 44.1 kHz stereo.
+        Check(
+            reader.GetCurrentMediaType(FirstAudioStream, out var actual), name,
+            "reading the decoded format");
+        try
+        {
+            var rate = ReadUInt32(actual, SamplesPerSecond, fallback: 44_100);
+            var channels = ReadUInt32(actual, NumChannels, fallback: 2);
+            var bits = ReadUInt32(actual, BitsPerSample, fallback: 16);
+            return new AudioDecoder.WavFormat(rate, channels, bits, IsFloat: false);
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(actual);
+        }
     }
+
+    /// <summary>
+    /// One attribute, or a sensible default.
+    ///
+    /// A media type is not obliged to carry every field, and a missing sample rate should mean
+    /// "assume CD audio and let the resampler sort it out" rather than a failed transcription.
+    /// </summary>
+    private static int ReadUInt32(IMFMediaType type, Guid key, int fallback) =>
+        type.GetUINT32(key, out var value) >= 0 && value > 0 ? value : fallback;
 
     private static byte[] ReadAll(IMFSourceReader reader, string name)
     {
@@ -208,7 +245,7 @@ public static class MediaFoundationDecoder
         [PreserveSig] int SetStreamSelection(
             uint index, [MarshalAs(UnmanagedType.Bool)] bool selected);                // 1
         void GetNativeMediaType_();                                                    // 2
-        void GetCurrentMediaType_();                                                   // 3
+        [PreserveSig] int GetCurrentMediaType(uint index, out IMFMediaType type);       // 3
         [PreserveSig] int SetCurrentMediaType(uint index, IntPtr reserved, IMFMediaType type); // 4
         void SetCurrentPosition_();                                                    // 5
         [PreserveSig] int ReadSample(                                                  // 6
@@ -231,7 +268,8 @@ public static class MediaFoundationDecoder
         void GetItemType_();        // 1
         void CompareItem_();        // 2
         void Compare_();            // 3
-        void GetUINT32_();          // 4
+        [PreserveSig] int GetUINT32(                                                          // 4
+            [MarshalAs(UnmanagedType.LPStruct)] Guid key, out int value);
         void GetUINT64_();          // 5
         void GetDouble_();          // 6
         void GetGUID_();            // 7
