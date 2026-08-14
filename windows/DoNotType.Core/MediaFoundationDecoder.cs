@@ -114,8 +114,9 @@ public static class MediaFoundationDecoder
             if (status < 0)
             {
                 throw new AudioDecoder.DecodeException(
-                    $"Windows has no decoder installed for {name}. Convert it to WAV first "
-                    + "(ffmpeg -i in.m4a -ar 16000 -ac 1 out.wav).");
+                    $"Windows would not decode {name} to PCM (0x{status:X8}) — it may have no "
+                    + "decoder installed for this format, or the file may have no audio track. "
+                    + "Convert it to WAV first (ffmpeg -i in.m4a -ar 16000 -ac 1 out.wav).");
             }
         }
         finally
@@ -204,7 +205,19 @@ public static class MediaFoundationDecoder
     // ---- Constants ------------------------------------------------------------------------------
 
     private const int Version = 0x00020070; // MF_VERSION for Windows 7 and later
-    private const uint FirstAudioStream = 0xFFFFFFFC; // MF_SOURCE_READER_FIRST_AUDIO_STREAM
+
+    // The four selector values are consecutive and mean very different things:
+    //
+    //   0xFFFFFFFC  MF_SOURCE_READER_FIRST_VIDEO_STREAM
+    //   0xFFFFFFFD  MF_SOURCE_READER_FIRST_AUDIO_STREAM
+    //   0xFFFFFFFE  MF_SOURCE_READER_ALL_STREAMS
+    //   0xFFFFFFFF  MF_SOURCE_READER_MEDIASOURCE
+    //
+    // This started out as ...FC, which is the video stream. An MP3 has none, so configuring it
+    // failed — and the HRESULT for "that stream does not exist" is the same one the code was
+    // reporting as "Windows has no decoder installed", which sent two rounds of debugging at the
+    // media type instead of at the number.
+    private const uint FirstAudioStream = 0xFFFFFFFD;
     private const uint MediaSourceAllStreams = 0xFFFFFFFE;
     private const int EndOfStream = 0x00000002; // MF_SOURCE_READERF_ENDOFSTREAM
 

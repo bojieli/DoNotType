@@ -276,6 +276,9 @@ public sealed class AudioDecoderTests
 
         if (OperatingSystem.IsWindows())
         {
+            // Not merely "it did not throw": a decoder handed the wrong stream index fails here,
+            // and so does one that returns a handful of silent frames. Both looked plausible.
+
             // On Windows the route is Media Foundation and there is a real decode to check. This
             // is the only place that COM interop ever executes — the vtable layouts in
             // MediaFoundationDecoder cannot be validated by compiling, so an offset off by one
