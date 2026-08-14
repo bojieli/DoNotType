@@ -165,15 +165,23 @@ public static class MediaFoundationDecoder
     private static byte[] ReadAll(IMFSourceReader reader, string name)
     {
         using var output = new MemoryStream();
+        var reads = 0;
         while (true)
         {
             Check(
                 reader.ReadSample(
                     FirstAudioStream, 0, IntPtr.Zero, out var flags, out _, out var sample),
                 name, "reading a sample");
+            reads++;
 
-            if ((flags & EndOfStream) != 0) break;
-            if (sample == IntPtr.Zero) continue; // a gap or a format change; keep going
+            // The final buffer can arrive *with* the end-of-stream flag rather than after it, so
+            // the sample is processed before the loop exits. Breaking first drops it.
+            var finished = (flags & EndOfStream) != 0;
+            if (sample == IntPtr.Zero)
+            {
+                if (finished) break;
+                continue; // a gap or a format change; keep going
+            }
 
             var managed = (IMFSample)Marshal.GetObjectForIUnknown(sample);
             try
@@ -202,7 +210,16 @@ public static class MediaFoundationDecoder
             {
                 Marshal.Release(sample);
             }
+
+            if (finished) break;
         }
+
+        Log.Debug(() => "read the stream", new Dictionary<string, string>
+        {
+            ["file"] = name,
+            ["reads"] = reads.ToString(),
+            ["bytes"] = output.Length.ToString(),
+        });
         return output.ToArray();
     }
 

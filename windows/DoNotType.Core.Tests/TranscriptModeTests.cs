@@ -309,7 +309,11 @@ public sealed class AudioDecoderTests
         Assert.NotNull(body);
 
         var seconds = body!.Length / (double)(AudioDecoder.SampleRate * 2);
-        Assert.InRange(seconds, 1.25, 1.75);
+        // Assert.InRange takes no message, and on a path that runs only on a CI runner the message
+        // is the entire diagnosis.
+        Assert.True(
+            seconds is >= 1.25 and <= 1.75,
+            $"{name}: expected about 1.5 s, got {seconds:F2} s");
 
         var peak = 0;
         for (var i = 0; i + 1 < body.Length; i += 2)
