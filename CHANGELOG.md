@@ -119,6 +119,20 @@ deliberate:
 
 ### Changed
 
+- **Gemini thinking level is chosen per model family, not hardcoded.** `gemini-3.7-flash` rejects
+  `minimal` — *"Allowed values are: medium, low, high"* — so every request failed the moment the
+  model field was changed to it, on all three platforms at once. The level is now the cheapest each
+  family accepts, prefix-matched so a point release inherits its floor rather than silently costing
+  thinking tokens on every dictation.
+
+  Measuring the new model while fixing it: **`gemini-3.6-flash` remains the recommendation**, and
+  now against its whole family. On the near-miss suite it matches 44/48 twice against 3.7's 40–41,
+  `gemini-3-flash-preview`'s 36–37 and 3.5's 31–35, and it leads by more on the ungrounded column.
+  On the reference clip 3.7 writes the wrong version number in 10 of 10 grounded runs and 9 of 11
+  with no screen context at all — the second figure being mishearing rather than substitution,
+  since there is no decoy to copy. Raising 3.7's thinking level to `high` makes it worse.
+  Full tables in `docs/MODELS.md`.
+
 - **An optional fallback backend, on all four platforms.** The first-party Gemini API is the most
   accurate measured and its latency is bimodal rather than slow — six sequential requests for one
   three-second clip took 4.9, 61.6, 50.5, 5.8, 5.9 and 30.2 s, with zero thought tokens throughout.

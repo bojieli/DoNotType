@@ -643,10 +643,53 @@ account settings or provide a complete local backbone. Mistral work is out of sc
 campaign. See **[GPU-TESTING.md](GPU-TESTING.md)** for the serving and measurement procedure. `--provider local` points the client at a local
 `/v1/chat/completions` endpoint, so no new client code is needed.
 
+## The Gemini Flash family, measured — 2026-08-14
+
+Four models, same near-miss suite, native API, three passes per run and two runs each. Full method
+and the per-case reading in [EVALUATION.md](EVALUATION.md).
+
+| model | matched | **regressed** | ungrounded | ref clip: grounded / **no context** | latency |
+|---|---|---|---|---|---|
+| **`gemini-3.6-flash`** | **44, 44** | **1, 1** | **42, 41** | 8% / **30%** | 5–60 s, bimodal |
+| `gemini-3.7-flash` | 40, 41 | 2, 1 | 37, 36 | 100% / **82%** | 10.5 s |
+| `gemini-3-flash-preview` | 37, 36 | **5, 4** | 32, 33 | 14% / **18%** | **2.2 s** |
+| `gemini-3.5-flash` | 31, 35 | 1, 1 | 27, 28 | 75% / **83%** | 3–6 s |
+
+**Newer is not better here.** 3.7 is a regression from 3.6 by 3–4 matched runs and by more on the
+ungrounded column, and on the reference clip it writes the wrong version number in 10 of 10
+grounded runs. The no-context column is the diagnostic one: with nothing on screen there is no
+decoy to copy, so 82% is *mishearing*, not substitution. Raising 3.7's thinking level to `high`
+makes it worse, not better — wrong in every trial.
+
+3.7 also rejects `thinking_level: minimal`, which every client here hardcoded, so it was a total
+outage until the level was made per model family.
+
+**`gemini-3-flash-preview` looks best on two columns and is not.** Lowest substitution rate,
+fastest by 5×, and five of its twelve grounded trials were *unjudgeable* — it garbled the sentence
+into "unified sauce" and "G-5 sauce", so the contested token never appeared. A low substitution
+rate is cheap when the model never produces the number. Its regressions are the worst of the four.
+
+## Speech recognition backends — 2026-08-12
+
+Not language models, so what they give up is grounding rather than accuracy alone. Measured on the
+same suite plus a 100-clip ordinary-dictation corpus; see [EVALUATION.md](EVALUATION.md).
+
+| backend | matched | **regressed** | dictation latency | notes |
+|---|---|---|---|---|
+| `xai` · `grok-stt` + keyterms | 29–30 / 48 | **0** | **0.89 s** | fastest measured; keyterm biasing varies between sessions |
+| `deepgram` · `nova-3` + keyterms | 27 / 42 | **0** | 1.97 s | **cannot transcribe Chinese** — 44 of 68 Mandarin clips returned nothing |
+| `mistral` · `voxtral-mini` | 21 / 48 | **0** | 1.31 s | handles Mandarin and English together; no biasing channel at all |
+
+A recogniser is 5–6× faster than a model and materially less accurate on the words that matter
+(`koffi` → `coffee`, `--amend` → `dash dash amend`). Keyterm biasing is **not recommended**: under
+the corrected suite assertions it regresses 3 runs per evaluation, because the terms it extracts
+are whatever is on screen — on `real-acronym` that is `GRPO, PPO` while the speaker said `DAPO`.
+
 ## Recommendation
 
-The historical hosted measurements favored **`gemini-3.6-flash` on the native Gemini API**, and it
-is the only listed configuration supporting the pre-upload path. The uploaded exact fixture now
+**`gemini-3.6-flash` on the native Gemini API**, still, and now against a wider field: it beats
+its own successor, its two predecessors, and every speech recognition backend measured. It is also
+the only listed configuration supporting the pre-upload path. The uploaded exact fixture now
 shows that Qwen3-Omni, Voxtral Small, and Gemma 4 all fail the no-context `Gemini 1.5` gate, so none
 can currently replace that hosted path on this workload. OpenRouter remains a working fallback and
 useful for models Google does not serve directly.
