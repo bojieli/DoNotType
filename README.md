@@ -65,8 +65,9 @@ it, a rewrite is stored beside the verbatim text rather than instead of it, and 
 arrives ahead of the audio. Those run in every `swift test`, so CI protects the path a first user
 walks.
 
-Still unexercised: the two ends that need hardware — microphone capture and text injection into
-another app. And **accuracy on ordinary dictation is unmeasured**, because it needs ground truth
+Still unexercised by CI: the two ends that need hardware — microphone capture and text injection
+into another app. Those are a [manual checklist](docs/MANUAL-CHECKS.md) run once per release, and
+the release notes say which platforms were actually checked. And **accuracy on ordinary dictation is unmeasured**, because it needs ground truth
 and nobody has verified the corpus by ear yet. `eval/make-review-sheet.py` exists to make that an
 hour's work rather than a project.
 

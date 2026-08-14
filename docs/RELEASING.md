@@ -119,3 +119,8 @@ swift run dnt-eval suite eval/nearmiss
 
 Read the per-pass ranges rather than the totals. The suite reports its own noise floor, and a change
 that moves a count by less than that range has not been shown to do anything.
+
+Then run [the checks a machine cannot do](MANUAL-CHECKS.md) — the round trip, permissions from cold,
+the failure modes, and a file through the GUI. Fifteen minutes, and they cover the four things no
+runner can: a microphone, a focused window in another app, a paid request, and somebody who knows
+what was said. Record the result in the draft notes, including anything you did not check.
