@@ -34,6 +34,31 @@ Connect, which is an account decision rather than a packaging one, and an unsign
 install is not a release artifact. The job exists so a tag cannot be cut on a commit where iOS is
 broken.
 
+## Package managers
+
+Manifests live in [`packaging/`](../packaging/) and are **not** submitted yet: both registries want
+a signed installer and a release history, and this project has neither. They are kept in the tree so
+the shape is reviewable and so submitting is filling in a version rather than authoring three files
+under time pressure.
+
+After a release is published:
+
+```bash
+./scripts/update-packaging.sh 0.2.0
+```
+
+That reads the `.sha256` files the workflow published beside each artifact and writes the version
+and checksums into all four manifests. Nobody types a hash by hand — a cask with a stale one fails
+at install complaining about a corrupt download, and a winget manifest with one complains about a
+tampered package. Both read as something far more alarming than a forgotten field.
+
+Submitting is deliberately manual, because each is a pull request to somebody else's repository:
+
+| | where |
+|---|---|
+| Homebrew | copy `packaging/homebrew/donottype.rb` into your tap's `Casks/` |
+| winget | `wingetcreate submit packaging/winget/` |
+
 ## Signing
 
 The workflow runs without any secrets and produces working, unsigned builds. That is deliberate —

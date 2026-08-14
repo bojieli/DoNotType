@@ -102,6 +102,9 @@ source.
 If a build was made without signing secrets, macOS refuses to open it on a double-click: right-click
 the app and choose **Open** once, and Gatekeeper asks instead of refusing.
 
+Homebrew and winget manifests are written and waiting in [`packaging/`](packaging/); neither is
+submitted, because both registries want a signed installer and a release history first.
+
 From source on macOS:
 
 ```bash
