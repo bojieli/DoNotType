@@ -56,6 +56,8 @@ public struct FallbackTranscriber: Sendable {
     /// bounded by roughly this plus the secondary's own latency.
     public var hedgeAfter: Duration
 
+    static let log = Log("fallback")
+
     public init(
         primary: TranscriptionService,
         secondary: TranscriptionService? = nil,
@@ -103,6 +105,15 @@ public struct FallbackTranscriber: Sendable {
                 // so a fast primary costs nothing at all — not even a pending timer.
                 try? await Task.sleep(for: hedgeAfter)
                 try Task.checkCancellation()
+                // Logged at info: this is the app spending a second request on the user's behalf,
+                // and a fallback that fires on every dictation is a misconfigured `hedgeAfter`
+                // rather than a working feature. It should be visible without turning anything on.
+                Self.log.info(
+                    "primary stalled; starting the fallback",
+                    [
+                        "primary": primary.provider.name, "fallback": secondary.provider.name,
+                        "after": "\(hedgeAfter)",
+                    ])
                 // The pre-uploaded reference is Google's Files API and means nothing to another
                 // backend, so the hedge always sends inline bytes. Number verification is skipped
                 // too: it spends a second screen-blind request, and the hedge exists because the
@@ -123,6 +134,14 @@ public struct FallbackTranscriber: Sendable {
                 do {
                     if let outcome = try await group.next() ?? nil {
                         group.cancelAll()
+                        if outcome.attribution.wasFallback {
+                            Self.log.info(
+                                "fallback answered first",
+                                [
+                                    "provider": outcome.attribution.provider,
+                                    "model": outcome.attribution.model,
+                                ])
+                        }
                         return outcome
                     }
                 } catch is CancellationError {

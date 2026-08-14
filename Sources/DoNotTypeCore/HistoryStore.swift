@@ -25,6 +25,7 @@ public actor HistoryStore {
     private let audioDirectory: URL
     private var records: [DictationRecord] = []
     private var loaded = false
+    private let log = Log("history")
 
     public private(set) var retention: RetentionPolicy = .forever
     /// Keep audio for successful dictations too. Off by default — the surveyed Typeless install
@@ -89,6 +90,14 @@ public actor HistoryStore {
 
         records.insert(stored, at: 0)
         persist()
+        log.debug(
+            "stored",
+            [
+                "id": stored.id.uuidString, "status": stored.status.rawValue,
+                "mode": stored.resolvedMode.rawValue,
+                "audio": stored.audioFileName == nil ? "discarded" : "kept",
+                "source": stored.sourceFileName ?? "microphone",
+            ])
         return stored
     }
 
@@ -172,6 +181,11 @@ public actor HistoryStore {
         let cutoff = Date().addingTimeInterval(-maximumAge)
         let expired = records.filter { $0.createdAt < cutoff }
         guard !expired.isEmpty else { return }
+        // Deleting the user's transcripts is worth a line, even when they asked for it: "where did
+        // my history go" has a retention policy as its answer, and nothing else records the moment.
+        log.info(
+            "retention pruned history",
+            ["removed": "\(expired.count)", "policy": retention.rawValue])
         expired.forEach(removeAudio)
         records.removeAll { $0.createdAt < cutoff }
         persist()

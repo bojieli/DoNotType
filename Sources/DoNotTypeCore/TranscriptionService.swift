@@ -17,11 +17,23 @@ public struct TranscriptionService: Sendable {
     /// before anything is done to it, which is what makes "revert to what I said" possible.
     public func rewrite(_ transcript: String, instruction: String) async throws -> String {
         guard !transcript.trimmed.isEmpty else { return transcript }
+        let started = Date()
         let result = try await provider.transcribe(
             TranscriptionRequest(
                 model: model, systemInstruction: instruction, parts: [.text(transcript)]))
         let rewritten = result.transcript.transcript.trimmed
+        Self.log.debug(
+            "second stage",
+            [
+                "provider": provider.name, "model": model, "in": "\(transcript.count)",
+                "out": "\(rewritten.count)", "ms": LogClock.ms(Date().timeIntervalSince(started)),
+            ])
         // A rewrite that comes back empty is a failure of the rewrite, not of the dictation.
+        if rewritten.isEmpty {
+            Self.log.warning(
+                "second stage returned nothing; keeping the transcript",
+                ["provider": provider.name, "model": model])
+        }
         return rewritten.isEmpty ? transcript : rewritten
     }
 
@@ -47,6 +59,8 @@ public struct TranscriptionService: Sendable {
             NSURLErrorResourceUnavailable, NSURLErrorSecureConnectionFailed,
         ].contains(code)
     }
+
+    static let log = Log("transcribe")
 
     public var provider: any TranscriptionProvider
     public var model: String
@@ -112,12 +126,44 @@ public struct TranscriptionService: Sendable {
         }
 
         // Compressed unless the caller already resolved the audio to a pre-uploaded reference.
-        parts.append(audioPart ?? audio.compressedForUpload().part)
+        let payload = audioPart ?? audio.compressedForUpload().part
+        parts.append(payload)
 
-        return try await provider.transcribe(
+        // The routing decision, recorded before the request rather than inferred from the result.
+        // "Was this grounded?" has been answered wrongly from a transcript more than once, and it
+        // is not answerable at all from the response.
+        Self.log.debug(
+            "transcribing",
+            [
+                "provider": provider.name, "model": model,
+                "grounding": describe(provider.grounding(forModel: model)),
+                "context": context?.isEmpty == false ? "yes" : "no",
+                "keyterms": "\(keyterms.count)",
+                "fidelity": fidelity.rawValue,
+                "audio": payload.description,
+            ])
+
+        let started = Date()
+        let result = try await provider.transcribe(
             TranscriptionRequest(
                 model: model, systemInstruction: systemInstruction, parts: parts,
                 fidelity: fidelity, keyterms: keyterms))
+        Self.log.debug(
+            "transcribed",
+            [
+                "provider": provider.name, "chars": "\(result.transcript.transcript.count)",
+                "audioTokens": result.usage.audioTokens.map(String.init) ?? "unreported",
+                "ms": LogClock.ms(Date().timeIntervalSince(started)),
+            ])
+        return result
+    }
+
+    private func describe(_ support: GroundingSupport) -> String {
+        switch support {
+        case .multimodal: "multimodal"
+        case .keyterms: "keyterms"
+        case .none: "none"
+        }
     }
 
     /// Retries with exponential backoff, giving up early on errors that will not change.
@@ -141,7 +187,24 @@ public struct TranscriptionService: Sendable {
                 return try await transcribe(audio: audio, context: context, audioPart: part)
             } catch {
                 lastError = error
-                guard attempt < attempts, Self.isTransient(error) else { throw error }
+                guard attempt < attempts, Self.isTransient(error) else {
+                    // Why it stopped, which is the difference between "the network is bad" and
+                    // "your key is wrong" — indistinguishable from the failed dictation alone.
+                    Self.log.warning(
+                        "giving up",
+                        [
+                            "attempt": "\(attempt)", "of": "\(attempts)",
+                            "transient": Self.isTransient(error) ? "yes" : "no",
+                            "error": error.localizedDescription,
+                        ])
+                    throw error
+                }
+                Self.log.info(
+                    "retrying",
+                    [
+                        "attempt": "\(attempt)", "of": "\(attempts)",
+                        "backoff": "\(delay)", "error": error.localizedDescription,
+                    ])
                 part = nil  // fall back to inline for every subsequent attempt
                 try? await Task.sleep(for: delay)
                 delay = delay * 2
@@ -221,6 +284,14 @@ public struct TranscriptionService: Sendable {
             return try await transcribeWithRetry(
                 audio: audio, context: context, audioPart: audioPart, attempts: attempts)
         }
+
+        Self.log.info(
+            "split recording",
+            [
+                "chunks": "\(chunks.count)", "concurrency": "\(maxConcurrent)",
+                "seconds": String(
+                    format: "%.0f", chunks.reduce(0) { $0 + $1.durationSeconds }),
+            ])
 
         var results = [TranscriptionResult?](repeating: nil, count: chunks.count)
         var finished = 0

@@ -44,10 +44,8 @@ public struct GeminiProvider: TranscriptionProvider {
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body(for: request))
         urlRequest.timeoutInterval = 120
 
-        let (data, response) = try await session.data(for: urlRequest)
-        guard let http = response as? HTTPURLResponse else {
-            throw ProviderError.malformedResponse("no HTTP response")
-        }
+        let (data, http) = try await session.send(
+            urlRequest, provider: name, model: request.model)
         // Errors arrive as a top-level JSON *array*, unlike the success shape.
         guard (200..<300).contains(http.statusCode) else {
             throw ProviderError.http(
