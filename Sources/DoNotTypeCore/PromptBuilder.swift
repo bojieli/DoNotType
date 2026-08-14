@@ -23,6 +23,9 @@ public struct PromptBuilder: Sendable {
     static let rewriteBeginMarker = "<!-- BEGIN REWRITE -->"
     static let rewriteEndMarker = "<!-- END REWRITE -->"
     static let stylePlaceholder = "{{STYLE_RULE}}"
+    static let summaryBeginMarker = "<!-- BEGIN SUMMARY -->"
+    static let summaryEndMarker = "<!-- END SUMMARY -->"
+    static let summaryPlaceholder = "{{SUMMARY_RULE}}"
 
     public let template: String
 
@@ -84,6 +87,39 @@ public struct PromptBuilder: Sendable {
     /// The style rule alone, for appending to a transcription prompt in single-pass mode.
     public func styleClause(_ style: RewriteStyle) throws -> String {
         style.isRewrite ? try clause(named: style.promptSection) : ""
+    }
+
+    /// System instruction for the summary stage.
+    ///
+    /// A separate block from `rewriteInstruction` rather than another style inside it, because the
+    /// two have opposite contracts: a rewrite may never drop a fact, and a summary exists to. See
+    /// "The summary stage" in `PROMPT.md`.
+    public func summaryInstruction(style: SummaryStyle) throws -> String {
+        guard
+            let begin = template.range(of: Self.summaryBeginMarker),
+            let end = template.range(of: Self.summaryEndMarker),
+            begin.upperBound < end.lowerBound
+        else {
+            throw Error.markersMissing(
+                "expected \(Self.summaryBeginMarker) … \(Self.summaryEndMarker). A prompt edited "
+                    + "before summaries existed will not have one — restore the shipped prompt, or "
+                    + "copy that block across from it.")
+        }
+        let body = String(template[begin.upperBound..<end.lowerBound]).trimmed
+        return body.replacingOccurrences(
+            of: Self.summaryPlaceholder, with: try clause(named: style.promptSection))
+    }
+
+    /// The instruction for whichever second stage a mode asks for, or nil when it asks for none.
+    ///
+    /// One entry point, so a caller cannot route a summary through the rewrite block by picking the
+    /// wrong builder method — which is the mistake the two-block split exists to make impossible.
+    public func secondStageInstruction(for mode: TranscriptMode) throws -> String? {
+        switch mode {
+        case .verbatim: nil
+        case .rewrite(let style): try rewriteInstruction(style: style)
+        case .summary(let style): try summaryInstruction(style: style)
+        }
     }
 
     /// Pulls the clause out of the fenced block under `### <fidelity>`.

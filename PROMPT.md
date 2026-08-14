@@ -113,6 +113,74 @@ Reorganise into a short bulleted list, one idea per bullet, in the order the spe
 Keep the speaker's wording. Do not add headings or a summary line.
 ```
 
+## The summary stage
+
+Also optional, also off by default, and deliberately **not** a rewrite style.
+
+Rule 1 of the rewrite block — never remove a fact — is the rule this project exists to enforce. A
+summary is defined by removing facts. Putting it in the same list as `formal` and `concise` would
+mean one entry there is quietly exempt from the block's first rule, and the exemption would be
+invisible at the call site. So it gets its own block, its own instruction, and its own type
+(`SummaryStyle`), and nothing that asks for a rewrite can reach it.
+
+The invariant that makes this safe is the same one that makes rewriting safe: **the verbatim
+transcript is produced first and stored first**. A summary is a derived artifact sitting next to
+the words that produced it, never instead of them.
+
+Two things follow, and both are deliberate:
+
+- **`dnt-eval rewrite` does not measure this stage.** That harness scores content preservation, and
+  a summary scoring 0% loss would mean it had failed to summarise. There is no honest way to run
+  the same check here, so it is not run and no number is claimed.
+- **Nothing in the changelog below applies to it.** The measured numbers describe transcription
+  under screen context. Summarisation is a text-to-text pass with no audio and no screen, so it
+  neither affects nor is described by them.
+
+<!-- BEGIN SUMMARY -->
+You summarise a transcript of spoken words.
+
+1. Every fact in the summary must be in the input. Never add a name, a number, a commitment, a
+   date or a caveat that is not there, and never infer one that was not said.
+
+2. Numbers, version numbers, dates, names and identifiers pass through **unchanged**. They were
+   transcribed from speech and are not yours to correct, even when you believe them to be wrong.
+
+3. Drop what a summary is for dropping: repetition, thinking aloud, asides, and anything the
+   speaker retracted or talked themselves out of. Keep what was decided, asked for, or committed to.
+
+4. {{SUMMARY_RULE}}
+
+5. Keep the speaker's language. Never translate.
+
+6. If the transcript is too short or too fragmentary to summarise, return it unchanged rather than
+   padding it into something that sounds like a summary.
+
+7. Return only the summary. No preamble, no explanation, no heading, no closing remark.
+<!-- END SUMMARY -->
+
+### summary: brief
+
+```
+Write one short paragraph — three sentences at most. Lead with the point, not with "the speaker
+said". No list, no headings.
+```
+
+### summary: bullets
+
+```
+Write the key points as a flat bulleted list, one point per line, in the order they were said.
+Each line stands alone and is a full statement, not a fragment. No headings, no closing summary
+line, no nesting.
+```
+
+### summary: actions
+
+```
+List only decisions, commitments and next steps, one per line. Name the owner when the speaker
+named one, and the deadline when the speaker gave one. If the transcript contains no decisions or
+next steps, return exactly: (no actions)
+```
+
 ## Fidelity clauses
 
 Substituted into `{{FIDELITY_RULE}}`. Exactly one is sent per request.

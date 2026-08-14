@@ -65,6 +65,19 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
     /// The exact context that was sent, so the inspector can show it and a retry can reuse it.
     public var context: ScreenContext?
 
+    /// Which mode produced `styledText`.
+    ///
+    /// `style` above cannot answer this on its own any more: it is a `RewriteStyle`, and a summary
+    /// is deliberately not one. Nil on rows written before modes existed, which is why every reader
+    /// goes through `resolvedMode` rather than this.
+    public var mode: TranscriptMode?
+    /// The recording this came from, when it was a file rather than the microphone.
+    ///
+    /// Its presence is what distinguishes an offline transcription from a dictation, and both live
+    /// in the same history on purpose — "find that thing I said about the migration" should not
+    /// depend on remembering which way it was captured.
+    public var sourceFileName: String?
+
     public init(
         id: UUID = UUID(),
         createdAt: Date = Date(),
@@ -86,7 +99,9 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         chunkCount: Int? = nil,
         usage: TokenUsage? = nil,
         audioFileName: String? = nil,
-        context: ScreenContext? = nil
+        context: ScreenContext? = nil,
+        mode: TranscriptMode? = nil,
+        sourceFileName: String? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -109,6 +124,8 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         self.usage = usage
         self.audioFileName = audioFileName
         self.context = context
+        self.mode = mode
+        self.sourceFileName = sourceFileName
     }
 
     /// Retryable only while the recording still exists.
@@ -116,6 +133,20 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
 
     /// What gets inserted: the styled version when one exists, otherwise the transcript.
     public var deliveredText: String { styledText ?? text }
+
+    /// The mode, including for rows written before the field existed.
+    ///
+    /// Old rows recorded a `RewriteStyle` and nothing else, and every one of those was either a
+    /// verbatim dictation or a rewrite — summaries did not exist yet — so the reconstruction is
+    /// exact rather than a guess.
+    public var resolvedMode: TranscriptMode {
+        if let mode { return mode }
+        if let style, style.isRewrite { return .rewrite(style) }
+        return .verbatim
+    }
+
+    /// True when this came from a recording on disk rather than the microphone.
+    public var isFromFile: Bool { sourceFileName != nil }
 
     public var summary: String {
         switch status {
