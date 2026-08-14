@@ -163,7 +163,12 @@ def main() -> int:
     parser.add_argument("--corpus", default="eval/dictation")
     parser.add_argument("--limit", type=int, default=30,
                         help="How many clips to include, worst agreement first.")
+    parser.add_argument("--fixtures", action="store_true",
+                        help="Review the near-miss fixtures and their goldens instead.")
     args = parser.parse_args()
+
+    if args.fixtures:
+        return build_fixture_sheet()
 
     root = Path(args.corpus)
     try:
@@ -213,6 +218,77 @@ def main() -> int:
     out = root / "review.html"
     out.write_text(PAGE.format(count=len(blocks), clips="\n".join(blocks)))
     print(f"{len(blocks)} clips → {out}")
+    print(f"open {out}")
+    return 0
+
+
+def build_fixture_sheet() -> int:
+    """The near-miss fixtures beside the ground truth each one asserts.
+
+    Different question from the dictation sheet. There the transcripts are candidates and the
+    truth is missing; here the truth is *claimed*, and the point is to check whether the claim
+    matches the audio. Five of these were spoken by macOS `say` and their goldens are correct by
+    construction — the text was written first, then synthesised. The rest are extracts of real
+    speech whose goldens were written down by a human listening, and those are the ones worth an
+    ear.
+    """
+    cases_dir = Path("eval/nearmiss")
+    audio_dir = Path("eval/audio")
+    synthesised = set()
+    script = Path("eval/make-audio.sh")
+    if script.exists():
+        for line in script.read_text().splitlines():
+            if line.strip().startswith("synth "):
+                parts = line.split(None, 2)
+                if len(parts) >= 2:
+                    synthesised.add(parts[1])
+
+    blocks = []
+    for path in sorted(cases_dir.glob("*.json")):
+        case = json.loads(path.read_text())
+        audio_name = Path(case["audio"]).name
+        stem = Path(audio_name).stem
+        origin = ("macOS <code>say</code> — golden exact by construction"
+                  if stem in synthesised else
+                  "real recorded speech — golden written down by ear")
+
+        claims = []
+        if case.get("expectTranscript"):
+            claims.append(("exact transcript", case["expectTranscript"]))
+        for fragment in case.get("mustContain") or []:
+            claims.append(("must contain", fragment))
+        for fragment in case.get("mustNotContain") or []:
+            claims.append(("must NOT contain", fragment))
+        if case.get("mustBeScript"):
+            claims.append(("script", case["mustBeScript"]))
+        rows = "".join(
+            f'<tr><td class="who">{html.escape(label)}</td>'
+            f"<td>{html.escape(str(value))}</td></tr>" for label, value in claims)
+
+        blocks.append(f"""<div class="clip">
+  <div class="head">
+    <span class="id">{html.escape(case['id'])}</span>
+    <span class="meta">{html.escape(audio_name)} · {html.escape(origin)}</span>
+  </div>
+  <audio controls preload="none" src="../audio/{html.escape(audio_name)}"></audio>
+  <table>{rows}</table>
+  <textarea data-clip="{html.escape(case['id'])}"
+            placeholder="Wrong? Type what you actually hear — leave blank if the golden is right"></textarea>
+</div>""")
+
+    out = cases_dir.parent / "dictation" / "fixtures.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    page = PAGE.format(count=len(blocks), clips="\n".join(blocks))
+    page = page.replace(
+        "worst backend disagreement first — that is where listening buys the most, because\n"
+        "  where independent backends already agree they are probably right. Type what you actually"
+        " hear;\n  leave a clip blank to skip it. Nothing here leaves your machine.",
+        "the near-miss fixtures beside the ground truth each asserts. Five were spoken by macOS "
+        "<code>say</code>, so their goldens are correct by construction. The rest are real speech "
+        "whose goldens were written down by ear — those are the ones worth checking. Leave a box "
+        "blank if the golden is right.")
+    out.write_text(page)
+    print(f"{len(blocks)} fixtures → {out}")
     print(f"open {out}")
     return 0
 

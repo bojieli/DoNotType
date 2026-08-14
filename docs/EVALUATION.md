@@ -931,3 +931,53 @@ because the comment claiming the constraint was measurable had never been true.)
 `gemini-3.6-flash` stays the recommended model. 3.7 is available — the model field is free text on
 every platform — but on this corpus it is less accurate, regresses more, and gets the one number
 this project is named for wrong four times out of five with no context at all.
+
+### The rest of the Flash family, for context — 2026-08-14
+
+3.7 being worse than 3.6 raised the obvious question: is 3.6 the outlier, or is 3.7 a regression?
+Both neighbours measured, same suite, two runs each.
+
+| model | matched | improved | **regressed** | ungrounded | ref-clip: grounded / **no context** | latency |
+|---|---|---|---|---|---|---|
+| **`gemini-3.6-flash`** | **44, 44** | 3–4 | **1, 1** | **42, 41** | 8% / **30%** | 5–60 s, bimodal |
+| `gemini-3.7-flash` | 40, 41 | 5–6 | 2, 1 | 37, 36 | 100% / **82%** | 10.5 s |
+| `gemini-3-flash-preview` | 37, 36 | 5, 3 | **5, 4** | 32, 33 | 14% / **18%** | **2.2 s** |
+| `gemini-3.5-flash` | 31, 35 | 5, 7 | 1, 1 | 27, 28 | 75% / **83%** | 3–6 s |
+
+**3.6 is genuinely the best of the four, not an artefact of one clip.** It leads on matched by
+3–4 runs over the next model and by 9–13 over the worst, and it leads on the ungrounded column by
+more. 3.7 is a regression from it rather than 3.6 being a fluke — but 3.5 is worse still, so the
+family did not simply peak and decline.
+
+**`gemini-3-flash-preview` is a trap worth naming.** It has the lowest substitution rate on the
+reference clip (14%/18%) and is by far the fastest at 2.2 s, which reads like the obvious choice
+until you look at why. Five of its twelve grounded trials were *unjudgeable*: the transcript
+contained neither the spoken number nor the decoy, because it had garbled the sentence into
+"unified sauce" and "G-5 sauce". A low substitution rate is cheap when the model never produces
+the contested token. Its regressions — 4 and 5 per run, the worst here — say the same thing from
+the other side.
+
+That is the same reading error the Voxtral and 3.7 rows required, in a third disguise: the
+substitution column is only meaningful once you know the model can hear the sentence at all.
+
+### How the fixtures were made, and how to check them
+
+Five of the sixteen cases are **macOS `say` speaking a script** (`eval/make-audio.sh`, voice
+Samantha), and their goldens are exact by construction — the text was written first, then
+synthesised. That includes the deliberate traps: `jargon-spelling` is synthesised saying
+*"koffee"* while the golden demands `koffi`, and `git-command` is synthesised saying *"dash dash
+amend"* while the golden demands `--amend`. The script says plainly that these are smoke tests,
+because `say` enunciates far more cleanly than a person and substitution needs ambiguity.
+
+The `benefit-*` cases are synthesised too, on purpose: they contain invented tokens (`Kaelith`,
+`Brindlewood`, `quillmark-sync`) that appear in no corpus, and an unknown name is equally unknown
+however clearly it is spoken.
+
+The seven `real-*` cases are extracts of real recorded speech, and their goldens were written down
+by a human listening. Those are the ones worth an ear, and they can be checked:
+
+```bash
+./eval/make-review-sheet.py --fixtures     # → eval/dictation/fixtures.html
+```
+
+which plays each fixture beside the ground truth it asserts, marked by origin.

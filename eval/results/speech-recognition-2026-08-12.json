@@ -513,5 +513,84 @@
       },
       "reading": "Raising the thinking level makes it worse, not better. The mishearing is not an artefact of the forced `low` floor."
     }
+  },
+  "geminiFlashFamily_2026_08_14": {
+    "suite": "eval/nearmiss, native API, 3 passes per run, 2 runs per model",
+    "models": {
+      "gemini-3.6-flash": {
+        "matched": [
+          44,
+          44
+        ],
+        "regressed": [
+          1,
+          1
+        ],
+        "ungrounded": [
+          42,
+          41
+        ],
+        "refClip": {
+          "grounded": "8%",
+          "noContext": "30%"
+        }
+      },
+      "gemini-3.7-flash": {
+        "matched": [
+          40,
+          41
+        ],
+        "regressed": [
+          2,
+          1
+        ],
+        "ungrounded": [
+          37,
+          36
+        ],
+        "refClip": {
+          "grounded": "100%",
+          "noContext": "82%"
+        }
+      },
+      "gemini-3-flash-preview": {
+        "matched": [
+          37,
+          36
+        ],
+        "regressed": [
+          5,
+          4
+        ],
+        "ungrounded": [
+          32,
+          33
+        ],
+        "refClip": {
+          "grounded": "14%",
+          "noContext": "18%"
+        },
+        "caveat": "Lowest substitution and fastest at 2.2 s, but 5 of 12 grounded trials were unjudgeable — it garbled the sentence ('unified sauce', 'G-5 sauce') so the contested token never appeared. Worst regressions of the four."
+      },
+      "gemini-3.5-flash": {
+        "matched": [
+          31,
+          35
+        ],
+        "regressed": [
+          1,
+          1
+        ],
+        "ungrounded": [
+          27,
+          28
+        ],
+        "refClip": {
+          "grounded": "75%",
+          "noContext": "83%"
+        }
+      }
+    },
+    "verdict": "3.6 is genuinely the best of the four, leading on matched by 3-4 runs and by more on the ungrounded column. 3.7 is a regression from it; 3.5 is worse still, so the family did not simply peak and decline."
   }
 }
