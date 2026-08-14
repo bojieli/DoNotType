@@ -9,9 +9,25 @@ public struct GeminiProvider: TranscriptionProvider {
     public let name = "gemini"
     public let apiKey: String
     public let endpoint: URL
-    /// Enum of `minimal`, `low`, `medium`, `high`. Transcription wants `minimal` — thinking
-    /// tokens bill as output and buy nothing here.
-    public let thinkingLevel: String
+    /// Requested thinking level, or `nil` to let the model decide the cheapest it accepts.
+    ///
+    /// Transcription wants as little thinking as the model allows: thought tokens bill as output
+    /// and buy nothing when the job is "write down what was said". `nil` is the default because
+    /// the floor moved — `gemini-3.6-flash` accepts `minimal`, and `gemini-3.7-flash` rejects it
+    /// outright with *"'minimal' is not a supported thinking level for this model. Allowed values
+    /// are: medium, low, high."* A hardcoded `minimal` therefore fails every request on the newer
+    /// model, which is exactly the kind of breakage a defaulted constant hides until someone
+    /// changes the model field.
+    public let thinkingLevel: String?
+
+    /// The cheapest level a given model accepts.
+    ///
+    /// Deliberately a prefix match on the family rather than an allowlist of exact IDs: a new
+    /// point release should inherit its family's floor rather than fall back to a level that
+    /// costs the user thinking tokens on every dictation.
+    static func cheapestThinkingLevel(forModel model: String) -> String {
+        model.hasPrefix("gemini-3.7") || model.hasPrefix("gemini-4") ? "low" : "minimal"
+    }
 
     /// Whether to constrain output to the `Transcript` JSON schema.
     ///
@@ -25,7 +41,7 @@ public struct GeminiProvider: TranscriptionProvider {
     public init(
         apiKey: String,
         endpoint: URL = URL(string: "https://generativelanguage.googleapis.com/v1beta/interactions")!,
-        thinkingLevel: String = "minimal",
+        thinkingLevel: String? = nil,
         usesStructuredOutput: Bool = true,
         session: URLSession = .shared
     ) {
@@ -128,7 +144,8 @@ public struct GeminiProvider: TranscriptionProvider {
             "system_instruction": request.systemInstruction,
             "input": request.parts.map(Self.encode),
             "generation_config": [
-                "thinking_level": thinkingLevel,
+                "thinking_level": thinkingLevel
+                    ?? Self.cheapestThinkingLevel(forModel: request.model),
                 "max_output_tokens": request.maxOutputTokens,
             ],
         ]

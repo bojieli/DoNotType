@@ -209,6 +209,37 @@ final class XAISpeechProviderTests: XCTestCase {
     }
 }
 
+/// The thinking level is not a constant, and finding that out cost a broken request.
+///
+/// `gemini-3.6-flash` accepts `minimal`; `gemini-3.7-flash` rejects it with "'minimal' is not a
+/// supported thinking level for this model. Allowed values are: medium, low, high." A hardcoded
+/// default therefore failed every request the moment the model field was changed.
+final class GeminiThinkingLevelTests: XCTestCase {
+    func testEachFamilyGetsTheCheapestLevelItAccepts() {
+        XCTAssertEqual(
+            GeminiProvider.cheapestThinkingLevel(forModel: "gemini-3.6-flash"), "minimal")
+        XCTAssertEqual(
+            GeminiProvider.cheapestThinkingLevel(forModel: "gemini-3.7-flash"), "low")
+    }
+
+    /// A prefix match rather than an allowlist, so a point release inherits its family's floor
+    /// instead of silently costing thinking tokens on every dictation.
+    func testAPointReleaseInheritsItsFamilyFloor() {
+        XCTAssertEqual(
+            GeminiProvider.cheapestThinkingLevel(forModel: "gemini-3.7-flash-preview-0812"), "low")
+        XCTAssertEqual(
+            GeminiProvider.cheapestThinkingLevel(forModel: "gemini-4-flash"), "low")
+        XCTAssertEqual(
+            GeminiProvider.cheapestThinkingLevel(forModel: "gemini-2.5-flash"), "minimal")
+    }
+
+    /// An explicit level still wins, so `dnt-eval` can measure what the constraint costs.
+    func testAnExplicitLevelIsHonoured() {
+        let provider = GeminiProvider(apiKey: "k", thinkingLevel: "high")
+        XCTAssertEqual(provider.thinkingLevel, "high")
+    }
+}
+
 final class MistralProviderTests: XCTestCase {
     /// Trimmed from a real `voxtral-mini-latest` response.
     private let response = Data(
