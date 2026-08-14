@@ -12,6 +12,9 @@ struct SettingsView: View {
     @Bindable var model: DictationModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var microphoneGranted = false
+    /// Created here rather than at launch: polling the log buffer is only worth doing while
+    /// somebody is looking at it.
+    @State private var logs = LogViewerModel()
 
     var body: some View {
         Form {
@@ -20,6 +23,7 @@ struct SettingsView: View {
             dictationSection
             historySection
             promptSection
+            logsSection
             aboutSection
         }
         .navigationTitle("Settings")
@@ -220,6 +224,27 @@ struct SettingsView: View {
             Text(
                 "Editing the contract invalidates the measured numbers in the project's changelog, "
                     + "which describe the shipped text."
+            )
+        }
+    }
+
+    /// The only way to see what the app is doing on a device with no Console and no shell.
+    private var logsSection: some View {
+        Section {
+            NavigationLink {
+                LogsView(model: logs)
+            } label: {
+                LabeledContent("Logs") {
+                    Text(logs.recordingLevel.name).foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityIdentifier("open-logs")
+        } header: {
+            Text("Diagnostics")
+        } footer: {
+            Text(
+                "Every request, retry and failure, with a share button. Transcripts are left out "
+                    + "unless you turn them on there."
             )
         }
     }

@@ -185,7 +185,52 @@ final class DictationModel {
         history = HistoryStore(directory: directory.appendingPathComponent("History"))
         prompts = PromptStore(directory: directory.appendingPathComponent("Prompt"))
         loadPrompt()
+
+        // Before the first request, and before anything else can log. On a phone there is no
+        // Console and no shell, so a log file in the shared container is the only evidence a bug
+        // report can ever carry.
+        AppLogging.start(directory: directory)
     }
+
+    // MARK: - Files
+
+    /// Builds the offline transcriber for the file screen, from the same settings a dictation uses.
+    ///
+    /// - Parameter secondStage: a model backend to run a rewrite or summary through, for when the
+    ///   chosen service is a recogniser and has no text input at all.
+    func makeFileTranscriber(secondStage: ProviderKind? = nil) -> FileTranscriber? {
+        guard !apiKey.isEmpty,
+            let promptURL = Self.bundledPromptURL,
+            let builder = try? prompts.builder(default: promptURL),
+            let instruction = try? builder.systemInstruction(fidelity: fidelity),
+            let backend = try? ProviderFactory.make(provider, apiKey: apiKey)
+        else { return nil }
+
+        let service = TranscriptionService(
+            provider: backend, model: model, systemInstruction: instruction, fidelity: fidelity)
+
+        var helper: TranscriptionService?
+        if let secondStage, let key = KeychainStore.read(account: secondStage.rawValue),
+            !key.isEmpty, let backend = try? ProviderFactory.make(secondStage, apiKey: key)
+        {
+            helper = TranscriptionService(
+                provider: backend, model: Self.storedModel(for: secondStage),
+                systemInstruction: instruction, fidelity: fidelity)
+        }
+
+        return FileTranscriber(
+            service: service, prompt: builder, fidelity: fidelity, secondStage: helper)
+    }
+
+    /// Files land in the same history as dictations, so searching does not depend on remembering
+    /// how something was captured. The recording stays where the user put it.
+    func store(_ outcome: FileTranscriber.Outcome) async {
+        await history.insert(outcome.historyRecord(), audio: nil)
+        await refresh()
+    }
+
+    /// Hands text to the keyboard and the clipboard, as a finished dictation is handed over.
+    func deliverToKeyboard(_ text: String) { deliver(text) }
 
     // MARK: - Prompt editing
 
@@ -468,8 +513,7 @@ final class DictationModel {
             return
         }
         do {
-            let backend = try ProviderFactory.make(
-                provider, environment: [provider.apiKeyEnvVar: apiKey])
+            let backend = try ProviderFactory.make(provider, apiKey: apiKey)
             // A recognition backend rejects a text-only request by design, so probing one with the
             // text round trip would report a working key as broken. It gets a fraction of a second
             // of silence instead — enough to exercise auth, the URL and the response shape.
@@ -498,7 +542,7 @@ final class DictationModel {
     private func makeTranscriber(primary: TranscriptionService) -> FallbackTranscriber {
         guard let kind = fallbackProvider,
             let key = KeychainStore.read(account: kind.rawValue), !key.isEmpty,
-            let backend = try? ProviderFactory.make(kind, environment: [kind.apiKeyEnvVar: key]),
+            let backend = try? ProviderFactory.make(kind, apiKey: key),
             let promptURL = Self.bundledPromptURL,
             let instruction = try? prompts.builder(default: promptURL)
                 .systemInstruction(fidelity: fidelity)
@@ -519,8 +563,7 @@ final class DictationModel {
                 .systemInstruction(fidelity: fidelity)
         else { return nil }
 
-        guard let backend = try? ProviderFactory.make(
-            provider, environment: [provider.apiKeyEnvVar: apiKey])
+        guard let backend = try? ProviderFactory.make(provider, apiKey: apiKey)
         else { return nil }
 
         return RetryCoordinator(

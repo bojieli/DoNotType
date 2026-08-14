@@ -111,6 +111,55 @@ final class DoNotTypeUITests: XCTestCase {
             "the editor should be showing the shipped PROMPT.md, not an empty box")
     }
 
+    /// The offline half of the product. Nothing here can be exercised without a real recording and
+    /// a paid request, so the test covers what can silently break instead: that the screen exists,
+    /// that it offers all three modes, and that the mode survives leaving and returning — which is
+    /// the part backed by `UserDefaults` and therefore the part that breaks quietly.
+    func testFileTranscriptionScreenOffersEveryMode() {
+        let app = launch()
+        app.buttons["open-files"].tap()
+
+        XCTAssertTrue(app.navigationBars["Transcribe a Recording"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["choose-recording"].firstMatch.exists)
+
+        let mode = app.buttons["file-mode"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 5))
+        mode.tap()
+
+        // The three the CLI and the desktop offer. A summary that quietly stopped being reachable
+        // would look exactly like a summary that was never added.
+        XCTAssertTrue(app.buttons["Verbatim — word for word"].exists)
+        XCTAssertTrue(app.buttons["Rewrite — Formal — professional prose"].exists)
+        XCTAssertTrue(app.buttons["Summary — Brief — a short paragraph"].exists)
+
+        app.buttons["Summary — Bullets — the key points"].tap()
+        app.navigationBars["Transcribe a Recording"].buttons.firstMatch.tap()
+        app.buttons["open-files"].tap()
+
+        XCTAssertTrue(mode.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            mode.label.contains("Bullets"), "the chosen mode should persist, was \(mode.label)")
+    }
+
+    /// On a phone there is no Console and no shell, so this screen is the only evidence a bug
+    /// report can carry. It must open, and it must already have something in it — the app logs its
+    /// own launch, so an empty list here means logging never started.
+    func testLogsScreenShowsWhatTheAppRecorded() {
+        let app = launch()
+        app.buttons["open-settings"].tap()
+
+        let logs = app.descendants(matching: .any)["open-logs"].firstMatch
+        XCTAssertTrue(reveal(logs, in: app), "the logs row should be reachable in Settings")
+        logs.tap()
+
+        XCTAssertTrue(app.navigationBars["Logs"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["log-level"].firstMatch.exists)
+        XCTAssertTrue(
+            app.staticTexts["started"].waitForExistence(timeout: 5),
+            "the app logs its own launch, so that line should be here")
+        XCTAssertTrue(app.buttons["share-log"].exists, "a log you cannot send is not evidence")
+    }
+
     /// Changing fidelity has to stick: it is the setting that decides whether the app rewrites
     /// you, which is the whole argument the project makes.
     func testFidelitySelectionPersists() {

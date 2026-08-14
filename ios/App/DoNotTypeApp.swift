@@ -3,17 +3,27 @@ import SwiftUI
 
 @main
 struct DoNotTypeApp: App {
-    @State private var model = DictationModel()
+    @State private var model: DictationModel
+    @State private var files: FileTranscriptionModel
+
+    /// Both built here so the file screen's model outlives navigating away from it — a forty-minute
+    /// transcription is not something to lose by tapping Back.
+    init() {
+        let dictation = DictationModel()
+        _model = State(initialValue: dictation)
+        _files = State(initialValue: FileTranscriptionModel(dictation: dictation))
+    }
 
     var body: some Scene {
         WindowGroup {
-            ContentView(model: model)
+            ContentView(model: model, files: files)
         }
     }
 }
 
 struct ContentView: View {
     @Bindable var model: DictationModel
+    @Bindable var files: FileTranscriptionModel
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -37,6 +47,17 @@ struct ContentView: View {
                     }
                     .accessibilityLabel("History")
                     .accessibilityIdentifier("open-history")
+                }
+                // The offline half: a recording that already exists — a voice memo, a call — goes
+                // through the same pipeline as speech into the microphone.
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        FileTranscriptionView(model: files)
+                    } label: {
+                        Image(systemName: "waveform.badge.plus")
+                    }
+                    .accessibilityLabel("Transcribe a recording")
+                    .accessibilityIdentifier("open-files")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink { SettingsView(model: model) } label: {
