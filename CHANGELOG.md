@@ -75,20 +75,22 @@ release yet, so everything below is unreleased.
   request and casting the response, so that is now one `URLSession.send`, which is also the one
   place a request can be logged.
 
-**Platform scope, stated rather than left to be discovered.** All of the above is in
-`DoNotTypeCore` and the macOS app. It is **not** ported to Windows, Android or iOS, which breaks
-this project's usual rule that a behaviour change lands on all four.
+**All four platforms have it.** The logging facility, the three modes and offline file
+transcription are on macOS, iOS, Android and Windows; `PROMPT.md` is copied into every bundle at
+build time, so no platform can drift on the summary block's text. Three differences are real and
+deliberate:
 
-- **The logging facility and the modes are portable and should be ported.** They are ordinary core
-  work with direct equivalents in C# and Kotlin, and the summary block already ships everywhere —
-  `PROMPT.md` is copied into every bundle at build time, so no platform can drift on its text; the
-  other three simply do not offer the mode yet. `DoNotTypeCore` type-checks for iOS, so the iOS app
-  gets the file transcriber and the logger the moment it calls them.
-- **The CLI is macOS-only and mostly should stay that way.** Android and iOS have no shell to run
-  it from. Windows has one, and a `dnt.exe` over the existing C# core would be the equivalent — but
-  it is a separate tool in a separate language, not a port of this code.
-- **File transcription in the GUI is portable everywhere except iOS**, where a document picker
-  would work but the containing app is deliberately the thin half of that platform's design.
+- **A CLI exists on macOS and Windows only.** Android and iOS have no shell to run one from. The
+  two are separate tools in separate languages rather than one ported binary, and they take the
+  same verbs, flags and output rules — stdout is the transcript, stderr is everything else.
+- **Windows reads WAV only.** macOS and iOS decode through CoreAudio and Android through
+  `MediaCodec`; .NET has no built-in decoder for compressed audio, and adding one means Media
+  Foundation COM interop or a third-party package. Any other format gets an error naming the
+  `ffmpeg` line to run, and there is a test asserting that message.
+- **The log surface differs by what each platform has.** macOS and Windows reveal a file; Android
+  and iOS share it, because on a phone a share sheet is how a log reaches a bug report and there is
+  no Console or shell to reach it any other way. Every platform keeps its native sink alongside the
+  file — `os.Logger`, logcat — so anything that already worked still does.
 
 ### Fixed
 

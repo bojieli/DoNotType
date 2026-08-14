@@ -1,6 +1,13 @@
 # The command line, and the log
 
-Two command-line tools ship with this project, and they have different jobs.
+There are two of these: the Swift `dnt` on macOS, and `dnt.exe` built from `windows/DoNotType.Cli`.
+Same verbs, same flags, same two output rules — separate tools in separate languages, because a
+single binary would mean one platform's core shipping inside the other's. Android and iOS have no
+shell to run one from; their equivalent is the log screen and the file screen in the app.
+
+Everything below describes both unless a line says otherwise.
+
+Two command-line tools ship on the desktop, and they have different jobs.
 
 | | for | when |
 |---|---|---|
@@ -90,10 +97,25 @@ The audio goes to xAI, the text to Gemini, and the JSON output records both.
 
 ### Formats and length
 
-WAV, MP3, M4A/AAC, AIFF, FLAC, CAF — anything CoreAudio can open. Everything is decoded to 16 kHz
-mono up front, which is what makes the rest work: recordings over 90 seconds are split on silence
-and transcribed concurrently (`--concurrency`, default 3), durations are recorded correctly, and the
-upload is Opus rather than raw PCM.
+Everything is decoded to 16 kHz mono up front, which is what makes the rest work: recordings over 90
+seconds are split on silence and transcribed concurrently (`--concurrency`, default 3), durations are
+recorded correctly, and the upload is Opus rather than raw PCM.
+
+| platform | reads | via |
+|---|---|---|
+| macOS, iOS | WAV, MP3, M4A/AAC, AIFF, FLAC, CAF — anything the system can play | CoreAudio |
+| Android | the same, plus AMR and OGG | `MediaExtractor` + `MediaCodec` |
+| **Windows** | **WAV only** — any sample rate, channel count, 8/16/24/32-bit int or float | managed code |
+
+Windows is the odd one out because .NET has no built-in decoder for compressed audio, and adding one
+means Media Foundation COM interop or a third-party package — this project keeps its native
+dependencies to one. Convert first, or transcribe from another platform:
+
+```bash
+ffmpeg -i meeting.m4a -ar 16000 -ac 1 meeting.wav
+```
+
+The error says exactly that when you hand it an `.m4a`, rather than failing somewhere downstream.
 
 ### Screen context
 
@@ -160,13 +182,22 @@ behave the same way.
 
 ### Where it goes
 
-| | file | stderr | Console |
-|---|---|---|---|
-| **the app** | `~/Library/Application Support/DoNotType/logs/donottype.log`, at `info` | no | yes |
-| **`dnt`** | none unless `DNT_LOG_FILE` is set | yes, at `warn` | no |
+Every platform writes a file beside its history, at `info`, and keeps its native sink alongside it:
 
-The CLI does not write to the app's file by default: two processes appending would interleave and
-race its rotation. The file rotates at 8 MB and keeps exactly one previous generation.
+| | log file | also | read it in the app |
+|---|---|---|---|
+| **macOS** | `~/Library/Application Support/DoNotType/logs/donottype.log` | `os.Logger` → Console | Settings › Logs |
+| **Windows** | `%APPDATA%\DoNotType\logs\donottype.log` | — | Settings › Logs |
+| **Android** | app storage, `logs/donottype.log` | logcat | Settings › Diagnostics › Logs |
+| **iOS** | the App Group container, `Logs/` | — | Settings › Diagnostics › Logs |
+| **the CLIs** | none unless `DNT_LOG_FILE` is set | stderr, at `warn` | — |
+
+A CLI does not write to the app's file by default: two processes appending would interleave and race
+its rotation. The file rotates at 8 MB (4 MB on Android) and keeps exactly one previous generation.
+
+On Android and iOS the viewer offers **share** rather than reveal, because a share sheet is how a log
+reaches a bug report from a phone — there is no Console, no shell, and no way to reach a file inside
+the container without plugging the device into a computer.
 
 ```bash
 dnt logs                                  # last 200 lines of the app's log
@@ -191,7 +222,9 @@ turning detail up no longer means quitting and relaunching from a terminal.
 
 ### Environment
 
-Every executable honours these, including the app when it is launched from a shell:
+Every desktop executable honours these, including the app when it is launched from a shell. Android
+and iOS have no environment to set, which is why the level is a setting there — and on Windows for
+the same reason, since a WinExe launched from Explorer inherits no shell environment either:
 
 | | |
 |---|---|

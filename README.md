@@ -59,15 +59,17 @@ call.
 
 ## Platforms
 
-| | Dictation | Screen grounding | Build |
-|---|---|---|---|
-| **macOS** | menu-bar app, hold Right ⌘ | ✅ accessibility tree + screenshot fallback | `make app` |
-| **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | `cd windows && dotnet build` |
-| **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | `cd android && gradle assembleDebug` |
-| **iOS** | containing app; keyboard inserts | ❌ not possible in the sandbox | `cd ios && xcodegen generate` |
+| | Dictation | Screen grounding | Files | CLI | Build |
+|---|---|---|---|---|---|
+| **macOS** | menu-bar app, hold Right ⌘ | ✅ accessibility tree + screenshot fallback | ✅ any format | `dnt` | `make app` |
+| **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | WAV only | `dnt.exe` | `cd windows && dotnet build` |
+| **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | ✅ any format | — | `cd android && gradle assembleDebug` |
+| **iOS** | containing app; keyboard inserts | ❌ not possible in the sandbox | ✅ any format | — | `cd ios && xcodegen generate` |
 
 All four send the **same** `PROMPT.md`, copied into each bundle at build time rather than
-duplicated, so no platform can quietly drift from what the evaluation measures.
+duplicated, so no platform can quietly drift from what the evaluation measures. All four also
+transcribe recordings you already have, in all three modes, and write a readable log — see
+[docs/CLI.md](docs/CLI.md) for what differs and why.
 
 iOS is the odd one out for a reason: a keyboard extension cannot open a microphone — "Allow Full
 Access" grants network and a shared container, not the mic. See [ios/README.md](ios/README.md).
@@ -121,8 +123,9 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Files, modes, and a command line
 
 The hotkey covers speech you are about to make. Recordings you already have — a voice memo, a call,
-an interview — go through the same pipeline from **Transcribe a Recording…** in the menu, or from
-the CLI:
+an interview — go through the same pipeline on **all four platforms**: **Transcribe a Recording…**
+in the macOS menu, a **Recordings** tab on Windows, a screen in the Android and iOS apps, or the
+CLI:
 
 ```bash
 dnt transcribe interview.m4a                          # verbatim, to stdout
@@ -168,10 +171,15 @@ Full reference, including the logging: [docs/CLI.md](docs/CLI.md).
 
 ## Logging
 
-Structured, levelled, and written to a file you can attach to an issue —
-`~/Library/Application Support/DoNotType/logs/donottype.log`, or Settings › Logs to read it live and
-turn the level up without relaunching. At `debug` every provider request, the grounding route each
-backend was given, every retry and every fallback is a line.
+Structured, levelled, and written to a file you can attach to an issue — on every platform, with a
+viewer in the app so turning the level up never means relaunching from a terminal. At `debug` every
+provider request, the grounding route each backend was given, every retry and every fallback is a
+line.
+
+That matters most where it is least convenient. A Mac or Windows user can open a file; on Android
+logcat needs a cable and a computer, and on iOS there is no shell at all — so both share the log out
+instead. Each platform also keeps its native sink (`os.Logger`, logcat), so nothing that used to be
+visible stopped being.
 
 Two things never reach it. **Your words**: transcripts and screen text are withheld by default, so a
 line records that a 412-character transcript came back, not what it said — `DNT_LOG_CONTENT=1` opens
