@@ -9,13 +9,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
     private var permissionsWindow: NSWindow?
+    private var fileWindow: NSWindow?
 
     private let store = HistoryStore(directory: HistoryStore.defaultDirectory())
     private let permissions = PermissionsModel()
     private lazy var dictation = DictationController(store: store)
     private lazy var settingsModel = SettingsModel(store: store)
+    private lazy var fileTranscription = FileTranscriptionModel(store: store)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything else: a crash during startup is exactly the case where the log has to
+        // already exist, and every key is registered for redaction here.
+        Settings.shared.startLogging()
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         setIcon(for: .idle)
 
@@ -37,6 +43,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         dictation.stop()
+        // The file sink buffers through a `FileHandle`; without this the last few lines before a
+        // quit — which are usually the interesting ones — never reach the disk.
+        Log("app").info("terminating")
+        LogRouter.shared.flush()
     }
 
     // MARK: - Startup
@@ -227,6 +237,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(.separator())
+        // Above Settings because it is a thing to do, not a thing to configure — and because a
+        // recording already on disk is the one case the hotkey cannot serve at all.
+        let transcribeFile = NSMenuItem(
+            title: "Transcribe a Recording…", action: #selector(openFileTranscription),
+            keyEquivalent: "o")
+        transcribeFile.target = self
+        menu.addItem(transcribeFile)
+
         if !permissions.allRequiredGranted {
             let setup = NSMenuItem(
                 title: "Finish setup…", action: #selector(openPermissions), keyEquivalent: "")
@@ -270,6 +288,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.isReleasedWhenClosed = false
         settingsWindow = window
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// The offline path: transcribe, rewrite or summarise a recording that already exists.
+    @objc private func openFileTranscription() {
+        if let fileWindow {
+            fileWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 660, height: 560),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered, defer: false)
+        window.title = "Transcribe a Recording"
+        window.contentView = NSHostingView(
+            rootView: FileTranscriptionView(model: fileTranscription))
+        window.center()
+        window.isReleasedWhenClosed = false
+        fileWindow = window
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

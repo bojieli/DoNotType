@@ -73,6 +73,13 @@ enum Diagnostics {
         row("blocked apps", "\(settings.blockedBundleIDs.count)")
         row("custom prompt", model.isPromptCustom ? "yes" : "no (using the bundled contract)")
 
+        section("Logging")
+        row("level", Settings.shared.logLevel.name)
+        row("file", LogRouter.shared.fileURL?.path ?? "not writing to a file")
+        // Stated in the report because it changes what the *log* is safe to attach, and someone
+        // pasting both would otherwise have no reminder that they turned it on last week.
+        row("transcripts in log", Settings.shared.logContent ? "YES — the log contains your words" : "no")
+
         section("History")
         let failures = history.filter { $0.status != .completed }
         row("total", "\(history.count)")
@@ -98,12 +105,20 @@ enum Diagnostics {
         return lines.joined(separator: "\n")
     }
 
-    /// Opens Console with this app's log stream.
+    /// Shows the log file in Finder, falling back to Console.
     ///
-    /// The app logs to `os.Logger`, which is invisible unless you know to look — and knowing to
-    /// look means knowing the subsystem string. This is the one click that turns "nothing
-    /// happened" into something readable.
+    /// This used to open Console and stop there, which required knowing the subsystem string to
+    /// find anything — a fine instruction for the person who wrote the app and useless to anybody
+    /// else. There is now a plain text file, so the useful action is to point at it. Settings ›
+    /// Logs reads the same events without leaving the app.
     static func revealLogs() {
+        LogRouter.shared.flush()
+        if let url = LogRouter.shared.fileURL,
+            FileManager.default.fileExists(atPath: url.path)
+        {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+            return
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         process.arguments = ["-a", "Console"]

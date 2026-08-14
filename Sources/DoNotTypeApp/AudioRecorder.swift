@@ -1,7 +1,6 @@
 import AVFoundation
 import DoNotTypeCore
 import Foundation
-import os
 
 /// Microphone capture, downsampled and written incrementally.
 ///
@@ -34,7 +33,7 @@ final class AudioRecorder: @unchecked Sendable {
     /// Below this, it was a stray key press rather than speech. Matches Typeless's own cutoff.
     static let minimumDuration = 0.5
 
-    private let log = Logger(subsystem: "app.donottype", category: "audio")
+    private let log = Log("audio")
     private let engine = AVAudioEngine()
     private let lock = NSLock()
 

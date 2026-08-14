@@ -1,7 +1,6 @@
 import AppKit
 import DoNotTypeCore
 import Foundation
-import os
 
 /// Runs the two-phase capture that makes grounding free.
 ///
@@ -14,7 +13,7 @@ import os
 /// always finished; if it has not, the dictation goes out with phase 1 only rather than waiting.
 @MainActor
 final class GroundingCoordinator {
-    private let log = Logger(subsystem: "app.donottype", category: "grounding")
+    private let log = Log("grounding")
 
     private var identity: ScreenContext?
     private var fullCapture: Task<ScreenContext?, Never>?

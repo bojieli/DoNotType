@@ -1,6 +1,6 @@
 import AppKit
 import CoreGraphics
-import os
+import DoNotTypeCore
 
 /// Global push-to-talk key, via a CGEvent tap.
 ///
@@ -104,7 +104,7 @@ final class HotkeyMonitor {
     /// Set by the owner so tap-toggle knows whether a tap should start or stop.
     var isRecording: () -> Bool = { false }
 
-    private let log = Logger(subsystem: "app.donottype", category: "hotkey")
+    private let log = Log("hotkey")
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var watchdog: Timer?

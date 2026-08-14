@@ -1,6 +1,6 @@
 import AppKit
 import CoreGraphics
-import os
+import DoNotTypeCore
 
 /// Puts the transcript into whatever the user was typing in.
 ///
@@ -12,7 +12,7 @@ import os
 /// put back afterwards, so a user's copied image or rich text survives a dictation.
 @MainActor
 enum TextInjector {
-    private static let log = Logger(subsystem: "app.donottype", category: "inject")
+    private static let log = Log("inject")
 
     /// How long to let the target app read the pasteboard before restoring it.
     ///

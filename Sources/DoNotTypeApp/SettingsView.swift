@@ -4,6 +4,9 @@ import SwiftUI
 /// The settings window: providers and keys, the hotkey, grounding, and the history with retry.
 struct SettingsView: View {
     @Bindable var model: SettingsModel
+    /// Owned by the window rather than the app: polling the log buffer is only worth doing while
+    /// someone is looking at it.
+    @State private var logs = LogViewerModel()
 
     var body: some View {
         TabView {
@@ -17,6 +20,8 @@ struct SettingsView: View {
                 .tabItem { Label("Stats", systemImage: "chart.bar") }
             PromptTab(model: model)
                 .tabItem { Label("Prompt", systemImage: "text.quote") }
+            LogsTab(model: logs)
+                .tabItem { Label("Logs", systemImage: "list.bullet.rectangle") }
         }
         .frame(width: 620, height: 520)
         .task {
@@ -187,8 +192,8 @@ private struct GeneralTab: View {
                         "Version, model, key fingerprint, permissions and recent failures — "
                             + "everything needed to explain a problem, with no secrets in it.")
 
-                    Button("Reveal logs") { Diagnostics.revealLogs() }
-                        .help("Opens Console filtered to this app")
+                    Button("Reveal log file") { Diagnostics.revealLogs() }
+                        .help("Shows the log file in Finder. The Logs tab reads it in place.")
 
                     if let note = model.transientNote {
                         Text(note).font(.callout).foregroundStyle(.secondary)

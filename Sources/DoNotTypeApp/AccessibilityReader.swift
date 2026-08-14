@@ -2,7 +2,6 @@ import AppKit
 import ApplicationServices
 import DoNotTypeCore
 import Foundation
-import os
 
 /// Reads the focused app's text out of the accessibility tree.
 ///
@@ -10,7 +9,7 @@ import os
 /// block an `AXUIElementCopyAttributeValue` call indefinitely, and a dictation tool that hangs
 /// because Slack is busy is worse than one that grounds on nothing.
 struct AccessibilityReader: Sendable {
-    private static let log = Logger(subsystem: "app.donottype", category: "ax")
+    private static let log = Log("ax")
 
     /// Character budgets, matching the ones Typeless arrived at.
     struct Limits: Sendable {

@@ -32,6 +32,9 @@ final class Settings {
         static let keytermBiasing = "keytermBiasing"
         static let fallbackProvider = "fallbackProvider"
         static let fallbackAfterSeconds = "fallbackAfterSeconds"
+        static let logLevel = "logLevel"
+        static let logContent = "logContent"
+        static let fileMode = "fileMode"
     }
 
     /// Shipped non-empty. A blocklist that starts empty is a blocklist nobody ever fills in, and
@@ -66,6 +69,76 @@ final class Settings {
             // recording overlay is behind another window. Users can still turn them off below.
             Key.interactionSounds: true,
         ])
+    }
+
+    /// How much the app writes to its log file.
+    ///
+    /// Persisted rather than environment-only because the people who need it most are the ones who
+    /// cannot set an environment variable for a bundle launched from Finder — `~/.zshrc` is read by
+    /// interactive shells and nothing else. `DNT_LOG_LEVEL` still overrides this when it is set,
+    /// which is what a developer running from a terminal expects.
+    var logLevel: LogLevel {
+        get { LogLevel(name: defaults.string(forKey: Key.logLevel) ?? "") ?? .info }
+        set {
+            defaults.set(newValue.name, forKey: Key.logLevel)
+            LogRouter.shared.setLevel(newValue)
+        }
+    }
+
+    /// Whether transcripts and screen text may go into the log.
+    ///
+    /// Off, and it stays off unless someone deliberately turns it on: a log file is the one artifact
+    /// of this app most likely to be attached to a bug report, and an app whose promise is that
+    /// your words stay yours should not write a second copy of them by default.
+    var logContent: Bool {
+        get { defaults.bool(forKey: Key.logContent) }
+        set {
+            defaults.set(newValue, forKey: Key.logContent)
+            LogRouter.shared.setIncludesContent(newValue)
+        }
+    }
+
+    /// Last mode chosen in the file transcription window, so it opens where you left it.
+    var fileMode: TranscriptMode {
+        get {
+            TranscriptMode(rawValue: defaults.string(forKey: Key.fileMode) ?? "") ?? .verbatim
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.fileMode) }
+    }
+
+    /// Where the log file lives, next to the history it explains.
+    static var logDirectory: URL {
+        HistoryStore.defaultDirectory().appendingPathComponent("logs", isDirectory: true)
+    }
+
+    /// Installs logging for the whole process. Called once, before anything else can log.
+    ///
+    /// Every configured key is registered for redaction here rather than at the point of use: a key
+    /// reaches the log through routes nobody planned — a provider echoing it back inside an error
+    /// body, a base URL someone pasted it into — and the only reliable defence is knowing the exact
+    /// bytes before the first request.
+    func startLogging() {
+        var configuration = LogRouter.Configuration.app(logDirectory: Self.logDirectory)
+        configuration.level = logLevel
+        configuration.includesContent = logContent
+        let resolved = LogRouter.shared.bootstrap(configuration)
+
+        for kind in ProviderKind.allCases {
+            if let key = resolvedAPIKey(for: kind), !key.isEmpty {
+                LogRouter.shared.redact(secret: key)
+            }
+        }
+
+        Log("app").info(
+            "started",
+            [
+                "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+                    ?? "dev",
+                "level": resolved.level.name,
+                "log": resolved.fileURL?.path ?? "none",
+                "provider": provider.rawValue,
+                "model": model,
+            ])
     }
 
     /// Pinned input device, by UID. Nil means "whatever the system default is".
@@ -303,41 +376,5 @@ final class Settings {
     }
 }
 
-enum Keychain {
-    private static let service = "app.donottype"
-
-    static func read(account: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-            let data = item as? Data
-        else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    static func write(_ value: String, account: String) {
-        delete(account: account)
-        let attributes: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: Data(value.utf8),
-        ]
-        SecItemAdd(attributes as CFDictionary, nil)
-    }
-
-    static func delete(account: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
-    }
-}
+// `Keychain` moved into DoNotTypeCore so `dnt` reads the same entries this window writes. See
+// `Keychain` and `APIKeyResolver` there.

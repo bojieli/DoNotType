@@ -86,8 +86,7 @@ final class SettingsModel {
     /// What the selected backend can do with the screen, for the UI to state plainly instead of
     /// leaving grounding controls that quietly do nothing.
     var grounding: GroundingSupport {
-        guard let provider = try? ProviderFactory.make(
-            self.provider, environment: [self.provider.apiKeyEnvVar: "placeholder"])
+        guard let provider = try? ProviderFactory.make(self.provider, apiKey: "placeholder")
         else { return .multimodal }
         return provider.grounding(forModel: model)
     }
@@ -403,8 +402,7 @@ final class SettingsModel {
             return settle(.missing)
         }
         guard
-            let client = try? ProviderFactory.make(
-                provider, environment: [provider.apiKeyEnvVar: key])
+            let client = try? ProviderFactory.make(provider, apiKey: key)
         else {
             return settle(.rejected("Could not configure \(provider.rawValue)."))
         }
@@ -470,8 +468,7 @@ final class SettingsModel {
 
     private func makeCoordinator() -> RetryCoordinator? {
         guard let key = Settings.shared.resolvedAPIKey(), !key.isEmpty,
-            let provider = try? ProviderFactory.make(
-                provider, environment: [provider.apiKeyEnvVar: key]),
+            let provider = try? ProviderFactory.make(provider, apiKey: key),
             let promptURL = Self.bundledPromptURL(),
             let instruction = try? prompts.builder(default: promptURL)
                 .systemInstruction(fidelity: fidelity)

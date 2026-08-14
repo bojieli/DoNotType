@@ -4,7 +4,6 @@ import Foundation
 import ImageIO
 import ScreenCaptureKit
 import UniformTypeIdentifiers
-import os
 
 /// Captures the focused window when the accessibility tree comes back thin.
 ///
@@ -12,7 +11,7 @@ import os
 /// from another Space landing in the context. Downscaled to a 1024 px long edge, which is enough
 /// to read UI type and roughly 1,300 tokens.
 enum ScreenCapturer {
-    private static let log = Logger(subsystem: "app.donottype", category: "capture")
+    private static let log = Log("capture")
     private static let longEdge = 1024.0
 
     static var hasPermission: Bool {

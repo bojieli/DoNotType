@@ -1,7 +1,6 @@
 import AppKit
 import DoNotTypeCore
 import Foundation
-import os
 
 /// Orchestrates one dictation: hold the key, speak, release, get your words back.
 @MainActor
@@ -23,7 +22,7 @@ final class DictationController {
 
     let store: HistoryStore
 
-    private let log = Logger(subsystem: "app.donottype", category: "dictation")
+    private let log = Log("dictation")
     private let recorder = AudioRecorder()
     private let hotkey = HotkeyMonitor()
     private let grounding = GroundingCoordinator()
@@ -376,7 +375,7 @@ final class DictationController {
         let settings = Settings.shared
         guard let kind = settings.fallbackProvider,
             let key = settings.resolvedAPIKey(for: kind), !key.isEmpty,
-            let backend = try? ProviderFactory.make(kind, environment: [kind.apiKeyEnvVar: key]),
+            let backend = try? ProviderFactory.make(kind, apiKey: key),
             let promptURL = SettingsModel.bundledPromptURL(),
             let instruction = try? PromptBuilder(contentsOf: promptURL)
                 .systemInstruction(fidelity: settings.fidelity)
@@ -396,8 +395,7 @@ final class DictationController {
     private func makeCoordinator() -> RetryCoordinator? {
         let settings = Settings.shared
         guard let key = settings.resolvedAPIKey(), !key.isEmpty,
-            let provider = try? ProviderFactory.make(
-                settings.provider, environment: [settings.provider.apiKeyEnvVar: key]),
+            let provider = try? ProviderFactory.make(settings.provider, apiKey: key),
             let promptURL = Bundle.main.url(forResource: "PROMPT", withExtension: "md")
                 ?? PromptBuilder.findPromptFile(),
             let instruction = try? PromptBuilder(contentsOf: promptURL)
