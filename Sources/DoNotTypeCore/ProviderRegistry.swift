@@ -147,6 +147,30 @@ public enum ProviderKind: String, CaseIterable, Sendable {
 }
 
 public enum ProviderFactory {
+    /// Builds a provider with a key from somewhere other than the environment — the Keychain, a
+    /// settings field, a flag.
+    ///
+    /// This exists because every caller that had a key already was writing
+    /// `make(kind, environment: [kind.apiKeyEnvVar: key])`, and that dictionary *replaces* the
+    /// environment rather than adding to it. Everything else this factory reads from there was
+    /// therefore silently unreachable from the app: `DNT_LOCAL_BASE_URL` (so a self-hosted server
+    /// was always assumed to be on `localhost:8000`) and `DNT_DEEPGRAM_LANGUAGE`, which the
+    /// settings panel tells Chinese-speaking users to set — advice that could not work. The
+    /// process environment is merged in, with the supplied key taking precedence over any copy of
+    /// itself found there.
+    public static func make(
+        _ kind: ProviderKind,
+        apiKey: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) throws -> any TranscriptionProvider {
+        var merged = environment
+        // Every spelling is cleared first, so a stale key under an alternate name cannot win a
+        // lookup that the canonical one would have satisfied.
+        for name in kind.apiKeyEnvVars { merged[name] = nil }
+        merged[kind.apiKeyEnvVar] = apiKey
+        return try make(kind, environment: merged)
+    }
+
     /// Builds a provider, reading the key from the environment.
     ///
     /// - Parameters:
