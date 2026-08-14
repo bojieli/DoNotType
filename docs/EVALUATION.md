@@ -833,3 +833,35 @@ the recogniser the very string the user did not say.
 than the gateway's +4 for 3, and unlike keyterms it is a genuine net positive. Grounding through
 the first-party API earns its place; grounding through a gateway is marginal; keyterm biasing is
 negative.
+
+## Verifying by ear — the step only a human can do
+
+Every accuracy figure in this document rests on ground truth, and the ordinary-dictation corpus
+has none. `dnt-eval dictation` measures latency, failure rate and cross-backend agreement without
+it; none of those say whether a transcript is *right*, and agreement is not correctness, because
+two backends can agree on the same mistake.
+
+```bash
+./eval/make-review-sheet.py            # → eval/dictation/review.html
+open eval/dictation/review.html        # listen, type what you hear, Export
+./eval/score-review.py                 # word error rate per backend, per language
+```
+
+The sheet orders clips by **worst backend disagreement first**, which is where an ear buys the
+most: where independent backends already produced the same words they are probably right, so
+listening to those first would spend the scarce resource on the easy cases. Verified text is kept
+in `localStorage` as you go and exported as JSON; clips left blank are simply not counted.
+
+**What the agreement numbers already suggest, and cannot establish.** Across 99 clips, only 12%
+have backends agreeing to within 95%, and 28% disagree by more than half their words. Split by
+language it is 85% mean agreement on English against 60.5% on Chinese, with 3 of 68 Chinese clips
+reaching the ≥95% band.
+
+Two caveats keep that from being an error rate. The tokeniser splits CJK per character, so
+legitimate variation — particles, homophones, punctuation — is penalised harder in Chinese than
+in English, by an unknown amount. And Deepgram drags the pooled figures down: it returns under 40%
+of its peers' median length on 25% of clips, and manages 0.12 of the character density on Chinese
+that it manages on English.
+
+So the honest position is that ordinary-dictation accuracy is **unmeasured**, the agreement data
+is consistent with it being poor on Chinese, and roughly twenty verified clips would settle it.
