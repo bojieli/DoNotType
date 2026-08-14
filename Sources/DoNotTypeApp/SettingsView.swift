@@ -90,15 +90,6 @@ private struct GeneralTab: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if case .keyterms = model.grounding {
-                    Toggle("Send screen words as spelling hints", isOn: $model.keytermBiasing)
-                        .help(
-                            "Not recommended. Numbers are never sent, but names are, and the "
-                                + "hints come from whatever is on screen — including a term you "
-                                + "did not say. Measured at 3 regressions per evaluation run: "
-                                + "with 'GRPO' on screen it pushed the recogniser off the 'DAPO' "
-                                + "it had transcribed correctly without hints.")
-                }
 
                 LabeledContent("Key source") {
                     Text(model.resolvedKeySource).foregroundStyle(.secondary)

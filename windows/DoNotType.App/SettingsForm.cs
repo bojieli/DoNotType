@@ -22,11 +22,6 @@ public sealed class SettingsForm : Form
     /// <summary>What the selected backend gives up. Empty and hidden for a model provider.</summary>
     private readonly Label _providerNote = new() { AutoSize = true, MaximumSize = new Size(430, 0) };
 
-    private readonly CheckBox _keytermBiasing = new()
-    {
-        Text = "Send screen words as spelling hints (numbers are never sent)",
-        AutoSize = true,
-    };
     private readonly Label _connection = new() { AutoSize = true, MaximumSize = new Size(420, 0) };
 
     private readonly ComboBox _fallback = new() { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -90,7 +85,6 @@ public sealed class SettingsForm : Form
         layout.Controls.Add(Heading("Provider"));
         layout.Controls.Add(Labelled("Service", _provider));
         layout.Controls.Add(_providerNote);
-        layout.Controls.Add(_keytermBiasing);
         layout.Controls.Add(Labelled("Model", _model));
         layout.Controls.Add(Labelled("API key", _apiKey));
 
@@ -436,9 +430,6 @@ public sealed class SettingsForm : Form
             _ => string.Empty,
         };
         _providerNote.Visible = kind.IsSpeechRecognition();
-
-        var keytermCapable = kind is ProviderKind.Deepgram or ProviderKind.XAI;
-        _keytermBiasing.Visible = keytermCapable;
     }
 
     /// <summary>
@@ -482,7 +473,6 @@ public sealed class SettingsForm : Form
         _provider.SelectedIndex = (int)_settings.Provider;
         _model.Text = _settings.ModelFor(_settings.Provider);
         _apiKey.Text = _settings.KeyFor(_settings.Provider) ?? string.Empty;
-        _keytermBiasing.Checked = _settings.KeytermBiasing;
 
         _fallback.Items.Add("None");
         foreach (var kind in Enum.GetValues<ProviderKind>())
@@ -558,7 +548,6 @@ public sealed class SettingsForm : Form
         _settings.Provider = (ProviderKind)_provider.SelectedIndex;
         _settings.SetModelFor(_settings.Provider, _model.Text);
         _settings.SetKeyFor(_settings.Provider, _apiKey.Text.Trim());
-        _settings.KeytermBiasing = _keytermBiasing.Checked;
         _settings.FallbackProvider = SelectedFallback();
         _settings.FallbackAfterSeconds = (int)_fallbackAfter.Value;
         if (SelectedFallback() is { } fallbackKind)

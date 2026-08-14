@@ -59,8 +59,6 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var apiKeyField: EditText
     private lateinit var modelField: EditText
     private lateinit var groundingNote: TextView
-    private lateinit var keytermNote: TextView
-    private lateinit var keytermSwitch: Switch
     private lateinit var fallbackKeyField: EditText
     private lateinit var fallbackDelayField: EditText
     private lateinit var fallbackNote: TextView
@@ -145,18 +143,6 @@ class SettingsActivity : AppCompatActivity() {
         groundingNote = body("")
         column.addView(groundingNote)
 
-        keytermSwitch = Switch(this).apply {
-            text = "Send screen words as spelling hints"
-            isChecked = Settings.keytermBiasing
-            setOnCheckedChangeListener { _, checked -> Settings.keytermBiasing = checked }
-        }
-        column.addView(keytermSwitch)
-        keytermNote = body(
-            "Sends up to 100 names and identifiers from your screen to bias recognition. Numbers "
-                + "are never sent — a version or port read off the screen is exactly what must "
-                + "come from your voice."
-        )
-        column.addView(keytermNote)
 
         apiKeyField = EditText(this).apply {
             hint = "API key"
@@ -462,7 +448,6 @@ class SettingsActivity : AppCompatActivity() {
     /** Says what the selected backend gives up, and hides controls it cannot honour. */
     private fun refreshProviderNotes() {
         val kind = Settings.provider
-        val keytermCapable = kind == ProviderKind.DEEPGRAM || kind == ProviderKind.XAI
 
         groundingNote.text = when (kind) {
             // The gateway forwards audio correctly; this is a measured quality difference, and
@@ -489,9 +474,6 @@ class SettingsActivity : AppCompatActivity() {
         groundingNote.visibility =
             if (groundingNote.text.isNullOrEmpty()) View.GONE else View.VISIBLE
 
-        val showKeyterms = keytermCapable
-        keytermSwitch.visibility = if (showKeyterms) View.VISIBLE else View.GONE
-        keytermNote.visibility = if (showKeyterms) View.VISIBLE else View.GONE
 
         val fallback = Settings.fallbackProvider
         fallbackKeyField.visibility = if (fallback != null) View.VISIBLE else View.GONE

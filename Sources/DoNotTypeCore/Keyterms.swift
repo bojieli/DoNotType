@@ -23,8 +23,10 @@ import Foundation
 /// hints push the recogniser off a spelling it got right unaided. The digit rule cannot help
 /// there, because `GRPO` contains no digits.
 ///
-/// Kept because it is measurable and because a recogniser's only grounding channel is worth having
-/// characterised. See `docs/EVALUATION.md`. What follows is the containment.
+/// It is therefore **no longer offered in any settings UI**. The setting survives so `dnt-eval`
+/// can keep measuring it and so the finding stays reproducible, but a toggle whose own help text
+/// says "not recommended" is an invitation to make a worse transcript. See `docs/EVALUATION.md`.
+/// What follows is the containment.
 ///
 /// ## The one rule that is not negotiable
 ///

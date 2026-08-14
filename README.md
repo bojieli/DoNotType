@@ -196,8 +196,8 @@ for masking before the first request, and anything else key-shaped is caught by 
 - **Recognition services are a different trade, and the app says so.** They return a transcript in
   around 1.2 s against 6.5 s for a model, and cannot read your screen or rewrite. Selecting one
   states that under the picker rather than leaving grounding controls that quietly do nothing.
-  Where they *can* take spelling hints, numbers on screen are **never** among them — a version read
-  off the screen is exactly what must come from your voice. xAI scores best of the three (29–30/48
+  Spelling hints from the screen are **not offered**: measured, they made transcripts worse, by
+  feeding the recogniser whatever was on screen — including the term you did not say. xAI scores best of the three (29–30/48
   against a model provider's 40/48, five times faster, no regressions); Deepgram cannot transcribe
   Chinese under any autodetecting setting; Voxtral and xAI both handle Mandarin and English
   together. Measured in [docs/EVALUATION.md](docs/EVALUATION.md).
