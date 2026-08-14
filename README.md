@@ -264,6 +264,38 @@ ships non-empty. The Context Inspector shows exactly what was sent with any dict
 Read [SECURITY.md](SECURITY.md) for what the app can see, where keys live, and an honest threat
 model — including prompt injection, which this design has an unusually direct surface for.
 
+## What this will never do
+
+Some of what follows sounds like a missing feature. Each one is a decision, and most were reached by
+building the thing and measuring it.
+
+**Rewrite you by default, or discard what you said.** The raw transcript is produced first, stored
+first, and recoverable — under a rewrite, under a summary, on every platform. A mode that transcribed
+and polished in one request would have no verbatim output to keep, so there isn't one.
+
+**Learn a vocabulary from your corrections.** A stored list of "correct" terms becomes a prior that
+beats clear audio, and a correction-fed one is self-reinforcing: that is the specific failure this
+project was built against. The one feature of that shape — keyterm biasing — was implemented,
+measured, found to regress three cases per run, and taken out of the settings.
+
+**Put a server in the middle.** No account, no sign-in, no subscription, no telemetry, no analytics,
+no crash reporting. Your key, your machine, the provider's API. That also means no server-side
+history, no sync, and no "recover my transcripts" — the price of the same decision.
+
+**Log your words.** Transcripts and screen contents stay out of the log file unless you switch them
+on, and the app says out loud when you have.
+
+**Ship a quality claim without a number.** Changes to `PROMPT.md`, the context format, the budgets or
+the default backend need before/after measurements. This has already reversed three plausible
+mechanisms, and one of the reversals removed a feature.
+
+**Truncate something and say nothing.** If a list is capped or a budget drops content, the interface
+says so. A history list capped at 20 with nothing said reads as "this is all of it".
+
+**Ground on iOS.** Not a roadmap item — nothing in the sandbox lets one app read another's content,
+and unlike macOS accessibility or Android's `AccessibilityService` there is no user-grantable escape
+hatch. It is listed as ❌ above and will stay that way.
+
 ## Contributing
 
 Changes to `PROMPT.md` or the context format need **a measurement, not an argument**. Three
