@@ -650,10 +650,15 @@ and the per-case reading in [EVALUATION.md](EVALUATION.md).
 
 | model | matched | **regressed** | ungrounded | ref clip: grounded / **no context** | latency |
 |---|---|---|---|---|---|
-| **`gemini-3.6-flash`** | **44, 44** | **1, 1** | **42, 41** | 8% / **30%** | 5–60 s, bimodal |
+| **`gemini-3.6-flash`** | **44, 44** | **1, 1** | **42, 41** | 8–18% / **0–30%** | 14–17 s |
 | `gemini-3.7-flash` | 40, 41 | 2, 1 | 37, 36 | 100% / **82%** | 10.5 s |
 | `gemini-3-flash-preview` | 37, 36 | **5, 4** | 32, 33 | 14% / **18%** | **2.2 s** |
 | `gemini-3.5-flash` | 31, 35 | 1, 1 | 27, 28 | 75% / **83%** | 3–6 s |
+
+The reference-clip column for 3.6 is a **range across two sessions**, and the sessions disagree
+about whether grounding helps or hurts on that clip — see the correction at the end of
+[EVALUATION.md](EVALUATION.md). The cross-model comparison survives it, because 3.7 sits far
+outside 3.6's range in both sessions; single-session absolute rates do not.
 
 **Newer is not better here.** 3.7 is a regression from 3.6 by 3–4 matched runs and by more on the
 ungrounded column, and on the reference clip it writes the wrong version number in 10 of 10

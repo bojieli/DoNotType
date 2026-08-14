@@ -119,6 +119,19 @@ deliberate:
 
 ### Changed
 
+- **Keyterm biasing is no longer offered in settings.** Measured, it made transcripts worse: 3
+  regressions per evaluation run, because the terms it extracts are whatever is on screen — on
+  `real-acronym` that is `GRPO` and `PPO` while the speaker said `DAPO`. It also yields nothing for
+  60% of realistic screen contexts, 73% in Chinese, and nothing at all from a screenshot. The
+  setting and the code remain so the finding stays reproducible; the switch is gone.
+
+- **Two corrected figures for native Gemini.** Latency is not 5–60 s bimodal and it is not
+  throttling — spacing requests 25 s apart does not help and no quota headers are returned. It
+  measures 14–17 s on the 22-second reference clip, against the 35.75 s published from one bad
+  window. And the reference-clip substitution rate does not replicate between sessions (8% vs 18%
+  grounded, 30% vs 0% ungrounded), so that clip cannot support a claim either way for 3.6. The
+  cross-model comparison survives, because 3.7 sits far outside 3.6's range in every session.
+
 - **Gemini thinking level is chosen per model family, not hardcoded.** `gemini-3.7-flash` rejects
   `minimal` — *"Allowed values are: medium, low, high"* — so every request failed the moment the
   model field was changed to it, on all three platforms at once. The level is now the cheapest each

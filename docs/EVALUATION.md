@@ -981,3 +981,56 @@ by a human listening. Those are the ones worth an ear, and they can be checked:
 ```
 
 which plays each fixture beside the ground truth it asserts, marked by origin.
+
+## Two corrections to the native-Gemini figures — 2026-08-14
+
+Re-measuring before recommending anything found that both numbers published for
+`gemini-3.6-flash` came from an unrepresentative window.
+
+**Latency is not 5–60 s bimodal, and it is not throttling.** Spacing requests 25 s apart does not
+help — back-to-back gives a 9.56 s median against 8.30 s spaced, and the API returns no quota or
+retry headers at all. On the 22-second reference clip it now measures **13.9 s grounded and 17.4 s
+ungrounded**, against the 35.75 s published earlier. The 61 s and 50 s outliers recorded on
+2026-08-13 were server-side load at that moment, not a property of the account or the API.
+
+The practical consequence is smaller than it sounds: ~14 s is still an order of magnitude worse
+than a recogniser's 0.9 s, so the fallback still earns its place. But "sometimes 60 seconds" was
+alarmism built on one bad afternoon, and the default hedge delay was chosen against it.
+
+**The reference-clip substitution rate does not replicate between sessions.**
+
+| session | grounded | no context |
+|---|---|---|
+| 2026-08-13 | 1/12 (8%) | 3/10 (30%) |
+| 2026-08-14 | 2/11 (18%) | **0/11 (0%)** |
+
+The two sessions disagree about the *direction*: one has grounding halving the error, the other has
+it introducing the only errors there are. With n≈11 and that spread, **this clip cannot support a
+claim either way for 3.6**, and the earlier statement that it "hears the clip correctly 70% of the
+time unaided" should have been 70–100%.
+
+What survives is the cross-model comparison, because 3.7's 82–100% sits far outside 3.6's 0–30%
+range in every session. Comparisons between models measured in the same session hold; absolute
+rates from a single session do not.
+
+**The general lesson, which this document keeps relearning:** a 10–12 trial ablation is a
+screening tool, not a measurement. It is sharp enough to separate models that differ by 60 points
+and useless for anything that differs by 10.
+
+## Keyterm biasing is no longer offered — 2026-08-14
+
+The toggle is gone from macOS, Windows and Android. The setting and the code remain, so `dnt-eval`
+can keep measuring it and the finding stays reproducible, but nothing in the product invites
+someone to turn it on.
+
+The evidence had accumulated to the point where shipping a switch for it was indefensible:
+
+- It **regresses 3 runs per suite**, stably, in both sessions measured. On `real-acronym` the terms
+  it extracts are `GRPO, PPO` — both decoys on screen — while the speaker said `DAPO`.
+- It yields **nothing for 60% of realistic screen contexts**, and 73% in Chinese.
+- It yields **nothing at all** from a screenshot, which is exactly the surface where the
+  accessibility tree came back thin.
+
+A feature that helps on a synthetic suite, does nothing most of the time in practice, and actively
+feeds the on-screen decoy to the recogniser is not a feature. Keeping the toggle while the help
+text read "not recommended" was having it both ways.
