@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 400" width="880" height="400"
+     font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+     role="img" aria-label="A terminal running dnt providers, which lists each backend with where its key came from and whether it is a language model; dnt prompt validate, which checks every block of PROMPT.md resolves; and dnt doctor, which reports the environment.">
+  <title>dnt, running</title>
+
+  <!--
+    Every line below is verbatim output from a real run on a developer machine, trimmed to fit.
+    Nothing here is illustrative: a README that shows invented output is a README that has to be
+    checked, and this project's whole argument is that claims should be checkable.
+    That is also why there is no `dnt transcribe` frame — its output needs a configured backend, and
+    a repository has no key, so any transcript shown here would have had to be made up.
+
+    Hand-written rather than recorded so it stays a reviewable diff, needs no tooling, and renders
+    wherever an <img> does.
+  -->
+
+  <defs>
+    <style>
+      text { font-size: 12.5px; }
+      .prompt { fill: #22c55e; }
+      .cmd    { fill: #e8e8e8; }
+      .out    { fill: #b9bcc4; }
+      .dim    { fill: #6b7280; }
+      .arrow  { fill: #38bdf8; }
+      .ok     { fill: #4ade80; }
+      /* Each block appears after the one before it, so it reads as a session. A viewer that ignores
+         CSS animation shows all of it at once, which is also fine. */
+      .step { opacity: 0; animation: appear .01s forwards; }
+      .s1 { animation-delay: .3s } .s2 { animation-delay: 2.0s } .s3 { animation-delay: 3.7s }
+      @keyframes appear { to { opacity: 1 } }
+    </style>
+  </defs>
+
+  <rect width="880" height="400" rx="10" fill="#0d0e11"/>
+  <circle cx="26" cy="22" r="5" fill="#3f4147"/>
+  <circle cx="44" cy="22" r="5" fill="#3f4147"/>
+  <circle cx="62" cy="22" r="5" fill="#3f4147"/>
+  <text x="82" y="26" class="dim" font-size="11">dnt — ships inside the app bundle</text>
+
+  <g class="step s1">
+    <text x="22" y="60"><tspan class="prompt">$</tspan> <tspan class="cmd">dnt providers</tspan></text>
+    <text x="22" y="80" class="dim">   backend      key                          capability</text>
+    <text x="22" y="98" class="out">   gemini      environment (GEMINI_API_KEY) model — grounding, rewrite, summary</text>
+    <text x="22" y="116" class="out">   openrouter  environment (OPENROUTER_API… model — grounding, rewrite, summary</text>
+    <text x="22" y="134" class="out">   deepgram    — not set                    transcription only</text>
+    <text x="22" y="152"><tspan class="arrow"> → </tspan><tspan class="out">xai         environment (XAI_API_KEY)    transcription only</tspan></text>
+    <text x="22" y="174" class="dim">Recognition backends cannot rewrite or summarise; pair one with --text-provider.</text>
+  </g>
+
+  <g class="step s2">
+    <text x="22" y="212"><tspan class="prompt">$</tspan> <tspan class="cmd">dnt prompt validate</tspan></text>
+    <text x="22" y="232" class="out">system block      <tspan class="ok">ok</tspan> (every fidelity resolves)</text>
+    <text x="22" y="250" class="out">rewrite:formal    <tspan class="ok">ok</tspan></text>
+    <text x="22" y="268" class="out">summary:actions   <tspan class="ok">ok</tspan></text>
+  </g>
+
+  <g class="step s3">
+    <text x="22" y="306"><tspan class="prompt">$</tspan> <tspan class="cmd">dnt doctor</tspan></text>
+    <text x="22" y="326" class="out">Environment</text>
+    <text x="22" y="344" class="out">  opus encoder          available</text>
+    <text x="22" y="362" class="out">  audio formats         WAV, MP3, M4A/AAC, Opus</text>
+    <text x="22" y="384" class="dim">…keys, prompt, history and one live request with --probe</text>
+  </g>
+</svg>

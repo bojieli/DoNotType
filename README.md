@@ -14,6 +14,11 @@ macOS · Windows · Android · iOS. Open source, your own API key, no server in 
                         so "koffi" stays koffi and 3.5 stays 3.5
 ```
 
+<img src="Resources/Demo/hero.svg" alt="You say 'switch to Gemini three point five Flash' while the screen shows 'Gemini 3 Flash' five times. A tool that learns your vocabulary types 'Gemini 3 Flash'. DoNotType types 'Gemini 3.5 Flash'." width="880">
+
+That is the rule, drawn. Whether it *holds* is a separate question with a measured answer, and the
+honest one is below: on real recorded speech it currently fails about a third of the time.
+
 ## Why
 
 Dictation tools in this category get two things wrong.
@@ -174,6 +179,12 @@ dnt logs --follow         # what the app is doing right now
 dnt history retry --all   # re-send what failed, with its stored audio and context
 dnt prompt show           # the exact instruction a request will carry
 ```
+
+<img src="Resources/Demo/cli.svg" alt="A terminal running dnt providers, dnt prompt validate and dnt doctor." width="880">
+
+Every line in that image is real output. There is no `dnt transcribe` frame in it for the same
+reason there are no invented numbers anywhere else here: its output needs a configured backend, and
+a repository has no key, so any transcript shown would have had to be made up.
 
 Full reference, including the logging: [docs/CLI.md](docs/CLI.md).
 

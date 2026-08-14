@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 260" width="880" height="260"
+     font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+     role="img" aria-label="You say Gemini three point five Flash while the screen shows Gemini 3 Flash five times. A rewriting tool types Gemini 3 Flash. DoNotType types Gemini 3.5 Flash, because the screen may correct spelling but never content.">
+  <title>Context corrects spelling, never content</title>
+
+  <!--
+    A diagram, deliberately, rather than a screenshot: it illustrates the rule the project is built
+    on without dressing a claim up as a captured result. The measured numbers, including where this
+    rule still fails on real speech, are in docs/EVALUATION.md and linked from the README beneath.
+
+    Colours are fixed rather than inherited so it reads the same on a light or dark README, and the
+    panels carry their own backgrounds for the same reason.
+  -->
+
+  <defs>
+    <style>
+      .label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; fill: #8b8b8b; }
+      .body  { font-size: 15px; fill: #e8e8e8; }
+      .mono  { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
+      .good  { fill: #4ade80; }
+      .bad   { fill: #f87171; }
+      .dim   { fill: #6b7280; }
+      .panel { fill: #17181c; }
+      .rule  { stroke: #2a2c33; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect width="880" height="260" rx="10" fill="#0d0e11"/>
+
+  <!-- What you said -->
+  <text x="28" y="34" class="label">You say</text>
+  <text x="28" y="62" class="body mono">“switch to Gemini <tspan class="good">three point five</tspan> Flash”</text>
+
+  <!-- What is on screen -->
+  <text x="28" y="104" class="label">On your screen</text>
+  <rect x="28" y="116" width="360" height="64" rx="6" class="panel"/>
+  <text x="42" y="139" class="mono" font-size="13" fill="#9ca3af">Gemini <tspan class="bad">3</tspan> Flash is our fastest model.</text>
+  <text x="42" y="159" class="mono" font-size="13" fill="#9ca3af">Gemini <tspan class="bad">3</tspan> Flash pricing: $0.50 input…</text>
+  <text x="42" y="176" class="mono" font-size="11" fill="#4b5563">…and “Gemini 3 Flash” three more times</text>
+
+  <!-- Divider -->
+  <line x1="430" y1="24" x2="430" y2="236" class="rule"/>
+
+  <!-- The two outcomes -->
+  <text x="466" y="34" class="label">A tool that learns your vocabulary</text>
+  <rect x="466" y="46" width="386" height="44" rx="6" class="panel"/>
+  <text x="482" y="74" class="mono" fill="#d1d5db">switch to Gemini <tspan class="bad">3</tspan> Flash</text>
+  <text x="466" y="108" font-size="12" class="dim">the screen won, and you cannot see that it did</text>
+
+  <text x="466" y="150" class="label">DoNotType</text>
+  <rect x="466" y="162" width="386" height="44" rx="6" class="panel" stroke="#22c55e" stroke-opacity=".35"/>
+  <text x="482" y="190" class="mono" fill="#e8e8e8">switch to Gemini <tspan class="good">3.5</tspan> Flash</text>
+  <text x="466" y="224" font-size="12" class="dim">numbers come from the audio alone — rule 4 of PROMPT.md</text>
+
+  <text x="28" y="224" font-size="12" class="dim">Screen text may fix spelling.</text>
+  <text x="28" y="240" font-size="12" class="dim">It may never change a word you said.</text>
+</svg>
