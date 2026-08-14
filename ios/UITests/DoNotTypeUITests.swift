@@ -162,18 +162,25 @@ final class DoNotTypeUITests: XCTestCase {
 
     /// Changing fidelity has to stick: it is the setting that decides whether the app rewrites
     /// you, which is the whole argument the project makes.
+    ///
+    /// Both lookups go through `reveal`, which is the rule this file already documents and this
+    /// test was the last one not following. Fidelity sits below the provider section, so whether it
+    /// is on screen when Settings opens depends on how tall the simulator is — it was reachable on
+    /// an iPhone 16 and below the fold on a 17, which is a fact about the device rather than about
+    /// the app. `waitForExistence` cannot fix that, because a row a lazy `List` has not built does
+    /// not exist to wait for.
     func testFidelitySelectionPersists() {
         let app = launch()
         app.buttons["open-settings"].tap()
 
         let picker = app.buttons["fidelity"]
-        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(picker, in: app), "the fidelity picker should be reachable")
         picker.tap()
         app.buttons["Raw — every um and false start"].tap()
 
         app.navigationBars["Settings"].buttons.firstMatch.tap()
         app.buttons["open-settings"].tap()
-        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(picker, in: app), "and still reachable after coming back")
         XCTAssertTrue(
             picker.label.contains("Raw"),
             "fidelity should still read Raw, was \(picker.label)")
