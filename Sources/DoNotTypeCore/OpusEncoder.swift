@@ -1,7 +1,6 @@
 import AVFoundation
 import AudioToolbox
 import Foundation
-import os
 
 /// Encodes captured PCM to Opus, wrapped in Ogg.
 ///
@@ -31,7 +30,7 @@ public final class OpusEncoder {
     /// Opus encodes in fixed frames; 20 ms is the usual choice and what CoreAudio produces.
     public static let frameMilliseconds = 20
 
-    private let log = Logger(subsystem: "app.donottype", category: "opus")
+    private let log = Log("opus")
 
     /// Whether this system can encode Opus at all. Checked once, because the answer cannot change
     /// while the app is running and the caller needs it before recording starts.

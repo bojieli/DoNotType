@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 /// Gets the recording to the model, by whichever route works.
 ///
@@ -51,7 +50,7 @@ public actor AudioUploader {
         }
     }
 
-    private let log = Logger(subsystem: "app.donottype", category: "upload")
+    private let log = Log("upload")
     private let apiKey: String
     private let session: URLSession
     private let baseURL: URL
