@@ -322,6 +322,14 @@ case turns on and ignore the rest.
 
 The table below is retained as historical handoff context only. It cannot be reproduced or cited as
 a current benchmark until the exact `real-talk-gemini15.wav` recording is restored and verified.
+The README used to quote its 36%/21% row as the project's headline figure; it no longer does, and
+neither should anything else.
+
+**This is the single most valuable outstanding contribution to the project.** Restoring a real
+recording of a speaker saying a version number that contradicts the screen — and committing it —
+turns every number in this section from an anecdote back into evidence. The case format is in
+`eval/nearmiss/`, and a cassette recorded from it (`dnt-eval suite --record`) would let anyone
+re-score it afterwards for free.
 
 | condition | substituted | rate | mean latency |
 |---|---|---|---|

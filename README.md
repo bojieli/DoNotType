@@ -17,7 +17,8 @@ macOS · Windows · Android · iOS. Open source, your own API key, no server in 
 <img src="Resources/Demo/hero.svg" alt="You say 'switch to Gemini three point five Flash' while the screen shows 'Gemini 3 Flash' five times. A tool that learns your vocabulary types 'Gemini 3 Flash'. DoNotType types 'Gemini 3.5 Flash'." width="880">
 
 That is the rule, drawn. Whether it *holds* is a separate question with a measured answer, and the
-honest one is below: on real recorded speech it currently fails about a third of the time.
+honest one is below: it holds for words and fails for digits, which is why a second screen-blind
+pass supplies the numbers.
 
 ## Why
 
@@ -40,11 +41,26 @@ prior transcripts — and its authority is scoped to spelling, never content.
 
 This is a working tool with one unsolved problem, and it is the central one.
 
-**Substitution is not fixed.** On real recorded speech with contradicting screen context, the model
-writes the on-screen version number instead of the spoken one in roughly **36%** of runs — against a
-**21%** baseline error rate with no context at all. So grounding roughly doubles an already
-non-zero error rate on hard audio. Full numbers, method and two falsified mitigations are in
-[docs/EVALUATION.md](docs/EVALUATION.md).
+**Substitution is not fixed, and it is always a number.** Across the near-miss suite every
+word-level case passes — names, acronym chains, brands, code-switched Mandarin. What fails is
+digits: a version number on screen replacing the one you said. A wrong name you notice by reading
+it; a wrong version number reads perfectly.
+
+Where it bites is the text right beside your caret. With a contradicting value there, the model
+took the screen's over the speaker's **75%** of the time. The mitigation that ships — a second
+transcription that never sees the screen, from which the digits are taken — brings that to **20%**,
+and on the reference clip it matched the no-screen baseline exactly (8% against 8%). It is on by
+default, and only for dictations where the text around the caret actually contains digits.
+
+So: better than it was, not solved. 20% is still worse than not grounding at all, and the fix costs
+a second request and about 1.5 seconds.
+
+Two caveats about the numbers themselves, since this project's argument is that claims should be
+checkable. **An earlier ablation is often quoted at 36% against a 21% baseline — do not cite it.**
+It predates the guard, and the recording it used is no longer in the repository, so nobody can
+reproduce or audit it. And **accuracy on ordinary dictation is unmeasured**: everything above
+describes deliberately adversarial cases. Method, per-channel numbers and two falsified mitigations
+are in [docs/EVALUATION.md](docs/EVALUATION.md).
 
 Everything else works and is tested. Each app is now driven by a UI test on the platform it ships
 to — the iOS app is installed and exercised in a simulator, the Android app in an emulator, and the
