@@ -44,6 +44,21 @@ data class DictationRecord(
     /** Seconds of speech, for the wait-per-second-spoken figure. */
     var durationSeconds: Double = 0.0,
     var audioTokens: Int? = null,
+    /**
+     * The derived text, when a mode other than verbatim produced one.
+     *
+     * Kept separate from [text] rather than replacing it. That separation is the whole difference
+     * from the tool this project replaces: a rewrite or a summary is a derived artifact, and what
+     * you actually said stays recoverable next to it.
+     */
+    var styledText: String? = null,
+    /** Which mode produced [styledText]. Null on rows written before modes existed. */
+    var mode: String? = null,
+    /**
+     * The recording this came from, when it was a file rather than the microphone. Its presence is
+     * what distinguishes an offline transcription from a dictation.
+     */
+    var sourceFileName: String? = null,
 ) {
     enum class Status(val id: String) {
         COMPLETED("completed"),
@@ -59,9 +74,22 @@ data class DictationRecord(
 
     val canRetry: Boolean get() = status.isRetryable && audioFileName != null
 
+    /** True when this came from a recording on disk rather than the microphone. */
+    val isFromFile: Boolean get() = sourceFileName != null
+
+    /** What was delivered: the derived text when one exists, otherwise the transcript. */
+    val deliveredText: String get() = styledText ?: text
+
+    /**
+     * The mode, including for rows written before the field existed — every one of those was a
+     * verbatim dictation, so the reconstruction is exact rather than a guess.
+     */
+    val resolvedMode: TranscriptMode
+        get() = TranscriptMode.from(mode) ?: TranscriptMode.Verbatim
+
     val summary: String
         get() = when (status) {
-            Status.COMPLETED -> text
+            Status.COMPLETED -> deliveredText
             Status.FAILED -> errorMessage ?: "Failed"
             Status.PENDING -> "Waiting to send"
         }
@@ -81,6 +109,9 @@ data class DictationRecord(
         .put("requestMillis", requestMillis)
         .put("durationSeconds", durationSeconds)
         .put("audioTokens", audioTokens)
+        .put("styledText", styledText)
+        .put("mode", mode)
+        .put("sourceFileName", sourceFileName)
 
     companion object {
         fun fromJson(json: JSONObject) = DictationRecord(
@@ -100,6 +131,11 @@ data class DictationRecord(
             requestMillis = if (json.isNull("requestMillis")) null else json.optLong("requestMillis"),
             durationSeconds = json.optDouble("durationSeconds", 0.0),
             audioTokens = if (json.isNull("audioTokens")) null else json.optInt("audioTokens"),
+            // Absent on every row written before modes existed. Reading them as null rather than
+            // failing is what keeps an upgrade from emptying somebody's history.
+            styledText = json.optString("styledText").takeIf { it.isNotEmpty() },
+            mode = json.optString("mode").takeIf { it.isNotEmpty() },
+            sourceFileName = json.optString("sourceFileName").takeIf { it.isNotEmpty() },
         )
     }
 }
@@ -126,6 +162,7 @@ enum class RetentionPolicy(val id: String, val label: String, val maxAgeMillis: 
  */
 class HistoryStore(private val directory: File) {
 
+    private val log = Log("history")
     private val indexFile = File(directory, "history.json")
     private val audioDirectory = File(directory, "audio")
 
@@ -163,6 +200,14 @@ class HistoryStore(private val directory: File) {
 
         list.add(0, record)
         persist()
+        log.debug(
+            mapOf(
+                "status" to record.status.id,
+                "mode" to record.resolvedMode.id,
+                "audio" to if (record.audioFileName == null) "discarded" else "kept",
+                "source" to (record.sourceFileName ?: "microphone"),
+            ),
+        ) { "stored" }
         return record
     }
 
@@ -238,6 +283,12 @@ class HistoryStore(private val directory: File) {
         val cutoff = System.currentTimeMillis() - maxAge
         val expired = list.filter { it.createdAt < cutoff }
         if (expired.isEmpty()) return
+
+        // Deleting the user's transcripts is worth a line even when they asked for it: "where did
+        // my history go" has a retention policy as its answer, and nothing else records the moment.
+        log.info(
+            mapOf("removed" to expired.size.toString(), "policy" to retention.id),
+        ) { "retention pruned history" }
         expired.forEach(::removeAudio)
         list.removeAll { it.createdAt < cutoff }
         persist()

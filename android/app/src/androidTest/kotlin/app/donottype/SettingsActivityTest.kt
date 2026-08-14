@@ -6,6 +6,9 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ScrollView
+import android.widget.Spinner
+import app.donottype.core.LogRouter
+import app.donottype.core.TranscriptMode
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -137,6 +140,55 @@ class SettingsActivityTest {
             }
         }
         throw NoSuchElementException("no ${type.simpleName} matched in the view tree")
+    }
+
+    /**
+     * The two screens added for offline transcription and for reading the log.
+     *
+     * Nothing here can transcribe without a paid request, so what is asserted is what can silently
+     * break: that both entry points are built and reachable, that the file screen offers all three
+     * modes, and that the log screen is not empty — the app logs its own startup, so an empty
+     * buffer there means logging never started.
+     */
+    @Test
+    fun theOfflineAndDiagnosticScreensAreReachable() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val root = activity.findViewById<ViewGroup>(android.R.id.content)
+                for (label in listOf("Transcribe a recording…", "Logs")) {
+                    val button = root.firstDescendant(Button::class.java) {
+                        it.text.toString() == label
+                    }
+                    assertTrue("$label should be enabled", button.isEnabled)
+                }
+            }
+        }
+
+        ActivityScenario.launch(FileTranscriptionActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val root = activity.findViewById<ViewGroup>(android.R.id.content)
+                val modes = root.firstDescendant(Spinner::class.java) { spinner ->
+                    (0 until spinner.adapter.count)
+                        .map { spinner.adapter.getItem(it).toString() }
+                        .any { it.startsWith("Summary") }
+                }
+                val labels = (0 until modes.adapter.count).map { modes.adapter.getItem(it).toString() }
+                assertEquals(
+                    "the file screen should offer exactly the modes the core defines",
+                    TranscriptMode.ALL.size, labels.size)
+                assertTrue(labels.any { it.startsWith("Verbatim") })
+                assertTrue(labels.any { it.startsWith("Rewrite") })
+                assertTrue(labels.any { it.startsWith("Summary") })
+            }
+        }
+
+        ActivityScenario.launch(LogsActivity::class.java).use { scenario ->
+            scenario.onActivity {
+                assertTrue(
+                    "the app logs its own startup, so the buffer should not be empty",
+                    LogRouter.recent().isNotEmpty())
+            }
+        }
     }
 
     /** The contract is the product; the app claims you can read and edit it in place. */

@@ -132,10 +132,14 @@ class DeepgramClient(
             setRequestProperty("Content-Type", audio.mimeType)
         }
 
+        ProviderHttp.request(name, model, endpoint + query, audio.data.size)
+        val startedAt = System.currentTimeMillis()
+
         try {
             connection.outputStream.use { it.write(audio.data) }
             val status = connection.responseCode
             val body = connection.readBody(status)
+            ProviderHttp.response(name, model, status, body.length, System.currentTimeMillis() - startedAt)
             if (status !in 200..299) throw ProviderException("HTTP $status: ${errorMessage(body)}")
 
             val transcript = parse(body)
@@ -143,6 +147,9 @@ class DeepgramClient(
             // No usage: Deepgram bills by audio duration and reports no token counts. Reporting
             // zero audio tokens would trip the silent-drop guard on every successful call.
             TranscriptionResult(transcript, TokenUsage(), body)
+        } catch (error: Exception) {
+            ProviderHttp.failed(name, model, error, System.currentTimeMillis() - startedAt)
+            throw error
         } finally {
             connection.disconnect()
         }
@@ -236,10 +243,14 @@ class MistralClient(
             setRequestProperty("Content-Type", "multipart/form-data; boundary=${body.boundary}")
         }
 
+        ProviderHttp.request(name, model, endpoint, payload.size)
+        val startedAt = System.currentTimeMillis()
+
         try {
             connection.outputStream.use { it.write(payload) }
             val status = connection.responseCode
             val text = connection.readBody(status)
+            ProviderHttp.response(name, model, status, text.length, System.currentTimeMillis() - startedAt)
             if (status !in 200..299) throw ProviderException("HTTP $status: ${errorMessage(text)}")
 
             val root = JSONObject(text)
@@ -259,6 +270,9 @@ class MistralClient(
             )
             if (transcript.transcript.isBlank()) throw ProviderException("Model returned no output")
             TranscriptionResult(transcript, usage, text)
+        } catch (error: Exception) {
+            ProviderHttp.failed(name, model, error, System.currentTimeMillis() - startedAt)
+            throw error
         } finally {
             connection.disconnect()
         }
@@ -342,10 +356,14 @@ class XAISpeechClient(
             setRequestProperty("Content-Type", "multipart/form-data; boundary=${body.boundary}")
         }
 
+        ProviderHttp.request(name, model, endpoint, payload.size)
+        val startedAt = System.currentTimeMillis()
+
         try {
             connection.outputStream.use { it.write(payload) }
             val status = connection.responseCode
             val text = connection.readBody(status)
+            ProviderHttp.response(name, model, status, text.length, System.currentTimeMillis() - startedAt)
             if (status !in 200..299) throw ProviderException("HTTP $status: ${errorMessage(text)}")
 
             val root = JSONObject(text)
@@ -355,6 +373,9 @@ class XAISpeechClient(
             )
             if (transcript.transcript.isBlank()) throw ProviderException("Model returned no output")
             TranscriptionResult(transcript, TokenUsage(), text)
+        } catch (error: Exception) {
+            ProviderHttp.failed(name, model, error, System.currentTimeMillis() - startedAt)
+            throw error
         } finally {
             connection.disconnect()
         }

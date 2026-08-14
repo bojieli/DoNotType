@@ -92,11 +92,16 @@ class OpenAiCompatibleClient(
             extraHeaders.forEach { (key, value) -> setRequestProperty(key, value) }
         }
 
+        val payload = body.toString().toByteArray()
+        ProviderHttp.request(name, model, endpoint, payload.size)
+        val startedAt = System.currentTimeMillis()
+
         try {
-            connection.outputStream.use { it.write(body.toString().toByteArray()) }
+            connection.outputStream.use { it.write(payload) }
             val status = connection.responseCode
             val text = (if (status in 200..299) connection.inputStream else connection.errorStream)
                 ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            ProviderHttp.response(name, model, status, text.length, System.currentTimeMillis() - startedAt)
 
             if (status !in 200..299) {
                 throw ProviderException("HTTP $status: ${text.take(400)}")
@@ -121,6 +126,9 @@ class OpenAiCompatibleClient(
             if (output.isBlank()) throw ProviderException("Model returned no output")
 
             TranscriptionResult(Transcript.parse(output), usage, output)
+        } catch (error: Exception) {
+            ProviderHttp.failed(name, model, error, System.currentTimeMillis() - startedAt)
+            throw error
         } finally {
             connection.disconnect()
         }

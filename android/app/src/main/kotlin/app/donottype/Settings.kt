@@ -1,8 +1,12 @@
 package app.donottype
 
 import app.donottype.core.Fidelity
+import app.donottype.core.Log
+import app.donottype.core.LogLevel
+import app.donottype.core.LogRouter
 import app.donottype.core.ProviderKind
 import app.donottype.core.RetentionPolicy
+import app.donottype.core.TranscriptMode
 import android.content.Context
 import android.content.SharedPreferences
 
@@ -26,6 +30,9 @@ object Settings {
     private const val KEY_BLOCKED = "blockedPackages"
     private const val KEY_RETENTION = "retention"
     private const val KEY_KEEP_AUDIO = "keepAudio"
+    private const val KEY_LOG_LEVEL = "logLevel"
+    private const val KEY_LOG_CONTENT = "logContent"
+    private const val KEY_FILE_MODE = "fileMode"
 
     /**
      * Shipped non-empty. A blocklist that starts empty is one nobody ever fills in, and this app
@@ -44,6 +51,10 @@ object Settings {
     fun initialise(context: Context) {
         if (::prefs.isInitialized) return
         prefs = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        // Started here rather than by each entry point, because there are three of them -- the
+        // settings screen, the file screen and the keyboard service -- and the one that matters
+        // most for debugging is the keyboard, which nobody remembers to wire up.
+        startLogging(context)
     }
 
     private val ready: Boolean get() = ::prefs.isInitialized
@@ -163,6 +174,66 @@ object Settings {
     var keepAudio: Boolean
         get() = ready && prefs.getBoolean(KEY_KEEP_AUDIO, false)
         set(value) { if (ready) prefs.edit().putBoolean(KEY_KEEP_AUDIO, value).apply() }
+
+    /**
+     * How much the app and the keyboard write to the log file.
+     *
+     * A setting rather than only an environment variable, because there is no environment to set on
+     * a phone: the person who needs the detail has a device in their hand and no shell.
+     */
+    var logLevel: LogLevel
+        get() = if (ready) LogLevel.from(prefs.getString(KEY_LOG_LEVEL, null)) ?: LogLevel.DEFAULT
+                else LogLevel.DEFAULT
+        set(value) {
+            if (ready) prefs.edit().putString(KEY_LOG_LEVEL, value.id).apply()
+            LogRouter.setLevel(value)
+        }
+
+    /**
+     * Whether transcripts and screen text may go into the log.
+     *
+     * Off, and it stays off unless someone deliberately turns it on. A log file is the artifact
+     * most likely to be shared out of this app, and on Android the screen it reads belongs to
+     * whatever app the user was in.
+     */
+    var logContent: Boolean
+        get() = ready && prefs.getBoolean(KEY_LOG_CONTENT, false)
+        set(value) {
+            if (ready) prefs.edit().putBoolean(KEY_LOG_CONTENT, value).apply()
+            LogRouter.setIncludesContent(value)
+        }
+
+    /** Last mode chosen on the file screen, so it opens where it was left. */
+    var fileMode: TranscriptMode
+        get() = if (ready) TranscriptMode.from(prefs.getString(KEY_FILE_MODE, null))
+                ?: TranscriptMode.DEFAULT
+                else TranscriptMode.DEFAULT
+        set(value) { if (ready) prefs.edit().putString(KEY_FILE_MODE, value.id).apply() }
+
+    /**
+     * Starts logging for this process, and registers every configured key for masking.
+     *
+     * Registered up front rather than at the point of use: a key reaches a log by routes nobody
+     * planned — a provider echoing it back inside an error body, for one — and the only reliable
+     * defence is knowing the exact bytes before the first request.
+     */
+    fun startLogging(context: Context) {
+        LogRouter.start(
+            directory = java.io.File(context.applicationContext.filesDir, "logs"),
+            level = logLevel,
+            includesContent = logContent,
+        )
+        ProviderKind.entries.forEach { LogRouter.redact(keyFor(it)) }
+
+        Log("app").info(
+            mapOf(
+                "level" to logLevel.id,
+                "provider" to provider.id,
+                "model" to model,
+                "log" to (LogRouter.file()?.name ?: "none"),
+            ),
+        ) { "started" }
+    }
 
     /** Evaluated before capture, never after — see CONTEXT_FORMAT.md. */
     fun isBlocked(packageName: String?): Boolean {

@@ -30,13 +30,39 @@ class WavRecorder {
          * Length of a recording this class produced, from its own 44-byte header.
          *
          * Only valid for WAVs written here -- everything this app records is 16 kHz mono 16-bit,
-         * so there is nothing to parse. A general WAV reader would have to scan for the `data`
-         * chunk, and there is no source of foreign WAVs on this platform.
+         * and so is everything `AudioDecoder` produces, so there is nothing to parse. A general WAV
+         * reader would have to scan for the `data` chunk; nothing on this platform hands us one.
          */
         fun durationSeconds(wav: ByteArray): Double {
             val bytesPerSecond = SAMPLE_RATE * 2
             val samples = (wav.size - 44).coerceAtLeast(0)
             return samples.toDouble() / bytesPerSecond
+        }
+
+        /**
+         * 44-byte canonical RIFF header, PCM 16-bit mono.
+         *
+         * On the companion rather than the instance because `AudioDecoder` produces the same
+         * format from a file and has to wrap it the same way — two spellings of this header would
+         * be two chances for one of them to drift from what the chunker expects.
+         */
+        fun wrapInWavContainer(pcmData: ByteArray): ByteArray {
+            val byteRate = SAMPLE_RATE * 2
+            val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+            header.put("RIFF".toByteArray())
+            header.putInt(36 + pcmData.size)
+            header.put("WAVE".toByteArray())
+            header.put("fmt ".toByteArray())
+            header.putInt(16)             // PCM chunk size
+            header.putShort(1)            // format: PCM
+            header.putShort(1)            // channels: mono
+            header.putInt(SAMPLE_RATE)
+            header.putInt(byteRate)
+            header.putShort(2)            // block align
+            header.putShort(16)           // bits per sample
+            header.put("data".toByteArray())
+            header.putInt(pcmData.size)
+            return header.array() + pcmData
         }
     }
 
@@ -140,23 +166,4 @@ class WavRecorder {
         return peak
     }
 
-    /** 44-byte canonical RIFF header, PCM 16-bit mono. */
-    private fun wrapInWavContainer(pcmData: ByteArray): ByteArray {
-        val byteRate = SAMPLE_RATE * 2
-        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
-        header.put("RIFF".toByteArray())
-        header.putInt(36 + pcmData.size)
-        header.put("WAVE".toByteArray())
-        header.put("fmt ".toByteArray())
-        header.putInt(16)             // PCM chunk size
-        header.putShort(1)            // format: PCM
-        header.putShort(1)            // channels: mono
-        header.putInt(SAMPLE_RATE)
-        header.putInt(byteRate)
-        header.putShort(2)            // block align
-        header.putShort(16)           // bits per sample
-        header.put("data".toByteArray())
-        header.putInt(pcmData.size)
-        return header.array() + pcmData
-    }
 }

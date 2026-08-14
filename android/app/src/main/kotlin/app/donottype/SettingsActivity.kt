@@ -305,6 +305,36 @@ class SettingsActivity : AppCompatActivity() {
         historyContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         column.addView(historyContainer)
 
+        // ---- Recordings ----
+        // The offline half. The keyboard covers speech you are about to make; this covers the
+        // voice memo you already have.
+        column.addView(sectionTitle("Recordings"))
+        column.addView(
+            body(
+                "Transcribe a recording you already have — a voice memo, a call, a file someone "
+                    + "sent you. Verbatim, rewritten, or summarised."
+            )
+        )
+        column.addView(
+            button("Transcribe a recording…") {
+                startActivity(Intent(this, FileTranscriptionActivity::class.java))
+            }.also { it.contentDescription = "transcribe-recording" }
+        )
+
+        // ---- Diagnostics ----
+        column.addView(sectionTitle("Diagnostics"))
+        column.addView(
+            body(
+                "Logcat needs a cable and a computer, which rules it out for the person who has "
+                    + "the problem. This is the same record, on the device, with a share button."
+            )
+        )
+        column.addView(
+            button("Logs") {
+                startActivity(Intent(this, LogsActivity::class.java))
+            }.also { it.contentDescription = "open-logs" }
+        )
+
         // ---- Prompt ----
         // Editable because this is open-source software whose entire behaviour is a prompt;
         // making it readable but not editable would be an odd line to draw.

@@ -36,6 +36,8 @@ class FallbackTranscriber(
         suspend fun transcribe(): TranscriptionResult
     }
 
+    private val log = Log("fallback")
+
     data class Attribution(val provider: String, val model: String, val wasFallback: Boolean)
 
     data class Outcome(val result: TranscriptionResult, val attribution: Attribution)
@@ -78,6 +80,16 @@ class FallbackTranscriber(
             // Wait out the hedge delay, but cut it short if the primary has already failed —
             // there is then nothing left to wait for.
             withTimeoutOrNull(hedgeAfterMillis) { primaryError.await() }
+            // Logged at info: this is the app spending a second request on the user's behalf, and
+            // a fallback that fires on every dictation is a misconfigured delay rather than a
+            // working feature. It should be visible without turning anything on.
+            log.info(
+                mapOf(
+                    "primary" to primaryName,
+                    "fallback" to secondaryName,
+                    "afterMs" to hedgeAfterMillis.toString(),
+                ),
+            ) { "primary stalled; starting the fallback" }
             try {
                 Outcome(fallback.transcribe(), Attribution(secondaryName, secondaryModel, true))
             } catch (cancellation: CancellationException) {
@@ -97,6 +109,12 @@ class FallbackTranscriber(
 
         first.cancel()
         second.cancel()
+
+        if (winner?.attribution?.wasFallback == true) {
+            log.info(
+                mapOf("provider" to secondaryName, "model" to secondaryModel),
+            ) { "fallback answered first" }
+        }
 
         // The primary's error is the one that explains the user's configuration, so it is the one
         // they see. `runCatching` rather than `getCompleted()` to stay off the experimental API.
