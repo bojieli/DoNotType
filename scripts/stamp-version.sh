@@ -84,8 +84,11 @@ for path, pattern, replacement in [
     ("windows/DoNotType.Cli/InspectionCommands.cs", r'dnt \d+\.\d+\.\d+', f"dnt {version}"),
 ]:
     text = open(path).read()
-    updated = re.sub(pattern, replacement, text)
-    if updated == text:
+    # Counts matches rather than comparing before and after: stamping the version that is already
+    # there is a no-op, not a failure, and treating it as one made the release fail on the first
+    # tag cut at the committed version.
+    updated, matches = re.subn(pattern, replacement, text)
+    if matches == 0:
         raise SystemExit(f"✗ nothing to stamp in {path} — the pattern moved")
     open(path, "w").write(updated)
 PY
