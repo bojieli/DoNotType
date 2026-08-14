@@ -54,6 +54,12 @@ Per platform:
 | iOS | Xcode 26+, `brew install xcodegen` | `cd ios && xcodegen generate` |
 | Windows | .NET 10 SDK, libopus | `cd windows && dotnet build` |
 
+**CI compiles Swift with an older toolchain than your Mac probably has, and it is stricter.** The
+runners are macOS 15; a current machine is on 26. Swift 6.0 rejects some things 6.2 accepts — most
+often a non-Sendable value crossing an `await` — so `swift build` can be clean locally and fail in
+CI. It has happened twice. If CI reports a Sendable error you cannot reproduce, that is why, and the
+fix is to make the value genuinely Sendable rather than to reach for `@preconcurrency`.
+
 The Windows core targets plain `net10.0` and its tests run anywhere; `EnableWindowsTargeting` lets
 even the WinForms app compile off-Windows, so you can check a change builds without a Windows box.
 

@@ -77,18 +77,25 @@ struct FileTranscriptionView: View {
         Task {
             var urls: [URL] = []
             for provider in providers {
-                guard let item = try? await provider.loadItem(
-                    forTypeIdentifier: UTType.fileURL.identifier) else { continue }
-                if let data = item as? Data,
-                    let url = URL(dataRepresentation: data, relativeTo: nil)
-                {
-                    urls.append(url)
-                } else if let url = item as? URL {
-                    urls.append(url)
-                }
+                if let url = await Self.url(from: provider) { urls.append(url) }
             }
             guard !urls.isEmpty else { return }
             await MainActor.run { _ = model.accept(urls: urls) }
+        }
+    }
+
+    /// One dropped file, as a `URL`.
+    ///
+    /// Through `loadObject(ofClass:)` rather than `loadItem(forTypeIdentifier:)`, which returns
+    /// `any NSSecureCoding` — a non-Sendable existential that cannot cross an `await`. Swift 6.2
+    /// lets that pass and 6.0 does not, so it compiled here and failed on the CI toolchain. This
+    /// form is also simply better: the callback hands back a `URL`, so there is no `Data`-or-`URL`
+    /// unwrapping dance and nothing non-Sendable exists to escape in the first place.
+    private static func url(from provider: NSItemProvider) async -> URL? {
+        await withCheckedContinuation { continuation in
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                continuation.resume(returning: url)
+            }
         }
     }
 
