@@ -1,0 +1,85 @@
+name: A transcript came out wrong
+description: The words it typed are not the words you said.
+labels: [transcription]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the bug the project exists to fix, so it gets its own form.
+
+        The three fields below are not bureaucracy: without all three nobody can tell a
+        transcription error from a grounding error from a backend that dropped the audio, and
+        those have completely different fixes.
+
+  - type: textarea
+    id: said
+    attributes:
+      label: What you said
+      description: Word for word, as near as you can remember.
+      placeholder: "Gemini three point five Flash"
+    validations:
+      required: true
+
+  - type: textarea
+    id: got
+    attributes:
+      label: What came out
+      description: Paste it exactly, including any punctuation or casing that looks wrong.
+      placeholder: "Gemini 3 Flash"
+    validations:
+      required: true
+
+  - type: textarea
+    id: screen
+    attributes:
+      label: What was on screen at the time
+      description: >
+        Settings › History › the eye icon shows precisely what was sent, and that is the most
+        useful thing you can paste here. If the screen contained a different version of the same
+        word or number, say so — that is the failure mode this project measures.
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: >
+        Settings › General › Copy diagnostics. Version, backend, model, key fingerprint,
+        permissions and recent failures — no secrets in it.
+      render: text
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: >
+        Optional but decisive. Set Settings › Logs › Record to "Requests and decisions (debug)",
+        reproduce it, then Copy. Leave "Include transcripts" off unless you are happy for your
+        words to be in a public issue.
+      render: text
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [macOS, Windows, Android, iOS]
+    validations:
+      required: true
+
+  - type: input
+    id: backend
+    attributes:
+      label: Backend and model
+      placeholder: "gemini · gemini-3.6-flash"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: reproducible
+    attributes:
+      label: Can you reproduce it?
+      options:
+        - label: >
+            I can reproduce it, and I am willing to add the recording to `eval/nearmiss/` as a
+            case. A reproducible failure is worth more than a description of one.

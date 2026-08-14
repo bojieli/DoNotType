@@ -1,0 +1,55 @@
+name: Something else is broken
+description: A crash, a control that does nothing, a dictation that never returns.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a transcript that came out wrong, use the other form — it asks for the three things
+        that make that kind of report actionable.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      placeholder: |
+        1. Open Settings › Recordings
+        2. Choose a .m4a
+        3. Press Transcribe
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: >
+        Settings › General › Copy diagnostics, or `dnt doctor` if you have the CLI. It contains no
+        secrets: the API key appears only as a length and a short hash.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: >
+        Settings › Logs › Copy, or `dnt logs`. Transcripts are left out unless you turned them on.
+      render: text
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [macOS, Windows, Android, iOS, the dnt CLI]
+    validations:
+      required: true

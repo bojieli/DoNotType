@@ -1,0 +1,12 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Anything involving keys or data leaving the machine
+    url: https://github.com/bojieli/DoNotType/security/advisories/new
+    about: >
+      Report privately. This app holds an API key and reads the screen; a public issue about
+      either is a disclosure. See SECURITY.md.
+  - name: A change to PROMPT.md or the context format
+    url: https://github.com/bojieli/DoNotType/blob/main/CONTRIBUTING.md
+    about: >
+      Those two files are the product, and changes to them need a measurement rather than an
+      argument. Three plausible improvements have been measured to do the opposite.
