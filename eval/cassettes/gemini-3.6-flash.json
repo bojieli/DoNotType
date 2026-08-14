@@ -1,0 +1,937 @@
+{
+  "provenance" : {
+    "fidelity" : "light",
+    "model" : "gemini-3.6-flash",
+    "promptDigest" : "50bac9465aad",
+    "provider" : "gemini",
+    "recordedAt" : "2026-08-14T14:47:50Z"
+  },
+  "takes" : {
+    "08b50f512d5daed2446db0bd30d4d849b1af4bb283c5dd950856afa5b3127ddf" : [
+      {
+        "audioTokens" : 68,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 842,
+        "rawOutput" : "{\n  \"transcript\": \"We load the native library through Koffi at startup.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:57Z",
+        "transcript" : "We load the native library through Koffi at startup."
+      },
+      {
+        "audioTokens" : 68,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 842,
+        "rawOutput" : "{\n  \"transcript\": \"We load the native library through Koffi at startup.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:49:08Z",
+        "transcript" : "We load the native library through Koffi at startup."
+      },
+      {
+        "audioTokens" : 68,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 842,
+        "rawOutput" : "{\n  \"transcript\": \"We load the native library through Koffi at startup.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:49:17Z",
+        "transcript" : "We load the native library through Koffi at startup."
+      }
+    ],
+    "0fc0d27f0084eb8e2cd2410e382bb195787cf7145ce2d01ee696622f3940fb6c" : [
+      {
+        "audioTokens" : 72,
+        "completionTokens" : 30,
+        "language" : "en",
+        "promptTokens" : 835,
+        "rawOutput" : "{\n  \"transcript\": \"Thessaly rollout is blocked on the Brindlewood cluster\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:12Z",
+        "transcript" : "Thessaly rollout is blocked on the Brindlewood cluster"
+      },
+      {
+        "audioTokens" : 72,
+        "completionTokens" : 30,
+        "language" : "en",
+        "promptTokens" : 835,
+        "rawOutput" : "{\n  \"transcript\": \"The Thessaly rollout is blocked on the Brindlewood cluster.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:28Z",
+        "transcript" : "The Thessaly rollout is blocked on the Brindlewood cluster."
+      },
+      {
+        "audioTokens" : 72,
+        "completionTokens" : 30,
+        "language" : "en",
+        "promptTokens" : 835,
+        "rawOutput" : "{\n  \"transcript\": \"Thessaly rollout is blocked on the Brindlewood cluster.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:34Z",
+        "transcript" : "Thessaly rollout is blocked on the Brindlewood cluster."
+      }
+    ],
+    "1304945bc956ed72465270252257184cb8668314e49c7e3a3f298922b065c0a8" : [
+      {
+        "audioTokens" : 59,
+        "completionTokens" : 29,
+        "language" : "en",
+        "promptTokens" : 726,
+        "rawOutput" : "{\n  \"transcript\": \"Run the dev server on port 8081\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:23Z",
+        "transcript" : "Run the dev server on port 8081"
+      },
+      {
+        "audioTokens" : 59,
+        "completionTokens" : 29,
+        "language" : "en",
+        "promptTokens" : 726,
+        "rawOutput" : "{\n  \"transcript\": \"Run the dev server on port 8081\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:28Z",
+        "transcript" : "Run the dev server on port 8081"
+      },
+      {
+        "audioTokens" : 59,
+        "completionTokens" : 29,
+        "language" : "en",
+        "promptTokens" : 726,
+        "rawOutput" : "{\n  \"transcript\": \"Run the dev server on port 8081\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:33Z",
+        "transcript" : "Run the dev server on port 8081"
+      }
+    ],
+    "27b4c2dfce61514355d83bee18763193e9753a201f3b50a183291e1acd0f14ed" : [
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 97,
+        "language" : "zh",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"我要把一部分给它串起来，就搞成一个retrieval pipeline给它串在一起的。然后，它这所有都一样，所以说我要把它这个給它分开，比如说这个是4240我印象里。然后，OK，然后这个就是这这就算是我这个弄好了，然后可以看到在这个里边，它就把这个index已经把这个就\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:52:04Z",
+        "transcript" : "我要把一部分给它串起来，就搞成一个retrieval pipeline给它串在一起的。然后，它这所有都一样，所以说我要把它这个給它分开，比如说这个是4240我印象里。然后，OK，然后这个就是这这就算是我这个弄好了，然后可以看到在这个里边，它就把这个index已经把这个就"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 106,
+        "language" : "zh",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"我要把很多個要給它串起來，就搞成一個 retrieval pipeline，要給它串在一起的。然後它這所有都一樣，所以說我要把它這個給它分開，比如說這個是 4240，我印象裏。然後，OK，要這個就是，這這就算是不錯，這個弄好了。然後可以看到在這個裏邊，它就把這個 index 已經把這個就\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:52:22Z",
+        "transcript" : "我要把很多個要給它串起來，就搞成一個 retrieval pipeline，要給它串在一起的。然後它這所有都一樣，所以說我要把它這個給它分開，比如說這個是 4240，我印象裏。然後，OK，要這個就是，這這就算是不錯，這個弄好了。然後可以看到在這個裏邊，它就把這個 index 已經把這個就"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 102,
+        "language" : "zh",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"我要把哪幾個要給它串起來, 就搞成一個 retrieval pipeline, 要給它串在一起的, 然後它在所有都一樣, 所以說我要把它這個給它分開, 比如說這個是4240我印象裏, 然後 OK, 然後這個就是這這就算是這個弄好了, 那然後可以看到在這個裏面, 它就把這個 index 已經把這個就\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:52:43Z",
+        "transcript" : "我要把哪幾個要給它串起來, 就搞成一個 retrieval pipeline, 要給它串在一起的, 然後它在所有都一樣, 所以說我要把它這個給它分開, 比如說這個是4240我印象裏, 然後 OK, 然後這個就是這這就算是這個弄好了, 那然後可以看到在這個裏面, 它就把這個 index 已經把這個就"
+      }
+    ],
+    "2a7243784473a9bb8472df808870d4cd3d416dbdb53035731e9b3a4331750eb3" : [
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 87,
+        "language" : "zh",
+        "promptTokens" : 1258,
+        "rawOutput" : "{\n  \"transcript\": \"就举个简单的例子如果说这个搜索就这么简单的话那每个人都可以说做一个Google那为什么Google的搜索结果就比Bing的好对吧Bing的又比其他的一些搜索引擎更好那原因就是说它有很多的这种用户反馈的这些数据然后还有它自己的一些排序的一些算法它能够是保证同一个query进去之后它\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:55:44Z",
+        "transcript" : "就举个简单的例子如果说这个搜索就这么简单的话那每个人都可以说做一个Google那为什么Google的搜索结果就比Bing的好对吧Bing的又比其他的一些搜索引擎更好那原因就是说它有很多的这种用户反馈的这些数据然后还有它自己的一些排序的一些算法它能够是保证同一个query进去之后它"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 94,
+        "language" : "zh",
+        "promptTokens" : 1258,
+        "rawOutput" : "{\n  \"transcript\": \"也就是舉個簡單的例子如果說這個搜索就這麼簡單的話那每個人都可以說做一個Google那為什麼Google的搜索結果就比Bing的好對吧Bing的又比其他的一些搜索引擎更好那原因就是說它有很多的這種用戶反饋的這些數據然後還有它自己的一些排序的一些算法它能夠是保證同一個query進去之後它\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:56:15Z",
+        "transcript" : "也就是舉個簡單的例子如果說這個搜索就這麼簡單的話那每個人都可以說做一個Google那為什麼Google的搜索結果就比Bing的好對吧Bing的又比其他的一些搜索引擎更好那原因就是說它有很多的這種用戶反饋的這些數據然後還有它自己的一些排序的一些算法它能夠是保證同一個query進去之後它"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 88,
+        "language" : "zh",
+        "promptTokens" : 1258,
+        "rawOutput" : "{\n  \"transcript\": \"就举个简单的例子如果说这个搜索就这么简单的话那每个人都可以说做一个Google那为什么Google的搜索结果就比Bing的好对吧Bing的又比其他的那些搜索引擎更好那原因就是说它有很多的这种用用户反馈的这些数据然后还有它自己的一些排序的一些算法它能够是保证同一个Query进去之后它\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:56:25Z",
+        "transcript" : "就举个简单的例子如果说这个搜索就这么简单的话那每个人都可以说做一个Google那为什么Google的搜索结果就比Bing的好对吧Bing的又比其他的那些搜索引擎更好那原因就是说它有很多的这种用用户反馈的这些数据然后还有它自己的一些排序的一些算法它能够是保证同一个Query进去之后它"
+      }
+    ],
+    "2ce4fe6a9d461491ae3d85cc41416aa9b989e63e210fb469fbb7c6834f0d01c7" : [
+      {
+        "audioTokens" : 68,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 824,
+        "rawOutput" : "{\n  \"transcript\": \"Clone QuillMark-sync and run the setup script.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:39Z",
+        "transcript" : "Clone QuillMark-sync and run the setup script."
+      },
+      {
+        "audioTokens" : 68,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 824,
+        "rawOutput" : "{\n  \"transcript\": \"clone quillmark-sync and run the setup script\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:45Z",
+        "transcript" : "clone quillmark-sync and run the setup script"
+      },
+      {
+        "audioTokens" : 68,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 824,
+        "rawOutput" : "{\n  \"transcript\": \"Clone QuillMark-sync and run the setup script.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:51Z",
+        "transcript" : "Clone QuillMark-sync and run the setup script."
+      }
+    ],
+    "3026705247213cc86f3bcfcc1f210f04a4c6b1083c4fc5e9e2c68b25d018efd6" : [
+      {
+        "audioTokens" : 59,
+        "completionTokens" : 29,
+        "language" : "en",
+        "promptTokens" : 835,
+        "rawOutput" : "{\n  \"transcript\": \"run the dev server on port 8081\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:18Z",
+        "transcript" : "run the dev server on port 8081"
+      },
+      {
+        "audioTokens" : 59,
+        "completionTokens" : 29,
+        "language" : "en",
+        "promptTokens" : 835,
+        "rawOutput" : "{\n  \"transcript\": \"run the dev server on port 8081\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:25Z",
+        "transcript" : "run the dev server on port 8081"
+      },
+      {
+        "audioTokens" : 59,
+        "completionTokens" : 29,
+        "language" : "en",
+        "promptTokens" : 835,
+        "rawOutput" : "{\n  \"transcript\": \"Run the dev server on port 8081\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:31Z",
+        "transcript" : "Run the dev server on port 8081"
+      }
+    ],
+    "473ff8219be120b9702ab6e6ef758aae5b18986cfa5d9e7526a7218e04dee99a" : [
+      {
+        "audioTokens" : 61,
+        "completionTokens" : 27,
+        "language" : "en",
+        "promptTokens" : 728,
+        "rawOutput" : "{\n  \"transcript\": \"Can you send the draft to Priya before Friday?\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:39Z",
+        "transcript" : "Can you send the draft to Priya before Friday?"
+      },
+      {
+        "audioTokens" : 61,
+        "completionTokens" : 27,
+        "language" : "en",
+        "promptTokens" : 728,
+        "rawOutput" : "{\n  \"transcript\": \"Can you send the draft to Priya before Friday?\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:44Z",
+        "transcript" : "Can you send the draft to Priya before Friday?"
+      },
+      {
+        "audioTokens" : 61,
+        "completionTokens" : 27,
+        "language" : "en",
+        "promptTokens" : 728,
+        "rawOutput" : "{\n  \"transcript\": \"Can you send the draft to Priya before Friday?\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:54Z",
+        "transcript" : "Can you send the draft to Priya before Friday?"
+      }
+    ],
+    "4ab091c5c7c9d4898b1f02aa016dcb3f095fea58893b30e55b6834e3ef5ae794" : [
+      {
+        "audioTokens" : 550,
+        "completionTokens" : 85,
+        "language" : "zh",
+        "promptTokens" : 1217,
+        "rawOutput" : "{\n  \"transcript\": \"也就是说通过AI呢可以在其中去增加自己的response比如用户可以去选择一个自己的选择然后AI在其中呢经过处理之后呢它会引入到一个新的story line那么这个新的story line可能就是AI生成的这样一个完全不同的隐藏款剧情那么根据这个AI AI还可以根据用户的这个响应的这个稀缺程度然后来评估\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:51:19Z",
+        "transcript" : "也就是说通过AI呢可以在其中去增加自己的response比如用户可以去选择一个自己的选择然后AI在其中呢经过处理之后呢它会引入到一个新的story line那么这个新的story line可能就是AI生成的这样一个完全不同的隐藏款剧情那么根据这个AI AI还可以根据用户的这个响应的这个稀缺程度然后来评估"
+      },
+      {
+        "audioTokens" : 550,
+        "completionTokens" : 85,
+        "language" : "zh",
+        "promptTokens" : 1217,
+        "rawOutput" : "{\n  \"transcript\": \"也就是说通过AI呢可以在其中去增加自己的response比如用户可以去选择一个自己的选择然后AI在其中呢经过处理之后呢它会引入到一个新的story line那么这个新的story line可能就是AI生成的这样一个完全不同的隐藏款剧情那么根据这个AI AI还可以根据用户的这个响应的这个稀缺程度然后来评估\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:51:35Z",
+        "transcript" : "也就是说通过AI呢可以在其中去增加自己的response比如用户可以去选择一个自己的选择然后AI在其中呢经过处理之后呢它会引入到一个新的story line那么这个新的story line可能就是AI生成的这样一个完全不同的隐藏款剧情那么根据这个AI AI还可以根据用户的这个响应的这个稀缺程度然后来评估"
+      },
+      {
+        "audioTokens" : 550,
+        "completionTokens" : 97,
+        "language" : "zh",
+        "promptTokens" : 1217,
+        "rawOutput" : "{\n  \"transcript\": \"也就是说通过AI呢，可以在其中去增加自己的response，比如用户可以去选择一个自己的选择，然后AI在其中呢，经过处理之后呢，它会引入到一个新的storyline，那么这个新的storyline可能就是AI生成的，这样的一个完全不同的隐藏款剧情。 那么根据这个，AI还可以根据用户的这个响应的这个希缺程度，然后来评估\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:51:49Z",
+        "transcript" : "也就是说通过AI呢，可以在其中去增加自己的response，比如用户可以去选择一个自己的选择，然后AI在其中呢，经过处理之后呢，它会引入到一个新的storyline，那么这个新的storyline可能就是AI生成的，这样的一个完全不同的隐藏款剧情。 那么根据这个，AI还可以根据用户的这个响应的这个希缺程度，然后来评估"
+      }
+    ],
+    "55e27a2ad576ac20129fe1f308f89e97243f8d62443b7b36f3a331f5af164729" : [
+      {
+        "audioTokens" : 550,
+        "completionTokens" : 99,
+        "language" : "zh",
+        "promptTokens" : 1306,
+        "rawOutput" : "{\n  \"transcript\": \"那是說通過AI呢，可以在其中去增加自己的response，比如用戶可以去選擇一個自己的選擇，然後AI在其中呢，經過處理之後呢，它會引入到一個新的storyline，那麼這個新的storyline可能就是AI生成的，這樣的一個完全不同的隱藏款劇情。 那麼根據這個AI AI還可以根據用戶的這個響應的的稀缺程度，然後來評估\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:51:11Z",
+        "transcript" : "那是說通過AI呢，可以在其中去增加自己的response，比如用戶可以去選擇一個自己的選擇，然後AI在其中呢，經過處理之後呢，它會引入到一個新的storyline，那麼這個新的storyline可能就是AI生成的，這樣的一個完全不同的隱藏款劇情。 那麼根據這個AI AI還可以根據用戶的這個響應的的稀缺程度，然後來評估"
+      },
+      {
+        "audioTokens" : 550,
+        "completionTokens" : 87,
+        "language" : "cmn",
+        "promptTokens" : 1306,
+        "rawOutput" : "{\n  \"transcript\": \"基本上通過 AI 可以在中去增加自己的 response 比如用戶可以去選擇一個自己的選擇 然後 AI 在其中經過處理之後 它會引入到一個新的 storyline 那麼這個新的 storyline 可能就是 AI 生成的 這樣的一個完全不同的隱藏款劇情 那麼根據 AI 還可以根據用戶的响應的稀缺程度 然後來評估\",\n  \"language\": \"cmn\"\n}",
+        "recordedAt" : "2026-08-14T14:51:27Z",
+        "transcript" : "基本上通過 AI 可以在中去增加自己的 response 比如用戶可以去選擇一個自己的選擇 然後 AI 在其中經過處理之後 它會引入到一個新的 storyline 那麼這個新的 storyline 可能就是 AI 生成的 這樣的一個完全不同的隱藏款劇情 那麼根據 AI 還可以根據用戶的响應的稀缺程度 然後來評估"
+      },
+      {
+        "audioTokens" : 550,
+        "completionTokens" : 99,
+        "language" : "zh",
+        "promptTokens" : 1306,
+        "rawOutput" : "{\n  \"transcript\": \"那是說通過AI呢，可以在其中去增加自己的response。比如用戶可以去選擇一個自己的選擇。然後AI在其中呢，經過處理之後呢，它會引入到一個新的story line。那麼這個新的story line可能就是AI生成的這樣的一個完全不同的隱藏款劇情。 那麼根據這個AI，AI還可以根據用戶的這個響應的喜好程度，然後來評估\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:51:42Z",
+        "transcript" : "那是說通過AI呢，可以在其中去增加自己的response。比如用戶可以去選擇一個自己的選擇。然後AI在其中呢，經過處理之後呢，它會引入到一個新的story line。那麼這個新的story line可能就是AI生成的這樣的一個完全不同的隱藏款劇情。 那麼根據這個AI，AI還可以根據用戶的這個響應的喜好程度，然後來評估"
+      }
+    ],
+    "5d325c81bfec1fa683f37d8c6205d414bfb2a7bdbdde0fffff99995ee70f4109" : [
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 99,
+        "language" : "zh",
+        "promptTokens" : 1257,
+        "rawOutput" : "{\n  \"transcript\": \"我要把這幾個要給它串起來，就改成一個 Retrieval Pipeline，要給它串在一起的。然後它這所有的都一樣，所以說我要把它這個給它分開，比如說這個是 4240 我印象裏，然後 OK，然後這個就是，這這就算這個弄好了。然後可以看到在這個裏邊，它就把這個 index 已經把這個就\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:51:58Z",
+        "transcript" : "我要把這幾個要給它串起來，就改成一個 Retrieval Pipeline，要給它串在一起的。然後它這所有的都一樣，所以說我要把它這個給它分開，比如說這個是 4240 我印象裏，然後 OK，然後這個就是，這這就算這個弄好了。然後可以看到在這個裏邊，它就把這個 index 已經把這個就"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 100,
+        "language" : "zh",
+        "promptTokens" : 1257,
+        "rawOutput" : "{\n  \"transcript\": \"我要把這幾個要給它串起來，就搞成一個 retrieval pipeline要給它串在一起的，然後它這所有都一樣，所以說我要把它這個給它分開，比如說這個是 4240 我印象里，然後，ok，然後這個就是，這這就算是不管弄好了，然後可以看到在這個裡面，他就把這個 index 已經把這個就\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:52:12Z",
+        "transcript" : "我要把這幾個要給它串起來，就搞成一個 retrieval pipeline要給它串在一起的，然後它這所有都一樣，所以說我要把它這個給它分開，比如說這個是 4240 我印象里，然後，ok，然後這個就是，這這就算是不管弄好了，然後可以看到在這個裡面，他就把這個 index 已經把這個就"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 97,
+        "language" : "zh",
+        "promptTokens" : 1257,
+        "rawOutput" : "{\n  \"transcript\": \"我要把这几个要给它串起来，就改成一个retrieval pipeline，要给它串在一起的，然后它这里所有人都一样，所以说我要把它这个给它分开，比如说这个是4240我印象里，然后，okay，然后这个就是这就算是在这个弄好了，然後可以看到在这个里边，它就把这个index已经把這個\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:52:33Z",
+        "transcript" : "我要把这几个要给它串起来，就改成一个retrieval pipeline，要给它串在一起的，然后它这里所有人都一样，所以说我要把它这个给它分开，比如说这个是4240我印象里，然后，okay，然后这个就是这就算是在这个弄好了，然後可以看到在这个里边，它就把这个index已经把這個"
+      }
+    ],
+    "746c8c7584dc8c9b4231f483601dc0d0d1f8c95970880ba5f856bfe265b7357f" : [
+      {
+        "audioTokens" : 73,
+        "completionTokens" : 31,
+        "language" : "en",
+        "promptTokens" : 849,
+        "rawOutput" : "{\n  \"transcript\": \"Let's just do git commit --amend and move on\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:49:26Z",
+        "transcript" : "Let's just do git commit --amend and move on"
+      },
+      {
+        "audioTokens" : 73,
+        "completionTokens" : 31,
+        "language" : "en",
+        "promptTokens" : 849,
+        "rawOutput" : "{\n  \"transcript\": \"Let's just do git commit --amend and move on\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:49:40Z",
+        "transcript" : "Let's just do git commit --amend and move on"
+      },
+      {
+        "audioTokens" : 73,
+        "completionTokens" : 31,
+        "language" : "en",
+        "promptTokens" : 849,
+        "rawOutput" : "{\n  \"transcript\": \"Let's just do git commit --amend and move on\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:49:51Z",
+        "transcript" : "Let's just do git commit --amend and move on"
+      }
+    ],
+    "75078428d10f39c876b03a9484104c8e1368f79b0ce6993c05227f648f747533" : [
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 61,
+        "language" : "en",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"each problem that identified, and for some important work items we can read the Scrum dashboard and create a work item and create a test cases and session that it means the agents working session for the manual inspection of the developer.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:55:07Z",
+        "transcript" : "each problem that identified, and for some important work items we can read the Scrum dashboard and create a work item and create a test cases and session that it means the agents working session for the manual inspection of the developer."
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 68,
+        "language" : "en",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"each problem that identified, and for some important work items, we can reach the Scrum uh dashboard and create a work item, and create a test cases and the session, uh that it means the agents working session, for the manual inspection of the developer.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:55:21Z",
+        "transcript" : "each problem that identified, and for some important work items, we can reach the Scrum uh dashboard and create a work item, and create a test cases and the session, uh that it means the agents working session, for the manual inspection of the developer."
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 63,
+        "language" : "en",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"each problem that identified, and for some important work items, we can reach the scrum dashboard and create a work item and create a test cases and session that it means agent's working session for the manual inspection of the developer.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:55:34Z",
+        "transcript" : "each problem that identified, and for some important work items, we can reach the scrum dashboard and create a work item and create a test cases and session that it means agent's working session for the manual inspection of the developer."
+      }
+    ],
+    "75e0572f36d083b20a75393f0fff749a6c460bd6bbf313821b2cccd9c8264703" : [
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 72,
+        "language" : "en",
+        "promptTokens" : 1257,
+        "rawOutput" : "{\n  \"transcript\": \"it follows speech and event of VAD model, which is which means voice activity detection and then feeds that into the ASR model, and then feeds the complete sentence into the large language model, which performs the thought process and then split all the responses of the large language\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:53:36Z",
+        "transcript" : "it follows speech and event of VAD model, which is which means voice activity detection and then feeds that into the ASR model, and then feeds the complete sentence into the large language model, which performs the thought process and then split all the responses of the large language"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 73,
+        "language" : "en",
+        "promptTokens" : 1257,
+        "rawOutput" : "{\n  \"transcript\": \"followed by speech event of the VAD model, which is which means voice activity detection, and then feeds that into the ASR model, and then feeds the complete sentence into the large language model, which performs the thought process and then split all the responses of the large language\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:53:55Z",
+        "transcript" : "followed by speech event of the VAD model, which is which means voice activity detection, and then feeds that into the ASR model, and then feeds the complete sentence into the large language model, which performs the thought process and then split all the responses of the large language"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 74,
+        "language" : "en",
+        "promptTokens" : 1257,
+        "rawOutput" : "{\n  \"transcript\": \"follows a speech event of the VAD model, which is which means voice activity detection, and then feeds that into the ASR model, and then feeds a complete sentence into the large language model, which performs the thought process, and then splits all the responses of the large language\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:54:10Z",
+        "transcript" : "follows a speech event of the VAD model, which is which means voice activity detection, and then feeds that into the ASR model, and then feeds a complete sentence into the large language model, which performs the thought process, and then splits all the responses of the large language"
+      }
+    ],
+    "776b9f84fde174002d9aec1154210db3e150513cf12581bc9eda7c8f1af4a3ca" : [
+      {
+        "audioTokens" : 77,
+        "completionTokens" : 30,
+        "language" : "en",
+        "promptTokens" : 744,
+        "rawOutput" : "{\n  \"transcript\": \"We should switch to Gemini 3.5 Flash for this.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:47:57Z",
+        "transcript" : "We should switch to Gemini 3.5 Flash for this."
+      },
+      {
+        "audioTokens" : 77,
+        "completionTokens" : 30,
+        "language" : "en",
+        "promptTokens" : 744,
+        "rawOutput" : "{\n  \"transcript\": \"We should switch to Gemini 3.5 Flash for this\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:10Z",
+        "transcript" : "We should switch to Gemini 3.5 Flash for this"
+      },
+      {
+        "audioTokens" : 77,
+        "completionTokens" : 30,
+        "language" : "en",
+        "promptTokens" : 744,
+        "rawOutput" : "{\n  \"transcript\": \"We should switch to Gemini 3.5 Flash for this.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:15Z",
+        "transcript" : "We should switch to Gemini 3.5 Flash for this."
+      }
+    ],
+    "7aba570c5719db2db769dac85e0e4605a2cdfbe210107c1805a134cbcaa0505c" : [
+      {
+        "audioTokens" : 66,
+        "completionTokens" : 29,
+        "language" : "en",
+        "promptTokens" : 733,
+        "rawOutput" : "{\n  \"transcript\": \"Ask Kileth to review the merge before standup.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:56:39Z",
+        "transcript" : "Ask Kileth to review the merge before standup."
+      },
+      {
+        "audioTokens" : 66,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 733,
+        "rawOutput" : "{\n  \"transcript\": \"Ask Keylah to review the merge before standup\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:56:45Z",
+        "transcript" : "Ask Keylah to review the merge before standup"
+      },
+      {
+        "audioTokens" : 66,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 733,
+        "rawOutput" : "{\n  \"transcript\": \"Ask Kaleb to review the merge before standup\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:08Z",
+        "transcript" : "Ask Kaleb to review the merge before standup"
+      },
+      {
+        "audioTokens" : 66,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 733,
+        "rawOutput" : "{\n  \"transcript\": \"Ask Keyleb to review the merge before standup.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:58:02Z",
+        "transcript" : "Ask Keyleb to review the merge before standup."
+      },
+      {
+        "audioTokens" : 66,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 733,
+        "rawOutput" : "{\n  \"transcript\": \"Ask Keylah to review the merge before standup.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:58:08Z",
+        "transcript" : "Ask Keylah to review the merge before standup."
+      },
+      {
+        "audioTokens" : 66,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 733,
+        "rawOutput" : "{\n  \"transcript\": \"Ask Keyliv to review the merge before standup.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:58:14Z",
+        "transcript" : "Ask Keyliv to review the merge before standup."
+      }
+    ],
+    "7c8142257fa430480f4f85e3729676823457b254e735dc6c97606cfebb954ca2" : [
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 81,
+        "language" : "zh",
+        "promptTokens" : 1258,
+        "rawOutput" : "{\n  \"transcript\": \"一部分人提出呢, 还是要专门呢, 就用跟像用現代的類似 DPO 的方法, 然後去訓練它的 gradient。 然後另外一種呢, 就是我就用這個 max 不是 next token prediction 的方法, 去 minimize 它 predict 的 loss。 但是這里 predict 的東西它不是 x FT,\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:52:48Z",
+        "transcript" : "一部分人提出呢, 还是要专门呢, 就用跟像用現代的類似 DPO 的方法, 然後去訓練它的 gradient。 然後另外一種呢, 就是我就用這個 max 不是 next token prediction 的方法, 去 minimize 它 predict 的 loss。 但是這里 predict 的東西它不是 x FT,"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 82,
+        "language" : "zh",
+        "promptTokens" : 1258,
+        "rawOutput" : "{\n  \"transcript\": \"一部分人提出呢, 还是要专门呢, 就用跟用現在的類似DAP DAPO的方法, 然後去訓練它的gradient。 然後另外一種呢, 就是我就用這個Max, 這是, next token prediction的方法, 去minimize它predicted的loss, 但是這裡predicted的東西它不是x SFT,\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:53:05Z",
+        "transcript" : "一部分人提出呢, 还是要专门呢, 就用跟用現在的類似DAP DAPO的方法, 然後去訓練它的gradient。 然後另外一種呢, 就是我就用這個Max, 這是, next token prediction的方法, 去minimize它predicted的loss, 但是這裡predicted的東西它不是x SFT,"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 81,
+        "language" : "zh",
+        "promptTokens" : 1258,
+        "rawOutput" : "{\n  \"transcript\": \"一部分人提出呢, 还是要专门的就用像跟用现在的类似DAP DAPO的方法, 然后去训练他的 gradient。 然后另外一种呢, 就是我就用这个 max 各种 next token token prediction的方法, 去 minimize 他 predicted 的 loss, 但是这里 predicted 的东西, 他不是 x ft\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:53:20Z",
+        "transcript" : "一部分人提出呢, 还是要专门的就用像跟用现在的类似DAP DAPO的方法, 然后去训练他的 gradient。 然后另外一种呢, 就是我就用这个 max 各种 next token token prediction的方法, 去 minimize 他 predicted 的 loss, 但是这里 predicted 的东西, 他不是 x ft"
+      }
+    ],
+    "7d1c5816d244800967ff6177cc8be25fe6ce3203cf8b35d595c2390ce4359490" : [
+      {
+        "audioTokens" : 61,
+        "completionTokens" : 27,
+        "language" : "en",
+        "promptTokens" : 839,
+        "rawOutput" : "{\n  \"transcript\": \"Can you send the draft to Priya before Friday?\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:36Z",
+        "transcript" : "Can you send the draft to Priya before Friday?"
+      },
+      {
+        "audioTokens" : 61,
+        "completionTokens" : 27,
+        "language" : "en",
+        "promptTokens" : 839,
+        "rawOutput" : "{\n  \"transcript\": \"Can you send the draft to Priya before Friday\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:42Z",
+        "transcript" : "Can you send the draft to Priya before Friday"
+      },
+      {
+        "audioTokens" : 61,
+        "completionTokens" : 27,
+        "language" : "en",
+        "promptTokens" : 839,
+        "rawOutput" : "{\n  \"transcript\": \"Can you send the draft to Priya before Friday?\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:47Z",
+        "transcript" : "Can you send the draft to Priya before Friday?"
+      }
+    ],
+    "93d29dccec55ee3d3153ea3ff92fb1c34992f8ad6ef835c85e9f1390a15b6595" : [
+      {
+        "audioTokens" : 73,
+        "completionTokens" : 31,
+        "language" : "en",
+        "promptTokens" : 740,
+        "rawOutput" : "{\n  \"transcript\": \"Let's just do git commit --amend and move on.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:49:35Z",
+        "transcript" : "Let's just do git commit --amend and move on."
+      },
+      {
+        "audioTokens" : 73,
+        "completionTokens" : 31,
+        "language" : "en",
+        "promptTokens" : 740,
+        "rawOutput" : "{\n  \"transcript\": \"Let's just do git commit --amend and move on.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:49:42Z",
+        "transcript" : "Let's just do git commit --amend and move on."
+      },
+      {
+        "audioTokens" : 73,
+        "completionTokens" : 31,
+        "language" : "en",
+        "promptTokens" : 740,
+        "rawOutput" : "{\n  \"transcript\": \"Let's just do git commit --amend and move on.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:49:54Z",
+        "transcript" : "Let's just do git commit --amend and move on."
+      }
+    ],
+    "95301033e12e761b98f253675b11a2891d2e94d7d2000b0d08fc808cdb82eafa" : [
+      {
+        "audioTokens" : 550,
+        "completionTokens" : 80,
+        "language" : "en",
+        "promptTokens" : 1327,
+        "rawOutput" : "{\n  \"transcript\": \"5 thoughts and it continues the thinking. Why this works? So we basically observe the LLM processing speed. We know that for the prefill, for input tokens, we can achieve more than 500 tokens per second for the input, and also the smaller models, including Gemini 1.5\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:50:04Z",
+        "transcript" : "5 thoughts and it continues the thinking. Why this works? So we basically observe the LLM processing speed. We know that for the prefill, for input tokens, we can achieve more than 500 tokens per second for the input, and also the smaller models, including Gemini 1.5"
+      },
+      {
+        "audioTokens" : 550,
+        "completionTokens" : 80,
+        "language" : "en",
+        "promptTokens" : 1327,
+        "rawOutput" : "{\n  \"transcript\": \"provided source, and it continues the thinking. Why this works? So we basically observe the LLM processing speed. We know that for the prefill for input tokens, we can achieve more than 500 tokens per second for the input, and also the smaller models, including Gemini 1.5\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:50:19Z",
+        "transcript" : "provided source, and it continues the thinking. Why this works? So we basically observe the LLM processing speed. We know that for the prefill for input tokens, we can achieve more than 500 tokens per second for the input, and also the smaller models, including Gemini 1.5"
+      },
+      {
+        "audioTokens" : 550,
+        "completionTokens" : 82,
+        "language" : "en",
+        "promptTokens" : 1327,
+        "rawOutput" : "{\n  \"transcript\": \"divided thoughts, and it continues their thinking. Why this works? So we basically observe the LLM processing speed. We know that for the prefill, for input tokens, we can achieve more than 500 tokens per second for the input. And also, the smaller models, including Gemini 2.5\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:50:31Z",
+        "transcript" : "divided thoughts, and it continues their thinking. Why this works? So we basically observe the LLM processing speed. We know that for the prefill, for input tokens, we can achieve more than 500 tokens per second for the input. And also, the smaller models, including Gemini 2.5"
+      }
+    ],
+    "9c75cc1bcfc98ec2099473eb73abae26d0e564608224496f2a0d3121eafceda1" : [
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 97,
+        "language" : "zh",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"就举个简单的例子，如果说这个搜索这事这么简单的话，那每个人都可以说做一个Google。那为什么Google的搜索结果就比Bing的好，对吧？Bing的又比其他的那些搜索引擎更好，那原因就是说它有很多的这种用户反馈的这些数据，然后还有它自己的一些排序的一些算法，它能够是保证同一个query进去之后，它\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:56:07Z",
+        "transcript" : "就举个简单的例子，如果说这个搜索这事这么简单的话，那每个人都可以说做一个Google。那为什么Google的搜索结果就比Bing的好，对吧？Bing的又比其他的那些搜索引擎更好，那原因就是说它有很多的这种用户反馈的这些数据，然后还有它自己的一些排序的一些算法，它能够是保证同一个query进去之后，它"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 106,
+        "language" : "zh",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"就舉個簡單的例子，如果說這個搜索這事這麼簡單的話，那每個人都可以說做一個Google。那為什麼Google的搜索結果就比Bing的好？對吧？Bing的又比其他的一些搜索引擎更好？那原因就是說它有很多的這種用戶用戶反饋的這些數據，然後還有它自己的一些排序的一些算法。它能夠是保證同一個query進去之後，它\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:56:19Z",
+        "transcript" : "就舉個簡單的例子，如果說這個搜索這事這麼簡單的話，那每個人都可以說做一個Google。那為什麼Google的搜索結果就比Bing的好？對吧？Bing的又比其他的一些搜索引擎更好？那原因就是說它有很多的這種用戶用戶反饋的這些數據，然後還有它自己的一些排序的一些算法。它能夠是保證同一個query進去之後，它"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 102,
+        "language" : "zh",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"就舉個簡單的例子，如果說這個搜索這事這麼簡單的話，那每個人都可以說做一個Google。那為什麼Google的搜索結果就比Bing的好？Bing的又比其他的一些搜索引擎更好？那原因就是說他有很多的這種用戶反饋的這些數據，然後還有他自己的一些排序的一些算法，他能夠是保證同一個 query 進去之後，他\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:56:34Z",
+        "transcript" : "就舉個簡單的例子，如果說這個搜索這事這麼簡單的話，那每個人都可以說做一個Google。那為什麼Google的搜索結果就比Bing的好？Bing的又比其他的一些搜索引擎更好？那原因就是說他有很多的這種用戶反饋的這些數據，然後還有他自己的一些排序的一些算法，他能夠是保證同一個 query 進去之後，他"
+      }
+    ],
+    "a300172dd82a044d18e573e67bb03bbf033b41b34542b28dcee132e3ae095a0c" : [
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 65,
+        "language" : "en",
+        "promptTokens" : 1259,
+        "rawOutput" : "{\n  \"transcript\": \"each problem that identified. And for some important work items, we can re-scrum dashboard and create a work item, and create test cases and the session, that is means agent working session, for the manual inspection of the developer.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:55:00Z",
+        "transcript" : "each problem that identified. And for some important work items, we can re-scrum dashboard and create a work item, and create test cases and the session, that is means agent working session, for the manual inspection of the developer."
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 67,
+        "language" : "en",
+        "promptTokens" : 1259,
+        "rawOutput" : "{\n  \"transcript\": \"each problem that identified, and for some important work items, we can reach the Scrum dashboard, and create a work item, and create test cases, and the session that it means the agent's working session for the manual inspection of the developer.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:55:14Z",
+        "transcript" : "each problem that identified, and for some important work items, we can reach the Scrum dashboard, and create a work item, and create test cases, and the session that it means the agent's working session for the manual inspection of the developer."
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 66,
+        "language" : "en",
+        "promptTokens" : 1259,
+        "rawOutput" : "{\n  \"transcript\": \"each problem that identified. And for some important work items, we can reach the Scrum dashboard and create a work item, and create test cases, and the session that it means the agent's working session for the manual inspection of the developer.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:55:28Z",
+        "transcript" : "each problem that identified. And for some important work items, we can reach the Scrum dashboard and create a work item, and create test cases, and the session that it means the agent's working session for the manual inspection of the developer."
+      }
+    ],
+    "a79b092e7dc0aad21e6c89316cae905d8cfc9e93e5d0de12d2e1451a062a7457" : [
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 70,
+        "language" : "en",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"follows a speech and event of the VAD model which is which means voice activity detection and then feeds that into the ASR model and then feeds the complete sentence into the large language model which perform the thought process and then split all the responses of the large language\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:53:48Z",
+        "transcript" : "follows a speech and event of the VAD model which is which means voice activity detection and then feeds that into the ASR model and then feeds the complete sentence into the large language model which perform the thought process and then split all the responses of the large language"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 75,
+        "language" : "en",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"is for the speech and event of the VAD model, which is which means Voice Activity Detection, and then feeds that into the ASR model, and then feeds the complete sentence into the large language model, which performs the thought process and then splits all the responses of the large language\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:54:02Z",
+        "transcript" : "is for the speech and event of the VAD model, which is which means Voice Activity Detection, and then feeds that into the ASR model, and then feeds the complete sentence into the large language model, which performs the thought process and then splits all the responses of the large language"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 73,
+        "language" : "en",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"follows speech and event of the VAD model, which is which means voice activity detection, and then feeds that into the ASR model, and then feeds a complete sentence into the large language model, which performs the thought process and then split all the responses of the large language\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:54:27Z",
+        "transcript" : "follows speech and event of the VAD model, which is which means voice activity detection, and then feeds that into the ASR model, and then feeds a complete sentence into the large language model, which performs the thought process and then split all the responses of the large language"
+      }
+    ],
+    "a8cc545694271f4e22ac6748ced8d4b0db273ab580d2667b44e6d61ff5257377" : [
+      {
+        "audioTokens" : 68,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 735,
+        "rawOutput" : "{\n  \"transcript\": \"We load the native library through Koffi at startup.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:59Z",
+        "transcript" : "We load the native library through Koffi at startup."
+      },
+      {
+        "audioTokens" : 68,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 735,
+        "rawOutput" : "{\n  \"transcript\": \"We load the native library through Koffi at startup.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:49:11Z",
+        "transcript" : "We load the native library through Koffi at startup."
+      },
+      {
+        "audioTokens" : 68,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 735,
+        "rawOutput" : "{\n  \"transcript\": \"We load the native library through Koffi at startup.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:49:22Z",
+        "transcript" : "We load the native library through Koffi at startup."
+      }
+    ],
+    "accf30a1997afebcc1345ef7d7d24f27b54ebf1c5377f30c11244381bbd61789" : [
+      {
+        "audioTokens" : 550,
+        "completionTokens" : 77,
+        "language" : "en",
+        "promptTokens" : 1217,
+        "rawOutput" : "{\n  \"transcript\": \"5 thoughts and it continuous listening. Why this works? So we basically observe the LLM processing speed. We know that for the prefill for input tokens, we can achieve more than 500 tokens per second for the input. And also the smaller models including Gemini 2.5\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:50:11Z",
+        "transcript" : "5 thoughts and it continuous listening. Why this works? So we basically observe the LLM processing speed. We know that for the prefill for input tokens, we can achieve more than 500 tokens per second for the input. And also the smaller models including Gemini 2.5"
+      },
+      {
+        "audioTokens" : 550,
+        "completionTokens" : 79,
+        "language" : "en",
+        "promptTokens" : 1217,
+        "rawOutput" : "{\n  \"transcript\": \"5 thoughts and it continues thinking. Why this works? So we basically observe the LLM processing speed. We know that for the prefill, for input tokens, we can achieve more than 500 tokens per second for the input. And also the smaller models, including Gemini 2.5\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:50:25Z",
+        "transcript" : "5 thoughts and it continues thinking. Why this works? So we basically observe the LLM processing speed. We know that for the prefill, for input tokens, we can achieve more than 500 tokens per second for the input. And also the smaller models, including Gemini 2.5"
+      },
+      {
+        "audioTokens" : 550,
+        "completionTokens" : 81,
+        "language" : "en",
+        "promptTokens" : 1217,
+        "rawOutput" : "{\n  \"transcript\": \"simplified thoughts and it continues the thinking. Why this works? So, we basically observe the LLM processing speed. We know that for the prefill, for input tokens, we can achieve more than 500 tokens per second for the input. And also the smaller models, including Gemini 1.5\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:50:42Z",
+        "transcript" : "simplified thoughts and it continues the thinking. Why this works? So, we basically observe the LLM processing speed. We know that for the prefill, for input tokens, we can achieve more than 500 tokens per second for the input. And also the smaller models, including Gemini 1.5"
+      }
+    ],
+    "b433f826dd38a2b197e4bb8d4b894e1a1a9814e76e33697909f3d53f17bc877b" : [
+      {
+        "audioTokens" : 68,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 735,
+        "rawOutput" : "{\n  \"transcript\": \"clone quillmark-sync and run the setup script\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:42Z",
+        "transcript" : "clone quillmark-sync and run the setup script"
+      },
+      {
+        "audioTokens" : 68,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 735,
+        "rawOutput" : "{\n  \"transcript\": \"clone quillmark-sync and run the setup script\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:48Z",
+        "transcript" : "clone quillmark-sync and run the setup script"
+      },
+      {
+        "audioTokens" : 68,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 735,
+        "rawOutput" : "{\n  \"transcript\": \"Clone QuillMark-sync and run the setup script.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:54Z",
+        "transcript" : "Clone QuillMark-sync and run the setup script."
+      }
+    ],
+    "b7c1d69e5cbb79cabe0c6596153227c044698bb40a07d0644367ea47b4d4a0af" : [
+      {
+        "audioTokens" : 66,
+        "completionTokens" : 29,
+        "language" : "en",
+        "promptTokens" : 848,
+        "rawOutput" : "{\n  \"transcript\": \"ask Kaelith to review the merge before stand up\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:58Z",
+        "transcript" : "ask Kaelith to review the merge before stand up"
+      },
+      {
+        "audioTokens" : 66,
+        "completionTokens" : 29,
+        "language" : "en",
+        "promptTokens" : 848,
+        "rawOutput" : "{\n  \"transcript\": \"Ask Kaelith to review the merge before standup\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:58:05Z",
+        "transcript" : "Ask Kaelith to review the merge before standup"
+      },
+      {
+        "audioTokens" : 66,
+        "completionTokens" : 29,
+        "language" : "en",
+        "promptTokens" : 848,
+        "rawOutput" : "{\n  \"transcript\": \"Ask Kaelith to review the merge before standup\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:58:11Z",
+        "transcript" : "Ask Kaelith to review the merge before standup"
+      }
+    ],
+    "c12ff227fa6b099cdbeeabe6655fe069591ffbbf3b760492e968b290299f7221" : [
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 75,
+        "language" : "cmn",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"的一部分人呢，肯定是想用現在的類似DAP DAPO的方法，然後去訓他的gradient，然後另外一種呢，就是我就用這個max，這是next-token prediction的方法，去minimize它predicted的loss，但是這裡predicted的東西它不是x ft，\",\n  \"language\": \"cmn\"\n}",
+        "recordedAt" : "2026-08-14T14:52:58Z",
+        "transcript" : "的一部分人呢，肯定是想用現在的類似DAP DAPO的方法，然後去訓他的gradient，然後另外一種呢，就是我就用這個max，這是next-token prediction的方法，去minimize它predicted的loss，但是這裡predicted的東西它不是x ft，"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 78,
+        "language" : "zh",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"一部分人甚至呢,還是專門呢,就跟用現在類似DAP DAPO的方法,然後去訓它的gradient。然後另外一種呢,就是我就用這個Max,這是next token prediction的方法,去minimize它predicted的loss,但是這裡predict的東西,它不是xft,\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:53:13Z",
+        "transcript" : "一部分人甚至呢,還是專門呢,就跟用現在類似DAP DAPO的方法,然後去訓它的gradient。然後另外一種呢,就是我就用這個Max,這是next token prediction的方法,去minimize它predicted的loss,但是這裡predict的東西,它不是xft,"
+      },
+      {
+        "audioTokens" : 500,
+        "completionTokens" : 80,
+        "language" : "zh",
+        "promptTokens" : 1167,
+        "rawOutput" : "{\n  \"transcript\": \"一部分人提出呢，还是专门呢，就又像这个跟用现在的类似DAP DAPO的方法，然后去训它的gradient。然后另外一种呢，就是我就用这个max 这是next token prediction的方法，去minimize它predicted的loss。但是这里被predict的东西，它不是XFT,\",\n  \"language\": \"zh\"\n}",
+        "recordedAt" : "2026-08-14T14:53:27Z",
+        "transcript" : "一部分人提出呢，还是专门呢，就又像这个跟用现在的类似DAP DAPO的方法，然后去训它的gradient。然后另外一种呢，就是我就用这个max 这是next token prediction的方法，去minimize它predicted的loss。但是这里被predict的东西，它不是XFT,"
+      }
+    ],
+    "de518eb6098b882bb63ec6546563fd07f5df64483bb29a6036be92936afd90d8" : [
+      {
+        "audioTokens" : 72,
+        "completionTokens" : 30,
+        "language" : "en",
+        "promptTokens" : 739,
+        "rawOutput" : "{\n  \"transcript\": \"The Thessaly rollout is blocked on the Brindlewood cluster.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:21Z",
+        "transcript" : "The Thessaly rollout is blocked on the Brindlewood cluster."
+      },
+      {
+        "audioTokens" : 72,
+        "completionTokens" : 30,
+        "language" : "en",
+        "promptTokens" : 739,
+        "rawOutput" : "{\n  \"transcript\": \"The Thessaly rollout is blocked on the Brindlewood cluster.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:31Z",
+        "transcript" : "The Thessaly rollout is blocked on the Brindlewood cluster."
+      },
+      {
+        "audioTokens" : 72,
+        "completionTokens" : 30,
+        "language" : "en",
+        "promptTokens" : 739,
+        "rawOutput" : "{\n  \"transcript\": \"The Thessaly rollout is blocked on the Brindlewood cluster.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:36Z",
+        "transcript" : "The Thessaly rollout is blocked on the Brindlewood cluster."
+      }
+    ],
+    "e6aaf1b71287eab16680b5b992a4d6b0954dbc9fb876864523ed3820f85cb4a8" : [
+      {
+        "audioTokens" : 77,
+        "completionTokens" : 30,
+        "language" : "en",
+        "promptTokens" : 854,
+        "rawOutput" : "{\n  \"transcript\": \"We should switch to Gemini 3.5 Flash for this\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:47:54Z",
+        "transcript" : "We should switch to Gemini 3.5 Flash for this"
+      },
+      {
+        "audioTokens" : 77,
+        "completionTokens" : 30,
+        "language" : "en",
+        "promptTokens" : 854,
+        "rawOutput" : "{\n  \"transcript\": \"We should switch to Gemini 3.5 Flash for this\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:05Z",
+        "transcript" : "We should switch to Gemini 3.5 Flash for this"
+      },
+      {
+        "audioTokens" : 77,
+        "completionTokens" : 30,
+        "language" : "en",
+        "promptTokens" : 854,
+        "rawOutput" : "{\n  \"transcript\": \"We should switch to Gemini 3.5 Flash for this.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:48:13Z",
+        "transcript" : "We should switch to Gemini 3.5 Flash for this."
+      }
+    ],
+    "f94896ee2774961e4cd9d72b8c4ff76e626ec33d849f51c2aee0b9c3b3a163ec" : [
+      {
+        "audioTokens" : 66,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 840,
+        "rawOutput" : "{\n  \"transcript\": \"Ask Keylift to review the merge before standup\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:56:37Z",
+        "transcript" : "Ask Keylift to review the merge before standup"
+      },
+      {
+        "audioTokens" : 66,
+        "completionTokens" : 29,
+        "language" : "en",
+        "promptTokens" : 840,
+        "rawOutput" : "{\n  \"transcript\": \"Ask Kileff to review the merge before standup.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:56:42Z",
+        "transcript" : "Ask Kileff to review the merge before standup."
+      },
+      {
+        "audioTokens" : 66,
+        "completionTokens" : 28,
+        "language" : "en",
+        "promptTokens" : 840,
+        "rawOutput" : "{\n  \"transcript\": \"Ask Kiela to review the merge before standup.\",\n  \"language\": \"en\"\n}",
+        "recordedAt" : "2026-08-14T14:57:05Z",
+        "transcript" : "Ask Kiela to review the merge before standup."
+      }
+    ]
+  }
+}

@@ -38,6 +38,14 @@ change to `TranscriptDiff`, to the fidelity clauses, or to the way a case is jud
 a fresh measurement. Replaying a recording twice cannot discover anything; it can only tell you the
 harness is consistent.
 
+**It still needs the audio.** A take is keyed by a hash of the whole request, the clip included, and
+`eval/audio/*.wav` is gitignored — the `real-*` cases are cut from the maintainer's own recordings.
+So a fresh clone cannot replay these files, and the opening claim above is only half kept: a
+contributor gets every answer the provider gave, in readable form, next to the verdict drawn from
+it, which is enough to dispute the grading and not enough to re-run the request. Closing the other
+half means shipping clips that are somebody's actual speech, which is a trade this project has so
+far declined.
+
 **It cannot answer for a prompt that did not produce it.** The system instruction is part of the
 request key, so editing `PROMPT.md` misses every take and the run fails with a message saying to
 re-record. That is the one way a cache like this could actively mislead, and it is closed.

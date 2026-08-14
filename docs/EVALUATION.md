@@ -1042,3 +1042,55 @@ The evidence had accumulated to the point where shipping a switch for it was ind
 A feature that helps on a synthetic suite, does nothing most of the time in practice, and actively
 feeds the on-screen decoy to the recogniser is not a feature. Keeping the toggle while the help
 text read "not recommended" was having it both ways.
+
+## Replicated in a third session, and recorded — 2026-08-14
+
+The two configurations that actually ship were re-run from scratch on a different day, and both
+recorded so the numbers can be re-checked without a key or a bill.
+
+| configuration | this session | previously | verdict |
+|---|---|---|---|
+| **xai · grok-stt** (the default) | **15 / 48**, 0 regressed | 15 / 48 | replicates exactly |
+| **gemini · native · 3.6-flash · grounded** | **43 / 48**, 2 regressed | 44 / 48 ×2, 1 regressed | within the noise floor |
+
+```bash
+swift run dnt-eval suite eval/nearmiss --provider xai --model grok-stt \
+  --replay eval/cassettes/xai-grok-stt.json
+```
+
+Both replay offline with the API key unset and reproduce the counts above. That is the standard
+[RELEASING.md](RELEASING.md) now holds any number to before it is quoted publicly: two independent
+sessions, not two passes of one run.
+
+**What the cassette is and is not.** A take is keyed by a hash of the request — audio included —
+so replay needs the clips, and `eval/audio/*.wav` is gitignored because the `real-*` cases are cut
+from the maintainer's own recordings. Someone who clones this repository cannot re-run these files.
+What they get is every answer the provider gave, in readable form, next to the score derived from
+it: enough to check the arithmetic and disagree with the grading, not enough to reproduce the
+request. For anyone holding the audio the cassette is a full offline re-run, and it pins the
+scoring against silent drift — a change in how a pass is counted now shows up without re-billing
+48 requests.
+
+Gemini's two regressions are the same pair the suite already flags as non-deterministic across
+passes — `real-version-number` and `real-acronym`, both long-form real speech where the model
+re-segments Mandarin differently each time. Neither is a context failure; the ungrounded arm gets
+them wrong too.
+
+### A number in the README was wrong, and this is how it got there
+
+The README described xAI as scoring **29–30/48**. Both halves of that had expired:
+
+- The figure was measured **with keyterm biasing**, which [was withdrawn from the
+  product](#keyterm-biasing-is-no-longer-offered--2026-08-14) the same week. No shipping
+  configuration can reach it.
+- It predates the [corrected assertions](#re-scored-under-the-corrected-assertions--2026-08-13),
+  which re-scored the same biased configuration down to 25–26/48 anyway.
+
+The honest number for what a new install actually runs is **15/48**, and the README now says so —
+alongside why that backend is still the default, which is a decision made on the ordinary-dictation
+corpus for latency and Chinese coverage, not on this suite.
+
+**The corrections in this document were each made against a number nobody had yet relied on. This
+one had been sitting in the front page of the repository.** Retracting a figure inside an
+evaluation write-up is cheap; the summary that quotes it is where the cost lands, and nothing in
+the process was checking that the two still agreed. The release checklist now does.

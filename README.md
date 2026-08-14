@@ -240,10 +240,14 @@ for masking before the first request, and anything else key-shaped is caught by 
   around 1.2 s against 6.5 s for a model, and cannot read your screen or rewrite. Selecting one
   states that under the picker rather than leaving grounding controls that quietly do nothing.
   Spelling hints from the screen are **not offered**: measured, they made transcripts worse, by
-  feeding the recogniser whatever was on screen — including the term you did not say. xAI scores best of the three (29–30/48
-  against a model provider's 40/48, five times faster, no regressions); Deepgram cannot transcribe
-  Chinese under any autodetecting setting; Voxtral and xAI both handle Mandarin and English
-  together. Measured in [docs/EVALUATION.md](docs/EVALUATION.md).
+  feeding the recogniser whatever was on screen — including the term you did not say. Without them
+  xAI scores **15/48** on the near-miss suite against native Gemini's **43–44/48**, at 1.19 s
+  against 5–60 s — an order of magnitude faster, and much less accurate on exactly the identifiers
+  that suite is built from. It is the default anyway, because that suite is adversarial by
+  construction and the choice was made on the ordinary-dictation corpus, where it is the fastest
+  backend that does not fall over on Chinese; Deepgram cannot transcribe Chinese under any
+  autodetecting setting, failing 44 of 68 Mandarin clips outright. Voxtral and xAI both handle
+  Mandarin and English together. Measured in [docs/EVALUATION.md](docs/EVALUATION.md).
 - **Fallback** — an optional second backend, started only once the primary has clearly stalled.
   The first-party Gemini API is the most accurate measured and its latency is *bimodal*: six
   sequential requests for one three-second clip took 4.9, 61.6, 50.5, 5.8, 5.9 and 30.2 s. The
