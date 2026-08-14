@@ -120,6 +120,39 @@ swift run dnt-eval suite eval/nearmiss
 Read the per-pass ranges rather than the totals. The suite reports its own noise floor, and a change
 that moves a count by less than that range has not been shown to do anything.
 
+### The gate that is not about code
+
+**Ordinary-dictation accuracy is unmeasured, and a release that makes quality claims should not
+ship while it is.** Everything published about transcription quality comes from a 16-case
+adversarial suite, which is a regression detector rather than a quality measure. The 100-clip
+corpus of real speech has no ground truth at all.
+
+```bash
+./eval/make-review-sheet.py          # → eval/dictation/review.html
+open eval/dictation/review.html      # ~20 clips, worst backend disagreement first
+./eval/score-review.py               # word error rate per backend, per language
+```
+
+Roughly an hour, and it either supports the shipped default or overturns it. This project's claim
+on a reader's attention is that its numbers are honest; shipping while the central one is
+unmeasured would undercut that more than any bug would.
+
+### Numbers in the announcement must have replicated
+
+Four measurements were corrected within two days of being published — the keyterm latency cost, the
+digit rule being "structurally safer", a truncation attribution, and both native-Gemini figures.
+Each correction was the process working, and none of them belonged in a launch post. Before quoting
+a number publicly:
+
+- It came from **two independent sessions**, not two passes of one run. `--repeat-count` varies the
+  model; it does not vary the day, and several of these figures move more between days than between
+  passes.
+- A substitution rate from a 10–12 trial ablation is a **screening result**. Those separate models
+  differing by 60 points and say nothing about differences under about 20.
+- Record it — `--record eval/cassettes/<name>.json`. Replay needs the audio, which is gitignored,
+  so this is not something a reader can re-run; it is every answer the provider gave, kept next to
+  the score, so a later disagreement about the grading can be settled without re-billing the suite.
+
 Then run [the checks a machine cannot do](MANUAL-CHECKS.md) — the round trip, permissions from cold,
 the failure modes, and a file through the GUI. Fifteen minutes, and they cover the four things no
 runner can: a microphone, a focused window in another app, a paid request, and somebody who knows
