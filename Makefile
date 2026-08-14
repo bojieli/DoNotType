@@ -22,7 +22,7 @@ SIGN_ID     ?= $(shell security find-identity -v -p codesigning 2>/dev/null | \
                  grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')
 CODESIGN_ID := $(if $(SIGN_ID),$(SIGN_ID),-)
 
-.PHONY: all build app run test eval clean install sign-info
+.PHONY: all build app run test eval clean install install-cli cli sign-info
 
 all: app
 
@@ -35,10 +35,25 @@ test:
 eval:
 	swift run -c $(CONFIG) dnt-eval suite eval/nearmiss
 
+cli:
+	swift build -c $(CONFIG) --product dnt
+	@echo "built $(BUILD_DIR)/dnt  —  try: $(BUILD_DIR)/dnt doctor"
+
+# Symlinked rather than copied, so a rebuild does not leave a stale binary on the PATH claiming to
+# be the current one. Points at the bundle when the app is installed, since that copy is signed and
+# ships PROMPT.md beside it.
+install-cli: install
+	@mkdir -p /usr/local/bin
+	@ln -sf "/Applications/$(APP).app/Contents/MacOS/dnt" /usr/local/bin/dnt
+	@echo "linked /usr/local/bin/dnt -> /Applications/$(APP).app/Contents/MacOS/dnt"
+
 app: build
 	@rm -rf "$(APP_BUNDLE)"
 	@mkdir -p "$(CONTENTS)/MacOS" "$(CONTENTS)/Resources"
 	@cp "$(BUILD_DIR)/$(PRODUCT)" "$(CONTENTS)/MacOS/$(APP)"
+	@# The CLI ships inside the bundle so a release carries it, and so an installed `dnt` finds
+	@# PROMPT.md one directory up in Resources without needing a checkout.
+	@cp "$(BUILD_DIR)/dnt" "$(CONTENTS)/MacOS/dnt"
 	@cp Resources/Info.plist "$(CONTENTS)/Info.plist"
 	@# The contract ships inside the bundle so the app does not depend on the source tree.
 	@cp PROMPT.md "$(CONTENTS)/Resources/PROMPT.md"
