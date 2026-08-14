@@ -118,6 +118,66 @@ A tool that discards the original cannot offer this at all, which is the differe
 
 More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## Files, modes, and a command line
+
+The hotkey covers speech you are about to make. Recordings you already have — a voice memo, a call,
+an interview — go through the same pipeline from **Transcribe a Recording…** in the menu, or from
+the CLI:
+
+```bash
+dnt transcribe interview.m4a                          # verbatim, to stdout
+dnt transcribe standup.wav --mode summary:actions     # decisions and next steps
+dnt transcribe *.m4a --output notes/ --save-history
+```
+
+Three modes, in both places:
+
+| | | |
+|---|---|---|
+| **verbatim** | word for word, at the chosen fidelity | one request |
+| **rewrite** | formal, concise or bullets — may never lose a fact | two |
+| **summary** | brief, key points, or decisions and next steps | two |
+
+**The verbatim transcript is always produced and always kept**, including under a summary, where it
+is the only way to check what was dropped. The GUI shows it behind a toggle; `--output` writes it to
+`name.verbatim.txt` beside the result; `--json` carries both.
+
+Summarising is the one stage in this codebase allowed to discard content, so it is not a rewrite
+style — it has its own block in `PROMPT.md`, its own type, and no path to it from a rewrite. Rule 1
+of the rewrite block is *never remove a fact*, and a summary style sitting in that list would be one
+entry quietly exempt from it.
+
+Rewriting and summarising need a language model. With a recogniser selected the CLI says so before
+uploading anything, and can split the work — audio to the fast recogniser, text to a model:
+
+```bash
+dnt transcribe long-meeting.m4a --mode summary:bullets --provider xai --text-provider gemini
+```
+
+`dnt` also answers the questions that previously needed the app open, or the source:
+
+```bash
+dnt doctor --probe        # keys, prompt, history, audio support, one live request
+dnt providers             # which backends have a key, and which are models at all
+dnt logs --follow         # what the app is doing right now
+dnt history retry --all   # re-send what failed, with its stored audio and context
+dnt prompt show           # the exact instruction a request will carry
+```
+
+Full reference, including the logging: [docs/CLI.md](docs/CLI.md).
+
+## Logging
+
+Structured, levelled, and written to a file you can attach to an issue —
+`~/Library/Application Support/DoNotType/logs/donottype.log`, or Settings › Logs to read it live and
+turn the level up without relaunching. At `debug` every provider request, the grounding route each
+backend was given, every retry and every fallback is a line.
+
+Two things never reach it. **Your words**: transcripts and screen text are withheld by default, so a
+line records that a 412-character transcript came back, not what it said — `DNT_LOG_CONTENT=1` opens
+that door and the app says out loud when it is open. **Your key**: every resolved key is registered
+for masking before the first request, and anything else key-shaped is caught by pattern.
+
 ## Settings
 
 - **Providers and keys** — Gemini (default), any OpenAI-compatible gateway, a server you run
@@ -154,6 +214,9 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   breakdown measured on your microphone and your network rather than on a vendor's benchmark.
 - **Prompt** — edit the contract in place on any platform, validated before saving, restorable to
   the shipped default.
+- **Logs** — the last few thousand events, filterable by level and text, with the recording level
+  beside them and one button to reveal the file. Transcripts stay out of it unless you say
+  otherwise, and the panel says so when you have.
 
 ## Evaluation
 
@@ -198,6 +261,7 @@ predicted. See [CONTRIBUTING.md](CONTRIBUTING.md).
 | [PROMPT.md](PROMPT.md) | the transcription contract, and its measured changelog |
 | [CONTEXT_FORMAT.md](CONTEXT_FORMAT.md) | part order, delimiters, caps, truncation direction |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the pieces fit, and which decisions were measured |
+| [docs/CLI.md](docs/CLI.md) | `dnt`: file transcription, history, diagnostics — and the logging |
 | [docs/EVALUATION.md](docs/EVALUATION.md) | how quality is measured and what the numbers say |
 | [docs/MODELS.md](docs/MODELS.md) | which models and providers can actually do this job |
 | [docs/GPU-TESTING.md](docs/GPU-TESTING.md) | running open-weight models locally, and what to measure |

@@ -8,6 +8,101 @@ release yet, so everything below is unreleased.
 
 ## Unreleased
 
+### Added
+
+- **Offline transcription of recordings that already exist, in the GUI and a new `dnt` CLI.** The
+  app could only transcribe speech it had just recorded, which left every recording already on disk
+  — a voice memo, a call, an interview — outside a tool built for turning speech into text.
+  **Transcribe a Recording…** in the menu takes a file or a drop; `dnt transcribe interview.m4a`
+  does the same from a shell and writes the transcript to stdout so it can be piped.
+
+  Everything needed already existed in the core. What was missing, and is now `AudioDecoder`, is the
+  front of the pipeline: a recording made by anything other than this app is 44.1 kHz stereo AAC,
+  and three things downstream assume 16 kHz mono PCM — the chunker cannot split a compressed file,
+  so a 40-minute recording would go out as one request; `durationSeconds` returns nil, so the
+  history row records a zero-length dictation; and the Opus encoder cannot compress the upload.
+  Decoding once at the front fixes all three at far faster than real time.
+
+- **Three modes, in both places: verbatim, rewrite, summary.** Verbatim and rewrite are what the
+  hotkey already did. Summary is new, and is deliberately **not** a rewrite style: rule 1 of the
+  rewrite block is *never remove a fact*, a summary is defined by removing facts, and a summary
+  style sitting in that list would be one entry quietly exempt from the block's first rule. It gets
+  its own block in `PROMPT.md`, its own type, and no path to it from a rewrite.
+
+  The verbatim transcript is produced and stored first in every mode, including summaries — the GUI
+  puts it behind a toggle, `--output` writes it to `name.verbatim.txt` beside the result, and
+  `--json` carries both. A summary you cannot check against what was said is one you have to take on
+  faith, which is the thing this project exists to argue against.
+
+  Rewriting and summarising need a language model, so a recognition backend cannot do them. That is
+  now refused **before any audio is uploaded**, with the two ways forward in the message — and
+  `--text-provider` splits the work, sending audio to the fast recogniser and text to a model.
+
+- **`dnt`, a CLI for using the product** — distinct from `dnt-eval`, which measures the prompt. It
+  transcribes files, and answers the questions that previously required opening the app or reading
+  the source: `dnt doctor --probe` (keys, prompt, history, audio support, one live request),
+  `dnt providers` (which backends have a key, and which are language models at all), `dnt history
+  list|show|retry|prune`, `dnt logs --follow`, `dnt prompt show` (the exact instruction a request
+  will carry, placeholders expanded).
+
+  It reads the app's own settings and Keychain entries, so the two cannot disagree about which
+  backend "the" backend is — and keys resolve environment-first, so
+  `GEMINI_API_KEY=other dnt transcribe …` does what it obviously should. stdout is the transcript
+  and nothing else; every diagnostic goes to stderr. It ships inside the app bundle, so a release
+  carries it and an installed copy finds `PROMPT.md` beside itself.
+
+- **Structured logging, with a file and a viewer.** The app used `os.Logger` directly, which is the
+  right transport and a bad interface for a tool people are expected to debug. Four things were
+  missing: a level you can turn up, a file you can attach to an issue, anything at all in
+  `DoNotTypeCore` — where every interesting decision happens and there were two log lines in the
+  whole target — and a redaction rule, without which none of the above is safe to share.
+
+  Now: levels (`trace`…`off`), sinks for file, stderr and `os.Logger` together (so Console keeps
+  working), rotation at 8 MB, JSON lines for `jq`, an in-memory buffer behind **Settings › Logs**,
+  and `DNT_LOG_LEVEL` / `DNT_LOG_FILE` / `DNT_LOG_STDERR` / `DNT_LOG_JSON` / `DNT_LOG_CONTENT`
+  honoured by every executable. At `debug` every provider request, the grounding route each backend
+  was given, every retry with its transient/permanent verdict, and every fallback is a line.
+
+  **Your words and your keys never reach it.** Transcripts and screen text are content and are
+  withheld by default — a line says a 412-character transcript came back, not what it said — with
+  `DNT_LOG_CONTENT=1` as the one door, which the app says out loud when it is open. Keys are masked
+  two ways, because either alone leaks: every resolved key is registered before the first request so
+  the exact bytes are caught wherever they appear, including inside a provider's error body, and
+  anything else key-shaped is caught by pattern. Request and response bodies are never logged, only
+  their shape.
+
+  One provider-level refactor came with it: all six backends repeated the same four lines opening a
+  request and casting the response, so that is now one `URLSession.send`, which is also the one
+  place a request can be logged.
+
+**Platform scope, stated rather than left to be discovered.** All of the above is in
+`DoNotTypeCore` and the macOS app. It is **not** ported to Windows, Android or iOS, which breaks
+this project's usual rule that a behaviour change lands on all four.
+
+- **The logging facility and the modes are portable and should be ported.** They are ordinary core
+  work with direct equivalents in C# and Kotlin, and the summary block already ships everywhere —
+  `PROMPT.md` is copied into every bundle at build time, so no platform can drift on its text; the
+  other three simply do not offer the mode yet. `DoNotTypeCore` type-checks for iOS, so the iOS app
+  gets the file transcriber and the logger the moment it calls them.
+- **The CLI is macOS-only and mostly should stay that way.** Android and iOS have no shell to run
+  it from. Windows has one, and a `dnt.exe` over the existing C# core would be the equivalent — but
+  it is a separate tool in a separate language, not a port of this code.
+- **File transcription in the GUI is portable everywhere except iOS**, where a document picker
+  would work but the containing app is deliberately the thin half of that platform's design.
+
+### Fixed
+
+- **The app never passed the environment to `ProviderFactory`, so several documented variables did
+  nothing.** Every caller that already had a key — from the Keychain or a settings field — wrote
+  `make(kind, environment: [envVar: key])`, and that dictionary *replaces* the environment rather
+  than adding to it. So `DNT_LOCAL_BASE_URL` was ignored and a self-hosted server was always assumed
+  to be on `localhost:8000`, and `DNT_DEEPGRAM_LANGUAGE` was ignored — which the settings panel
+  tells Chinese-speaking users to set, advice that could not have worked. There is now a
+  `make(_:apiKey:)` overload that merges instead of replacing, and every call site uses it.
+
+  Found by the new logging: the request line reports the URL, and it said `localhost:8000` while
+  `DNT_LOCAL_BASE_URL` pointed somewhere else.
+
 ### Changed
 
 - **An optional fallback backend, on all four platforms.** The first-party Gemini API is the most

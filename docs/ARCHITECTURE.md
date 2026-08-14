@@ -91,6 +91,27 @@ The guard lives on the provider protocol, not in an allowlist, because any backe
 | `TranscriptDiff` | classify what grounding changed | Digits compare exactly; vowels fold rather than drop, so a false "spelling-fixed" cannot hide a substitution. |
 | `AudioChunker` | split long recordings on silence | Cuts land in the middle of the quietest span, and every chunk carries identical context so a name is spelled the same on both sides of a seam. |
 | `PerformanceStats` | what the app actually cost | Median and p95, never a mean; absence stays absent, because 0/0 is not a 0% success rate. |
+| `AudioDecoder` | any recording → 16 kHz mono WAV | The live path never needed it; a file does. Without it the chunker cannot split a compressed recording, the duration reads as zero, and the upload is not compressed. |
+| `FileTranscriber` | decode → transcribe → second stage | Shared by the GUI window and `dnt transcribe`, so the two cannot drift on what a mode means or on which backend runs the second stage. |
+| `TranscriptMode` | verbatim, rewrite, summary | Ordering is the point: transcription first, always, and the second stage operates on text that has already been stored. |
+| `LogRouter` / `Log` | levels, sinks, redaction | A lock rather than an actor, because logging has to be callable from an audio callback without an `await` — a logger you cannot call from the hot path is one nobody calls. |
+
+## Two stages, and the wall between them
+
+`rewrite` and `summary` both take a finished transcript and return different text, and they are
+deliberately not the same mechanism. The rewrite instruction's first rule is *never remove a fact*;
+a summary is defined by removing facts. Sharing a block would leave one style in that list quietly
+exempt from the block's first rule, and the exemption would be invisible at the call site.
+
+So `PROMPT.md` carries two blocks, `PromptBuilder` exposes two methods with one router
+(`secondStageInstruction(for:)`) so nothing can reach the wrong one by accident, and `SummaryStyle`
+is a separate type from `RewriteStyle`. `DictationRecord.style` still records only a `RewriteStyle`,
+which is why `mode` exists beside it: a history row must not claim a summary was a rewrite, because
+that column drives "revert to what you said" and the two mean different things.
+
+The invariant underneath both is the same one the app has always had: **the verbatim transcript is
+produced first and stored first.** A second stage is a derived artifact sitting next to the words
+that produced it, never instead of them.
 
 ## Long dictations
 
