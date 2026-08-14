@@ -180,6 +180,29 @@ public class KeytermsTests
     }
 }
 
+/// <summary>
+/// The thinking level is not a constant, and finding that out cost a broken request: 3.6 accepts
+/// <c>minimal</c>, 3.7 rejects it outright.
+/// </summary>
+public class GeminiThinkingLevelTests
+{
+    [Fact]
+    public void EachFamilyGetsTheCheapestLevelItAccepts()
+    {
+        Assert.Equal("minimal", GeminiProvider.CheapestThinkingLevel("gemini-3.6-flash"));
+        Assert.Equal("low", GeminiProvider.CheapestThinkingLevel("gemini-3.7-flash"));
+    }
+
+    /// <summary>A prefix match, so a point release inherits its family's floor.</summary>
+    [Fact]
+    public void APointReleaseInheritsItsFamilyFloor()
+    {
+        Assert.Equal("low", GeminiProvider.CheapestThinkingLevel("gemini-3.7-flash-preview-0812"));
+        Assert.Equal("low", GeminiProvider.CheapestThinkingLevel("gemini-4-flash"));
+        Assert.Equal("minimal", GeminiProvider.CheapestThinkingLevel("gemini-2.5-flash"));
+    }
+}
+
 /// <summary>Request shaping and response parsing, without touching the network.</summary>
 public class SpeechRecognitionProviderTests
 {

@@ -93,12 +93,30 @@ public sealed class ProviderException(string message) : Exception(message)
 public sealed class GeminiProvider(
     string apiKey,
     string model = "gemini-3.6-flash",
-    string thinkingLevel = "minimal",
+    string? thinkingLevel = null,
     HttpClient? httpClient = null) : ITranscriptionProvider
 {
     private const string Endpoint = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
     private static readonly HttpClient Shared = new() { Timeout = TimeSpan.FromSeconds(150) };
+
+    /// <summary>
+    /// The cheapest thinking level a given model accepts.
+    ///
+    /// <para>Not a constant, and finding that out cost a total outage on the newer model: 3.6
+    /// accepts <c>minimal</c>, 3.7 rejects it with "'minimal' is not a supported thinking level
+    /// for this model. Allowed values are: medium, low, high." Transcription wants as little
+    /// thinking as allowed — thought tokens bill as output and buy nothing when the job is writing
+    /// down what was said.</para>
+    ///
+    /// <para>A prefix match on the family rather than an allowlist of exact IDs, so a point release
+    /// inherits its family's floor instead of costing thinking tokens on every dictation.</para>
+    /// </summary>
+    internal static string CheapestThinkingLevel(string model) =>
+        model.StartsWith("gemini-3.7", StringComparison.Ordinal)
+        || model.StartsWith("gemini-4", StringComparison.Ordinal)
+            ? "low"
+            : "minimal";
     private readonly HttpClient _http = httpClient ?? Shared;
 
     public string Name => "gemini";
@@ -138,7 +156,7 @@ public sealed class GeminiProvider(
             },
             ["generation_config"] = new JsonObject
             {
-                ["thinking_level"] = thinkingLevel,
+                ["thinking_level"] = thinkingLevel ?? CheapestThinkingLevel(model),
                 ["max_output_tokens"] = maxOutputTokens,
             },
         };

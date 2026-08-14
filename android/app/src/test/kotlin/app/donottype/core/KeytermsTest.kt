@@ -254,6 +254,15 @@ class SpeechRecognitionClientTest {
         assertEquals("mp3", OpenAiCompatibleClient.audioFormat("audio/mpeg"))
     }
 
+    /** 3.6 accepts `minimal`; 3.7 rejects it. A hardcoded level broke every request. */
+    @Test
+    fun `each gemini family gets the cheapest thinking level it accepts`() {
+        assertEquals("minimal", GeminiClient.cheapestThinkingLevelForTest("gemini-3.6-flash"))
+        assertEquals("low", GeminiClient.cheapestThinkingLevelForTest("gemini-3.7-flash"))
+        assertEquals("low", GeminiClient.cheapestThinkingLevelForTest("gemini-4-flash"))
+        assertEquals("minimal", GeminiClient.cheapestThinkingLevelForTest("gemini-2.5-flash"))
+    }
+
     @Test
     fun `providers know which are recognition only`() {
         assertTrue(ProviderKind.DEEPGRAM.isSpeechRecognition)

@@ -74,7 +74,7 @@ class GeminiClient(
     private val apiKey: String,
     override val model: String = "gemini-3.6-flash",
     private val endpoint: String = "https://generativelanguage.googleapis.com/v1beta/interactions",
-    private val thinkingLevel: String = "minimal",
+    private val thinkingLevel: String? = null,
 ) : TranscriptionProvider {
     override val name = "gemini"
 
@@ -109,7 +109,7 @@ class GeminiClient(
             .put(
                 "generation_config",
                 JSONObject()
-                    .put("thinking_level", thinkingLevel)
+                    .put("thinking_level", thinkingLevel ?: cheapestThinkingLevel(model))
                     .put("max_output_tokens", maxOutputTokens),
             )
 
@@ -177,6 +177,27 @@ class GeminiClient(
             .put("type", "audio")
             .put("data", Base64.encodeToString(part.data, Base64.NO_WRAP))
             .put("mime_type", part.mimeType)
+    }
+
+    /**
+     * The cheapest thinking level a given model accepts.
+     *
+     * Not a constant, and finding that out cost a total outage on the newer model: 3.6 accepts
+     * `minimal`, and 3.7 rejects it with "'minimal' is not a supported thinking level for this
+     * model. Allowed values are: medium, low, high." Transcription wants as little thinking as
+     * allowed — thought tokens bill as output and buy nothing when the job is writing down what
+     * was said.
+     *
+     * A prefix match on the family rather than an allowlist of exact IDs, so a point release
+     * inherits its family's floor instead of costing thinking tokens on every dictation.
+     */
+    private fun cheapestThinkingLevel(model: String): String =
+        cheapestThinkingLevelForTest(model)
+
+    companion object {
+        /** Exposed for the cross-platform test; the instance method is the real entry point. */
+        fun cheapestThinkingLevelForTest(model: String): String =
+            if (model.startsWith("gemini-3.7") || model.startsWith("gemini-4")) "low" else "minimal"
     }
 
     /** Walks `steps[] -> model_output -> content[] -> text`; `output_text` is SDK-added. */
