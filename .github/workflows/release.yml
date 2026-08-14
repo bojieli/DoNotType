@@ -104,7 +104,12 @@ jobs:
 
       - name: Stamp the version
         shell: bash
-        run: ./scripts/stamp-version.sh "${GITHUB_REF_NAME#v}"
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./scripts/stamp-version.sh "$VERSION"
+          # Without the leading v: MSBuild rejects "v0.1.0" as an assembly version, and it says so
+          # through a NuGet restore that fails without logging an error, which reads as an outage.
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Unit tests
         run: dotnet test windows/DoNotType.Core.Tests/DoNotType.Core.Tests.csproj -c Release
@@ -123,10 +128,11 @@ jobs:
           Copy-Item $env:RUNNER_TEMP/opus/build/Release/opus.dll native/opus.dll
 
       - name: Publish self-contained
+        shell: pwsh
         run: >
           dotnet publish windows/DoNotType.App/DoNotType.App.csproj
           -c Release -r win-x64 --self-contained true
-          -p:PublishSingleFile=true -p:Version=${{ github.ref_name }} -o publish
+          -p:PublishSingleFile=true -p:Version=$env:VERSION -o publish
 
       # The CLI ships beside the app, as it does inside the macOS bundle. Framework-dependent
       # rather than self-contained: it lands next to an app that already carries the runtime, and a
