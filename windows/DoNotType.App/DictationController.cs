@@ -323,6 +323,10 @@ public sealed class DictationController : IDisposable
 
     private async Task TranscribeAsync(byte[] wav)
     {
+        // Snapshotted, not read live. Nothing today can change it mid-flight — a press while a
+        // transcription is running is refused — but this method is long and the field is set by a
+        // keyboard hook, and "the style changed under us" is not a bug anybody would find twice.
+        var style = _pendingStyle;
         var context = MergeContext();
 
         var key = _settings.ResolvedApiKey();
@@ -434,9 +438,9 @@ public sealed class DictationController : IDisposable
             // version is stored either way and "what did I actually say" stays answerable.
             var delivered = text;
             var rewriteFailed = false;
-            if (_pendingStyle.IsRewrite())
+            if (style.IsRewrite())
             {
-                var mode = TranscriptMode.Rewrite(_pendingStyle);
+                var mode = TranscriptMode.Rewrite(style);
                 var instruction = PromptBuilder.FromFile(promptPath).SecondStageInstruction(mode);
                 if (instruction is not null)
                 {
@@ -445,7 +449,7 @@ public sealed class DictationController : IDisposable
                     DictationLog.Info(() => "second stage", new Dictionary<string, string>
                     {
                         ["dictation"] = Short(_pendingId),
-                        ["style"] = _pendingStyle.Id(),
+                        ["style"] = style.Id(),
                         ["chars"] = text.Length.ToString(),
                     });
                     try
@@ -479,7 +483,7 @@ public sealed class DictationController : IDisposable
                             new Dictionary<string, string>
                             {
                                 ["dictation"] = Short(_pendingId),
-                                ["style"] = _pendingStyle.Id(),
+                                ["style"] = style.Id(),
                                 ["detail"] = FailureAdvice.Detail(error),
                             });
                     }
