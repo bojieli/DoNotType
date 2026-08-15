@@ -201,10 +201,14 @@ struct FileTranscriptionView: View {
             } header: {
                 Text("Recording")
             } footer: {
+                // One string rather than three joined, so a translator can reach it. See
+                // docs/LOCALIZATION.md.
                 Text(
-                    "WAV, MP3, M4A and anything else this phone can play. Recordings over 90 "
-                        + "seconds are split on silence and sent in parallel. The transcript is "
-                        + "stored in History like a dictation.")
+                    """
+                    \(AudioDecoder.supportedFormats), and anything else this phone can play. \
+                    Recordings over 90 seconds are split on silence and sent in parallel. \
+                    The transcript is stored in History like a dictation.
+                    """)
             }
 
             if model.phase.isRunning {

@@ -41,7 +41,7 @@ struct FileTranscriptionView: View {
 
             if model.files.isEmpty {
                 Text("Drop a recording here")
-                Text("WAV, MP3, M4A, AIFF, FLAC — anything this Mac can play")
+                Text("\(AudioDecoder.supportedFormats) — anything this Mac can play")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else if model.files.count == 1, let first = model.files.first {

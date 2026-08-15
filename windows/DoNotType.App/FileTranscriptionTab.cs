@@ -257,8 +257,8 @@ internal sealed class FileTranscriptionTab
         _note.Text = mode.NeedsSecondPass && _settings.Provider.IsSpeechRecognition()
             ? $"{_settings.Provider} only transcribes, so a model backend will write the result in "
                 + "a second request. Add a key for one on the General tab if there is none."
-            : "WAV, MP3, M4A and Opus. Long recordings are split on silence and sent in "
-                + "parallel; the transcript is stored in History like a dictation.";
+            : $"{AudioDecoder.SupportedFormats}. Long recordings are split on silence and sent "
+                + "in parallel; the transcript is stored in History like a dictation.";
     }
 
     private void RefreshResult()

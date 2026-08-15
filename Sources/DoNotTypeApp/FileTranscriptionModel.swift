@@ -131,7 +131,7 @@ final class FileTranscriptionModel {
             AudioDecoder.openableExtensions.contains($0.pathExtension.lowercased())
         }
         guard !audio.isEmpty else {
-            statusLine = "Not audio this app can read. Try WAV, MP3, M4A, AIFF or FLAC."
+            statusLine = "Not audio this app can read. Try \(AudioDecoder.supportedFormats)."
             return false
         }
         files = audio

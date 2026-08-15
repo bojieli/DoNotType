@@ -27,7 +27,7 @@ struct Transcribe: AsyncParsableCommand {
             recogniser (xai, deepgram, mistral), point --text-provider at a model and the recording \
             still goes to the fast recogniser.
 
-            Formats: WAV, MP3, M4A/AAC, AIFF, FLAC, CAF and anything else CoreAudio can open. \
+            Formats: \(AudioDecoder.supportedFormats) and anything else CoreAudio can open. \
             Recordings longer than 90 seconds are split on silence and transcribed concurrently.
             """)
 

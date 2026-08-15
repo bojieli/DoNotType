@@ -1,5 +1,6 @@
 package app.donottype
 
+import app.donottype.audio.AudioDecoder
 import app.donottype.core.DictationService
 import app.donottype.core.FileTranscriber
 import app.donottype.core.TranscriptMode
@@ -81,9 +82,10 @@ class FileTranscriptionActivity : AppCompatActivity() {
         column.addView(heading("Transcribe a recording", 24f))
         column.addView(
             body(
-                "WAV, MP3, M4A and anything else this phone can play. Recordings over 90 seconds " +
-                    "are split on silence and sent in parallel. The transcript is stored in " +
-                    "History like a dictation; the recording stays where it is.",
+                "${AudioDecoder.SUPPORTED_FORMATS}, and anything else this phone can play. " +
+                    "Recordings over 90 seconds are split on silence and sent in parallel. The " +
+                    "transcript is stored in History like a dictation; the recording stays where " +
+                    "it is.",
             ),
         )
 
