@@ -132,6 +132,22 @@ public sealed class FileTranscriber(
         var wav = AudioDecoder.Load(path);
         var decodeSeconds = (DateTimeOffset.Now - decodeStart).TotalSeconds;
 
+        // The same gate as live dictation, for the same reason: a model handed a recording with no
+        // speech in it returns a plausible sentence rather than nothing. Here it is an error rather
+        // than a silent no-op, because somebody who pointed at a file and pressed go is owed an
+        // answer — and "there is no speech in this recording" is a better one than a paragraph the
+        // model made up.
+        var activity = SpeechActivity.MeasureWav(wav);
+        if (!activity.HasSpeech)
+        {
+            Log.Info(() => "no speech in the recording", new Dictionary<string, string>
+            {
+                ["file"] = name,
+                ["audio"] = activity.Summary,
+            });
+            throw new NoSpeechException(name);
+        }
+
         var transcribeStart = DateTimeOffset.Now;
         var result = await service.TranscribeLongAsync(
                 wav, context, null, attempts, maxConcurrent,
@@ -226,3 +242,13 @@ public sealed class FileTranscriber(
         return names;
     }
 }
+
+/// <summary>The recording contains no speech, so nothing was sent.</summary>
+/// <remarks>
+/// Its own type so a caller can tell "there was nothing to transcribe" from "the request failed",
+/// which are different things to tell somebody and different things to retry.
+/// </remarks>
+public sealed class NoSpeechException(string name) : Exception(
+    $"{name} has no speech in it — nothing was sent. A model given a recording with only silence "
+    + "or noise in it does not reliably return nothing; it returns a plausible sentence, which is "
+    + "worse than an error.");

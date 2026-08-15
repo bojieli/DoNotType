@@ -87,6 +87,17 @@ data class TranscriptionResult(
  * which is a substring search over a body the provider wrote. A 500 whose body quoted an upstream
  * "HTTP 404" was classified as permanent and never retried.
  */
+/**
+ * The recording contains no speech, so nothing was sent.
+ *
+ * Its own type so a caller can tell "there was nothing to transcribe" from "the request failed",
+ * which are different things to tell somebody and different things to retry.
+ */
+class NoSpeechException : IOException(
+    "That recording has no speech in it, so nothing was sent. A model given only silence or noise " +
+        "does not reliably return nothing; it returns a plausible sentence.",
+)
+
 class ProviderException(
     message: String,
     val status: Int = 0,

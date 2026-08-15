@@ -311,11 +311,35 @@ public sealed class DictationController : IDisposable
             return;
         }
 
+        // Nothing without speech in it is ever sent. A model handed room tone does not reliably
+        // return silence — it returns a plausible sentence, and a dictation tool that types words
+        // nobody said has done the one thing this project exists to prevent. PROMPT.md rule 7 asks
+        // for an empty transcript, but it only reaches model providers: a speech recogniser has no
+        // system instruction, so for Deepgram, xAI and Voxtral the rule is never sent at all. Not
+        // transmitting the audio is the only defence that holds for every backend.
+        var activity = SpeechActivity.MeasureWav(wav);
+        if (!activity.HasSpeech)
+        {
+            DictationLog.Info(
+                () => "nothing was said, so nothing was sent",
+                new Dictionary<string, string>
+                {
+                    ["dictation"] = Short(_pendingId),
+                    ["audio"] = activity.Summary,
+                });
+            _uploader?.Cancel();
+            _uploader = null;
+            _groundingCts?.Cancel();
+            SetState(State.Idle);
+            return;
+        }
+
         DictationLog.Info(() => "recording finished", new Dictionary<string, string>
         {
             ["dictation"] = Short(_pendingId),
             ["bytes"] = wav.Length.ToString(),
             ["seconds"] = AudioChunker.DurationSeconds(wav).ToString("F2"),
+            ["audio"] = activity.Summary,
         });
 
         SetState(State.Transcribing);

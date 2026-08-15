@@ -7,6 +7,7 @@ import app.donottype.audio.WavRecorder
 import app.donottype.SettingsActivity
 import app.donottype.core.DictationService
 import app.donottype.core.FailureAdvice
+import app.donottype.core.NoSpeechException
 import app.donottype.core.Log as DntLog
 import app.donottype.core.RewriteStyle
 import app.donottype.core.ProviderKind
@@ -404,6 +405,14 @@ class DoNotTypeIME : InputMethodService() {
                     }
                 },
                 onFailure = { error ->
+                    // Not a failure worth alarming anybody about: the microphone worked, the
+                    // request was never made, and nothing was said. Reported plainly rather than
+                    // as an error, and never as a transcript.
+                    if (error is NoSpeechException) {
+                        showStatus("Nothing was said")
+                        state = State.IDLE
+                        return@fold
+                    }
                     Log.e(TAG, "transcription failed", error)
                     // What happened and what to do about it, rather than a generic reassurance
                     // or a raw exception. On a keyboard there is one line for it, which is why the

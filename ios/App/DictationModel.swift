@@ -438,6 +438,25 @@ final class DictationModel {
             return
         }
         recordingURL = nil
+
+        // Nothing without speech in it is ever sent. A model handed room tone does not reliably
+        // return silence — it returns a plausible sentence, and a dictation tool that hands that
+        // to somebody as their words has done the one thing this project exists to prevent.
+        // PROMPT.md rule 7 asks for an empty transcript, but it only reaches model providers: a
+        // speech recogniser has no system instruction, so for Deepgram, xAI and Voxtral the rule
+        // is never sent at all. Not transmitting the audio is the only defence for every backend.
+        if let recorded = try? Data(contentsOf: url) {
+            let activity = SpeechActivity.measure(wav: recorded)
+            guard activity.hasSpeech else {
+                log.info(
+                    "nothing was said, so nothing was sent",
+                    ["dictation": Self.short(pendingID), "audio": activity.summary])
+                try? FileManager.default.removeItem(at: url)
+                state = .idle
+                return
+            }
+        }
+
         log.info(
             "recording finished",
             [

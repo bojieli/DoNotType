@@ -67,6 +67,20 @@ class DictationService(private val context: Context) {
             context = screenContext,
         )
 
+        // Nothing without speech in it is ever sent. A model handed room tone does not reliably
+        // return silence — it returns a plausible sentence, and a keyboard that commits words
+        // nobody said has done the one thing this project exists to prevent. PROMPT.md rule 7 asks
+        // for an empty transcript, but it only reaches model providers: a speech recogniser has no
+        // system instruction, so for Deepgram, xAI and Voxtral the rule is never sent at all. Not
+        // transmitting the audio is the only defence that holds for every backend.
+        val activity = SpeechActivity.measureWav(wav)
+        if (!activity.hasSpeech) {
+            log.info(
+                mapOf("audio" to activity.summary),
+            ) { "nothing was said, so nothing was sent" }
+            return Result.failure(NoSpeechException())
+        }
+
         // One id for the whole dictation, on every line and on the history row. Without it a log
         // with three dictations in it is three interleaved stories, and the question being asked
         // is always about one of them.
@@ -80,6 +94,7 @@ class DictationService(private val context: Context) {
                 "seconds" to "%.2f".format(record.durationSeconds ?: 0.0),
                 "bytes" to wav.size.toString(),
                 "grounded" to if (screenContext == null) "no" else "yes",
+                "audio" to activity.summary,
                 "app" to (appName ?: "?"),
             ),
         ) { "transcribing" }
