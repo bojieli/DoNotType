@@ -238,7 +238,17 @@ object AudioDecoder {
             into.write((sample shr 8) and 0xFF)
             position += step
         }
-        // What is left over becomes the starting phase for the next block.
-        return position - samples.size
+        // What is left over becomes the starting phase for the next block, where index 0 is this
+        // block's index `samples.size`.
+        //
+        // Clamped at zero, and that is not defensive tidying. The loop stops one sample early —
+        // interpolating the last sample needs the next one, which is in a buffer that has not
+        // arrived — so `position` can end exactly at `samples.size - 1` and the carry exactly at
+        // -1.0. The next call then reads `samples[-1]` and throws. It needs the block length and
+        // the step to line up, which they do at whole-number ratios: 48 kHz to 16 kHz is a step of
+        // exactly 3, and any block whose length is 1 more than a multiple of 3 lands on it.
+        //
+        // The cost of clamping is that one output sample is placed up to 1/16000 of a second late.
+        return (position - samples.size).coerceAtLeast(0.0)
     }
 }

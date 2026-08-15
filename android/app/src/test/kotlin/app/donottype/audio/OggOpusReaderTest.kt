@@ -183,3 +183,55 @@ class OggOpusReaderTest {
         assertTrue("an empty page stalled the reader", System.currentTimeMillis() - started < 5_000)
     }
 }
+
+/**
+ * The resampler, which runs on one decoder buffer at a time and carries its position across.
+ *
+ * That carry is the whole difficulty. Each block is resampled without knowing where the next one
+ * starts, so the fractional position left over has to survive into the next call — and if it is
+ * ever negative, the next call indexes before the start of its own array.
+ */
+class ResamplePhaseTest {
+
+    /** A block of a plausible shape: not silence, so a dropped block would show. */
+    private fun block(size: Int): ShortArray =
+        ShortArray(size) { (8_000 * kotlin.math.sin(it / 12.0)).toInt().toShort() }
+
+    /**
+     * Every block length against every rate that divides evenly.
+     *
+     * The crash needed the length and the step to line up: at 48 kHz to 16 kHz the step is exactly
+     * 3, the loop stops at `size - 1` when the size is 1 more than a multiple of 3, and the carry
+     * comes out at exactly -1.0. The next block then read `samples[-1]`. Opus decodes at 48 kHz,
+     * so this was reachable by playing an ordinary file whose blocks happened to be that length.
+     */
+    @Test
+    fun `the phase carried between blocks never points before the next block`() {
+        for (rate in listOf(48_000, 32_000, 16_000, 44_100)) {
+            for (size in 1..200) {
+                var position = 0.0
+                val output = java.io.ByteArrayOutputStream()
+                // Three blocks, because the failure is always on the block after the bad one.
+                repeat(3) {
+                    position = AudioDecoder.resampleForOpus(block(size), rate, position, output)
+                    assertTrue(
+                        "rate $rate, block $size: carried phase $position is before the block",
+                        position >= 0.0,
+                    )
+                }
+            }
+        }
+    }
+
+    /** The rate really is converted, rather than the samples being copied through. */
+    @Test
+    fun `three blocks at 48 kHz come out at 16 kHz`() {
+        var position = 0.0
+        val output = java.io.ByteArrayOutputStream()
+        repeat(3) { position = AudioDecoder.resampleForOpus(block(960), 48_000, position, output) }
+
+        // 3 * 960 samples at 48 kHz is 60 ms, which is 960 samples at 16 kHz, so 1920 bytes.
+        val samples = output.size() / 2
+        assertTrue("expected about 960 samples, got $samples", samples in 950..970)
+    }
+}
