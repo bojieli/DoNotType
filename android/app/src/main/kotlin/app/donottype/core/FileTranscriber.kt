@@ -120,7 +120,7 @@ class FileTranscriber(
             val client = ProviderFactory.create(Settings.provider, key, Settings.model)
 
             val transcribeStart = System.currentTimeMillis()
-            val result = transcribeChunks(client, instruction, wav, onProgress)
+            val (result, chunkCount) = transcribeChunks(client, instruction, wav, onProgress)
             val transcriptionMillis = System.currentTimeMillis() - transcribeStart
             val verbatim = result.transcript.transcript.trim()
 
@@ -176,7 +176,7 @@ class FileTranscriber(
                 mode = mode,
                 language = result.transcript.language,
                 audioTokens = result.usage.audioTokens,
-                chunkCount = AudioChunker.split(wav).size,
+                chunkCount = chunkCount,
                 durationSeconds = WavRecorder.durationSeconds(wav),
                 decodeMillis = decodeMillis,
                 transcriptionMillis = transcriptionMillis,
@@ -201,7 +201,7 @@ class FileTranscriber(
         instruction: String,
         wav: ByteArray,
         onProgress: (Progress) -> Unit,
-    ): TranscriptionResult {
+    ): Transcribed {
         val chunks = AudioChunker.split(wav)
         onProgress(Progress.Transcribing(0, chunks.size))
 
@@ -215,7 +215,7 @@ class FileTranscriber(
                 instruction, listOf(audioPart(wav)), Settings.fidelity,
             )
             onProgress(Progress.Transcribing(1, 1))
-            return single
+            return Transcribed(single, 1)
         }
 
         log.info(mapOf("chunks" to chunks.size.toString())) { "split recording" }
@@ -240,15 +240,27 @@ class FileTranscriber(
             }.awaitAll()
         }
 
-        return TranscriptionResult(
-            Transcript(
-                AudioChunker.stitch(pieces.map { it.transcript.transcript }),
-                pieces.firstOrNull()?.transcript?.language.orEmpty(),
+        return Transcribed(
+            TranscriptionResult(
+                Transcript(
+                    AudioChunker.stitch(pieces.map { it.transcript.transcript }),
+                    pieces.firstOrNull()?.transcript?.language.orEmpty(),
+                ),
+                TokenUsage(audioTokens = pieces.sumOf { it.usage.audioTokens ?: 0 }.takeIf { it > 0 }),
+                pieces.joinToString("\n") { it.rawOutput },
             ),
-            TokenUsage(audioTokens = pieces.sumOf { it.usage.audioTokens ?: 0 }.takeIf { it > 0 }),
-            pieces.joinToString("\n") { it.rawOutput },
+            chunks.size,
         )
     }
+
+    /**
+     * What came back, and how many requests it took.
+     *
+     * The count is carried out rather than recomputed: asking the chunker again would re-run the
+     * silence scan and materialise a second copy of a recording that may be forty minutes long, to
+     * learn a number this function already had.
+     */
+    private data class Transcribed(val result: TranscriptionResult, val chunkCount: Int)
 
     /**
      * Files land in the same history as dictations, so searching does not depend on remembering how

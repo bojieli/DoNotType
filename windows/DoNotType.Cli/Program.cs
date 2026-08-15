@@ -112,9 +112,6 @@ public static class Program
     }
 }
 
-/// <summary>A message meant for the user rather than a stack trace.</summary>
-public sealed class UsageException(string message) : Exception(message);
-
 /// <summary>
 /// stdout is the transcript; stderr is everything else.
 /// </summary>

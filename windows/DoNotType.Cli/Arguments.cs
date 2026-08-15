@@ -3,69 +3,20 @@ using DoNotType.Core;
 namespace DoNotType.Cli;
 
 /// <summary>
-/// A parsed command line: one verb, some positional values, and `--name value` or `--flag` pairs.
+/// The command line, plus everything the CLI has to look up before it can act on it: which
+/// provider, which key, which prompt file.
 /// </summary>
-public sealed class Arguments
+/// <remarks>
+/// The parsing lives in <see cref="CommandLine"/>, which is portable and tested. This half is not
+/// either: it reads the Windows credential store and the user's preferences.
+/// </remarks>
+public sealed class Arguments : CommandLine
 {
-    public string Verb { get; private init; } = string.Empty;
-    public List<string> Positional { get; } = [];
-    private readonly Dictionary<string, string> _options = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _flags = new(StringComparer.OrdinalIgnoreCase);
-
-    public static Arguments Parse(string[] args)
+    private Arguments(CommandLine parsed) : base(parsed)
     {
-        var parsed = new Arguments
-        {
-            Verb = args.Length > 0 && !args[0].StartsWith('-') ? args[0].ToLowerInvariant()
-                : args.Length > 0 ? args[0]
-                : string.Empty,
-        };
-
-        for (var i = parsed.Verb.Length > 0 ? 1 : 0; i < args.Length; i++)
-        {
-            var value = args[i];
-            if (!value.StartsWith("--", StringComparison.Ordinal) && value != "-v")
-            {
-                parsed.Positional.Add(value);
-                continue;
-            }
-
-            var name = value.TrimStart('-');
-            // `--name value` unless the next token is another option, which makes it a flag. That
-            // is what lets `--json --output notes` and `--output notes --json` both work.
-            if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)
-                && TakesValue(name))
-            {
-                parsed._options[name] = args[++i];
-            }
-            else
-            {
-                parsed._flags.Add(name);
-            }
-        }
-        return parsed;
     }
 
-    /// <summary>
-    /// Options that consume the next token. Declared rather than guessed, so a bare `--json` before
-    /// a file path does not swallow the path.
-    /// </summary>
-    private static bool TakesValue(string name) => name.ToLowerInvariant() is
-        "mode" or "provider" or "model" or "fidelity" or "prompt" or "output" or "text-provider"
-        or "text-model" or "log-level" or "level" or "lines" or "grep" or "limit" or "status"
-        or "query" or "older-than" or "concurrency" or "attempts" or "section" or "style"
-        or "summary" or "id";
-
-    public string? Option(string name) => _options.TryGetValue(name, out var value) ? value : null;
-
-    public bool Flag(string name) => _flags.Contains(name) || _flags.Contains(name[..1]);
-
-    public bool Has(string name) => _flags.Contains(name) || _options.ContainsKey(name);
-
-    public int Int(string name, int fallback) =>
-        int.TryParse(Option(name), out var value) ? value : fallback;
-
-    // ---- Shared resolution --------------------------------------------------------------------
+    public static new Arguments Parse(string[] args) => new(CommandLine.Parse(args));
 
     /// <summary>
     /// Installs logging. Flags beat the environment, which beats the default -- a `--log-level`

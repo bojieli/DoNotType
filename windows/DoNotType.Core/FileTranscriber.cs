@@ -132,9 +132,6 @@ public sealed class FileTranscriber(
         var wav = AudioDecoder.Load(path);
         var decodeSeconds = (DateTimeOffset.Now - decodeStart).TotalSeconds;
 
-        var chunks = AudioChunker.Split(wav).Count;
-        onProgress?.Invoke(new Progress.Transcribing(0, chunks));
-
         var transcribeStart = DateTimeOffset.Now;
         var result = await service.TranscribeLongAsync(
                 wav, context, null, attempts, maxConcurrent,

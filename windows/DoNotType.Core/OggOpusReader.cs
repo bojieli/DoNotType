@@ -140,12 +140,12 @@ public static class OggOpusReader
         }
     }
 
-    private sealed record Stream(List<byte[]> Packets, int PreSkip, int Channels);
+    internal sealed record Stream(List<byte[]> Packets, int PreSkip, int Channels);
 
     /// <summary>
     /// Walks the Ogg pages and reassembles Opus packets, dropping the two header packets.
     /// </summary>
-    private static Stream Demux(byte[] ogg, string name)
+    internal static Stream Demux(byte[] ogg, string name)
     {
         var packets = new List<byte[]>();
         var preSkip = 0;

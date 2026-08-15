@@ -168,10 +168,19 @@ public sealed class TranscriptionService(
         CancellationToken cancellationToken = default)
     {
         var chunks = AudioChunker.Split(wav);
+
+        // Reported before the first request rather than after it, so a caller showing a counter has
+        // the total straight away. It is also the only place that knows it without splitting the
+        // audio a second time, which on a long recording is a second copy of it in memory.
+        onProgress?.Invoke(0, chunks.Count);
+
         if (chunks.Count <= 1)
         {
-            return await TranscribeWithRetryAsync(wav, context, audioPart, attempts, cancellationToken)
+            var single = await TranscribeWithRetryAsync(
+                    wav, context, audioPart, attempts, cancellationToken)
                 .ConfigureAwait(false);
+            onProgress?.Invoke(1, 1);
+            return single;
         }
 
         // Bounded concurrency: a ten-minute dictation is ten simultaneous requests otherwise, which

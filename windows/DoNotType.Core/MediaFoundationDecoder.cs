@@ -110,12 +110,26 @@ public static class MediaFoundationDecoder
     /// to be.
     /// </summary>
     /// <remarks>
-    /// Only the major type and the subtype are set. Asking for 16 kHz mono as well seems obvious
-    /// and fails: the Source Reader will insert a <em>decoder</em> to turn MP3 into PCM, but it
-    /// will not insert a <em>resampler</em>, so a request the decoder cannot satisfy natively is
-    /// refused outright with a "no decoder installed" HRESULT that means nothing of the kind. That
-    /// is exactly how this first failed on CI. The rate and channel count come back from the reader
-    /// and the managed path converts.
+    /// <para>
+    /// The rate and channel count are taken from the <em>native</em> type — the stream as the file
+    /// declares it — and asked for explicitly. Both halves of that matter, and each was a bug:
+    /// </para>
+    /// <para>
+    /// Asking for 16 kHz mono outright fails. The Source Reader will insert a <em>decoder</em> to
+    /// turn AAC into PCM, but it will not insert a <em>resampler</em>, so a request the decoder
+    /// cannot satisfy natively is refused with a "no decoder installed" HRESULT that means nothing
+    /// of the kind. Downsampling is the managed path's job.
+    /// </para>
+    /// <para>
+    /// Asking for bare PCM and believing what comes back also fails, more quietly. An AAC decoder
+    /// that has not parsed the stream yet answers with a default — 32 kHz stereo for a file that is
+    /// 16 kHz mono — and it does not always raise CURRENTMEDIATYPECHANGED when it corrects itself.
+    /// A 1.5 second file came out at 0.4 seconds and nothing anywhere said so.
+    /// </para>
+    /// <para>
+    /// The native type is the file's own answer, available before any decoding, and it is the one
+    /// the decoder can always produce. Naming it leaves nothing to negotiate.
+    /// </para>
     /// </remarks>
     private static AudioDecoder.WavFormat Configure(IMFSourceReader reader, string name)
     {
@@ -123,18 +137,28 @@ public static class MediaFoundationDecoder
         reader.SetStreamSelection(MediaSourceAllStreams, false);
         reader.SetStreamSelection(FirstAudioStream, true);
 
+        var native = NativeFormat(reader, name);
+
         Check(MFCreateMediaType(out var type), name, "MFCreateMediaType");
         try
         {
+            var blockAlign = native.Channels * 2; // 16-bit, which is what is asked for below
             type.SetGUID(MajorType, AudioMajorType);
             type.SetGUID(SubType, PcmSubType);
+            type.SetUINT32(SamplesPerSecond, native.SampleRate);
+            type.SetUINT32(NumChannels, native.Channels);
+            type.SetUINT32(BitsPerSample, 16);
+            // A PCM type is not complete without these two, and an incomplete one is refused.
+            type.SetUINT32(BlockAlignment, blockAlign);
+            type.SetUINT32(AverageBytesPerSecond, native.SampleRate * blockAlign);
 
             var status = reader.SetCurrentMediaType(FirstAudioStream, IntPtr.Zero, type);
             if (status < 0)
             {
                 throw new AudioDecoder.DecodeException(
-                    $"Windows would not decode {name} to PCM (0x{status:X8}) — it may have no "
-                    + "decoder installed for this format, or the file may have no audio track. "
+                    $"Windows would not decode {name} to {native.SampleRate} Hz "
+                    + $"{native.Channels}-channel PCM (0x{status:X8}) — it may have no decoder "
+                    + "installed for this format, or the file may have no audio track. "
                     + "Convert it to WAV first (ffmpeg -i in.m4a -ar 16000 -ac 1 out.wav).");
             }
         }
@@ -143,9 +167,43 @@ public static class MediaFoundationDecoder
             Marshal.ReleaseComObject(type);
         }
 
-        // Only a first answer. A decoder that has not parsed the stream yet may be describing a
-        // default rather than the file — see ReadAll.
-        return CurrentFormat(reader, name);
+        // Read back rather than assumed: the request above is honoured in practice, but a decoder
+        // is entitled to hand back something adjacent and ReadAll watches for later changes anyway.
+        var actual = CurrentFormat(reader, name);
+        Log.Debug(() => "configured the decoder", new Dictionary<string, string>
+        {
+            ["file"] = name,
+            ["native"] = $"{native.SampleRate}/{native.Channels}",
+            ["output"] = $"{actual.SampleRate}/{actual.Channels}/{actual.BitsPerSample}",
+        });
+        return actual;
+    }
+
+    /// <summary>
+    /// The stream as the file declares it, before any decoding — which for a compressed format is
+    /// the only description that is true straight away.
+    /// </summary>
+    private static AudioDecoder.WavFormat NativeFormat(IMFSourceReader reader, string name)
+    {
+        var status = reader.GetNativeMediaType(FirstAudioStream, 0, out var native);
+        if (status < 0)
+        {
+            throw new AudioDecoder.DecodeException(
+                $"{name} has no audio track Windows can describe (0x{status:X8}).");
+        }
+        try
+        {
+            return new AudioDecoder.WavFormat(
+                ReadUInt32(native, SamplesPerSecond, fallback: 44_100),
+                // Clamped: a corrupt header claiming 300 channels would otherwise be asked for.
+                Math.Clamp(ReadUInt32(native, NumChannels, fallback: 2), 1, 8),
+                16,
+                IsFloat: false);
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(native);
+        }
     }
 
     /// <summary>What the decoder says it is producing, right now.</summary>
@@ -317,6 +375,8 @@ public static class MediaFoundationDecoder
     private static readonly Guid NumChannels = new("37e48bf5-645e-4c5b-89de-ada9e29b696a");
     private static readonly Guid SamplesPerSecond = new("5faeeae7-0290-4c31-9e8a-c534f68d9dba");
     private static readonly Guid BitsPerSample = new("f2deb57f-40fa-4764-aa33-ed4f2d1ff669");
+    private static readonly Guid BlockAlignment = new("322de230-9eeb-43bd-ab7a-ff412251541d");
+    private static readonly Guid AverageBytesPerSecond = new("1aab75c8-cfef-451c-ab95-ac034b8e1731");
 
     [DllImport("mfplat.dll", ExactSpelling = true)]
     private static extern int MFStartup(int version, int flags);
@@ -346,7 +406,8 @@ public static class MediaFoundationDecoder
         // the 2-byte VARIANT_BOOL, which would put the wrong width on the stack.
         [PreserveSig] int SetStreamSelection(
             uint index, [MarshalAs(UnmanagedType.Bool)] bool selected);                // 1
-        void GetNativeMediaType_();                                                    // 2
+        [PreserveSig] int GetNativeMediaType(                                          // 2
+            uint index, uint typeIndex, out IMFMediaType type);
         [PreserveSig] int GetCurrentMediaType(uint index, out IMFMediaType type);       // 3
         [PreserveSig] int SetCurrentMediaType(uint index, IntPtr reserved, IMFMediaType type); // 4
         void SetCurrentPosition_();                                                    // 5

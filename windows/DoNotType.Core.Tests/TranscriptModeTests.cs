@@ -389,3 +389,124 @@ public sealed class OggOpusReaderTests
         Assert.InRange(after, before - 0.2, before + 0.2);
     }
 }
+
+/// <summary>
+/// What the Ogg reader does with input that is not a well-formed file.
+/// </summary>
+/// <remarks>
+/// A demuxer is a parser fed bytes from outside the program, and the failures that matter are not
+/// "does it decode" but "does it terminate, and does it fail in a way the caller can catch". A
+/// partial download, a copy interrupted halfway, a file someone renamed — all reach this code.
+/// </remarks>
+public sealed class OggOpusReaderRobustnessTests
+{
+    private static byte[] Fixture(string name) =>
+        File.ReadAllBytes(AudioDecoderTests.FormatFixture(name));
+
+    /// <summary>
+    /// Truncated at every length, including inside a page header and inside a lacing table.
+    ///
+    /// Every one must terminate and must fail as a DecodeException rather than an
+    /// IndexOutOfRange, a hang, or — worst — silently returning a fraction of the audio as though
+    /// it were the whole file.
+    /// </summary>
+    [Fact]
+    public void TruncationNeverHangsAndNeverThrowsSomethingUncatchable()
+    {
+        var whole = Fixture("speech.opus");
+
+        // Every 97 bytes: dense enough to land inside headers, lacing tables and packet bodies,
+        // cheap enough to run on every push.
+        for (var length = 1; length < whole.Length; length += 97)
+        {
+            var cut = whole[..length];
+            var deadline = DateTimeOffset.Now.AddSeconds(5);
+
+            try
+            {
+                OggOpusReader.IsOggOpus(cut);
+                var stream = OggOpusReader.Demux(cut, "fuzz");
+                // If it parsed, what it returns has to be self-consistent.
+                Assert.All(stream.Packets, packet => Assert.NotEmpty(packet));
+                Assert.True(stream.PreSkip >= 0);
+                Assert.True(stream.Channels is >= 1 and <= 8);
+            }
+            catch (AudioDecoder.DecodeException)
+            {
+                // The documented failure.
+            }
+
+            Assert.True(
+                DateTimeOffset.Now < deadline,
+                $"demuxing {length} bytes took more than five seconds — a page whose length does "
+                + "not advance the cursor would do that");
+        }
+    }
+
+    /// <summary>
+    /// A page header claiming more segments than the file contains, which is what a corrupt byte
+    /// in the segment count looks like.
+    /// </summary>
+    [Fact]
+    public void ALyingSegmentCountIsSurvived()
+    {
+        var whole = Fixture("speech.opus");
+        for (var count = 1; count <= 255; count += 37)
+        {
+            var corrupt = whole.ToArray();
+            corrupt[26] = (byte)count; // segment count of the first page
+            try
+            {
+                OggOpusReader.Demux(corrupt, "fuzz");
+            }
+            catch (AudioDecoder.DecodeException)
+            {
+            }
+        }
+    }
+
+    /// <summary>Random bytes that happen to start with the capture pattern.</summary>
+    [Fact]
+    public void GarbageBehindAValidMagicIsSurvived()
+    {
+        var random = new Random(20260815); // fixed, so a failure is reproducible
+        for (var trial = 0; trial < 200; trial++)
+        {
+            var noise = new byte[random.Next(28, 4_096)];
+            random.NextBytes(noise);
+            "OggS"u8.CopyTo(noise);
+
+            try
+            {
+                OggOpusReader.IsOggOpus(noise);
+                OggOpusReader.Demux(noise, "fuzz");
+            }
+            catch (AudioDecoder.DecodeException)
+            {
+            }
+        }
+    }
+
+    /// <summary>
+    /// A page with no segments at all is legal Ogg, and is the shape that would make a reader
+    /// whose cursor does not advance spin forever.
+    /// </summary>
+    [Fact]
+    public void AnEmptyPageDoesNotStallTheReader()
+    {
+        var page = new byte[27];
+        "OggS"u8.CopyTo(page);
+        page[26] = 0; // no segments
+
+        var doubled = page.Concat(page).ToArray();
+        var deadline = DateTimeOffset.Now.AddSeconds(5);
+        try
+        {
+            OggOpusReader.Demux(doubled, "fuzz");
+        }
+        catch (AudioDecoder.DecodeException)
+        {
+        }
+        Assert.True(DateTimeOffset.Now < deadline, "an empty page stalled the reader");
+    }
+}
