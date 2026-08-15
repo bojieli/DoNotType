@@ -1,4 +1,5 @@
 import AppKit
+import DoNotTypeCore
 import SwiftUI
 
 /// The floating pill at the bottom of the screen while recording.
@@ -105,6 +106,11 @@ final class OverlayState {
         /// because "1 of 1" is noise — but a nine-minute recording that sits on "Transcribing…"
         /// for half a minute looks hung, and this is what distinguishes slow from stuck.
         case transcribingChunk(done: Int, of: Int)
+        /// The second request, which is a different thing being waited on and often the slower of
+        /// the two. This said "Transcribing…" while a model rewrote a transcript that was already
+        /// finished — so the one phase where the wait is the *model's* thinking was the one phase
+        /// that did not say so.
+        case deriving(RewriteStyle)
         /// Brief confirmation that words were inserted, so success is visible rather than a
         /// silent disappearance the user has to infer from the text appearing.
         case inserted(Int)
@@ -121,6 +127,18 @@ final class OverlayState {
 private struct OverlayView: View {
     @Bindable var state: OverlayState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The style's own word, not "Processing…". Somebody who chose Bullets is waiting for bullets,
+    /// and a label that says so is the difference between a wait that makes sense and one that
+    /// looks like the app has stalled after already getting the words.
+    static func derivingLabel(for style: RewriteStyle) -> String {
+        switch style {
+        case .verbatim: "Finishing…"
+        case .formal: "Rewriting…"
+        case .concise: "Tightening…"
+        case .bullets: "Making bullets…"
+        }
+    }
 
     var body: some View {
         content
@@ -157,6 +175,11 @@ private struct OverlayView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
                     .monospacedDigit()
+            case .deriving(let style):
+                ThinkingDots()
+                Text(Self.derivingLabel(for: style))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
             case .inserted(let characters):
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)

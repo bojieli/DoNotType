@@ -277,7 +277,7 @@ final class DictationController {
             // version is stored either way and "what did I actually say" stays answerable.
             var delivered = text
             if style.isRewrite, let instruction = rewriteInstruction(for: style) {
-                overlay.update(phase: .transcribing)
+                overlay.update(phase: .deriving(style))
                 let rewriteStart = Date()
                 if let styled = try? await coordinator.service.rewrite(text, instruction: instruction) {
                     record.styledText = styled

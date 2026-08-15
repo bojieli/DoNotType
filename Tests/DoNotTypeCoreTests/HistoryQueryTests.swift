@@ -306,4 +306,86 @@ final class DeliveredTextTests: XCTestCase {
         XCTAssertEqual(decoded.first?.styledText, "Polished words.")
         XCTAssertEqual(decoded.first?.style, .formal)
     }
+
+    // MARK: - What the provider itself said
+
+    /// A status code cannot express "this model does not accept audio input". The provider can,
+    /// and it knows what it refused. This was read only to sniff for the words "api key" and then
+    /// discarded, so the single most useful sentence available never reached anybody.
+    func testTheProvidersOwnExplanationSurvives() {
+        let advice = FailureAdvice.describe(
+            ProviderError.http(
+                status: 400,
+                body: #"{"error": {"message": "This model does not accept audio input."}}"#))
+        XCTAssertTrue(advice.message.contains("does not accept audio input"), advice.message)
+    }
+
+    func testAMessageAtTheTopLevelIsFoundToo() {
+        let advice = FailureAdvice.describe(
+            ProviderError.http(status: 404, body: #"{"message": "Unknown model: gemini-9"}"#))
+        XCTAssertTrue(advice.message.contains("gemini-9"), advice.message)
+    }
+
+    /// Everything that is not a sentence is dropped rather than pasted into the corner of the
+    /// screen. A user reading an overlay is not debugging.
+    func testNothingUnreadableIsShown() {
+        let bodies = [
+            #"{"trace_id": "abc123", "status": {"code": 13}}"#,
+            "<html><head><title>502 Bad Gateway</title></head></html>",
+            String(repeating: "{\"a\":1},", count: 400),
+        ]
+        for body in bodies {
+            let advice = FailureAdvice.describe(ProviderError.http(status: 500, body: body))
+            XCTAssertFalse(advice.message.contains("{"), advice.message)
+            XCTAssertFalse(advice.message.contains("<"), advice.message)
+            XCTAssertLessThanOrEqual(advice.message.count, 220, advice.message)
+        }
+    }
+
+    func testAShortGatewayMessageIsKept() {
+        let advice = FailureAdvice.describe(
+            ProviderError.http(status: 503, body: "upstream connect error before headers"))
+        XCTAssertTrue(advice.message.contains("upstream connect error"), advice.message)
+    }
+
+    func testAMultiLineMessageBecomesOneLine() {
+        let advice = FailureAdvice.describe(
+            ProviderError.http(status: 400, body: "it failed\nand here is why\nat length"))
+        XCTAssertFalse(advice.message.contains("\n"), advice.message)
+    }
+
+    // MARK: - Advice that can actually work
+
+    /// The comment above the 400 case makes this argument and the default branch ignored it: a 4xx
+    /// is a request this app got wrong and will get wrong again identically. "Saved, retry from
+    /// History" was being offered for every unhandled one.
+    func testAnUnhandledClientErrorDoesNotPromiseARetryThatCannotWork() {
+        for status in [400, 415, 422] {
+            let advice = FailureAdvice.describe(ProviderError.http(status: status, body: ""))
+            XCTAssertFalse(advice.isRetryable, "HTTP \(status) claimed to be retryable")
+            XCTAssertTrue(
+                advice.message.contains("not change it"),
+                "HTTP \(status): \(advice.message)")
+            // Nothing in Settings fixes a malformed request. Sending somebody there when nothing
+            // they can change will help is worse than telling them it is not their fault.
+            XCTAssertFalse(advice.needsUserAction, "HTTP \(status)")
+            XCTAssertTrue(advice.isQueued, "HTTP \(status): the recording is still kept")
+        }
+    }
+
+    func testAServerErrorIsStillWorthRetrying() {
+        for status in [500, 502, 503, 429, 408] {
+            let advice = FailureAdvice.describe(ProviderError.http(status: status, body: ""))
+            XCTAssertTrue(advice.isRetryable, "HTTP \(status) should be retryable")
+            XCTAssertTrue(advice.isQueued, "HTTP \(status) should be kept")
+        }
+    }
+
+    /// The one that produced a wrong answer rather than an unhelpful one: too large is not a
+    /// transient fault, and retrying it identically wastes the user's time twice.
+    func testATooLargeRecordingIsNotOfferedAsARetry() {
+        let advice = FailureAdvice.describe(ProviderError.http(status: 413, body: ""))
+        XCTAssertFalse(advice.isRetryable)
+        XCTAssertTrue(advice.message.contains("too large"), advice.message)
+    }
 }
