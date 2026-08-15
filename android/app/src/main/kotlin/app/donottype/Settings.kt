@@ -5,6 +5,7 @@ import app.donottype.core.Log
 import app.donottype.core.LogLevel
 import app.donottype.core.LogRouter
 import app.donottype.core.ProviderKind
+import app.donottype.core.RewriteStyle
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.TranscriptMode
 import android.content.Context
@@ -22,6 +23,7 @@ object Settings {
     private const val KEY_API = "apiKey"
     private const val KEY_PROVIDER = "provider"
     private const val KEY_MODEL = "model"
+    private const val KEY_LIVE_STYLE = "liveStyle"
     private const val KEY_KEYTERMS = "keytermBiasing"
     private const val KEY_FALLBACK = "fallbackProvider"
     private const val KEY_FALLBACK_AFTER = "fallbackAfterSeconds"
@@ -144,6 +146,21 @@ object Settings {
     var fallbackAfterSeconds: Int
         get() = if (ready) prefs.getInt(KEY_FALLBACK_AFTER, 8).coerceIn(1, 120) else 8
         set(value) { if (ready) prefs.edit().putInt(KEY_FALLBACK_AFTER, value.coerceIn(1, 120)).apply() }
+
+    /**
+     * What the keyboard produces: the transcript, or a rewrite of it.
+     *
+     * The desktop makes this choice with a second hotkey — which key you hold decides. A phone has
+     * no second key, so the choice is a chip on the keyboard, made before speaking rather than from
+     * a menu afterwards. Same rule, the only input the platform has.
+     */
+    var liveStyle: RewriteStyle
+        get() = if (ready) {
+            RewriteStyle.from(prefs.getString(KEY_LIVE_STYLE, null)) ?: RewriteStyle.VERBATIM
+        } else {
+            RewriteStyle.VERBATIM
+        }
+        set(value) { if (ready) prefs.edit().putString(KEY_LIVE_STYLE, value.id).apply() }
 
     var keytermBiasing: Boolean
         get() = ready && prefs.getBoolean(KEY_KEYTERMS, false)

@@ -48,6 +48,7 @@ class DictationService(private val context: Context) {
         wav: ByteArray,
         screenContext: ScreenContext?,
         appName: String?,
+        style: RewriteStyle = RewriteStyle.VERBATIM,
     ): Result<DictationRecord> {
         val key = Settings.apiKey
         if (key.isNullOrBlank()) {
@@ -220,6 +221,64 @@ class DictationService(private val context: Context) {
 
             record.status = DictationRecord.Status.COMPLETED
             record.text = text
+
+            // A rewrite is a second pass over a transcript that already exists, so the verbatim
+            // version is stored either way and "what did I actually say" stays answerable.
+            var delivered = text
+            if (style.isRewrite && text.isNotBlank()) {
+                val rewriteStart = System.currentTimeMillis()
+                val mode = TranscriptMode.Rewrite(style)
+                val instruction = PromptAssets.secondStageInstruction(context, mode)
+                val kind = secondStageBackendFor(key)
+                log.info(
+                    mapOf("dictation" to id, "style" to style.id, "chars" to text.length.toString()),
+                ) { "second stage" }
+
+                if (instruction == null || kind == null) {
+                    // A recognition backend has no text endpoint at all, so this is not a request
+                    // that went wrong — it is one that was never possible. Said out loud rather
+                    // than left to be inferred from getting your own words back.
+                    record.rewriteFailed = true
+                    log.warn(
+                        mapOf("dictation" to id, "style" to style.id),
+                    ) { "no backend can rewrite text, delivering the verbatim transcript" }
+                } else {
+                    try {
+                        val rewriter = ProviderFactory.create(
+                            kind, Settings.keyFor(kind).orEmpty(), Settings.modelFor(kind),
+                        )
+                        val styled = rewriter.transcribe(
+                            instruction, listOf(InputPart.Text(text)), Settings.fidelity,
+                        ).transcript.transcript.trim()
+                        if (styled.isNotEmpty()) {
+                            record.styledText = styled
+                            record.mode = mode.id
+                            delivered = styled
+                        }
+                        log.info(
+                            mapOf(
+                                "dictation" to id,
+                                "chars" to styled.length.toString(),
+                                "from" to text.length.toString(),
+                                "ms" to (System.currentTimeMillis() - rewriteStart).toString(),
+                            ),
+                        ) { "second stage finished" }
+                    } catch (error: Exception) {
+                        // The words survive either way, so this is a warning rather than a failure
+                        // — but it is said out loud, because a rewrite that fails every time
+                        // should not be indistinguishable from one never asked for.
+                        record.rewriteFailed = true
+                        log.warn(
+                            mapOf(
+                                "dictation" to id,
+                                "style" to style.id,
+                                "detail" to FailureAdvice.detail(error),
+                            ),
+                        ) { "second stage failed, delivering the verbatim transcript" }
+                    }
+                }
+            }
+
             record.latencyMillis = System.currentTimeMillis() - releasedAt
             history.insert(record, if (Settings.keepAudio) wav else null)
             log.info(
@@ -258,6 +317,20 @@ class DictationService(private val context: Context) {
             record.errorDetail = detail
             history.insert(record, wav)
             Result.failure(error)
+        }
+    }
+
+    /**
+     * Which backend can rewrite text, given the key already resolved for the primary.
+     *
+     * The same rule as the file transcriber: a recognition backend cannot take text at all, so a
+     * rewrite has to go to a model provider that has a key — the recording still goes to the fast
+     * recogniser.
+     */
+    private fun secondStageBackendFor(primaryKey: String): ProviderKind? {
+        if (!Settings.provider.isSpeechRecognition) return Settings.provider
+        return ProviderKind.entries.firstOrNull { kind ->
+            !kind.isSpeechRecognition && !Settings.keyFor(kind).isNullOrBlank()
         }
     }
 

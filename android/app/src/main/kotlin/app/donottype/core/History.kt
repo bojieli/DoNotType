@@ -30,6 +30,15 @@ data class DictationRecord(
      * half-message pasted into an issue cannot be searched for.
      */
     var errorDetail: String? = null,
+
+    /**
+     * A rewrite was asked for and did not happen, so what was delivered is the verbatim text.
+     *
+     * Recorded rather than inferred from a null [styledText], which is also what a verbatim
+     * dictation looks like. The difference matters: one is what was asked for, the other is a
+     * second request that failed, and only the second is worth telling somebody about.
+     */
+    var rewriteFailed: Boolean = false,
     /**
      * The backend that actually produced this transcript.
      *
@@ -112,6 +121,7 @@ data class DictationRecord(
         .put("text", text)
         .put("errorMessage", errorMessage)
         .put("errorDetail", errorDetail)
+        .put("rewriteFailed", rewriteFailed)
         .put("model", model)
         .put("fidelity", fidelity.id)
         .put("appName", appName)
@@ -133,6 +143,7 @@ data class DictationRecord(
             text = json.optString("text"),
             errorMessage = json.optString("errorMessage").takeIf { it.isNotEmpty() },
             errorDetail = json.optString("errorDetail").takeIf { it.isNotEmpty() },
+            rewriteFailed = json.optBoolean("rewriteFailed"),
             model = json.optString("model"),
             fidelity = Fidelity.from(json.optString("fidelity")),
             appName = json.optString("appName").takeIf { it.isNotEmpty() },

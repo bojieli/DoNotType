@@ -8,6 +8,8 @@ import app.donottype.SettingsActivity
 import app.donottype.core.DictationService
 import app.donottype.core.FailureAdvice
 import app.donottype.core.Log as DntLog
+import app.donottype.core.RewriteStyle
+import app.donottype.core.ProviderKind
 import app.donottype.core.ScreenContext
 import android.Manifest
 import android.content.Intent
@@ -55,6 +57,8 @@ class DoNotTypeIME : InputMethodService() {
     private val service by lazy { DictationService(this) }
 
     private lateinit var statusLabel: TextView
+    private lateinit var styleRow: LinearLayout
+    private val styleButtons = mutableMapOf<RewriteStyle, Button>()
     private lateinit var talkButton: Button
     private lateinit var indicator: DictationIndicatorView
 
@@ -91,6 +95,9 @@ class DoNotTypeIME : InputMethodService() {
         super.onStartInputView(info, restarting)
         // Anything that failed while offline goes out when the keyboard next opens.
         scope.launch { withContext(Dispatchers.IO) { service.retryAll() } }
+        // The provider may have changed in the app since this keyboard was last shown, and with it
+        // whether a rewrite is possible at all.
+        refreshStyleRow()
     }
 
     override fun onCreateInputView(): View {
@@ -125,6 +132,7 @@ class DoNotTypeIME : InputMethodService() {
             setOnClickListener { if (openAppOnTap) openTheApp() }
         }
 
+        styleRow = buildStyleRow()
         indicator = DictationIndicatorView(this)
 
         talkButton = Button(this).apply {
@@ -152,6 +160,7 @@ class DoNotTypeIME : InputMethodService() {
         }
 
         root.addView(statusLabel)
+        root.addView(styleRow)
         root.addView(
             indicator,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 120),
@@ -160,8 +169,80 @@ class DoNotTypeIME : InputMethodService() {
             talkButton,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 180),
         )
+        refreshStyleRow()
         render()
         return root
+    }
+
+    /**
+     * The style chips: verbatim, or one of the rewrites.
+     *
+     * The desktop makes this choice with a second hotkey — which key you hold decides, before you
+     * speak. A phone has no second key, so it is a chip, and the rule it preserves is the one that
+     * matters: the choice is made *before* speaking. A menu between finishing a sentence and seeing
+     * it appear would defeat the point of dictating.
+     *
+     * Hidden when the configured backend cannot rewrite text at all, because a control that cannot
+     * work is worse than one that is not there.
+     */
+    private fun buildStyleRow(): LinearLayout {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 20)
+        }
+
+        styleButtons.clear()
+        for (style in RewriteStyle.entries) {
+            val chip = Button(this).apply {
+                text = styleChipLabel(style)
+                textSize = 12f
+                isAllCaps = false
+                minWidth = 0
+                minimumWidth = 0
+                setPadding(24, 8, 24, 8)
+                setOnClickListener {
+                    Settings.liveStyle = style
+                    log.info(mapOf("style" to style.id)) { "live style chosen" }
+                    refreshStyleRow()
+                }
+            }
+            styleButtons[style] = chip
+            row.addView(
+                chip,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { marginEnd = 10 },
+            )
+        }
+        return row
+    }
+
+    /** The chip's word, which is the style's own name rather than "rewrite". */
+    private fun styleChipLabel(style: RewriteStyle): String = when (style) {
+        RewriteStyle.VERBATIM -> "Verbatim"
+        RewriteStyle.FORMAL -> "Formal"
+        RewriteStyle.CONCISE -> "Concise"
+        RewriteStyle.BULLETS -> "Bullets"
+    }
+
+    private fun refreshStyleRow() {
+        if (!::styleRow.isInitialized) return
+
+        // A recogniser has no text endpoint, so there is nothing a rewrite chip could do. Rather
+        // than offering one that silently returns the verbatim transcript, the row goes away.
+        val canRewrite = !Settings.provider.isSpeechRecognition ||
+            ProviderKind.entries.any { !it.isSpeechRecognition && !Settings.keyFor(it).isNullOrBlank() }
+        styleRow.visibility = if (canRewrite) View.VISIBLE else View.GONE
+        if (!canRewrite) return
+
+        val selected = Settings.liveStyle
+        styleButtons.forEach { (style, chip) ->
+            val active = style == selected
+            chip.setTextColor(Color.parseColor(if (active) "#0B0F14" else "#8A9BA8"))
+            chip.setBackgroundColor(Color.parseColor(if (active) "#7FB2FF" else "#1B2430"))
+        }
     }
 
     // MARK: - Gestures
@@ -297,17 +378,30 @@ class DoNotTypeIME : InputMethodService() {
             return
         }
 
+        // Read at the moment the recording ends, not when the request returns: tapping a
+        // different chip while a transcription is in flight must not change what it becomes.
+        val style = Settings.liveStyle
+
         state = State.TRANSCRIBING
         scope.launch {
             val outcome = withContext(Dispatchers.IO) {
-                service.transcribe(wav, context, context?.appName)
+                service.transcribe(wav, context, context?.appName, style)
             }
             outcome.fold(
                 onSuccess = { record ->
-                    if (record.text.isNotEmpty()) {
-                        currentInputConnection?.commitText(record.text, 1)
+                    // The rewrite when there is one, the transcript when there is not.
+                    val delivered = record.styledText ?: record.text
+                    if (delivered.isNotEmpty()) {
+                        currentInputConnection?.commitText(delivered, 1)
                     }
-                    state = State.IDLE
+                    if (record.rewriteFailed) {
+                        // The words landed either way, but somebody who chose Formal and got their
+                        // own words back should be told that is what happened.
+                        showStatus("Inserted — not rewritten")
+                        state = State.ERROR
+                    } else {
+                        state = State.IDLE
+                    }
                 },
                 onFailure = { error ->
                     Log.e(TAG, "transcription failed", error)
