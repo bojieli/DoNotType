@@ -10,6 +10,13 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **The Context Inspector on Windows and Android.** If an app reads your screen, you should be able
+  to read what it read — that is the answer to a tool that encrypts its captured context to a
+  server key you do not hold, and until now only macOS could give it. Both render the stored
+  context back through the real `ContextEncoder`, so what appears is the text that went over the
+  wire rather than a description of it, and the test is that the output contains the encoder's
+  actual output. One click from the history row it belongs to.
+
 - **The rewrite works in live dictation on every client.** It was on macOS only, then macOS and
   Windows. Android gets style chips above the talk button; iOS gets a segmented picker above the
   record button. A phone has no second hotkey, so the choice is a control — but the rule the
@@ -173,6 +180,12 @@ deliberate:
   decodes to something plausible and shorter, which nothing downstream can detect.
 
 ### Fixed
+
+- **Retrying a failed dictation on Windows and Android asked a different question.** Neither kept
+  the screen context the original request was sent with, so a retry re-ran *ungrounded* — no screen
+  text, no caret window — on a history row that still named the same provider and model. A
+  transcript that came back worse looked like the backend having a bad day rather than like the
+  retry having asked something else. The context is stored on the row now, and the retry sends it.
 
 - **Every Opus recording on Android decoded to two thirds of its length.** A 1.5 second file came
   back as 1.02, and a forty-minute meeting would have lost thirteen minutes from the middle of a

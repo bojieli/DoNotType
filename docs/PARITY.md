@@ -50,7 +50,7 @@ last — does not arise the same way.
 | Never read these apps | ✅ | ✅ | ✅ | ❌ ⁶ |
 | Number check (second, screen-blind request) | ✅ | ✅ | ✅ | ❌ ⁶ |
 | Keyterm biasing for recognisers | ✅ | ✅ | ✅ | ❌ ⁶ |
-| Inspect what would be sent | ✅ | — ⁸ | — ⁸ | ❌ ⁶ |
+| Inspect what was sent | ✅ | ✅ | ✅ | ❌ ⁶ |
 
 ⁶ **Not possible.** An iOS app cannot read another app's screen; the sandbox has no equivalent of
 the accessibility APIs the other three use, and no screenshot of anything it does not own. This is
@@ -62,9 +62,6 @@ therefore absent too, because there is nothing for them to act on.
 terminal, a PDF. UI Automation and `AccessibilityService` return text for most of what people
 dictate into, so the fallback has not been needed; it is a gap rather than an impossibility.
 
-⁸ A debugging view showing exactly what would be sent for the current window. Genuinely useful, and
-genuinely absent on two clients.
-
 ## Transcription
 
 | | macOS | Windows | Android | iOS |
@@ -75,9 +72,9 @@ genuinely absent on two clients.
 | Split long recordings on silence | ✅ | ✅ | ✅ | ✅ |
 | Fallback backend when the primary stalls | ✅ | ✅ | ✅ | ✅ |
 | Compress the upload with Opus | ✅ | ✅ | ✅ | ✅ |
-| Pre-upload during recording | ✅ | ✅ | — ⁹ | ✅ |
+| Pre-upload during recording | ✅ | ✅ | — ⁸ | ✅ |
 
-⁹ A latency optimisation for Gemini's Files API. Worth having; nobody has done it.
+⁸ A latency optimisation for Gemini's Files API. Worth having; nobody has done it.
 
 ## Everything else
 
@@ -85,18 +82,24 @@ genuinely absent on two clients.
 |---|---|---|---|---|
 | History with search and filters | ✅ | ✅ | ✅ | ✅ |
 | Retry a failed dictation | ✅ | ✅ | ✅ | ✅ |
+| …with the context it originally had | ✅ | ✅ | ✅ | n/a ⁶ |
 | Retention policy and keep-audio | ✅ | ✅ | ✅ | ✅ |
 | Edit the prompt | ✅ | ✅ | ✅ | ✅ |
 | Log viewer, level, content toggle | ✅ | ✅ | ✅ | ✅ |
 | Performance statistics | ✅ | ✅ | ✅ | ✅ |
 | Copy a diagnostic report | ✅ | ✅ | ✅ | ✅ |
-| Guided permissions | ✅ | ✅ ¹⁰ | ✅ | ✅ |
-| Command line | ✅ `dnt` | ✅ `dnt.exe` | — ¹¹ | — ¹¹ |
+| Guided permissions | ✅ | ✅ ⁹ | ✅ | ✅ |
+| Command line | ✅ `dnt` | ✅ `dnt.exe` | — ¹⁰ | — ¹⁰ |
 
-¹⁰ Windows has no permission prompt for the microphone at all — access is a Settings toggle — so
+⁹ Windows has no permission prompt for the microphone at all — access is a Settings toggle — so
 what it does instead is open the privacy page when recording is refused.
 
-¹¹ There is no shell to run one in. The equivalent is the app.
+¹⁰ There is no shell to run one in. The equivalent is the app.
+
+Retrying with the original context is listed separately because it was silently wrong on two
+clients until recently: Windows and Android re-ran the request *ungrounded*, which made a retry a
+different question from the one that failed, on a row that still named the same provider and model.
+On iOS there is no context to reuse, so the row is not applicable rather than met.
 
 ## Keeping this true
 

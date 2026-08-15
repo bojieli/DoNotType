@@ -304,7 +304,14 @@ audio. Full status in [docs/MODELS.md](docs/MODELS.md); method in
 
 No server of ours, no telemetry, no analytics. Requests go straight from your machine to the
 provider you configured, with `store: false` set. The blocklist is evaluated before capture and
-ships non-empty. The Context Inspector shows exactly what was sent with any dictation.
+ships non-empty.
+
+**If it reads your screen, you can read what it read.** Every dictation keeps the context it was
+sent with, and the Context Inspector renders it back through the same encoder the request used —
+so what you see is the text that went over the wire, not a summary of it. On macOS, Windows and
+Android, from the history row it belongs to. Not on iOS, which cannot read another app's screen at
+all. This is the answer to a tool that encrypts its captured context to a server key you do not
+hold.
 
 Read [SECURITY.md](SECURITY.md) for what the app can see, where keys live, and an honest threat
 model — including prompt injection, which this design has an unusually direct surface for.
