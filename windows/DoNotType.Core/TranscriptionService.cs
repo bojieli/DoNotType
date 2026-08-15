@@ -158,6 +158,73 @@ public sealed class TranscriptionService(
     /// Short recordings take the ordinary single-request path untouched, so this is safe to call
     /// unconditionally.
     /// </remarks>
+    /// <summary>
+    /// The grounded run, and — when asked and when it means anything — a second screen-blind run
+    /// whose digit sequences are trusted over it.
+    /// </summary>
+    /// <remarks>
+    /// Issued concurrently, but measurement says that does not make it free: the two requests
+    /// contend for the same upload and the pair takes roughly twice as long as one. Which is why it
+    /// is opt-in rather than the default. See <see cref="NumericGuard"/> for what it fixes.
+    /// </remarks>
+    public async Task<TranscriptionResult> TranscribeVerifiedAsync(
+        byte[] wav,
+        ScreenContext? context,
+        InputPart? audioPart = null,
+        int attempts = 3,
+        int maxConcurrent = 3,
+        bool verifyNumbers = false,
+        Action<int, int>? onProgress = null,
+        CancellationToken cancellationToken = default)
+    {
+        // The second, ungrounded run only means something when the first one was grounded. A
+        // recognition backend never sees the screen, and keyterms cannot emit a digit, so there is
+        // no screen-derived number for the check to catch — it would just bill the audio twice and
+        // compare a run against itself.
+        if (!verifyNumbers || Provider.Grounding is not GroundingSupport.MultimodalGrounding
+            || context is null || context.IsEmpty)
+        {
+            return await TranscribeLongAsync(
+                    wav, context, audioPart, attempts, maxConcurrent, onProgress, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        var grounded = TranscribeLongAsync(
+            wav, context, audioPart, attempts, maxConcurrent, onProgress, cancellationToken);
+        var audioOnly = TranscribeLongAsync(
+            wav, null, null, attempts, maxConcurrent, null, cancellationToken);
+
+        var result = await grounded.ConfigureAwait(false);
+
+        // A failed verification pass must never cost the user their transcript: the grounded run
+        // already succeeded, and its numbers being unverified is better than no text at all.
+        TranscriptionResult? checkedResult = null;
+        try
+        {
+            checkedResult = await audioOnly.ConfigureAwait(false);
+        }
+        catch (Exception error)
+        {
+            Log.Warn(() => "the number check failed; delivering the grounded transcript unverified",
+                new Dictionary<string, string> { ["error"] = error.Message });
+        }
+        if (checkedResult is null) return result;
+
+        var reconciled = NumericGuard.Reconcile(
+            result.Transcript.Text, checkedResult.Transcript.Text);
+        Log.Info(() => "number check", new Dictionary<string, string>
+        {
+            ["corrections"] = reconciled.Corrections.Count.ToString(),
+            ["skipped"] = reconciled.SkippedForMismatch ? "count mismatch" : "no",
+        });
+
+        return result with
+        {
+            Transcript = result.Transcript with { Text = reconciled.Text },
+            Usage = TokenUsage.Add(result.Usage, checkedResult.Usage),
+        };
+    }
+
     public async Task<TranscriptionResult> TranscribeLongAsync(
         byte[] wav,
         ScreenContext? context,

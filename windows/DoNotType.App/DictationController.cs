@@ -283,9 +283,13 @@ public sealed class DictationController : IDisposable
     private FallbackTranscriber BuildTranscriber(
         TranscriptionService primary, byte[] wav, ScreenContext? context, InputPart? audioPart)
     {
+        // The number check rides on the primary, not on the hedge. A fallback exists to bound
+        // latency when the primary stalls, and pairing a stalled request with a second one would
+        // make the thing it is meant to rescue worse.
         Task<TranscriptionResult> RunPrimary(CancellationToken token) =>
-            primary.TranscribeLongAsync(
+            primary.TranscribeVerifiedAsync(
                 wav, context, audioPart,
+                verifyNumbers: _settings.NumberCheck.Applies(context),
                 onProgress: (done, total) => ChunkProgress?.Invoke(done, total),
                 cancellationToken: token);
 

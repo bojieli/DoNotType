@@ -180,8 +180,58 @@ class DictationService(private val context: Context) {
                     ProviderFactory.create(kind, fallbackKey, Settings.modelFor(kind))
                 }
 
+            // The number check rides on the primary, not on the hedge. A fallback exists to bound
+            // latency when the primary stalls, and pairing a stalled request with a second one
+            // would make the thing it is meant to rescue worse.
+            //
+            // Only meaningful when the first run was grounded: a recogniser never sees the screen
+            // and keyterms cannot emit a digit, so there is no screen-derived number to catch —
+            // it would bill the audio twice and compare a run against itself.
+            val verifiesNumbers = Settings.numberCheck.applies(screenContext) &&
+                client.grounding() is GroundingSupport.Multimodal &&
+                screenContext != null && !screenContext.isEmpty
+
+            suspend fun transcribeChecked(
+                backend: TranscriptionProvider,
+                hints: List<String>,
+            ): TranscriptionResult = coroutineScope {
+                if (!verifiesNumbers) return@coroutineScope transcribeAll(backend, hints)
+
+                val grounded = async { transcribeAll(backend, hints) }
+                val audioOnly = async {
+                    // Deliberately without the context parts: this run has to be screen-blind, or
+                    // it would agree with the grounded one about exactly the numbers in question.
+                    runCatching {
+                        backend.transcribe(
+                            instruction, listOf(audioPart(wav)), Settings.fidelity, emptyList(),
+                        )
+                    }.getOrNull()
+                }
+
+                val result = grounded.await()
+                // A failed verification pass must never cost the user their transcript: the
+                // grounded run already succeeded, and unverified numbers beat no text at all.
+                val checked = audioOnly.await() ?: return@coroutineScope result
+
+                val reconciled = NumericGuard.reconcile(
+                    result.transcript.transcript, checked.transcript.transcript,
+                )
+                log.info(
+                    mapOf(
+                        "dictation" to id,
+                        "corrections" to reconciled.corrections.size.toString(),
+                        "skipped" to if (reconciled.skippedForMismatch) "count mismatch" else "no",
+                    ),
+                ) { "number check" }
+
+                result.copy(
+                    transcript = result.transcript.copy(transcript = reconciled.text),
+                    usage = TokenUsage.add(result.usage, checked.usage),
+                )
+            }
+
             val outcome = FallbackTranscriber(
-                primary = { transcribeAll(client, keyterms) },
+                primary = { transcribeChecked(client, keyterms) },
                 secondary = fallbackClient?.let { backend ->
                     // A fallback with no keyterm channel simply ignores the hints.
                     FallbackTranscriber.Transcriber { transcribeAll(backend, keyterms) }

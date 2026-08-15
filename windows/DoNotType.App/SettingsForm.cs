@@ -31,6 +31,7 @@ public sealed class SettingsForm : Form
     private readonly ComboBox _trigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _secondTrigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _secondStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _numberCheck = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Label _secondKeyNote = new()
     {
         AutoSize = true,
@@ -133,6 +134,14 @@ public sealed class SettingsForm : Form
 
         layout.Controls.Add(Heading("Grounding"));
         layout.Controls.Add(_grounding);
+        layout.Controls.Add(Labelled("Check numbers", _numberCheck));
+        layout.Controls.Add(Caption(
+            "Every regression grounding has produced in the evaluation suite is a number — 1.5 "
+            + "becoming 2.5, 4240 becoming 1024 — and unlike a misspelled name a wrong number is "
+            + "not recoverable by reading it. This sends a second request that cannot see the "
+            + "screen and takes the digits from that one. It costs a second request, so it fires "
+            + "by default only where it was measured to matter: when the text around the caret "
+            + "already contains numbers (75% substitution there, against 30% elsewhere)."));
         layout.Controls.Add(Caption(
             "Screen text is sent as-is — no vocabulary list, no dictionary, no previous "
             + "transcripts. It may correct spelling, never the words you said."));
@@ -577,6 +586,12 @@ public sealed class SettingsForm : Form
 
         _grounding.Checked = _settings.GroundingEnabled;
 
+        foreach (var policy in Enum.GetValues<NumberCheckPolicy>())
+        {
+            _numberCheck.Items.Add(policy.Label());
+        }
+        _numberCheck.SelectedIndex = (int)_settings.NumberCheck;
+
         foreach (var policy in Enum.GetValues<RetentionPolicy>()) _retention.Items.Add(policy.Label());
         _retention.SelectedIndex = (int)_settings.Retention;
         _retention.SelectedIndexChanged += (_, _) =>
@@ -620,6 +635,7 @@ public sealed class SettingsForm : Form
         };
         _settings.Fidelity = (Fidelity)_fidelity.SelectedIndex;
         _settings.GroundingEnabled = _grounding.Checked;
+        _settings.NumberCheck = (NumberCheckPolicy)_numberCheck.SelectedIndex;
         _settings.Save();
 
         _controller.ReloadHotkey();

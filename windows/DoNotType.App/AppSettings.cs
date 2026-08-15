@@ -48,6 +48,17 @@ public sealed class AppSettings
     public bool KeytermBiasing { get; set; }
 
     /// <summary>
+    /// When to spend a second, screen-blind request to check the numbers.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to the measured regime rather than off or always: every regression the evaluation
+    /// suite has produced from grounding is a number, and the substitution rate is 75% when the
+    /// text around the caret contains digits against 30% when only the wider screen does. See
+    /// <see cref="NumericGuard"/>.
+    /// </remarks>
+    public NumberCheckPolicy NumberCheck { get; set; } = NumberCheckPolicy.WhenCaretHasNumbers;
+
+    /// <summary>
     /// Backend started alongside the primary when it has not answered in time. Null disables it.
     ///
     /// Off by default. Hedging costs a second request and can hand back a less accurate transcript,

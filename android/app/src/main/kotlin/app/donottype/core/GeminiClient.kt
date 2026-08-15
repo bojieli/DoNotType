@@ -53,7 +53,24 @@ data class TokenUsage(
     val promptTokens: Int? = null,
     val completionTokens: Int? = null,
     val audioTokens: Int? = null,
-)
+) {
+    companion object {
+        /**
+         * Totals the cost of a dictation that took more than one request.
+         *
+         * Null means "not reported" and must not become zero: zero audio tokens is the specific
+         * signal that a provider dropped the audio, so inventing one would fire that alarm falsely.
+         */
+        fun add(left: TokenUsage, right: TokenUsage) = TokenUsage(
+            sum(left.promptTokens, right.promptTokens),
+            sum(left.completionTokens, right.completionTokens),
+            sum(left.audioTokens, right.audioTokens),
+        )
+
+        private fun sum(left: Int?, right: Int?): Int? =
+            if (left == null && right == null) null else (left ?: 0) + (right ?: 0)
+    }
+}
 
 data class TranscriptionResult(
     val transcript: Transcript,

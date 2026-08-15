@@ -6,6 +6,7 @@ import app.donottype.core.DictationService
 import app.donottype.core.Fidelity
 import app.donottype.core.HistoryQuery
 import app.donottype.core.GroundingSupport
+import app.donottype.core.NumberCheckPolicy
 import app.donottype.core.InputPart
 import app.donottype.core.PerformanceStats
 import app.donottype.core.ProviderFactory
@@ -229,6 +230,18 @@ class SettingsActivity : AppCompatActivity() {
             body(
                 "Read only while you dictate, never stored. Sent as-is — no vocabulary list, no "
                     + "dictionary. It may correct spelling, never the words you said."
+            )
+        )
+        column.addView(body("Check numbers"))
+        column.addView(buildNumberCheckPicker())
+        column.addView(
+            body(
+                "Every regression grounding has produced in the evaluation suite is a number — "
+                    + "1.5 becoming 2.5, 4240 becoming 1024 — and unlike a misspelled name a wrong "
+                    + "number is not recoverable by reading it. This sends a second request that "
+                    + "cannot see the screen and takes the digits from that one. It costs a second "
+                    + "request, so by default it fires only where it was measured to matter: when "
+                    + "the text around the caret already contains numbers."
             )
         )
 
@@ -506,6 +519,25 @@ class SettingsActivity : AppCompatActivity() {
                         setOnClickListener { Settings.fidelity = fidelity }
                     }
                 )
+            }
+        }
+    }
+
+    private fun buildNumberCheckPicker(): Spinner {
+        val policies = NumberCheckPolicy.entries
+        return Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@SettingsActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                policies.map { it.label },
+            )
+            setSelection(policies.indexOf(Settings.numberCheck).coerceAtLeast(0))
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(p: AdapterView<*>?, v: View?, position: Int, id: Long) {
+                    Settings.numberCheck = policies[position]
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             }
         }
     }
