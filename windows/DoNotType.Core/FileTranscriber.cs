@@ -206,4 +206,30 @@ public sealed class FileTranscriber(
         var body = AudioChunker.PcmBody(wav);
         return body is null ? 0 : body.Length / (double)(AudioDecoder.SampleRate * 2);
     }
+
+    /// <summary>One output name per input, unique by construction.</summary>
+    /// <remarks>
+    /// `a/speech.wav` and `b/speech.mp3` both wanted to be `speech.txt`, and the second silently
+    /// replaced the first — a whole transcription gone, already paid for, with "wrote speech.txt"
+    /// printed twice as though both had landed. Only names that would actually collide are made
+    /// ugly, because the ordinary case is one file and `speech.txt` is what anybody would expect.
+    /// </remarks>
+    public static IReadOnlyList<string> OutputNames(IReadOnlyList<string> paths)
+    {
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var names = new List<string>(paths.Count);
+        foreach (var path in paths)
+        {
+            var stem = Path.GetFileNameWithoutExtension(path);
+            var name = stem + ".txt";
+            // Keep the source extension, which is what distinguishes them and what the user typed.
+            if (used.Contains(name)) name = Path.GetFileName(path) + ".txt";
+            // Same name in two directories. Nothing in the name can separate those, so number them
+            // in the order they were given, which is the order the "wrote ..." lines print in.
+            for (var suffix = 2; used.Contains(name); suffix++) name = $"{stem}-{suffix}.txt";
+            used.Add(name);
+            names.Add(name);
+        }
+        return names;
+    }
 }

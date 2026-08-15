@@ -550,3 +550,54 @@ public sealed class TranscriptModeParityTests
         Assert.Equal(expected, TranscriptMode.Parse(typed)?.Id);
     }
 }
+
+/// <summary>Where a batch of transcripts lands.</summary>
+public sealed class OutputNamingTests
+{
+    [Fact]
+    public void TheOrdinaryCaseIsTheObviousName()
+    {
+        Assert.Equal(["meeting.txt"], FileTranscriber.OutputNames(["/tmp/meeting.wav"]));
+        Assert.Equal(
+            ["a.txt", "b.txt"], FileTranscriber.OutputNames(["/tmp/a.wav", "/tmp/b.mp3"]));
+    }
+
+    /// <summary>
+    /// The bug. Both wanted `speech.txt`, the second overwrote the first, and "wrote speech.txt"
+    /// printed twice as though both had landed.
+    /// </summary>
+    [Fact]
+    public void TheSameNameInTwoFormatsDoesNotOverwrite()
+    {
+        var names = FileTranscriber.OutputNames(["/a/speech.wav", "/b/speech.mp3"]);
+        Assert.Equal(["speech.txt", "speech.mp3.txt"], names);
+    }
+
+    [Fact]
+    public void TheSameNameInTwoDirectoriesIsNumbered()
+    {
+        var names = FileTranscriber.OutputNames(
+            ["/monday/notes.wav", "/tuesday/notes.wav", "/wednesday/notes.wav"]);
+        Assert.Equal(["notes.txt", "notes.wav.txt", "notes-2.txt"], names);
+    }
+
+    [Fact]
+    public void NamesAreUniqueForAnyBatch()
+    {
+        var paths = Enumerable.Range(0, 50)
+            .Select(i => $"/dir{i % 3}/take{i % 5}.{(i % 2 == 0 ? "wav" : "mp3")}")
+            .ToList();
+        Assert.Equal(50, FileTranscriber.OutputNames(paths).Distinct().Count());
+    }
+
+    /// <summary>
+    /// Windows file names are case-insensitive, so `Notes.wav` and `notes.wav` collide there even
+    /// though they would not on the platform this test usually runs on.
+    /// </summary>
+    [Fact]
+    public void CaseAloneIsNotEnoughToTellTwoNamesApart()
+    {
+        var names = FileTranscriber.OutputNames(["/a/Notes.wav", "/b/notes.wav"]);
+        Assert.Equal(2, names.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+}

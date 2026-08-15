@@ -62,6 +62,11 @@ public static class TranscribeCommand
         }
 
         var destination = ResolveOutput(arguments, arguments.Positional.Count);
+        // Worked out before the first request rather than as each file finishes: a name collision
+        // discovered halfway through a batch has already cost the money for the file it would
+        // overwrite.
+        var names = FileTranscriber.OutputNames(arguments.Positional);
+        var index = 0;
         var outcomes = new List<FileTranscriber.Outcome>();
         var failures = 0;
 
@@ -70,6 +75,7 @@ public static class TranscribeCommand
         // which is where the wait actually is.
         foreach (var path in arguments.Positional)
         {
+            var name = names[index++];
             try
             {
                 var outcome = await transcriber.TranscribeAsync(
@@ -85,7 +91,7 @@ public static class TranscribeCommand
                 Out.EndProgress();
                 outcomes.Add(outcome);
 
-                if (destination is not null) Write(outcome, destination.Value);
+                if (destination is not null) Write(outcome, destination.Value, name);
                 if (arguments.Flag("save-history")) Store(outcome);
                 if (!json) Emit(outcome, arguments.Positional.Count > 1);
             }
@@ -156,12 +162,10 @@ public static class TranscribeCommand
     }
 
     private static void Write(
-        FileTranscriber.Outcome outcome, (DestinationKind Kind, string Path) destination)
+        FileTranscriber.Outcome outcome, (DestinationKind Kind, string Path) destination, string name)
     {
         var target = destination.Kind == DestinationKind.Directory
-            ? Path.Combine(
-                destination.Path,
-                Path.GetFileNameWithoutExtension(outcome.SourcePath) + ".txt")
+            ? Path.Combine(destination.Path, name)
             : destination.Path;
 
         File.WriteAllText(target, outcome.Delivered);

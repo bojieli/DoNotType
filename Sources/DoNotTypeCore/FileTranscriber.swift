@@ -208,4 +208,32 @@ public struct FileTranscriber: Sendable {
             ])
         return outcome
     }
+
+    /// One output name per input, unique by construction.
+    ///
+    /// `a/speech.wav` and `b/speech.mp3` both wanted to be `speech.txt`, and the second silently
+    /// replaced the first — a whole transcription gone, already paid for, with "wrote out/speech.txt"
+    /// printed twice as though both had landed. Only names that would actually collide are made
+    /// ugly, because the ordinary case is one file and `speech.txt` is what anybody would expect.
+    public static func outputNames(for urls: [URL]) -> [String] {
+        // Compared without case, because the filesystem this writes to almost certainly is:
+        // APFS is case-insensitive by default, so `Notes.txt` and `notes.txt` are one file and
+        // treating them as two brings the overwrite straight back.
+        var used = Set<String>()
+        return urls.map { url in
+            let base = url.deletingPathExtension().lastPathComponent
+            var name = "\(base).txt"
+            // Keep the source extension, which is what distinguishes them and what the user typed.
+            if used.contains(name.lowercased()) { name = "\(url.lastPathComponent).txt" }
+            // Same name in two directories. Nothing in the name can separate those, so number them
+            // in the order they were given, which is the order the "wrote …" lines print in.
+            var suffix = 2
+            while used.contains(name.lowercased()) {
+                name = "\(base)-\(suffix).txt"
+                suffix += 1
+            }
+            used.insert(name.lowercased())
+            return name
+        }
+    }
 }

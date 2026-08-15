@@ -162,7 +162,12 @@ struct Transcribe: AsyncParsableCommand {
         // Sequential on purpose. Concurrency here would interleave failures with output, make the
         // cost of a mistyped glob unbounded, and buy nothing for the common case of one file —
         // `--concurrency` splits a *single long* recording, which is where the wait actually is.
-        for url in urls {
+        // Worked out before the first request rather than as each file finishes: a name collision
+        // discovered halfway through a batch has already cost the money for the file it would
+        // overwrite.
+        let names = FileTranscriber.outputNames(for: urls)
+
+        for (index, url) in urls.enumerated() {
             do {
                 let outcome = try await transcriber.transcribe(
                     fileAt: url, mode: parsedMode, context: context,
@@ -175,7 +180,7 @@ struct Transcribe: AsyncParsableCommand {
                 outcomes.append(outcome)
 
                 if let destination {
-                    try write(outcome, to: destination)
+                    try write(outcome, to: destination, named: names[index])
                 }
                 if saveHistory {
                     await store(outcome)
@@ -277,13 +282,13 @@ struct Transcribe: AsyncParsableCommand {
         return .file(url)
     }
 
-    private func write(_ outcome: FileTranscriber.Outcome, to destination: Destination) throws {
-        let base = outcome.sourceURL.deletingPathExtension().lastPathComponent
+    private func write(
+        _ outcome: FileTranscriber.Outcome, to destination: Destination, named name: String
+    ) throws {
         let target: URL
         switch destination {
         case .file(let url): target = url
-        case .directory(let directory):
-            target = directory.appendingPathComponent("\(base).txt")
+        case .directory(let directory): target = directory.appendingPathComponent(name)
         }
         try outcome.delivered.write(to: target, atomically: true, encoding: .utf8)
         Out.note("wrote \(target.path)")

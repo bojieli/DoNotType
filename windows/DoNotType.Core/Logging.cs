@@ -136,7 +136,12 @@ public static class LogRouter
 
     private static LogLevel _level = LogLevel.Info;
     private static IReadOnlyList<ILogSink> _sinks = [];
-    private static int _capacity = 5_000;
+    /// <summary>
+    /// How many events the in-memory ring keeps for the log viewer. Fixed rather than configurable:
+    /// it is a debugging aid, and the only honest answers are "enough to see what just happened"
+    /// and "not enough to matter", which this is both of.
+    /// </summary>
+    private const int Capacity = 5_000;
     private static long _nextId = 1;
     private static bool _contentAllowed;
     private static string? _file;
@@ -372,7 +377,7 @@ public static class LogRouter
 
     private static void Trim()
     {
-        if (Buffer.Count > _capacity) Buffer.RemoveRange(0, Buffer.Count - _capacity);
+        if (Buffer.Count > Capacity) Buffer.RemoveRange(0, Buffer.Count - Capacity);
     }
 }
 

@@ -218,6 +218,53 @@ final class FileTranscriberTests: XCTestCase {
 }
 
 /// The decoder that lets any recording reach the pipeline.
+/// Where a batch of transcripts lands.
+final class OutputNamingTests: XCTestCase {
+    private func names(_ paths: [String]) -> [String] {
+        FileTranscriber.outputNames(for: paths.map { URL(fileURLWithPath: $0) })
+    }
+
+    func testTheOrdinaryCaseIsTheObviousName() {
+        XCTAssertEqual(names(["/tmp/meeting.wav"]), ["meeting.txt"])
+        XCTAssertEqual(
+            names(["/tmp/a.wav", "/tmp/b.mp3"]), ["a.txt", "b.txt"],
+            "names that do not collide are not made ugly to prepare for the ones that would")
+    }
+
+    /// The bug. Both wanted `speech.txt`, the second overwrote the first, and "wrote speech.txt"
+    /// printed twice as though both had landed.
+    func testTheSameNameInTwoFormatsDoesNotOverwrite() {
+        let result = names(["/a/speech.wav", "/b/speech.mp3"])
+        XCTAssertEqual(result, ["speech.txt", "speech.mp3.txt"])
+        XCTAssertEqual(Set(result).count, 2)
+    }
+
+    /// Nothing in the file name can separate these, so they are numbered by the order given —
+    /// which is the order the "wrote …" lines print in.
+    func testTheSameNameInTwoDirectoriesIsNumbered() {
+        let result = names(["/monday/notes.wav", "/tuesday/notes.wav", "/wednesday/notes.wav"])
+        XCTAssertEqual(result, ["notes.txt", "notes.wav.txt", "notes-2.txt"])
+        XCTAssertEqual(Set(result).count, 3)
+    }
+
+    func testAFileListedTwiceStillGetsTwoNames() {
+        let result = names(["/tmp/x.wav", "/tmp/x.wav"])
+        XCTAssertEqual(Set(result).count, 2, "a repeated argument must not silently write once")
+    }
+
+    /// APFS is case-insensitive by default, so `Notes.txt` and `notes.txt` are one file and
+    /// telling them apart by case brings the overwrite straight back.
+    func testCaseAloneIsNotEnoughToTellTwoNamesApart() {
+        let result = names(["/a/Notes.wav", "/b/notes.wav"])
+        XCTAssertEqual(Set(result.map { $0.lowercased() }).count, 2)
+    }
+
+    func testNamesAreUniqueForAnyBatch() {
+        let paths = (0..<50).map { "/dir\($0 % 3)/take\($0 % 5).\(["wav", "MP3"][$0 % 2])" }
+        XCTAssertEqual(Set(names(paths).map { $0.lowercased() }).count, 50)
+    }
+}
+
 final class AudioDecoderTests: XCTestCase {
     func testAlreadyTargetFormatIsPassedThroughByteForByte() throws {
         let wav = AudioChunker.wrapInWavContainer(
