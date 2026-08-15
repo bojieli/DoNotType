@@ -10,6 +10,28 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **Nothing without speech in it is ever sent.** A model handed three seconds of room tone does not
+  reliably return nothing — it returns a plausible sentence, and a dictation tool that types that
+  into your document has invented words you never said. `PROMPT.md` rule 7 asks for an empty
+  transcript, and that rule was carrying the whole defence despite two holes: it only reaches model
+  providers, so Deepgram, xAI and Voxtral never received it at all, and an instruction is a request
+  rather than a guarantee.
+
+  The audio is now checked before the request on every client, which is the only defence that works
+  for a backend that never sees the prompt. It keys on modulation rather than loudness — speech has
+  syllables and pauses, a fan does not — because gating on volume would drop somebody dictating
+  quietly, a worse failure than the one being prevented. The `hum` fixture is in the suite for
+  exactly that reason: it is *louder* than quiet speech and correctly rejected.
+
+  Thresholds were measured rather than chosen: 0 ms detected for silence, room tone, steady noise
+  and mains hum; 20 ms for a keyboard click; 1160 ms for speech, and 800 ms for speech attenuated
+  to −46 dB. The gate is 200 ms. See [eval/audio/silence/README.md](eval/audio/silence/README.md).
+
+- **`dnt-eval silence`**, which asks a real backend to transcribe those recordings and reports what
+  comes back. A pass is an empty transcript; anything else is printed verbatim, because recognising
+  the shape of the invention matters more than the count. It exits non-zero if anything was
+  invented, and is now in the per-release manual checks.
+
 - **The Context Inspector on Windows and Android.** If an app reads your screen, you should be able
   to read what it read — that is the answer to a tool that encrypts its captured context to a
   server key you do not hold, and until now only macOS could give it. Both render the stored

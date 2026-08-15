@@ -1,7 +1,7 @@
 # The checks a machine cannot do
 
-Almost everything in this project is tested automatically. Four things are not, and they are the
-four a user meets first.
+Almost everything in this project is tested automatically. Five things are not, and the first four
+are what a user meets first.
 
 The gap is not laziness. **Microphone capture** needs a microphone and a person making a noise into
 it. **Text injection** needs a focused window belonging to another application and a permission CI
@@ -70,7 +70,25 @@ Two of these have hardware in them, so they are here rather than in the automate
 - **Silence.** Hold the key, say nothing, release. Nothing should be typed and no history row
   written.
 
-## 4. A recording, offline
+## 4. Silence, which must produce nothing
+
+The one failure that needs no interpretation. Run it against whichever backend the release
+recommends, and against a recogniser, because those never receive `PROMPT.md` at all:
+
+```bash
+dnt-eval silence --provider gemini
+dnt-eval silence --provider deepgram
+```
+
+**Passes if** every recording returns an empty transcript. The command exits non-zero otherwise and
+prints what was invented.
+
+This is belt and braces: the app never sends these recordings, because `SpeechActivity` stops them
+first. What this checks is the assumption underneath that gate — and if a backend invents a sentence
+for silence here, it is worth knowing which one, since the gate is the only thing standing between
+that behaviour and somebody's document.
+
+## 5. A recording, offline
 
 The other half of the product, and the only one of the four you can check without speaking:
 
@@ -96,6 +114,7 @@ Manual checks for vX.Y.Z
   round trip      macOS ✓   Windows ✓   Android ✓   iOS ✓
   permissions     macOS ✓   Android ✓   iOS ✓
   failure modes   macOS ✓
+  silence         gemini ✓   deepgram ✓
   file transcription  macOS ✓   Windows ✓
   not checked     Android permissions — no device this cycle
 ```

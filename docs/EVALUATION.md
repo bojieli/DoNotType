@@ -221,6 +221,56 @@ constant.
 **What this does not settle.** The benefit cases are synthesized, so they measure spelling transfer
 rather than transfer under ambiguous human speech.
 
+## Hallucination on silence
+
+The failure that needs no context to be terrible: a recording with nothing in it, transcribed as a
+sentence. A model asked for words tends to produce words, and the documented case is a stock phrase
+— "Thank you.", a subtitle credit — typed into somebody's document as if they had said it.
+
+Two things made this worth attacking rather than assuming:
+
+1. **`PROMPT.md` rule 7 was never tested.** It says silent, empty or unintelligible audio returns
+   an empty transcript. Nothing measured whether any model obeys it.
+2. **Recognisers never receive the rule.** Deepgram, xAI and Mistral Voxtral have no system
+   instruction, so rule 7 is not sent to them at all — and Whisper-family recognisers are the ones
+   most documented for this behaviour. The gap was exactly the wrong way round.
+
+### The defence does not rely on the model
+
+`SpeechActivity` checks the audio before the request, on every client, and a backend cannot
+hallucinate audio it never received. It keys on modulation rather than loudness — speech has
+syllables and pauses, a fan does not — because gating on volume would discard somebody dictating
+quietly, which is a worse failure than the one being prevented.
+
+Measured against `eval/audio/silence/`:
+
+| audio | detected as speech |
+|---|---|
+| digital silence, room tone, steady noise, 50 Hz hum | 0 ms |
+| one keyboard click | 20 ms |
+| real speech | 1160 ms |
+| real speech at −46 dB | 800 ms |
+
+The threshold is 200 ms — ten times the loudest non-speech, a quarter of barely-audible speech.
+
+### Measuring what the gate protects against
+
+The gate means these recordings never reach a model in normal use, which is the point, and also
+means the underlying question goes unanswered unless it is asked deliberately:
+
+```bash
+dnt-eval silence --provider gemini
+dnt-eval silence --provider deepgram --repeat-count 5    # the interesting one
+```
+
+A pass is an empty transcript. Anything else is printed verbatim, because recognising the *shape*
+of the invention — a stock phrase, a credit line — matters more than the count. Errors are reported
+separately and never counted as passes: a backend that failed has not demonstrated the behaviour
+either way. The command exits non-zero if anything was invented, so it can gate a release.
+
+**No numbers are published here yet.** The harness exists and has not been run against a paid
+backend; publishing a table from a single unverified run would be worse than an empty section.
+
 ## Latency
 
 Measured end to end on this machine, median of repeated runs, `gemini-3.6-flash`. For comparison,
