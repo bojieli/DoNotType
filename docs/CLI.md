@@ -230,6 +230,37 @@ dnt logs --clear
 In the app, Settings › Logs shows the same events live, with the recording level next to them —
 turning detail up no longer means quitting and relaunching from a terminal.
 
+### Following one dictation
+
+Every stage logs, and every line carries a `dictation=` id — the first eight characters of the
+history row's id, so the two can be lined up. A log with three dictations in it is three interleaved
+stories, and the question being asked is always about one of them.
+
+```bash
+dnt logs --grep 3f9c1a20
+```
+
+```
+INFO  dictate  recording started    dictation=3f9c1a20 mode=hold provider=xai model=grok-stt …
+INFO  dictate  recording finished   dictation=3f9c1a20 seconds=4.20 bytes=134444
+INFO  dictate  transcribing         dictation=3f9c1a20 grounded=yes contextChars=812 app=Mail
+DEBUG http     request              bytes=41220 model=grok-stt provider=xai url=https://api.x.ai/v1/stt
+DEBUG http     response             status=200 bytes=612 ms=1809
+INFO  dictate  transcript received  dictation=3f9c1a20 chars=126 chunks=1 audioTokens=210 ms=1809
+INFO  inject   inserting            dictation=3f9c1a20 chars=126 app=Mail accessibility=granted
+INFO  dictate  dictation complete   dictation=3f9c1a20 chars=126 totalMs=2140
+```
+
+Three of these exist for questions people actually ask rather than for completeness:
+
+- **`recording too short to send`** — "I pressed the key and nothing happened" is usually a tap
+  rather than a hold, and it used to be silent.
+- **`nothing was said`** — a silent recording produces an empty transcript, which reads as a
+  failure. It is not one, and now it says so.
+- **`inserting … accessibility=MISSING`** — "it transcribed but nothing appeared" is a different
+  failure from "it did not transcribe", and from outside they look identical. A paste sent without
+  Accessibility is not refused, it is ignored.
+
 ### Levels
 
 | level | what appears |
@@ -275,10 +306,15 @@ inside a URL or a provider's error body. Anything else key-shaped is caught by p
 prefixes (`sk-`, `AIza`, `xai-`, …) and long opaque tokens. Credentials in URL query parameters are
 stripped before the URL is logged at all.
 
-**Request and response bodies.** A request body is your audio and your screen; a response body is
-your transcript. What is logged is the shape: endpoint, model, bytes each way, status, duration.
-That is enough to tell a rejected key from a stalled network from a model that answered instantly
-with nothing.
+**Request bodies, and the response body of anything that worked.** A request body is your audio and
+your screen; a successful response body is your transcript. What is logged is the shape: endpoint,
+model, bytes each way, status, duration.
+
+**The one exception is a failed response**, which is logged in full at `warn`. A 4xx or 5xx body
+contains no audio and no transcript — what it contains is the provider saying which field it
+rejected and why, which is the single most useful thing for diagnosing a failure and is gone by the
+time anybody thinks to turn on `debug`. Registered keys are still masked inside it, as everywhere
+else.
 
 ## What the CLI is not
 

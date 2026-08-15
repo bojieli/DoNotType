@@ -195,6 +195,48 @@ deliberate:
 
 ### Changed
 
+- **Nothing cuts a failure any more.** Response bodies were truncated at 400 characters in six
+  places before anybody could see them — in the exception message, so the CLI printed a fragment,
+  and in the history row, so the "copy the full error" button copied a fragment too. What gets
+  dropped is routinely the useful part: providers put the offending field name and the request id
+  after the human-readable message.
+
+  The failure now exists twice, because one string cannot do both jobs. `errorMessage` is the
+  sentence somebody reads; `errorDetail` is the status, the whole body and the exception chain
+  exactly as they arrived, and it is what the copy buttons copy. Windows gained a "Copy the last
+  error" item in the tray. Log fields escape newlines rather than dropping them, so a JSON body
+  stays whole and one event stays one line.
+
+- **Every stage of a dictation is logged, under one id.** Recording started, recording finished,
+  the request with its grounding and target app, the transcript with characters and tokens and
+  whether a fallback answered, the second stage, the insertion, the total. Each line carries
+  `dictation=` — the first eight characters of the history row's id — because a log with three
+  dictations in it is three interleaved stories. `dnt logs --grep <id>` gives one of them. See
+  [docs/CLI.md](docs/CLI.md#following-one-dictation).
+
+  Three lines exist for questions people actually ask: a tap too short to send (which was silent,
+  and is the usual cause of "I pressed the key and nothing happened"), a recording with nothing in
+  it (which reads as a failure and is not one), and whether Accessibility was actually granted at
+  the moment of the paste.
+
+  Failed responses now have their body logged in full. The rule that bodies stay out of the log is
+  about your audio and your transcript; neither is in a 4xx.
+
+- **A missing permission takes you to it.** Every platform listed its permissions at onboarding and
+  then never checked again — and permissions are revoked later, since macOS drops Accessibility on
+  every signature change. The failure that left was the worst kind: the hotkey works, the recording
+  runs, the transcript comes back, and the paste goes nowhere, because a keystroke sent without
+  Accessibility is ignored rather than refused.
+
+  macOS refuses to record without the microphone rather than capturing silence, and when
+  Accessibility is off it puts the transcript on the clipboard and says "Copied — press ⌘V" — a
+  working dictation with one extra keystroke instead of a failure. Windows tells "no device" from
+  "another app has it" from a privacy block, and opens the privacy page for the ones that are one.
+  The Android keyboard's status line is now the way into the app rather than an instruction to find
+  it. iOS opens its own Settings page, and its keyboard asks the system whether Full Access is on
+  rather than inferring it from a missing container — both produce an empty list and they are
+  different problems.
+
 - **Failures say what went wrong and what to do about it, on every platform.** Windows and Android
   had no version of this at all: a history row read `HTTP 429: {"error":{"code":
   "rate_limit_exceeded","message":…`, and the Android keyboard — which has one line to say anything
