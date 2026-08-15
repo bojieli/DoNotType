@@ -39,6 +39,24 @@ data class DictationRecord(
      * second request that failed, and only the second is worth telling somebody about.
      */
     var rewriteFailed: Boolean = false,
+
+    /**
+     * The exact context that was sent, so the inspector can show it and a retry can reuse it.
+     *
+     * Both halves of that matter. Without it a retry re-runs *ungrounded* — a different request
+     * from the one that failed, on a row that still names the same provider and model — and the
+     * inspector has nothing to inspect.
+     *
+     * It is screen contents on disk, so it lives and dies with the row: the retention policy
+     * deletes it along with everything else, and a context that was never captured (grounding off,
+     * or the app on the blocklist) is null here rather than empty.
+     *
+     * The screenshot is not kept. The index is one JSON file read whole at launch, and a PNG in
+     * every row would make its size a function of how many dictations somebody has ever made.
+     * Android has no screenshot fallback today; when one arrives the image should go beside the
+     * audio, as a file the row points at.
+     */
+    var context: ScreenContext? = null,
     /**
      * The backend that actually produced this transcript.
      *
@@ -122,6 +140,7 @@ data class DictationRecord(
         .put("errorMessage", errorMessage)
         .put("errorDetail", errorDetail)
         .put("rewriteFailed", rewriteFailed)
+        .put("context", context?.toJson())
         .put("model", model)
         .put("fidelity", fidelity.id)
         .put("appName", appName)
@@ -144,6 +163,7 @@ data class DictationRecord(
             errorMessage = json.optString("errorMessage").takeIf { it.isNotEmpty() },
             errorDetail = json.optString("errorDetail").takeIf { it.isNotEmpty() },
             rewriteFailed = json.optBoolean("rewriteFailed"),
+            context = ScreenContext.fromJson(json.optJSONObject("context")),
             model = json.optString("model"),
             fidelity = Fidelity.from(json.optString("fidelity")),
             appName = json.optString("appName").takeIf { it.isNotEmpty() },

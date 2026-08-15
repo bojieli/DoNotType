@@ -372,6 +372,36 @@ public sealed class DictationController : IDisposable
             _settings.ResolvedFallbackDelay());
     }
 
+    /// <summary>
+    /// The context as it should be written to the history index: everything except the screenshot.
+    /// </summary>
+    /// <remarks>
+    /// The index is one JSON file, read whole at launch. A PNG base64'd into every row would make
+    /// its size a function of how many dictations somebody has ever made, and "keep history
+    /// forever" is the default. Windows has no screenshot fallback today so this strips nothing —
+    /// it is here so that adding one later cannot quietly turn the index into a hundred megabytes.
+    /// When that fallback arrives the image should go beside the audio, as a file the row points
+    /// at, which is the pattern <see cref="DictationRecord.AudioFileName"/> already uses.
+    /// </remarks>
+    private static ScreenContext? ForStorage(ScreenContext? context)
+    {
+        if (context is null) return null;
+        if (context.ScreenshotPng is null) return context;
+
+        return new ScreenContext
+        {
+            AppName = context.AppName,
+            WindowTitle = context.WindowTitle,
+            BrowserUrl = context.BrowserUrl,
+            Role = context.Role,
+            IsEditable = context.IsEditable,
+            VisibleText = context.VisibleText,
+            TextBeforeCaret = context.TextBeforeCaret,
+            TextAfterCaret = context.TextAfterCaret,
+            SelectedText = context.SelectedText,
+        };
+    }
+
     private async Task TranscribeAsync(byte[] wav)
     {
         // Snapshotted, not read live. Nothing today can change it mid-flight — a press while a
@@ -415,6 +445,7 @@ public sealed class DictationController : IDisposable
             Fidelity = _settings.Fidelity,
             AppName = context?.AppName,
             WindowTitle = context?.WindowTitle,
+            Context = ForStorage(context),
             DurationSeconds = AudioRecorder.DurationSeconds(wav),
         };
 
@@ -655,7 +686,13 @@ public sealed class DictationController : IDisposable
 
         try
         {
-            var result = await service.TranscribeAsync(wav, null).ConfigureAwait(false);
+            // The context the original request carried, not none. A retry that drops it is a
+            // different request from the one that failed — ungrounded, on a row that still names
+            // the same provider and model — so a transcript that comes back worse looks like the
+            // backend having a bad day rather than like the retry having asked a different
+            // question. Null for rows written before contexts were stored, and for dictations that
+            // were never grounded, which is the same thing as far as the request is concerned.
+            var result = await service.TranscribeAsync(wav, record.Context).ConfigureAwait(false);
             record.Status = DictationStatus.Completed;
             record.Text = result.Transcript.Text.Trim();
             record.ErrorMessage = null;
@@ -666,7 +703,8 @@ public sealed class DictationController : IDisposable
         catch (Exception error) when (error is ProviderException or HttpRequestException or TaskCanceledException)
         {
             record.Status = DictationStatus.Failed;
-            record.ErrorMessage = error.Message;
+            record.ErrorMessage = FailureAdvice.Describe(error).Message;
+            record.ErrorDetail = FailureAdvice.Detail(error);
             _history.Update(record);
             HistoryChanged?.Invoke();
             return false;

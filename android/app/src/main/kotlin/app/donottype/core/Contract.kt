@@ -1,5 +1,7 @@
 package app.donottype.core
 
+import org.json.JSONObject
+
 /**
  * How much cleanup the transcript may receive.
  *
@@ -42,6 +44,39 @@ data class ScreenContext(
                 appName, windowTitle, browserUrl, visibleText,
                 textBeforeCaret, textAfterCaret, selectedText,
             ).all { it.isNullOrBlank() }
+
+    /**
+     * The fields, for the history row. The screenshot is deliberately absent — see
+     * `DictationRecord.context`.
+     */
+    fun toJson(): JSONObject = JSONObject()
+        .put("appName", appName)
+        .put("windowTitle", windowTitle)
+        .put("browserUrl", browserUrl)
+        .put("role", role)
+        .put("isEditable", isEditable)
+        .put("visibleText", visibleText)
+        .put("textBeforeCaret", textBeforeCaret)
+        .put("textAfterCaret", textAfterCaret)
+        .put("selectedText", selectedText)
+
+    companion object {
+        fun fromJson(json: JSONObject?): ScreenContext? {
+            if (json == null) return null
+            fun text(key: String) = json.optString(key).takeIf { it.isNotEmpty() }
+            return ScreenContext(
+                appName = text("appName"),
+                windowTitle = text("windowTitle"),
+                browserUrl = text("browserUrl"),
+                role = text("role"),
+                isEditable = if (json.has("isEditable")) json.optBoolean("isEditable") else null,
+                visibleText = text("visibleText"),
+                textBeforeCaret = text("textBeforeCaret"),
+                textAfterCaret = text("textAfterCaret"),
+                selectedText = text("selectedText"),
+            )
+        }
+    }
 
     /** Too little text to rely on, so the screenshot path should fire. */
     fun isAccessibilityThin(threshold: Int = 300): Boolean =

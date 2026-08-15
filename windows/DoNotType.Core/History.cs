@@ -65,6 +65,23 @@ public sealed class DictationRecord
     /// </remarks>
     public double? RewriteSeconds { get; set; }
 
+    /// <summary>
+    /// The exact context that was sent, so the inspector can show it and a retry can reuse it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both halves of that matter. Without it a retry re-runs <em>ungrounded</em> — a different
+    /// request from the one that failed, on a row that still names the same provider and model —
+    /// and the inspector has nothing to inspect.
+    /// </para>
+    /// <para>
+    /// It is screen contents on disk, so it lives and dies with the row: the retention policy
+    /// deletes it along with everything else, and a context that was never captured — grounding
+    /// off, or the app on the blocklist — is null here rather than empty.
+    /// </para>
+    /// </remarks>
+    public ScreenContext? Context { get; set; }
+
     /// <summary>Seconds of speech, for the wait-per-second-spoken figure.</summary>
     public double DurationSeconds { get; set; }
 

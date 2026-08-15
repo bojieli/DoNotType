@@ -64,6 +64,7 @@ class DictationService(private val context: Context) {
             fidelity = Settings.fidelity,
             appName = appName,
             durationSeconds = WavRecorder.durationSeconds(wav),
+            context = screenContext,
         )
 
         // One id for the whole dictation, on every line and on the history row. Without it a log
@@ -398,12 +399,23 @@ class DictationService(private val context: Context) {
             // Retried through whichever provider is selected *now*, not the one that failed. A
             // dictation that failed because the backend was wrong for it is exactly the one
             // someone switches provider and retries.
-            val result = ProviderFactory.create(Settings.provider, key, Settings.model)
-                .transcribe(
-                    PromptAssets.systemInstruction(context, record.fidelity),
-                    listOf(InputPart.Audio(wav, "audio/wav")),
-                    record.fidelity,
-                )
+            // The context the original request carried, not none. A retry that drops it is a
+            // different request from the one that failed — ungrounded, on a row that still names
+            // the same provider and model — so a transcript that comes back worse looks like the
+            // backend having a bad day rather than like the retry having asked a different
+            // question. Null for rows written before contexts were stored, and for dictations that
+            // were never grounded, which is the same thing as far as the request is concerned.
+            val client = ProviderFactory.create(Settings.provider, key, Settings.model)
+            val contextParts = record.context
+                ?.takeIf { !it.isEmpty && client.grounding() is GroundingSupport.Multimodal }
+                ?.let { ContextEncoder().encode(it) }
+                .orEmpty()
+
+            val result = client.transcribe(
+                PromptAssets.systemInstruction(context, record.fidelity),
+                contextParts + InputPart.Audio(wav, "audio/wav"),
+                record.fidelity,
+            )
             record.status = DictationRecord.Status.COMPLETED
             record.text = result.transcript.transcript.trim()
             record.errorMessage = null
