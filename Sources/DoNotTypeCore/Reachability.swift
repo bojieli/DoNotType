@@ -158,59 +158,65 @@ public enum FailureAdvice {
                 isQueued: false, isRetryable: false, needsUserAction: true)
         }
 
-        // What the provider itself said, when it said something readable. A status code cannot
-        // express "this model does not accept audio input"; the provider can, and it knows what it
-        // refused. Appended rather than replacing the advice, because the provider explains what
-        // happened and only this app knows what to do about it.
-        let detail = message(in: body).map { " \($0)" } ?? ""
+        // What the provider itself said leads, when it said something readable, because it is
+        // more specific than any status code can be — it knows what it refused. The advice
+        // follows. The other way round buried "This model does not accept audio input." behind a
+        // sentence about HTTP 400, and repeated ourselves when the provider had already said the
+        // same thing: "The API key was rejected. Check it in Settings. Invalid API key provided."
+        func guidance(
+            _ summary: String, _ next: String,
+            queued: Bool, retryable: Bool, needsAction: Bool
+        ) -> Guidance {
+            let lead = message(in: body) ?? summary
+            return Guidance(
+                message: next.isEmpty ? lead : "\(lead) \(next)",
+                isQueued: queued, isRetryable: retryable, needsUserAction: needsAction)
+        }
 
         return switch status {
         case 401, 403:
-            Guidance(
-                message: "The API key was rejected. Check it in Settings.\(detail)",
-                isQueued: false, isRetryable: false, needsUserAction: true)
+            guidance(
+                "The API key was rejected.", "Check it in Settings.",
+                queued: false, retryable: false, needsAction: true)
         case 402:
-            Guidance(
-                message: "Billing problem on the provider account — the key is valid but has no "
-                    + "quota.\(detail)",
-                isQueued: false, isRetryable: false, needsUserAction: true)
+            guidance(
+                "Billing problem on the provider account — the key is valid but has no quota.", "",
+                queued: false, retryable: false, needsAction: true)
         case 404:
-            Guidance(
-                message: "That model is not available on this account. Pick another in "
-                    + "Settings.\(detail)",
-                isQueued: false, isRetryable: false, needsUserAction: true)
+            guidance(
+                "That model is not available on this account.", "Pick another in Settings.",
+                queued: false, retryable: false, needsAction: true)
         case 413:
-            Guidance(
-                message: "The recording was too large for the provider. Long ones are normally "
-                    + "split automatically, so this is worth reporting.\(detail)",
-                isQueued: false, isRetryable: false, needsUserAction: true)
-        case 408, 429:
-            Guidance(
-                message: status == 429
-                    ? "Rate limited — saved, and it will retry shortly.\(detail)"
-                    : "The provider took too long to answer — saved, retry from History.\(detail)",
-                isQueued: true, isRetryable: true, needsUserAction: false)
+            guidance(
+                "The recording was too large for the provider.",
+                "Long ones are normally split automatically, so this is worth reporting.",
+                queued: false, retryable: false, needsAction: true)
+        case 429:
+            guidance(
+                "Rate limited.", "Saved, and it will retry shortly.",
+                queued: true, retryable: true, needsAction: false)
+        case 408:
+            guidance(
+                "The provider took too long to answer.", "Saved, retry from History.",
+                queued: true, retryable: true, needsAction: false)
         case 500...599:
-            Guidance(
-                message: "The provider is having trouble — saved, retry from History.\(detail)",
-                isQueued: true, isRetryable: true, needsUserAction: false)
-        default:
+            guidance(
+                "The provider is having trouble.", "Saved, retry from History.",
+                queued: true, retryable: true, needsAction: false)
+        case 400..<500:
             // A 4xx is a request this app got wrong and will get wrong again in exactly the same
-            // way, so it is kept but not offered as a retry — that is the argument made above the
-            // 400 case, and the default branch was ignoring it and promising a retry for every
-            // 4xx it did not specifically handle.
-            //
-            // `needsUserAction` stays false all the same. There is nothing in Settings that fixes
-            // a malformed request, and telling somebody to go and change something when nothing
-            // they can change will help is worse than telling them it is not their fault.
-            Guidance(
-                message: (400..<500).contains(status)
-                    ? "The provider rejected the request (HTTP \(status)). Retrying will not "
-                        + "change it — this is likely a fault here, and worth reporting.\(detail)"
-                    : "Request failed (HTTP \(status)) — saved, retry from History.\(detail)",
-                isQueued: true,
-                isRetryable: !(400..<500).contains(status),
-                needsUserAction: false)
+            // way, so it is kept but not offered as a retry. `needsUserAction` stays false all the
+            // same: nothing in Settings fixes a malformed request, and telling somebody to go and
+            // change something when nothing they can change will help is worse than telling them
+            // it is not their fault.
+            guidance(
+                "The provider rejected the request (HTTP \(status)).",
+                "Retrying will not change it — this is likely a fault here, and worth reporting.",
+                queued: true, retryable: false, needsAction: false)
+        default:
+            guidance(
+                "Request failed (HTTP \(status)).", "Saved, retry from History.",
+                queued: true, retryable: true, needsAction: false)
         }
     }
 
@@ -264,7 +270,14 @@ public enum FailureAdvice {
         let capped = flattened.count <= 140
             ? flattened
             : String(flattened.prefix(137)).trimmingCharacters(in: .whitespaces) + "…"
-        return capped.hasSuffix(".") || capped.hasSuffix("…") ? capped : capped + "."
+        // It leads the message now, so it starts a sentence, and gateways answer in lower case.
+        // Only a plain word is capitalised: the first token is often an identifier the provider is
+        // quoting back — `models/gemini-9 is not found` — and "Models/gemini-9" is a different name.
+        let firstWord = capped.prefix(while: { !$0.isWhitespace })
+        let opened = firstWord.allSatisfy(\.isLetter)
+            ? capped.prefix(1).uppercased() + capped.dropFirst()
+            : capped
+        return opened.hasSuffix(".") || opened.hasSuffix("…") ? opened : opened + "."
     }
 
     /// Deliberately narrow. A 400 is normally a request this app got wrong, which is not the

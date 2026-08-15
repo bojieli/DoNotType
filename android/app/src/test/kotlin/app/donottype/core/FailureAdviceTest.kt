@@ -89,10 +89,14 @@ class FailureAdviceTest {
         }
     }
 
+    /**
+     * A gateway answers in lower case and this leads the message, so it is capitalised on the way
+     * past — its words are what has to survive, not its typography.
+     */
     @Test
     fun `a short gateway message is kept`() {
         val advice = http(503, "upstream connect error before headers")
-        assertTrue(advice.message, advice.message.contains("upstream connect error"))
+        assertTrue(advice.message, advice.message.lowercase().contains("upstream connect error"))
     }
 
     @Test

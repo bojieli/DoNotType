@@ -106,61 +106,75 @@ object FailureAdvice {
             )
         }
 
-        // What the provider itself said, when it said something readable. A status code cannot
-        // express "this model does not accept audio input"; the provider can, and it knows what it
-        // refused. Appended rather than replacing the advice, because the provider explains what
-        // happened and only this app knows what to do about it.
-        val detail = message(body)?.let { " $it" }.orEmpty()
+        // What the provider itself said leads, when it said something readable, because it is
+        // more specific than any status code can be — it knows what it refused. The advice follows.
+        // The other way round buried "This model does not accept audio input." behind a sentence
+        // about HTTP 400, and repeated ourselves when the provider had already said the same thing:
+        // "The API key was rejected. Check it in Settings. Invalid API key provided."
+        fun say(
+            summary: String,
+            next: String,
+            queued: Boolean,
+            retryable: Boolean,
+            needsAction: Boolean,
+        ): Guidance {
+            val lead = message(body) ?: summary
+            return Guidance(
+                if (next.isEmpty()) lead else "$lead $next",
+                isQueued = queued,
+                isRetryable = retryable,
+                needsUserAction = needsAction,
+            )
+        }
 
         return when (status) {
-            401, 403 -> Guidance(
-                "The API key was rejected. Check it in Settings.$detail",
-                isQueued = false, isRetryable = false, needsUserAction = true,
+            401, 403 -> say(
+                "The API key was rejected.", "Check it in Settings.",
+                queued = false, retryable = false, needsAction = true,
             )
 
-            402 -> Guidance(
-                "Billing problem on the provider account — the key is valid but has no quota." +
-                    detail,
-                isQueued = false, isRetryable = false, needsUserAction = true,
+            402 -> say(
+                "Billing problem on the provider account — the key is valid but has no quota.", "",
+                queued = false, retryable = false, needsAction = true,
             )
 
-            404 -> Guidance(
-                "That model is not available on this account. Pick another in Settings.$detail",
-                isQueued = false, isRetryable = false, needsUserAction = true,
+            404 -> say(
+                "That model is not available on this account.", "Pick another in Settings.",
+                queued = false, retryable = false, needsAction = true,
             )
 
-            413 -> Guidance(
-                "The recording was too large for the provider. Long ones are normally split " +
-                    "automatically, so this is worth reporting." + detail,
-                isQueued = false, isRetryable = false, needsUserAction = true,
+            413 -> say(
+                "The recording was too large for the provider.",
+                "Long ones are normally split automatically, so this is worth reporting.",
+                queued = false, retryable = false, needsAction = true,
             )
 
-            429 -> Guidance(
-                "Rate limited — saved, and it will retry shortly.$detail",
-                isQueued = true, isRetryable = true, needsUserAction = false,
+            429 -> say(
+                "Rate limited.", "Saved, and it will retry shortly.",
+                queued = true, retryable = true, needsAction = false,
             )
 
-            408 -> Guidance(
-                "The provider took too long to answer — saved, retry from History.$detail",
-                isQueued = true, isRetryable = true, needsUserAction = false,
+            408 -> say(
+                "The provider took too long to answer.", "Saved, retry from History.",
+                queued = true, retryable = true, needsAction = false,
             )
 
-            in 500..599 -> Guidance(
-                "The provider is having trouble — saved, retry from History.$detail",
-                isQueued = true, isRetryable = true, needsUserAction = false,
+            in 500..599 -> say(
+                "The provider is having trouble.", "Saved, retry from History.",
+                queued = true, retryable = true, needsAction = false,
             )
 
             // A 4xx is a request this app got wrong and will get wrong again in exactly the same
             // way, so it is kept but not offered as a retry.
-            in 400..499 -> Guidance(
-                "The provider rejected the request (HTTP $status). Retrying will not change it " +
-                    "— this is likely a fault here, and worth reporting." + detail,
-                isQueued = true, isRetryable = false, needsUserAction = false,
+            in 400..499 -> say(
+                "The provider rejected the request (HTTP $status).",
+                "Retrying will not change it — this is likely a fault here, and worth reporting.",
+                queued = true, retryable = false, needsAction = false,
             )
 
-            else -> Guidance(
-                "Request failed (HTTP $status) — saved, retry from History.$detail",
-                isQueued = true, isRetryable = true, needsUserAction = false,
+            else -> say(
+                "Request failed (HTTP $status).", "Saved, retry from History.",
+                queued = true, retryable = true, needsAction = false,
             )
         }
     }
@@ -220,6 +234,15 @@ object FailureAdvice {
         if (flattened.isEmpty()) return null
 
         val capped = if (flattened.length <= 140) flattened else flattened.take(137).trimEnd() + "…"
-        return if (capped.endsWith(".") || capped.endsWith("…")) capped else "$capped."
+
+        // It leads the message now, so it starts a sentence, and gateways answer in lower case.
+        // Only a plain word is capitalised: the first token is often an identifier the provider is
+        // quoting back — `models/gemini-9 is not found` — and "Models/gemini-9" is a different name.
+        val opened = if (capped.substringBefore(' ').all { it.isLetter() }) {
+            capped.replaceFirstChar { it.uppercase() }
+        } else {
+            capped
+        }
+        return if (opened.endsWith(".") || opened.endsWith("…")) opened else "$opened."
     }
 }

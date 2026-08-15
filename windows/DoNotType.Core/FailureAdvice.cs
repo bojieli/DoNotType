@@ -82,54 +82,59 @@ public static class FailureAdvice
                 IsQueued: false, IsRetryable: false, NeedsUserAction: true);
         }
 
-        // What the provider itself said, when it said something readable. A status code cannot
-        // express "this model does not accept audio input"; the provider can, and it knows what it
-        // refused. Appended rather than replacing the advice, because the provider explains what
-        // happened and only this app knows what to do about it.
-        var detail = Message(body) is { } found ? $" {found}" : string.Empty;
+        // What the provider itself said leads, when it said something readable, because it is
+        // more specific than any status code can be — it knows what it refused. The advice follows.
+        // The other way round buried "This model does not accept audio input." behind a sentence
+        // about HTTP 400, and repeated ourselves when the provider had already said the same thing:
+        // "The API key was rejected. Check it in Settings. Invalid API key provided."
+        Guidance Say(string summary, string next, bool queued, bool retryable, bool needsAction)
+        {
+            var lead = Message(body) ?? summary;
+            return new Guidance(
+                next.Length == 0 ? lead : $"{lead} {next}", queued, retryable, needsAction);
+        }
 
         return status switch
         {
-            401 or 403 => new Guidance(
-                $"The API key was rejected. Check it in Settings.{detail}",
-                IsQueued: false, IsRetryable: false, NeedsUserAction: true),
+            401 or 403 => Say(
+                "The API key was rejected.", "Check it in Settings.",
+                queued: false, retryable: false, needsAction: true),
 
-            402 => new Guidance(
-                "Billing problem on the provider account — the key is valid but has no quota."
-                    + detail,
-                IsQueued: false, IsRetryable: false, NeedsUserAction: true),
+            402 => Say(
+                "Billing problem on the provider account — the key is valid but has no quota.", "",
+                queued: false, retryable: false, needsAction: true),
 
-            404 => new Guidance(
-                $"That model is not available on this account. Pick another in Settings.{detail}",
-                IsQueued: false, IsRetryable: false, NeedsUserAction: true),
+            404 => Say(
+                "That model is not available on this account.", "Pick another in Settings.",
+                queued: false, retryable: false, needsAction: true),
 
-            413 => new Guidance(
-                "The recording was too large for the provider. Long ones are normally split "
-                    + "automatically, so this is worth reporting." + detail,
-                IsQueued: false, IsRetryable: false, NeedsUserAction: true),
+            413 => Say(
+                "The recording was too large for the provider.",
+                "Long ones are normally split automatically, so this is worth reporting.",
+                queued: false, retryable: false, needsAction: true),
 
-            429 => new Guidance(
-                $"Rate limited — saved, and it will retry shortly.{detail}",
-                IsQueued: true, IsRetryable: true, NeedsUserAction: false),
+            429 => Say(
+                "Rate limited.", "Saved, and it will retry shortly.",
+                queued: true, retryable: true, needsAction: false),
 
-            408 => new Guidance(
-                $"The provider took too long to answer — saved, retry from History.{detail}",
-                IsQueued: true, IsRetryable: true, NeedsUserAction: false),
+            408 => Say(
+                "The provider took too long to answer.", "Saved, retry from History.",
+                queued: true, retryable: true, needsAction: false),
 
-            >= 500 and <= 599 => new Guidance(
-                $"The provider is having trouble — saved, retry from History.{detail}",
-                IsQueued: true, IsRetryable: true, NeedsUserAction: false),
+            >= 500 and <= 599 => Say(
+                "The provider is having trouble.", "Saved, retry from History.",
+                queued: true, retryable: true, needsAction: false),
 
             // A 4xx is a request this app got wrong and will get wrong again in exactly the same
             // way, so it is kept but not offered as a retry.
-            >= 400 and <= 499 => new Guidance(
-                $"The provider rejected the request (HTTP {status}). Retrying will not change it "
-                    + "— this is likely a fault here, and worth reporting." + detail,
-                IsQueued: true, IsRetryable: false, NeedsUserAction: false),
+            >= 400 and <= 499 => Say(
+                $"The provider rejected the request (HTTP {status}).",
+                "Retrying will not change it — this is likely a fault here, and worth reporting.",
+                queued: true, retryable: false, needsAction: false),
 
-            _ => new Guidance(
-                $"Request failed (HTTP {status}) — saved, retry from History.{detail}",
-                IsQueued: true, IsRetryable: true, NeedsUserAction: false),
+            _ => Say(
+                $"Request failed (HTTP {status}).", "Saved, retry from History.",
+                queued: true, retryable: true, needsAction: false),
         };
     }
 
@@ -206,6 +211,14 @@ public static class FailureAdvice
         if (flattened.Length == 0) return null;
 
         var capped = flattened.Length <= 140 ? flattened : flattened[..137].TrimEnd() + "…";
-        return capped.EndsWith('.') || capped.EndsWith('…') ? capped : capped + ".";
+
+        // It leads the message now, so it starts a sentence, and gateways answer in lower case.
+        // Only a plain word is capitalised: the first token is often an identifier the provider is
+        // quoting back — `models/gemini-9 is not found` — and "Models/gemini-9" is a different name.
+        var firstWord = capped.Split(' ')[0];
+        var opened = firstWord.All(char.IsLetter)
+            ? char.ToUpperInvariant(capped[0]) + capped[1..]
+            : capped;
+        return opened.EndsWith('.') || opened.EndsWith('…') ? opened : opened + ".";
     }
 }

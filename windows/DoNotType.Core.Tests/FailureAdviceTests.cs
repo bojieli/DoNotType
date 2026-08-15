@@ -91,11 +91,15 @@ public sealed class FailureAdviceTests
         Assert.DoesNotContain("<", advice.Message);
     }
 
+    /// <summary>
+    /// A gateway answers in lower case and this leads the message, so it is capitalised on the way
+    /// past — its words are what has to survive, not its typography.
+    /// </summary>
     [Fact]
     public void AShortGatewayMessageIsKept()
     {
         var advice = Http(503, "upstream connect error before headers");
-        Assert.Contains("upstream connect error", advice.Message);
+        Assert.Contains("upstream connect error", advice.Message.ToLowerInvariant());
     }
 
     [Fact]
