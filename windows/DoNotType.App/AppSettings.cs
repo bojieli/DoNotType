@@ -58,6 +58,17 @@ public sealed class AppSettings
     /// </remarks>
     public NumberCheckPolicy NumberCheck { get; set; } = NumberCheckPolicy.WhenCaretHasNumbers;
 
+    /// <summary>The pinned microphone's name, or null to follow the system default.</summary>
+    public string? MicrophoneName { get; set; }
+
+    /// <summary>Whether a tone marks the start and end of a recording.</summary>
+    /// <remarks>
+    /// On by default. The overlay is at the bottom of the screen and the user is looking at what
+    /// they are dictating into, so a sound is the only feedback that reaches somebody who is not
+    /// looking — and "did it hear me" is the question the first second has to answer.
+    /// </remarks>
+    public bool InteractionSounds { get; set; } = true;
+
     /// <summary>
     /// Backend started alongside the primary when it has not answered in time. Null disables it.
     ///

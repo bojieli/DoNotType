@@ -102,6 +102,29 @@ internal static partial class Interop
     // and a dictation tool should not pull in a dependency to record a mono stream.
 
     internal const int WAVE_MAPPER = -1;
+
+    [LibraryImport("winmm.dll")]
+    internal static partial uint waveInGetNumDevs();
+
+    /// <summary>
+    /// WAVEINCAPS, for the device name. Only the name and the id are used; the format bitmask is
+    /// not consulted because the recorder asks for 16 kHz mono and lets the driver refuse.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct WAVEINCAPS
+    {
+        internal ushort wMid;
+        internal ushort wPid;
+        internal uint vDriverVersion;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        internal string szPname;
+        internal uint dwFormats;
+        internal ushort wChannels;
+        internal ushort wReserved1;
+    }
+
+    [DllImport("winmm.dll", CharSet = CharSet.Unicode, EntryPoint = "waveInGetDevCapsW")]
+    internal static extern int waveInGetDevCaps(IntPtr deviceId, out WAVEINCAPS caps, int size);
     internal const int WAVE_FORMAT_PCM = 1;
     internal const uint MM_WIM_DATA = 0x3C0;
     internal const uint WAVERR_STILLPLAYING = 33;

@@ -32,6 +32,8 @@ public sealed class SettingsForm : Form
     private readonly ComboBox _secondTrigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _secondStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _numberCheck = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _microphone = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly CheckBox _sounds = new() { Text = "Play a tone when recording starts and stops", AutoSize = true };
     private readonly Label _secondKeyNote = new()
     {
         AutoSize = true,
@@ -131,6 +133,15 @@ public sealed class SettingsForm : Form
             "Optional. A second key that dictates and then rewrites, so the choice is made before "
             + "you speak rather than from a menu afterwards. The verbatim transcript is kept "
             + "either way and stays in History, so a rewrite never loses what you actually said."));
+
+        layout.Controls.Add(Heading("Audio"));
+        layout.Controls.Add(Labelled("Microphone", _microphone));
+        layout.Controls.Add(_sounds);
+        layout.Controls.Add(Caption(
+            "The system default follows whatever was plugged in last, so a headset can quietly "
+            + "become a monitor's built-in microphone across the room — and the first sign is a "
+            + "transcript that is worse than usual. Pinning one stops that. If the pinned device "
+            + "is unplugged, recording falls back to the default rather than failing."));
 
         layout.Controls.Add(Heading("Grounding"));
         layout.Controls.Add(_grounding);
@@ -586,6 +597,13 @@ public sealed class SettingsForm : Form
 
         _grounding.Checked = _settings.GroundingEnabled;
 
+        foreach (var device in AudioDevices.Available()) _microphone.Items.Add(device.Name);
+        var pinned = _microphone.Items.IndexOf(_settings.MicrophoneName ?? string.Empty);
+        // A pinned device that is no longer connected shows as the default rather than as a blank
+        // row, which is what actually happens when a recording starts.
+        _microphone.SelectedIndex = pinned >= 0 ? pinned : 0;
+        _sounds.Checked = _settings.InteractionSounds;
+
         foreach (var policy in Enum.GetValues<NumberCheckPolicy>())
         {
             _numberCheck.Items.Add(policy.Label());
@@ -636,6 +654,11 @@ public sealed class SettingsForm : Form
         _settings.Fidelity = (Fidelity)_fidelity.SelectedIndex;
         _settings.GroundingEnabled = _grounding.Checked;
         _settings.NumberCheck = (NumberCheckPolicy)_numberCheck.SelectedIndex;
+        // Index 0 is "System default", which is stored as null rather than as its label.
+        _settings.MicrophoneName = _microphone.SelectedIndex > 0
+            ? _microphone.Items[_microphone.SelectedIndex]?.ToString()
+            : null;
+        _settings.InteractionSounds = _sounds.Checked;
         _settings.Save();
 
         _controller.ReloadHotkey();

@@ -38,6 +38,16 @@ public sealed class AudioRecorder : IDisposable
     /// Windows has no permission prompt for the microphone; access is a Settings privacy toggle,
     /// and denial surfaces here as a failure to open the device.
     /// </summary>
+    /// <summary>
+    /// The pinned microphone by name, or null to follow the system default.
+    /// </summary>
+    /// <remarks>
+    /// By name rather than by index: waveIn indices are positional and shift when a device is
+    /// unplugged, so a stored index can silently come to mean a different microphone. A name that
+    /// no longer matches falls back to the default rather than recording from the wrong one.
+    /// </remarks>
+    public string? PreferredDeviceName { get; set; }
+
     public void Start()
     {
         lock (_gate)
@@ -59,7 +69,8 @@ public sealed class AudioRecorder : IDisposable
 
             const uint CALLBACK_FUNCTION = 0x00030000;
             var result = Interop.waveInOpen(
-                out _handle, Interop.WAVE_MAPPER, ref format, _callback, IntPtr.Zero,
+                out _handle, AudioDevices.Resolve(PreferredDeviceName), ref format, _callback,
+                IntPtr.Zero,
                 CALLBACK_FUNCTION);
             if (result != 0)
             {

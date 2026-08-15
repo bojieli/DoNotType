@@ -135,7 +135,10 @@ public sealed class DictationController : IDisposable
 
         try
         {
+            _recorder.PreferredDeviceName = _settings.MicrophoneName;
+            InteractionSounds.Enabled = _settings.InteractionSounds;
             _recorder.Start();
+            InteractionSounds.PlayStart();
             SetState(State.Recording);
 
             // One id from the key press to the insertion, on every line and on the history row.
@@ -249,6 +252,7 @@ public sealed class DictationController : IDisposable
         if (Current != State.Recording) return;
 
         var wav = _recorder.Stop();
+        InteractionSounds.PlayStop();
         if (wav is null)
         {
             // A tap rather than a hold. Not worth interrupting anyone over — but logged, because
