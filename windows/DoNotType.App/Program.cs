@@ -45,12 +45,15 @@ internal sealed class TrayApplication : ApplicationContext
                 RecordingOverlay.Phase.Transcribing,
                 total > 1 ? $"part {Math.Min(done + 1, total)} of {total}" : null));
         _controller.HistoryChanged += () => BeginInvokeOnTray(RebuildMenu);
-        _controller.Inserted += characters => BeginInvokeOnTray(() =>
+        _controller.Inserted += insertion => BeginInvokeOnTray(() =>
         {
+            var plural = insertion.Characters == 1 ? string.Empty : "s";
+            var suffix = insertion.RewriteFailed ? " — not rewritten" : string.Empty;
             _overlay.Show(
                 RecordingOverlay.Phase.Inserted,
-                $"Inserted {characters} character{(characters == 1 ? string.Empty : "s")}");
-            _ = HideOverlayAfter(TimeSpan.FromSeconds(1.6));
+                $"Inserted {insertion.Characters} character{plural}{suffix}");
+            // Longer when there is something to read, which a confirmation otherwise is not.
+            _ = HideOverlayAfter(TimeSpan.FromSeconds(insertion.RewriteFailed ? 3.5 : 1.6));
         });
 
         _tray = new NotifyIcon
@@ -103,6 +106,14 @@ internal sealed class TrayApplication : ApplicationContext
                     _levelTimer.Stop();
                     _overlay.SetPhase(RecordingOverlay.Phase.Transcribing, string.Empty);
                     break;
+                case DictationController.State.Deriving:
+                    // The style's own word — "Tightening…", "Making bullets…" — because somebody
+                    // who held the second key is waiting for that specific thing.
+                    _levelTimer.Stop();
+                    _overlay.SetPhase(
+                        RecordingOverlay.Phase.Deriving,
+                        TranscriptMode.Rewrite(_settings.SecondaryStyle).ProgressLabel);
+                    break;
                 case DictationController.State.Failed:
                     _levelTimer.Stop();
                     // Not truncated: the overlay grows to fit, because the advice is a sentence
@@ -142,6 +153,8 @@ internal sealed class TrayApplication : ApplicationContext
         {
             DictationController.State.Recording => "Recording… release to transcribe",
             DictationController.State.Transcribing => "Transcribing…",
+            DictationController.State.Deriving =>
+                TranscriptMode.Rewrite(_settings.SecondaryStyle).ProgressLabel,
             DictationController.State.Failed => Truncate(_controller.LastError ?? "Failed", 60),
             _ => $"Hold {HotkeyMonitor.Label(_settings.Trigger)} to dictate",
         };

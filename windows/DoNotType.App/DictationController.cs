@@ -13,6 +13,12 @@ public sealed class DictationController : IDisposable
         Idle,
         Recording,
         Transcribing,
+        /// <summary>
+        /// The second request. A different thing to be waiting on, and usually the slower of the
+        /// two — the transcript already exists by then, so an overlay that still says
+        /// "Transcribing…" is describing something that has finished.
+        /// </summary>
+        Deriving,
         Failed,
     }
 
@@ -37,6 +43,16 @@ public sealed class DictationController : IDisposable
     private Guid _pendingId = Guid.NewGuid();
 
     /// <summary>
+    /// Which key started the recording decides whether it is rewritten, and into what.
+    /// </summary>
+    /// <remarks>
+    /// Read at the press and held until the transcript is delivered, because the settings it comes
+    /// from are live: changing the style mid-dictation must not change what the recording already
+    /// in flight becomes.
+    /// </remarks>
+    private RewriteStyle _pendingStyle = RewriteStyle.Verbatim;
+
+    /// <summary>
     /// Eight characters is enough to pick one dictation out of a day's log and short enough to sit
     /// in every line without pushing the interesting fields off the end.
     /// </summary>
@@ -53,7 +69,15 @@ public sealed class DictationController : IDisposable
     /// success is something the user has to infer from text appearing — which they cannot do if the
     /// target window scrolled, or if the insertion went somewhere they were not looking.
     /// </remarks>
-    public event Action<int>? Inserted;
+    /// <param name="Characters">How many characters reached the focused window.</param>
+    /// <param name="RewriteFailed">
+    /// The words landed, but the rewrite that was asked for did not happen. Carried on the same
+    /// event rather than a second one: two events would have to arrive in a particular order for
+    /// the interface to render correctly, and nothing would enforce it.
+    /// </param>
+    public sealed record Insertion(int Characters, bool RewriteFailed);
+
+    public event Action<Insertion>? Inserted;
 
     /// <summary>
     /// Fires as each part of a long dictation lands, as (done, total).
@@ -91,6 +115,7 @@ public sealed class DictationController : IDisposable
     {
         _hotkey.Stop();
         _hotkey.Key = _settings.Trigger;
+        _hotkey.SecondaryKey = _settings.SecondaryTrigger;
         _hotkey.RecordingMode = _settings.HotkeyMode;
         _hotkey.Start();
     }
@@ -117,9 +142,14 @@ public sealed class DictationController : IDisposable
             // Without it a log with three dictations in it is three interleaved stories, and the
             // question being asked is always about one of them.
             _pendingId = Guid.NewGuid();
+            _pendingStyle = _hotkey.UsedSecondary && _settings.SecondaryTrigger is not null
+                ? _settings.SecondaryStyle
+                : RewriteStyle.Verbatim;
+
             DictationLog.Info(() => "recording started", new Dictionary<string, string>
             {
                 ["dictation"] = Short(_pendingId),
+                ["style"] = _pendingStyle.Id(),
                 ["mode"] = _settings.HotkeyMode.ToString(),
                 ["trigger"] = _settings.Trigger.ToString(),
                 ["provider"] = _settings.Provider.ToString(),
@@ -399,17 +429,79 @@ public sealed class DictationController : IDisposable
 
             record.Status = DictationStatus.Completed;
             record.Text = text;
+
+            // A rewrite is a second pass over a transcript that already exists, so the verbatim
+            // version is stored either way and "what did I actually say" stays answerable.
+            var delivered = text;
+            var rewriteFailed = false;
+            if (_pendingStyle.IsRewrite())
+            {
+                var mode = TranscriptMode.Rewrite(_pendingStyle);
+                var instruction = PromptBuilder.FromFile(promptPath).SecondStageInstruction(mode);
+                if (instruction is not null)
+                {
+                    SetState(State.Deriving);
+                    var rewriteStart = Stopwatch.GetTimestamp();
+                    DictationLog.Info(() => "second stage", new Dictionary<string, string>
+                    {
+                        ["dictation"] = Short(_pendingId),
+                        ["style"] = _pendingStyle.Id(),
+                        ["chars"] = text.Length.ToString(),
+                    });
+                    try
+                    {
+                        var styled = await service.RewriteAsync(text, instruction)
+                            .ConfigureAwait(false);
+                        record.StyledText = styled;
+                        record.Mode = mode.Id;
+                        delivered = styled;
+                        DictationLog.Info(
+                            () => "second stage finished",
+                            new Dictionary<string, string>
+                            {
+                                ["dictation"] = Short(_pendingId),
+                                ["chars"] = styled.Length.ToString(),
+                                ["from"] = text.Length.ToString(),
+                                ["ms"] = ((long)Stopwatch.GetElapsedTime(rewriteStart)
+                                    .TotalMilliseconds).ToString(),
+                            });
+                    }
+                    catch (Exception error)
+                        when (error is ProviderException or HttpRequestException
+                            or TaskCanceledException)
+                    {
+                        rewriteFailed = true;
+                        // The words survive either way, so this is a warning rather than a
+                        // failure — but it is said out loud, because a rewrite that fails every
+                        // time should not be indistinguishable from one never asked for.
+                        DictationLog.Warn(
+                            () => "second stage failed, delivering the verbatim transcript",
+                            new Dictionary<string, string>
+                            {
+                                ["dictation"] = Short(_pendingId),
+                                ["style"] = _pendingStyle.Id(),
+                                ["detail"] = FailureAdvice.Detail(error),
+                            });
+                    }
+                    record.RewriteSeconds = Stopwatch.GetElapsedTime(rewriteStart).TotalSeconds;
+                }
+            }
+
             record.LatencySeconds = Stopwatch.GetElapsedTime(releasedAt).TotalSeconds;
             _history.Insert(record, _settings.KeepAudio ? wav : null);
             HistoryChanged?.Invoke();
 
             SetState(State.Idle);
-            await TextInjector.InsertAsync(text, Short(_pendingId)).ConfigureAwait(false);
-            Inserted?.Invoke(text.Length);
+            await TextInjector.InsertAsync(delivered, Short(_pendingId)).ConfigureAwait(false);
+            // The failure is carried out rather than left to be noticed. The words landed either
+            // way, but somebody who held the rewrite key and got their own words back should be
+            // told that is what happened — most often because the backend is a recogniser, which
+            // cannot rewrite text at all.
+            Inserted?.Invoke(new Insertion(delivered.Length, rewriteFailed));
             DictationLog.Info(() => "dictation complete", new Dictionary<string, string>
             {
                 ["dictation"] = Short(_pendingId),
-                ["chars"] = text.Length.ToString(),
+                ["chars"] = delivered.Length.ToString(),
                 ["totalMs"] = ((long)Stopwatch.GetElapsedTime(releasedAt).TotalMilliseconds)
                     .ToString(),
             });

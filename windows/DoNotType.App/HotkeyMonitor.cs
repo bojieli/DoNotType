@@ -41,6 +41,20 @@ public sealed class HotkeyMonitor : IDisposable
     public Mode RecordingMode { get; set; } = Mode.Automatic;
     public Trigger Key { get; set; } = Trigger.RightControl;
 
+    /// <summary>
+    /// A second key that dictates and then rewrites, or null when there is only one.
+    /// </summary>
+    /// <remarks>
+    /// The whole design of the rewrite is that the choice is made *before* speaking, by which key
+    /// you hold. Choosing afterwards would mean either a menu between speaking and the text
+    /// appearing, or a setting somebody has to remember they changed — and the point of dictation
+    /// is that the gap between thinking and text is short.
+    /// </remarks>
+    public Trigger? SecondaryKey { get; set; }
+
+    /// <summary>Whether the press in flight came from <see cref="SecondaryKey"/>.</summary>
+    public bool UsedSecondary { get; private set; }
+
     public event Action? Pressed;
     public event Action? Released;
     public event Action? Cancelled;
@@ -105,11 +119,15 @@ public sealed class HotkeyMonitor : IDisposable
         var isDown = message is Interop.WM_KEYDOWN or Interop.WM_SYSKEYDOWN;
         var isUp = message is Interop.WM_KEYUP or Interop.WM_SYSKEYUP;
 
-        if (info.vkCode == VirtualKey(Key))
+        var isSecondary = SecondaryKey is { } secondary && info.vkCode == VirtualKey(secondary);
+        if (info.vkCode == VirtualKey(Key) || isSecondary)
         {
             if (isDown && !_isHeld)
             {
                 _isHeld = true;
+                // Read once, at the press. Releasing a different key than the one held would
+                // otherwise change what the finished recording becomes.
+                UsedSecondary = isSecondary;
                 HandlePress();
             }
             else if (isUp && _isHeld)

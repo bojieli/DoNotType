@@ -20,6 +20,19 @@ public sealed class AppSettings
     public Fidelity Fidelity { get; set; } = Fidelity.Light;
     public HotkeyMonitor.Trigger Trigger { get; set; } = HotkeyMonitor.Trigger.RightControl;
     public HotkeyMonitor.Mode HotkeyMode { get; set; } = HotkeyMonitor.Mode.Automatic;
+
+    /// <summary>
+    /// A second key that dictates and then rewrites, or null for one key and verbatim only.
+    /// </summary>
+    /// <remarks>
+    /// Off by default. A rewrite costs a second request and changes the words, so it is opt-in —
+    /// but when it is on, the choice is made by which key you hold, before speaking, rather than by
+    /// a setting somebody has to remember they changed.
+    /// </remarks>
+    public HotkeyMonitor.Trigger? SecondaryTrigger { get; set; }
+
+    /// <summary>What the second key produces. Never verbatim: that is what the first key is for.</summary>
+    public RewriteStyle SecondaryStyle { get; set; } = RewriteStyle.Formal;
     public bool GroundingEnabled { get; set; } = true;
     public RetentionPolicy Retention { get; set; } = RetentionPolicy.Forever;
     public bool KeepAudio { get; set; }

@@ -57,6 +57,14 @@ public sealed class DictationRecord
     /// <summary>Time inside the request alone, for telling a slow model from a slow app.</summary>
     public double? RequestSeconds { get; set; }
 
+    /// <summary>Time in the second request, when there was one. Null when nothing was rewritten.</summary>
+    /// <remarks>
+    /// Separate from <see cref="RequestSeconds"/> so the cost of rewriting is visible on its own.
+    /// It is the part somebody turns off when dictation feels slow, and they should be able to see
+    /// what turning it off would buy.
+    /// </remarks>
+    public double? RewriteSeconds { get; set; }
+
     /// <summary>Seconds of speech, for the wait-per-second-spoken figure.</summary>
     public double DurationSeconds { get; set; }
 

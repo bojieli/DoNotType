@@ -36,9 +36,14 @@ final class RecordingOverlay {
     }
 
     /// Flashes a confirmation, then dismisses itself.
-    func confirmInserted(characters: Int) {
-        update(phase: .inserted(characters))
-        hide(after: .milliseconds(900))
+    ///
+    /// - Parameter rewriteFailed: the words landed but the rewrite that was asked for did not
+    ///   happen. Worth saying: somebody who held the rewrite key and got their own words back
+    ///   would otherwise have to notice, and the usual cause is a backend that cannot rewrite at
+    ///   all rather than anything they did.
+    func confirmInserted(characters: Int, rewriteFailed: Bool = false) {
+        update(phase: .inserted(characters, rewriteFailed: rewriteFailed))
+        hide(after: rewriteFailed ? .seconds(3) : .milliseconds(900))
     }
 
     func hide(after delay: Duration = .zero) {
@@ -113,7 +118,7 @@ final class OverlayState {
         case deriving(RewriteStyle)
         /// Brief confirmation that words were inserted, so success is visible rather than a
         /// silent disappearance the user has to infer from the text appearing.
-        case inserted(Int)
+        case inserted(Int, rewriteFailed: Bool)
         case failed(String)
     }
 
@@ -169,11 +174,14 @@ private struct OverlayView: View {
                 Text(TranscriptMode.rewrite(style).progressLabel)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
-            case .inserted(let characters):
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+            case .inserted(let characters, let rewriteFailed):
+                Image(systemName: rewriteFailed
+                    ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                    .foregroundStyle(rewriteFailed ? .orange : .green)
                     .transition(.scale.combined(with: .opacity))
-                Text("Inserted \(characters) character\(characters == 1 ? "" : "s")")
+                Text(
+                    "Inserted \(characters) character\(characters == 1 ? "" : "s")"
+                        + (rewriteFailed ? " — not rewritten" : ""))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
             case .failed(let message):

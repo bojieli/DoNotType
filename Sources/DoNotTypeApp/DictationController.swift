@@ -363,6 +363,7 @@ final class DictationController {
             // The rewrite is a second pass over a transcript that already exists, so the verbatim
             // version is stored either way and "what did I actually say" stays answerable.
             var delivered = text
+            var rewriteFailed = false
             if style.isRewrite, let instruction = rewriteInstruction(for: style) {
                 overlay.update(phase: .deriving(style))
                 let rewriteStart = Date()
@@ -386,6 +387,7 @@ final class DictationController {
                             "ms": LogClock.ms(Date().timeIntervalSince(rewriteStart)),
                         ])
                 } catch {
+                    rewriteFailed = true
                     // The words survive either way, so this is a warning rather than a failure —
                     // but it used to be `try?`, which meant a rewrite that failed every time was
                     // indistinguishable from one that had never been asked for.
@@ -425,7 +427,7 @@ final class DictationController {
                 ])
             // Confirm rather than vanish: a silent disappearance leaves the user checking whether
             // anything happened, especially when the target app scrolled.
-            overlay.confirmInserted(characters: delivered.count)
+            overlay.confirmInserted(characters: delivered.count, rewriteFailed: rewriteFailed)
         } catch {
             let advice = FailureAdvice.describe(
                 error, isOnline: await Reachability.shared.isOnline)
@@ -465,7 +467,7 @@ final class DictationController {
         guard didUndo else { return }
 
         overlay.show(
-            phase: .inserted(0),
+            phase: .inserted(0, rewriteFailed: false),
             hint: revertToVerbatim ? "Reverted to what you said" : "Removed")
         overlay.update(phase: .failed(revertToVerbatim ? "Reverted to verbatim" : "Insertion removed"))
         overlay.hide(after: .milliseconds(1_200))
@@ -479,7 +481,7 @@ final class DictationController {
         let text = recent.deliveredText
         await TextInjector.insert(text)
         insertions.record(recordID: recent.id, delivered: text, verbatim: recent.text)
-        overlay.show(phase: .inserted(text.count), hint: "")
+        overlay.show(phase: .inserted(text.count, rewriteFailed: false), hint: "")
         overlay.hide(after: .milliseconds(900))
     }
 

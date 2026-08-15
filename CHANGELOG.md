@@ -10,6 +10,25 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **The rewrite key works on Windows.** Hold-to-talk there was verbatim only: `RewriteStyle`
+  existed in the core and the file transcriber, and the live path never touched it, so the two
+  desktop apps had different products behind the same hotkey. Windows now has the same optional
+  second key as macOS — bound in Settings, producing formal, concise or bullets — and the choice is
+  made by which key you hold rather than from a menu after speaking.
+
+  The verbatim transcript is stored either way, so a rewrite never loses what was actually said.
+  The overlay names the stage it is on ("Tightening…", "Making bullets…") rather than continuing to
+  say "Transcribing…" through a request that is not a transcription.
+
+  Two ways it can go wrong are now said out loud rather than left to be noticed. A backend that
+  only transcribes audio cannot rewrite text at all, so Settings says so when a second key is bound
+  to one — at the moment the choice is made rather than the moment it fails. And when a rewrite
+  fails for any other reason the words are still delivered, with "— not rewritten" on the
+  confirmation, on both desktops. macOS had swallowed that silently since the feature existed.
+
+  Windows still has no undo shortcuts; the verbatim text is in History, which is what would make
+  them cheap to add.
+
 - **Offline transcription of recordings that already exist, in the GUI and a new `dnt` CLI.** The
   app could only transcribe speech it had just recorded, which left every recording already on disk
   — a voice memo, a call, an interview — outside a tool built for turning speech into text.

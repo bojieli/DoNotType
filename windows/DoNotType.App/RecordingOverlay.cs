@@ -18,6 +18,12 @@ public sealed class RecordingOverlay : Form
         Recording,
         Transcribing,
         /// <summary>
+        /// The second request. Distinct from <see cref="Transcribing"/> because it is a different
+        /// thing to be waiting on and usually the slower of the two — and because the transcript
+        /// exists by then, so nothing on screen is moving and a stale label reads as a hang.
+        /// </summary>
+        Deriving,
+        /// <summary>
         /// Brief confirmation that words were inserted, so success is visible rather than a silent
         /// disappearance the user has to infer from the text appearing.
         /// </summary>
@@ -169,6 +175,13 @@ public sealed class RecordingOverlay : Form
                 DrawThinkingDots(g, new Rectangle(20, Height / 2 - 4, 76, 8));
                 var label = _hint.Length == 0 ? "Transcribing…" : $"Transcribing… {_hint}";
                 g.DrawString(label, font, textBrush, TextLeft, Height / 2 - 8);
+                break;
+
+            case Phase.Deriving:
+                DrawThinkingDots(g, new Rectangle(20, Height / 2 - 4, 76, 8));
+                g.DrawString(
+                    _hint.Length == 0 ? "Rewriting…" : _hint, font, textBrush,
+                    TextLeft, Height / 2 - 8);
                 break;
 
             case Phase.Inserted:

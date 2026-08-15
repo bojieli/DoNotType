@@ -29,6 +29,15 @@ public sealed class SettingsForm : Form
     private readonly NumericUpDown _fallbackAfter = new() { Minimum = 1, Maximum = 120, Width = 70 };
     private readonly Label _fallbackNote = new() { AutoSize = true, MaximumSize = new Size(430, 0) };
     private readonly ComboBox _trigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _secondTrigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _secondStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly Label _secondKeyNote = new()
+    {
+        AutoSize = true,
+        MaximumSize = new Size(520, 0),
+        ForeColor = Color.FromArgb(190, 140, 60),
+        Visible = false,
+    };
     private readonly ComboBox _mode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _fidelity = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly CheckBox _grounding = new() { Text = "Ground transcription in screen text", AutoSize = true };
@@ -113,6 +122,14 @@ public sealed class SettingsForm : Form
             "A quick tap starts recording and a second tap ends it; holding the key past a moment "
             + "records only while held. Escape cancels. Even Tidy only changes typography — none "
             + "of the fidelity settings reword you."));
+
+        layout.Controls.Add(Labelled("Second key", _secondTrigger));
+        layout.Controls.Add(Labelled("It produces", _secondStyle));
+        layout.Controls.Add(_secondKeyNote);
+        layout.Controls.Add(Caption(
+            "Optional. A second key that dictates and then rewrites, so the choice is made before "
+            + "you speak rather than from a menu afterwards. The verbatim transcript is kept "
+            + "either way and stays in History, so a rewrite never loses what you actually said."));
 
         layout.Controls.Add(Heading("Grounding"));
         layout.Controls.Add(_grounding);
@@ -404,6 +421,19 @@ public sealed class SettingsForm : Form
               + $"{fallback} starts alongside it and whichever finishes first is used. History "
               + "records which one served each dictation.";
 
+        // Said here, where the choice is made, rather than found out by holding the key and
+        // getting your own words back. A recogniser has no text endpoint at all, so this is not a
+        // setting that would work slightly worse — it is one that cannot work.
+        var second = _secondTrigger.SelectedIndex > 0;
+        _secondKeyNote.Text = !second
+            ? string.Empty
+            : ((ProviderKind)Math.Max(_provider.SelectedIndex, 0)).IsSpeechRecognition()
+                ? $"{(ProviderKind)_provider.SelectedIndex} only transcribes audio and cannot "
+                    + "rewrite text, so the second key will deliver the verbatim transcript "
+                    + "unchanged. Choose a model backend above to use it."
+                : string.Empty;
+        _secondKeyNote.Visible = _secondKeyNote.Text.Length > 0;
+
         var kind = (ProviderKind)Math.Max(_provider.SelectedIndex, 0);
         _providerNote.Text = kind switch
         {
@@ -512,6 +542,28 @@ public sealed class SettingsForm : Form
         }
         _trigger.SelectedIndex = (int)_settings.Trigger;
 
+        _secondTrigger.Items.Add("None");
+        foreach (var trigger in Enum.GetValues<HotkeyMonitor.Trigger>())
+        {
+            _secondTrigger.Items.Add(HotkeyMonitor.Label(trigger));
+        }
+        _secondTrigger.SelectedIndex =
+            _settings.SecondaryTrigger is { } secondary ? (int)secondary + 1 : 0;
+
+        // Verbatim is absent on purpose: it is what the first key already does, and a second key
+        // that produces the same thing is a setting with no effect.
+        foreach (var style in Enum.GetValues<RewriteStyle>().Where(style => style.IsRewrite()))
+        {
+            _secondStyle.Items.Add(style.Label());
+        }
+        _secondStyle.SelectedIndex = Math.Max(0, (int)_settings.SecondaryStyle - 1);
+        _secondStyle.Enabled = _secondTrigger.SelectedIndex > 0;
+        _secondTrigger.SelectedIndexChanged += (_, _) =>
+        {
+            _secondStyle.Enabled = _secondTrigger.SelectedIndex > 0;
+            RefreshProviderNotes();
+        };
+
         _mode.Items.AddRange(["Tap to toggle, hold to talk", "Hold to talk", "Tap to start, tap to stop"]);
         _mode.SelectedIndex = _settings.HotkeyMode switch
         {
@@ -556,6 +608,10 @@ public sealed class SettingsForm : Form
         }
         _model.Text = _settings.ModelFor(_settings.Provider);
         _settings.Trigger = (HotkeyMonitor.Trigger)_trigger.SelectedIndex;
+        _settings.SecondaryTrigger = _secondTrigger.SelectedIndex > 0
+            ? (HotkeyMonitor.Trigger)(_secondTrigger.SelectedIndex - 1)
+            : null;
+        _settings.SecondaryStyle = (RewriteStyle)(_secondStyle.SelectedIndex + 1);
         _settings.HotkeyMode = _mode.SelectedIndex switch
         {
             1 => HotkeyMonitor.Mode.PushToTalk,
