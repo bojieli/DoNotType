@@ -33,6 +33,17 @@ public sealed class DictationController : IDisposable
     public event Action<State>? StateChanged;
 
     /// <summary>
+    /// Words reached the focused window, and how many characters they were.
+    /// </summary>
+    /// <remarks>
+    /// Fired after the insertion rather than with the state change, because the state goes back to
+    /// idle before the paste so the hotkey is free again. Without this the pill simply vanishes and
+    /// success is something the user has to infer from text appearing — which they cannot do if the
+    /// target window scrolled, or if the insertion went somewhere they were not looking.
+    /// </remarks>
+    public event Action<int>? Inserted;
+
+    /// <summary>
     /// Fires as each part of a long dictation lands, as (done, total).
     /// </summary>
     /// <remarks>
@@ -283,6 +294,7 @@ public sealed class DictationController : IDisposable
 
             SetState(State.Idle);
             await TextInjector.InsertAsync(text).ConfigureAwait(false);
+            Inserted?.Invoke(text.Length);
         }
         catch (Exception error) when (error is ProviderException or HttpRequestException or TaskCanceledException)
         {

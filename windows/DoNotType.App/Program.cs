@@ -45,6 +45,13 @@ internal sealed class TrayApplication : ApplicationContext
                 RecordingOverlay.Phase.Transcribing,
                 total > 1 ? $"part {Math.Min(done + 1, total)} of {total}" : null));
         _controller.HistoryChanged += () => BeginInvokeOnTray(RebuildMenu);
+        _controller.Inserted += characters => BeginInvokeOnTray(() =>
+        {
+            _overlay.Show(
+                RecordingOverlay.Phase.Inserted,
+                $"Inserted {characters} character{(characters == 1 ? string.Empty : "s")}");
+            _ = HideOverlayAfter(TimeSpan.FromSeconds(1.6));
+        });
 
         _tray = new NotifyIcon
         {
@@ -98,9 +105,12 @@ internal sealed class TrayApplication : ApplicationContext
                     break;
                 case DictationController.State.Failed:
                     _levelTimer.Stop();
+                    // Not truncated: the overlay grows to fit, because the advice is a sentence
+                    // about what to do and half of one is worse than none. It also stays up longer
+                    // than a confirmation does — there is something to read.
                     _overlay.SetPhase(
-                        RecordingOverlay.Phase.Failed, Truncate(_controller.LastError ?? "Failed", 48));
-                    _ = HideOverlayAfter(TimeSpan.FromSeconds(4));
+                        RecordingOverlay.Phase.Failed, _controller.LastError ?? "Failed");
+                    _ = HideOverlayAfter(TimeSpan.FromSeconds(7));
                     break;
                 default:
                     _levelTimer.Stop();

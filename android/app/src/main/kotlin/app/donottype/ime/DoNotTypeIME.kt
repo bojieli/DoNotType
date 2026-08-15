@@ -5,6 +5,7 @@ import app.donottype.Settings
 import app.donottype.accessibility.ScreenReaderService
 import app.donottype.audio.WavRecorder
 import app.donottype.core.DictationService
+import app.donottype.core.FailureAdvice
 import app.donottype.core.ScreenContext
 import android.Manifest
 import android.content.pm.PackageManager
@@ -285,12 +286,10 @@ class DoNotTypeIME : InputMethodService() {
                 },
                 onFailure = { error ->
                     Log.e(TAG, "transcription failed", error)
-                    // The recording is stored, so this is recoverable rather than lost.
-                    statusLabel.text = if (service.isTransient(error)) {
-                        "Saved — retry from DoNotType when you are back online"
-                    } else {
-                        error.message ?: "Transcription failed"
-                    }
+                    // What happened and what to do about it, rather than a generic reassurance
+                    // or a raw exception. On a keyboard there is one line for it, which is why the
+                    // advice is written to fit one.
+                    statusLabel.text = FailureAdvice.describe(error).message
                     state = State.ERROR
                 },
             )

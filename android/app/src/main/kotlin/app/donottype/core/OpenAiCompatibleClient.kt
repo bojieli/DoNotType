@@ -104,12 +104,14 @@ class OpenAiCompatibleClient(
             ProviderHttp.response(name, model, status, text.length, System.currentTimeMillis() - startedAt)
 
             if (status !in 200..299) {
-                throw ProviderException("HTTP $status: ${text.take(400)}")
+                throw ProviderException("HTTP $status: ${text.take(400)}", status = status, body = text)
             }
 
             val root = JSONObject(text)
             // Some gateways return HTTP 200 with an error object in the body.
-            root.optJSONObject("error")?.let { throw ProviderException("HTTP $status: $it") }
+            root.optJSONObject("error")?.let {
+                throw ProviderException("HTTP $status: $it", status = status, body = it.toString())
+            }
 
             val usage = parseUsage(root.optJSONObject("usage"))
             // A gateway that accepts audio and bills zero audio tokens never gave it to the model,

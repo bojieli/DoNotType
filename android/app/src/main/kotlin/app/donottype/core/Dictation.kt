@@ -33,24 +33,12 @@ class DictationService(private val context: Context) {
     /**
      * Errors worth retrying, as opposed to ones that will fail identically forever.
      *
-     * Retrying a bad API key just burns the user's time; a timeout or a 503 is exactly what retry
-     * exists for.
+     * Lives in [FailureAdvice] beside the sentence shown for the same failure, so the two cannot
+     * disagree — telling somebody "saved, retry from History" about a failure the retry loop has
+     * already written off is worse than saying nothing. This needs a Context and so cannot be
+     * reached from a unit test; that one can.
      */
-    fun isTransient(error: Throwable): Boolean = when (error) {
-        is SocketTimeoutException, is UnknownHostException -> true
-        is ProviderException -> {
-            val message = error.message.orEmpty()
-            when {
-                message.contains("HTTP 401") || message.contains("HTTP 403") -> false
-                message.contains("billed 0 audio tokens") -> false
-                message.contains("HTTP 4") -> message.contains("HTTP 408") ||
-                    message.contains("HTTP 429")
-                else -> true
-            }
-        }
-        is IOException -> true
-        else -> false
-    }
+    fun isTransient(error: Throwable): Boolean = FailureAdvice.isTransient(error)
 
     /** Transcribes, storing the outcome either way so a failure stays retryable. */
     suspend fun transcribe(
@@ -199,8 +187,11 @@ class DictationService(private val context: Context) {
         } catch (error: Exception) {
             // Audio is kept so this can be retried from the settings screen, or when the keyboard
             // next opens with a working connection.
+            // The advice rather than the exception. A history row that reads
+            // `HTTP 429: {"error":{"code":"rate_limit_exceeded"…` is a log line somebody has to
+            // decode weeks later; the advice says what happened and whether it is worth retrying.
             record.status = DictationRecord.Status.FAILED
-            record.errorMessage = error.message ?: error::class.simpleName
+            record.errorMessage = FailureAdvice.describe(error).message
             history.insert(record, wav)
             Result.failure(error)
         }

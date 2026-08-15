@@ -388,4 +388,17 @@ final class DeliveredTextTests: XCTestCase {
         XCTAssertFalse(advice.isRetryable)
         XCTAssertTrue(advice.message.contains("too large"), advice.message)
     }
+
+    /// The retry loop and the sentence shown for the same failure have to agree. Telling somebody
+    /// "saved, retry from History" about a failure the retry loop has already written off is worse
+    /// than saying nothing, and the two rules live in different files.
+    func testTheGuidanceAndTheRetryRuleAgreeAboutEveryStatus() {
+        for status in [400, 401, 403, 404, 408, 413, 422, 429, 500, 502, 503] {
+            let error = ProviderError.http(status: status, body: "")
+            XCTAssertEqual(
+                TranscriptionService.isTransient(error),
+                FailureAdvice.describe(error).isRetryable,
+                "HTTP \(status): the retry rule and the advice disagree")
+        }
+    }
 }

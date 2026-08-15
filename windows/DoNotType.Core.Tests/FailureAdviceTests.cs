@@ -174,4 +174,33 @@ public sealed class FailureAdviceTests
         Assert.True(char.IsUpper(message[0]), message);
         Assert.DoesNotContain("HTTP 401:", message);
     }
+
+    /// <summary>
+    /// The retry loop and the sentence shown for the same failure have to agree. Telling somebody
+    /// "saved, retry from History" about a failure the retry loop has already written off is worse
+    /// than saying nothing, and the two rules live in different files.
+    /// </summary>
+    [Theory]
+    [InlineData(400)]
+    [InlineData(401)]
+    [InlineData(403)]
+    [InlineData(404)]
+    [InlineData(408)]
+    [InlineData(413)]
+    [InlineData(422)]
+    [InlineData(429)]
+    [InlineData(500)]
+    [InlineData(502)]
+    [InlineData(503)]
+    public void TheGuidanceAndTheRetryRuleAgreeAboutEveryStatus(int status)
+    {
+        var error = new ProviderException($"HTTP {status}")
+        {
+            Status = status,
+            IsTransient = status is 408 or 429 or >= 500,
+        };
+        Assert.Equal(
+            TranscriptionService.IsTransient(error),
+            FailureAdvice.Describe(error).IsRetryable);
+    }
 }

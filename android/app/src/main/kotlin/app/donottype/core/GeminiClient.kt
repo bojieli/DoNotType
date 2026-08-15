@@ -61,7 +61,20 @@ data class TranscriptionResult(
     val rawOutput: String,
 )
 
-class ProviderException(message: String) : IOException(message)
+/**
+ * @param status the HTTP status when this came from a response, or 0 when it did not.
+ * @param body the response body, for the sentence the provider put in it.
+ *
+ * Carried as fields rather than left inside the message. The status used to exist only as text —
+ * `HTTP 401: <body>` — and callers that needed it asked whether the message *contained* "HTTP 401",
+ * which is a substring search over a body the provider wrote. A 500 whose body quoted an upstream
+ * "HTTP 404" was classified as permanent and never retried.
+ */
+class ProviderException(
+    message: String,
+    val status: Int = 0,
+    val body: String = "",
+) : IOException(message)
 
 /**
  * Google's Interactions API.
@@ -134,7 +147,7 @@ class GeminiClient(
             ProviderHttp.response(name, model, status, text.length, System.currentTimeMillis() - startedAt)
 
             if (status !in 200..299) {
-                throw ProviderException("HTTP $status: ${text.take(400)}")
+                throw ProviderException("HTTP $status: ${text.take(400)}", status = status, body = text)
             }
 
             val root = JSONObject(text)

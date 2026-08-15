@@ -140,7 +140,11 @@ class DeepgramClient(
             val status = connection.responseCode
             val body = connection.readBody(status)
             ProviderHttp.response(name, model, status, body.length, System.currentTimeMillis() - startedAt)
-            if (status !in 200..299) throw ProviderException("HTTP $status: ${errorMessage(body)}")
+            if (status !in 200..299) {
+                throw ProviderException(
+                    "HTTP $status: ${errorMessage(body)}", status = status, body = body,
+                )
+            }
 
             val transcript = parse(body)
             if (transcript.transcript.isBlank()) throw ProviderException("Model returned no output")
@@ -251,7 +255,11 @@ class MistralClient(
             val status = connection.responseCode
             val text = connection.readBody(status)
             ProviderHttp.response(name, model, status, text.length, System.currentTimeMillis() - startedAt)
-            if (status !in 200..299) throw ProviderException("HTTP $status: ${errorMessage(text)}")
+            if (status !in 200..299) {
+                throw ProviderException(
+                    "HTTP $status: ${errorMessage(text)}", status = status, body = text,
+                )
+            }
 
             val root = JSONObject(text)
             val usage = parseUsage(root)
@@ -364,7 +372,11 @@ class XAISpeechClient(
             val status = connection.responseCode
             val text = connection.readBody(status)
             ProviderHttp.response(name, model, status, text.length, System.currentTimeMillis() - startedAt)
-            if (status !in 200..299) throw ProviderException("HTTP $status: ${errorMessage(text)}")
+            if (status !in 200..299) {
+                throw ProviderException(
+                    "HTTP $status: ${errorMessage(text)}", status = status, body = text,
+                )
+            }
 
             val root = JSONObject(text)
             val transcript = Transcript(
