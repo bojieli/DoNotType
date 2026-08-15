@@ -165,4 +165,43 @@ final class TranscriptModeTests: XCTestCase {
         XCTAssertNil(decoded[0].mode)
         XCTAssertEqual(decoded[0].resolvedMode, .verbatim)
     }
+
+    /// The parity table from `docs/mode-parity.md`, repeated here verbatim.
+    ///
+    /// Four implementations of one grammar, and the failure mode is not a crash: it is a phone and
+    /// a laptop disagreeing about what `summary` means, which nobody would think to look for. The
+    /// table is duplicated in each language on purpose — a shared fixture file would be read by
+    /// whichever platform remembered to read it.
+    func testTheModeGrammarIsIdenticalOnEveryPlatform() {
+        let table: [(String, String?)] = [
+        ("verbatim", "verbatim"),
+        ("raw", "verbatim"),
+        ("transcribe", "verbatim"),
+        ("none", "verbatim"),
+        ("rewrite", "rewrite:formal"),
+        ("rewrite:formal", "rewrite:formal"),
+        ("rewrite:concise", "rewrite:concise"),
+        ("rewrite:bullets", "rewrite:bullets"),
+        ("rewrite:", "rewrite:formal"),
+        ("rewrite:verbatim", nil),
+        ("summary", "summary:brief"),
+        ("summary:", "summary:brief"),
+        ("summary:brief", "summary:brief"),
+        ("summary:bullets", "summary:bullets"),
+        ("summary:actions", "summary:actions"),
+        ("summarise", "summary:brief"),
+        ("summarize", "summary:brief"),
+        ("SUMMARY:Bullets", "summary:bullets"),
+        ("  summary  ", "summary:brief"),
+        ("", nil),
+        ("nonsense", nil),
+        ("rewrite:nonsense", nil),
+        ("summary:nonsense", nil),
+        ]
+        for (typed, expected) in table {
+            XCTAssertEqual(
+                TranscriptMode(rawValue: typed)?.rawValue, expected,
+                "`\(typed)` must parse the same here as on Windows, Android and iOS")
+        }
+    }
 }

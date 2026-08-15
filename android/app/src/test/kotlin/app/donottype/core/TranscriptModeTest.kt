@@ -102,4 +102,48 @@ class TranscriptModeTest {
         assertEquals("an older dictation", decoded.deliveredText)
         assertFalse(decoded.isFromFile)
     }
+
+    /**
+     * The parity table from `docs/mode-parity.md`, repeated here verbatim.
+     *
+     * Four implementations of one grammar, and the failure mode is not a crash: it is a phone and a
+     * laptop disagreeing about what `summary` means, which nobody would think to look for. The
+     * table is duplicated in each language on purpose — a shared fixture file would be read by
+     * whichever platform remembered to read it.
+     */
+    @Test
+    fun `the mode grammar is identical on every platform`() {
+        val table: List<Pair<String, String?>> = listOf(
+            "verbatim" to "verbatim",
+            "raw" to "verbatim",
+            "transcribe" to "verbatim",
+            "none" to "verbatim",
+            "rewrite" to "rewrite:formal",
+            "rewrite:formal" to "rewrite:formal",
+            "rewrite:concise" to "rewrite:concise",
+            "rewrite:bullets" to "rewrite:bullets",
+            "rewrite:" to "rewrite:formal",
+            "rewrite:verbatim" to null,
+            "summary" to "summary:brief",
+            "summary:" to "summary:brief",
+            "summary:brief" to "summary:brief",
+            "summary:bullets" to "summary:bullets",
+            "summary:actions" to "summary:actions",
+            "summarise" to "summary:brief",
+            "summarize" to "summary:brief",
+            "SUMMARY:Bullets" to "summary:bullets",
+            "  summary  " to "summary:brief",
+            "" to null,
+            "nonsense" to null,
+            "rewrite:nonsense" to null,
+            "summary:nonsense" to null,
+        )
+        table.forEach { (typed, expected) ->
+            assertEquals(
+                "`$typed` must parse the same here as on macOS, Windows and iOS",
+                expected,
+                TranscriptMode.from(typed)?.id,
+            )
+        }
+    }
 }

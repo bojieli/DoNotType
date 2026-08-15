@@ -109,7 +109,10 @@ sealed class TranscriptMode {
         fun from(id: String?): TranscriptMode? {
             val parts = id?.trim()?.lowercase()?.split(":", limit = 2) ?: return null
             val head = parts.firstOrNull() ?: return null
-            val tail = parts.getOrNull(1)
+            // An empty style is no style: `rewrite:` is a colon someone typed and did not finish,
+            // and it means the same as `rewrite`. All three platforms agree on this because they
+            // used to disagree — see the parity table in the tests.
+            val tail = parts.getOrNull(1)?.takeIf { it.isNotEmpty() }
             return when (head) {
                 "verbatim", "raw", "transcribe", "none" -> Verbatim
                 "rewrite" -> {

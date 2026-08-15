@@ -145,7 +145,10 @@ public abstract record TranscriptMode
     {
         var parts = (id ?? string.Empty).Trim().ToLowerInvariant().Split(':', 2);
         var head = parts.Length > 0 ? parts[0] : string.Empty;
-        var tail = parts.Length > 1 ? parts[1] : null;
+        // An empty style is no style: `--mode rewrite:` is a colon someone typed and did not
+        // finish, and it means the same as `--mode rewrite`. All three platforms agree on this
+        // because they used to disagree — see the parity table in the tests.
+        var tail = parts.Length > 1 && parts[1].Length > 0 ? parts[1] : null;
 
         switch (head)
         {

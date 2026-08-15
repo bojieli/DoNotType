@@ -510,3 +510,43 @@ public sealed class OggOpusReaderRobustnessTests
         Assert.True(DateTimeOffset.Now < deadline, "an empty page stalled the reader");
     }
 }
+
+/// <summary>
+/// The parity table from `docs/mode-parity.md`, repeated here verbatim.
+///
+/// Four implementations of one grammar, and the failure mode is not a crash: it is a phone and a
+/// laptop disagreeing about what `summary` means, which nobody would think to look for. The table
+/// is duplicated in each language on purpose — a shared fixture file would be read by whichever
+/// platform remembered to read it.
+/// </summary>
+public sealed class TranscriptModeParityTests
+{
+    [Theory]
+    [InlineData("verbatim", "verbatim")]
+    [InlineData("raw", "verbatim")]
+    [InlineData("transcribe", "verbatim")]
+    [InlineData("none", "verbatim")]
+    [InlineData("rewrite", "rewrite:formal")]
+    [InlineData("rewrite:formal", "rewrite:formal")]
+    [InlineData("rewrite:concise", "rewrite:concise")]
+    [InlineData("rewrite:bullets", "rewrite:bullets")]
+    [InlineData("rewrite:", "rewrite:formal")]
+    [InlineData("rewrite:verbatim", null)]
+    [InlineData("summary", "summary:brief")]
+    [InlineData("summary:", "summary:brief")]
+    [InlineData("summary:brief", "summary:brief")]
+    [InlineData("summary:bullets", "summary:bullets")]
+    [InlineData("summary:actions", "summary:actions")]
+    [InlineData("summarise", "summary:brief")]
+    [InlineData("summarize", "summary:brief")]
+    [InlineData("SUMMARY:Bullets", "summary:bullets")]
+    [InlineData("  summary  ", "summary:brief")]
+    [InlineData("", null)]
+    [InlineData("nonsense", null)]
+    [InlineData("rewrite:nonsense", null)]
+    [InlineData("summary:nonsense", null)]
+    public void TheModeGrammarIsIdenticalOnEveryPlatform(string typed, string? expected)
+    {
+        Assert.Equal(expected, TranscriptMode.Parse(typed)?.Id);
+    }
+}

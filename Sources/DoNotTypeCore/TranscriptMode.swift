@@ -53,7 +53,10 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
     public init?(rawValue: String) {
         let parts = rawValue.trimmed.lowercased().split(separator: ":", maxSplits: 1)
         guard let head = parts.first else { return nil }
-        let tail = parts.count > 1 ? String(parts[1]) : nil
+        // An empty style is no style: `--mode rewrite:` is a colon someone typed and did not
+        // finish, and it means the same as `--mode rewrite`. All three platforms agree on this
+        // because they used to disagree — see the parity table in the tests.
+        let tail = parts.count > 1 && !parts[1].isEmpty ? String(parts[1]) : nil
 
         switch head {
         case "verbatim", "raw", "transcribe", "none":
