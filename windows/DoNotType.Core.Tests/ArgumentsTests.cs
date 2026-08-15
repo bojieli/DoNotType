@@ -98,4 +98,23 @@ public sealed class ArgumentsTests
         Assert.Equal(50, args.Int("lines", 50));
         Assert.Equal(120, CommandLine.Parse(["logs", "--lines", "120"]).Int("lines", 50));
     }
+
+    /// <summary>
+    /// `--` ends option parsing, as it does everywhere else. This is the only way to name a file
+    /// that begins with a dash, and without it that name is either an unknown option or a real one.
+    /// </summary>
+    [Fact]
+    public void ADoubleDashEndsTheOptions()
+    {
+        var args = CommandLine.Parse(["transcribe", "--json", "--", "--output", "-weird.wav"]);
+        Assert.True(args.Flag("json"));
+        Assert.Equal(["--output", "-weird.wav"], args.Positional);
+        Assert.Null(args.Option("output"));
+    }
+
+    [Fact]
+    public void ASecondDoubleDashIsJustAnArgument()
+    {
+        Assert.Equal(["--"], CommandLine.Parse(["transcribe", "--", "--"]).Positional);
+    }
 }

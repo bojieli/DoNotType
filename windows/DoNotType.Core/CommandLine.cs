@@ -25,9 +25,26 @@ public class CommandLine
                 : string.Empty,
         };
 
+        var optionsEnded = false;
+
         for (var i = parsed.Verb.Length > 0 ? 1 : 0; i < args.Length; i++)
         {
             var value = args[i];
+
+            // `--` ends option parsing, as it does everywhere else. This is how somebody
+            // transcribes a file whose name begins with a dash, and the only way: without it that
+            // name is either an unknown option or, worse, a real one.
+            if (value == "--" && !optionsEnded)
+            {
+                optionsEnded = true;
+                continue;
+            }
+            if (optionsEnded)
+            {
+                parsed.Positional.Add(value);
+                continue;
+            }
+
             if (!value.StartsWith("--", StringComparison.Ordinal))
             {
                 // A lone `-` is stdin by convention, and a negative number is a value. Anything
@@ -48,7 +65,7 @@ public class CommandLine
             }
 
             var name = value.TrimStart('-');
-            if (name.Length == 0) continue; // a bare `--`, which ends option parsing elsewhere
+            if (name.Length == 0) continue; // `---`, which is a typo rather than a flag
             // `--name value` unless the next token is another option, which makes it a flag. That
             // is what lets `--json --output notes` and `--output notes --json` both work.
             if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)
