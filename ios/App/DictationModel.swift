@@ -71,6 +71,28 @@ final class DictationModel {
         didSet { UserDefaults.standard.set(model, forKey: "model-\(provider.rawValue)") }
     }
 
+    /// What a dictation produces: the transcript, or a rewrite of it.
+    ///
+    /// The desktop makes this choice with a second hotkey. A phone has no second key, so it is a
+    /// picker above the button — the same rule, expressed with the only input the platform has:
+    /// chosen before speaking, never from a menu afterwards.
+    var liveStyle: RewriteStyle {
+        didSet { UserDefaults.standard.set(liveStyle.rawValue, forKey: "liveStyle") }
+    }
+
+    /// Whether any configured backend can rewrite text at all.
+    ///
+    /// A recogniser has no text endpoint, so when one is selected and no model backend has a key,
+    /// the picker is not offered rather than offered and silently ignored.
+    var canRewrite: Bool { !provider.isSpeechRecognition || secondStageBackend != nil }
+
+    /// The first configured model backend, for the second stage a recogniser cannot run.
+    var secondStageBackend: ProviderKind? {
+        ProviderKind.allCases.first {
+            !$0.isSpeechRecognition && !(KeychainStore.read(account: $0.rawValue) ?? "").isEmpty
+        }
+    }
+
     /// A recogniser cannot rewrite, and on iOS it cannot be grounded either, so the only thing to
     /// say about one is what it is good at.
     var providerNote: String? {
@@ -187,6 +209,7 @@ final class DictationModel {
         fallbackAPIKey = fallbackKind.map { KeychainStore.read(account: $0.rawValue) ?? "" } ?? ""
         fallbackAfterSeconds = Self.storedFallbackSeconds()
         fidelity = Fidelity(rawValue: defaults.string(forKey: "fidelity") ?? "") ?? .default
+        liveStyle = RewriteStyle(rawValue: defaults.string(forKey: "liveStyle") ?? "") ?? .verbatim
         retention = RetentionPolicy(rawValue: defaults.string(forKey: "retention") ?? "")
             ?? .forever
         keepAudio = defaults.bool(forKey: "keepAudio")
@@ -449,6 +472,31 @@ final class DictationModel {
         UIApplication.shared.open(url)
     }
 
+    /// The service that runs the second stage: the primary when it can take text, otherwise the
+    /// first configured model backend — the recording still goes to the fast recogniser.
+    private func makeRewriter() -> TranscriptionService? {
+        if !provider.isSpeechRecognition { return makeCoordinator()?.service }
+        guard let kind = secondStageBackend,
+            let key = KeychainStore.read(account: kind.rawValue), !key.isEmpty,
+            let backend = try? ProviderFactory.make(kind, apiKey: key)
+        else { return nil }
+
+        return TranscriptionService(
+            provider: backend, model: Self.storedModel(for: kind),
+            systemInstruction: "", fidelity: fidelity)
+    }
+
+    /// The rewrite block from the prompt in force — the user's edited copy when there is one.
+    ///
+    /// Read the same way `makeCoordinator` reads the system instruction: from the bundle, through
+    /// `PromptStore`. There is no filesystem to walk up on a phone, and an app that used the
+    /// shipped prompt here while sending an edited one for the transcript would make the two
+    /// disagree about the only file that matters.
+    private func rewriteInstruction(for style: RewriteStyle) -> String? {
+        guard let promptURL = Self.bundledPromptURL else { return nil }
+        return try? prompts.builder(default: promptURL).rewriteInstruction(style: style)
+    }
+
     private func requestMicrophone() async -> Bool {
         await withCheckedContinuation { continuation in
             AVAudioApplication.requestRecordPermission { continuation.resume(returning: $0) }
@@ -459,6 +507,10 @@ final class DictationModel {
 
     private func transcribe(url: URL) async {
         defer { try? FileManager.default.removeItem(at: url) }
+
+        // Read once, here. Moving the picker while a transcription is in flight must not change
+        // what the recording already made becomes.
+        let style = liveStyle
 
         guard let coordinator = makeCoordinator() else {
             state = .failed("Add your API key in Settings.")
@@ -512,10 +564,63 @@ final class DictationModel {
 
             record.status = .completed
             record.text = text
+
+            // A rewrite is a second pass over a transcript that already exists, so the verbatim
+            // version is stored either way and "what did I actually say" stays answerable.
+            var delivered = text
+            if style.isRewrite {
+                let rewriteStart = Date()
+                log.info(
+                    "second stage",
+                    [
+                        "dictation": Self.short(pendingID), "style": style.rawValue,
+                        "chars": "\(text.count)",
+                    ])
+                if let rewriter = makeRewriter(),
+                    let instruction = rewriteInstruction(for: style)
+                {
+                    do {
+                        let styled = try await rewriter.rewrite(text, instruction: instruction)
+                        record.styledText = styled
+                        record.style = style
+                        delivered = styled
+                        log.info(
+                            "second stage finished",
+                            [
+                                "dictation": Self.short(pendingID),
+                                "chars": "\(styled.count)", "from": "\(text.count)",
+                                "ms": LogClock.ms(Date().timeIntervalSince(rewriteStart)),
+                            ])
+                    } catch {
+                        // The words survive either way, so this is a warning rather than a
+                        // failure — but it is said out loud, because a rewrite that fails every
+                        // time should not be indistinguishable from one never asked for.
+                        record.rewriteFailed = true
+                        log.warning(
+                            "second stage failed, delivering the verbatim transcript",
+                            [
+                                "dictation": Self.short(pendingID), "style": style.rawValue,
+                                "detail": FailureAdvice.detail(of: error),
+                            ])
+                    }
+                } else {
+                    record.rewriteFailed = true
+                    log.warning(
+                        "no backend can rewrite text, delivering the verbatim transcript",
+                        ["dictation": Self.short(pendingID), "style": style.rawValue])
+                }
+                record.rewriteSeconds = Date().timeIntervalSince(rewriteStart)
+            }
+
             record.latencySeconds = Date().timeIntervalSince(releasedAt)
             await history.insert(record, audio: keepAudio ? try? Data(contentsOf: url) : nil)
 
-            deliver(text)
+            deliver(delivered)
+            if record.rewriteFailed == true {
+                state = .failed("Inserted — not rewritten.")
+                await refresh()
+                return
+            }
             state = .idle
         } catch {
             let advice = FailureAdvice.describe(error)

@@ -43,6 +43,17 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
     /// half-message pasted into an issue cannot be searched for.
     public var errorDetail: String?
 
+    /// A rewrite was asked for and did not happen, so what was delivered is the verbatim text.
+    ///
+    /// Recorded rather than inferred from a nil `styledText`, which is also what an ordinary
+    /// verbatim dictation looks like. The difference matters: one is what was asked for, the other
+    /// is a second request that failed, and only the second is worth telling somebody about.
+    ///
+    /// Optional because a non-optional `Bool` would make every history row written before this
+    /// existed fail to decode — synthesised `Codable` requires the key. Nil means "written before
+    /// anyone asked", which is not the same as false and is exactly as informative.
+    public var rewriteFailed: Bool?
+
     /// Which backend produced it, so a change of provider is visible in the history.
     public var provider: String
     public var model: String
@@ -97,6 +108,7 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         style: RewriteStyle? = nil,
         errorMessage: String? = nil,
         errorDetail: String? = nil,
+        rewriteFailed: Bool? = nil,
         provider: String,
         model: String,
         fidelity: Fidelity,
@@ -122,6 +134,7 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         self.style = style
         self.errorMessage = errorMessage
         self.errorDetail = errorDetail
+        self.rewriteFailed = rewriteFailed
         self.provider = provider
         self.model = model
         self.fidelity = fidelity

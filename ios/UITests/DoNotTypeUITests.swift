@@ -47,6 +47,21 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Tap to dictate, or hold to talk"].exists)
     }
 
+    /// The style picker, which is how a phone makes the choice the desktop makes with a second
+    /// hotkey — before speaking, not from a menu afterwards.
+    ///
+    /// A fresh install has no API key, so no backend can rewrite and the picker is deliberately
+    /// absent: a control that cannot work is worse than one that is not there. What this asserts is
+    /// that its absence is *that* rule and not a layout accident — the record button, which does
+    /// not depend on a key, is still there beside it.
+    func testTheStylePickerIsHiddenUntilSomethingCanRewrite() {
+        let app = launch()
+        XCTAssertTrue(app.buttons["record"].waitForExistence(timeout: 10))
+        XCTAssertFalse(
+            app.segmentedControls["style-picker"].exists,
+            "with no key configured, nothing can rewrite and the picker should not be offered")
+    }
+
     /// Asserts on the controls rather than on the section headers above them.
     ///
     /// Headers were the obvious thing to look for and the wrong one: how a `Section` header is

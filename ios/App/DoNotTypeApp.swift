@@ -30,6 +30,7 @@ struct ContentView: View {
         NavigationStack {
             VStack(spacing: 28) {
                 Spacer()
+                styleChips
                 recordButton
                 statusLine
                 Spacer()
@@ -76,6 +77,38 @@ struct ContentView: View {
                 await model.refresh()
                 await model.retryPending()
             }
+        }
+    }
+
+    /// Verbatim, or one of the rewrites.
+    ///
+    /// The desktop makes this choice with a second hotkey — which key you hold decides, before you
+    /// speak. A phone has no second key, so it is a picker above the button, and the rule the
+    /// hotkey preserves is the one that matters: the choice is made *before* speaking. A menu
+    /// between finishing a sentence and seeing it appear would defeat the point of dictating.
+    ///
+    /// Hidden when no configured backend can rewrite text at all — a recogniser has no text
+    /// endpoint, so this is not a control that would work less well, it is one that cannot work.
+    @ViewBuilder private var styleChips: some View {
+        if model.canRewrite {
+            Picker("Style", selection: $model.liveStyle) {
+                ForEach(RewriteStyle.allCases, id: \.self) { style in
+                    Text(Self.chipLabel(style)).tag(style)
+                }
+            }
+            .pickerStyle(.segmented)
+            .disabled(model.state == .recording || model.state == .transcribing)
+            .accessibilityIdentifier("style-picker")
+        }
+    }
+
+    /// The style's own word rather than "rewrite", which is what somebody is waiting for.
+    private static func chipLabel(_ style: RewriteStyle) -> String {
+        switch style {
+        case .verbatim: "Verbatim"
+        case .formal: "Formal"
+        case .concise: "Concise"
+        case .bullets: "Bullets"
         }
     }
 
