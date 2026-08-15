@@ -177,6 +177,11 @@ deliberate:
   Android had lost Opus, the format this project's own encoder produces — which is part of why
   nobody noticed it was broken there. They read from the decoder's own constant now.
 
+- **A server error whose body quoted a client error was never retried.** Windows and Android
+  classified retryability by asking whether the message contained "HTTP 4", which searched the
+  provider's own response body as well. A 502 whose body said "upstream returned HTTP 404" was
+  written off as permanent. The status is a field now, set where the response is read.
+
 - **The app never passed the environment to `ProviderFactory`, so several documented variables did
   nothing.** Every caller that already had a key — from the Keychain or a settings field — wrote
   `make(kind, environment: [envVar: key])`, and that dictionary *replaces* the environment rather
@@ -189,6 +194,35 @@ deliberate:
   `DNT_LOCAL_BASE_URL` pointed somewhere else.
 
 ### Changed
+
+- **Failures say what went wrong and what to do about it, on every platform.** Windows and Android
+  had no version of this at all: a history row read `HTTP 429: {"error":{"code":
+  "rate_limit_exceeded","message":…`, and the Android keyboard — which has one line to say anything
+  in — showed either that or a generic "saved, retry when you are back online" regardless of what
+  had happened.
+
+  The provider's own sentence leads, because it is more specific than a status code can be; the
+  advice follows. `Invalid API key provided. Check it in Settings.` `models/gemini-9 is not found.
+  Pick another in Settings.` `This model does not accept audio input. Retrying will not change it.`
+  Anything that is not a sentence — a trace ID, an HTML error page, a wall of JSON — is dropped
+  rather than pasted onto somebody's screen. The wording is identical in all three languages,
+  checked by printing every case through each and diffing.
+
+  Two rules that used to disagree now cannot. Every unhandled 4xx was described as "saved, retry
+  from History" — advice that can never work for a request this app got wrong — and there is a test
+  that the retry loop and the sentence shown for the same failure agree about every status.
+
+- **The interface names the thing it is waiting for.** Every screen said "Writing the result…" while
+  the second request ran, and the macOS overlay said "Transcribing…" through a request that is not a
+  transcription and is usually the slower of the two. Somebody who chose Bullets is waiting for
+  bullets: it now says "Summarising…", "Making bullets…", "Picking out the actions…". The word lives
+  beside the mode rather than in each of the five interfaces, and is in the parity table.
+
+- **The Windows overlay grew up.** It confirms an insertion, as macOS has always done — otherwise
+  the pill vanishes and success is something you infer from text appearing, which you cannot do if
+  the target window scrolled. And a failure is given as much room as its sentence needs instead of
+  being cut at 48 characters, which is shorter than "The API key was rejected. Check it in
+  Settings." — so what people saw was the diagnosis with the instruction missing.
 
 - **Keyterm biasing is no longer offered in settings.** Measured, it made transcripts worse: 3
   regressions per evaluation run, because the terms it extracts are whatever is on screen — on
