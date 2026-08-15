@@ -191,7 +191,18 @@ struct Transcribe: AsyncParsableCommand {
             } catch {
                 Out.endProgress()
                 failures.append((url, error.localizedDescription))
+
+                // The exact error first and uncut, because this is a developer tool and the exact
+                // error is what gets pasted into an issue. The advice second, on its own line,
+                // because a status code does not say whether to retry or to go and fix something.
                 Out.note("✗ \(url.lastPathComponent): \(error.localizedDescription)")
+                let advice = FailureAdvice.describe(error)
+                if advice.message != error.localizedDescription {
+                    Out.note("  → \(advice.message)")
+                }
+                Log("transcribe").error(
+                    "file transcription failed",
+                    ["file": url.lastPathComponent, "detail": FailureAdvice.detail(of: error)])
             }
         }
 

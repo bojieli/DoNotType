@@ -176,10 +176,10 @@ class DeepgramClient(
                 .optJSONObject("results")
                 ?.optJSONArray("channels")
                 ?.optJSONObject(0)
-                ?: throw ProviderException("no transcript in response: ${body.take(200)}")
+                ?: throw ProviderException("no transcript in response: $body")
             val text = channel.optJSONArray("alternatives")?.optJSONObject(0)
                 ?.optString("transcript")
-                ?: throw ProviderException("no transcript in response: ${body.take(200)}")
+                ?: throw ProviderException("no transcript in response: $body")
             return Transcript(text.trim(), channel.optString("detected_language", ""))
         }
 
@@ -190,10 +190,10 @@ class DeepgramClient(
             when {
                 message.isNotEmpty() && code.isNotEmpty() -> "$message ($code)"
                 message.isNotEmpty() -> message
-                else -> body.take(400)
+                else -> body
             }
         } catch (_: Exception) {
-            body.take(400)
+            body
         }
     }
 }
@@ -303,9 +303,9 @@ class MistralClient(
             val root = JSONObject(body)
             val message = root.optString("message")
                 .ifEmpty { root.optJSONObject("error")?.optString("message").orEmpty() }
-            message.ifEmpty { body.take(400) }
+            message.ifEmpty { body }
         } catch (_: Exception) {
-            body.take(400)
+            body
         }
     }
 }
@@ -404,10 +404,10 @@ class XAISpeechClient(
             when {
                 message.isNotEmpty() && code.isNotEmpty() -> "$message ($code)"
                 message.isNotEmpty() -> message
-                else -> body.take(400)
+                else -> body
             }
         } catch (_: Exception) {
-            body.take(400)
+            body
         }
     }
 }

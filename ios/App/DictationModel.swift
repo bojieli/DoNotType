@@ -15,6 +15,9 @@ import UIKit
 @MainActor
 @Observable
 final class DictationModel {
+    /// Everything a dictation does, under one category so a log filter finds all of it.
+    private let log = Log("dictate")
+
     enum State: Equatable {
         case idle
         case recording
@@ -447,14 +450,25 @@ final class DictationModel {
             deliver(text)
             state = .idle
         } catch {
+            let advice = FailureAdvice.describe(error)
+            let detail = FailureAdvice.detail(of: error)
+
+            // The whole thing, in the log, on one record. A phone is the hardest place to read a
+            // failure on and the easiest place to lose one, so it goes somewhere durable first.
+            log.error(
+                "transcription failed",
+                [
+                    "advice": advice.message, "queued": advice.isQueued ? "yes" : "no",
+                    "retryable": advice.isRetryable ? "yes" : "no",
+                    "provider": provider.rawValue, "model": model, "detail": detail,
+                ])
+
             // Audio is kept so this can be retried from History, or automatically next launch.
             record.status = .failed
-            record.errorMessage = error.localizedDescription
+            record.errorMessage = advice.message
+            record.errorDetail = detail
             await history.insert(record, audio: try? Data(contentsOf: url))
-            state = .failed(
-                TranscriptionService.isTransient(error)
-                    ? "\(error.localizedDescription) — saved, retry from History."
-                    : error.localizedDescription)
+            state = .failed(advice.message)
         }
         await refresh()
     }

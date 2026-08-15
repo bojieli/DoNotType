@@ -115,7 +115,7 @@ public sealed class OpenAiCompatibleProvider(
         if (!response.IsSuccessStatusCode)
         {
             var status = (int)response.StatusCode;
-            throw new ProviderException($"HTTP {status}: {text[..Math.Min(400, text.Length)]}")
+            throw new ProviderException($"HTTP {status}: {text}")
             {
                 IsTransient = status is 408 or 429 or >= 500,
                 Status = status,

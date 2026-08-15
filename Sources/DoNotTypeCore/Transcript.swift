@@ -53,8 +53,11 @@ public struct Transcript: Sendable, Codable, Equatable {
                 return Transcript(transcript: salvaged, language: "")
             }
             guard !candidate.hasPrefix("{") else {
+                // Uncut: this is the response that could not be parsed, and the parse failure
+                // is somewhere in it. Cutting the evidence out of the error about the evidence
+                // leaves nothing to look at.
                 throw ProviderError.malformedResponse(
-                    "could not decode Transcript from: \(candidate.prefix(200))")
+                    "could not decode Transcript from: \(candidate)")
             }
             return Transcript(transcript: candidate, language: "")
         }

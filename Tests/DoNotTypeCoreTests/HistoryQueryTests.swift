@@ -251,6 +251,34 @@ final class FailureAdviceTests: XCTestCase {
         XCTAssertTrue(advice.message.contains("too large"), advice.message)
     }
 
+    // MARK: - Nothing is cut
+
+    /// The advice is for reading; this is for pasting into an issue. A body cut to fit loses the
+    /// field name that says which part of the request was wrong, and half a message cannot be
+    /// searched for.
+    func testTheDetailKeepsTheWholeBody() {
+        let body = String(repeating: "abcdefghij", count: 500)  // 5,000 characters
+        let detail = FailureAdvice.detail(of: ProviderError.http(status: 400, body: body))
+
+        XCTAssertTrue(detail.contains(body), "the body was cut")
+        XCTAssertTrue(detail.contains("status=400"))
+    }
+
+    /// The error's own description is what a CLI prints and what `localizedDescription` gives the
+    /// history row, and it used to stop at 400 characters.
+    func testTheErrorDescriptionKeepsTheWholeBody() {
+        let body = String(repeating: "z", count: 5_000)
+        let described = ProviderError.http(status: 500, body: body).errorDescription ?? ""
+        XCTAssertTrue(described.contains(body), "the body was cut")
+    }
+
+    func testTheDetailNamesTheKindOfFailureForSomethingThatIsNotHTTP() {
+        let detail = FailureAdvice.detail(
+            of: NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut))
+        XCTAssertTrue(detail.contains("NSURLErrorDomain"), detail)
+        XCTAssertTrue(detail.contains("code=\(NSURLErrorTimedOut)"), detail)
+    }
+
     /// The retry loop and the sentence shown for the same failure have to agree. Telling somebody
     /// "saved, retry from History" about a failure the retry loop has already written off is worse
     /// than saying nothing, and the two rules live in different files.

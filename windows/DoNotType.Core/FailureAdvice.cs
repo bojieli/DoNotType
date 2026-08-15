@@ -70,6 +70,28 @@ public static class FailureAdvice
             error.Message, IsQueued: true, IsRetryable: true, NeedsUserAction: false);
     }
 
+    /// <summary>The failure exactly as it arrived, for pasting into an issue.</summary>
+    /// <remarks>
+    /// Everything <see cref="Describe"/> deliberately leaves out: the exception type, the status as
+    /// a number, and the whole response body with nothing dropped. The two are separate because
+    /// they answer different questions — "what do I do now" and "what actually happened" — and a
+    /// single string tuned for the first is useless for the second.
+    /// </remarks>
+    public static string Detail(Exception error)
+    {
+        if (error is ProviderException { Status: > 0 } provider)
+        {
+            return $"ProviderException status={provider.Status}\n{provider.Body}";
+        }
+
+        var lines = new List<string> { $"{error.GetType().Name}: {error.Message}" };
+        for (var inner = error.InnerException; inner is not null; inner = inner.InnerException)
+        {
+            lines.Add($"caused by {inner.GetType().Name}: {inner.Message}");
+        }
+        return string.Join("\n", lines);
+    }
+
     private static Guidance DescribeHttp(int status, string body)
     {
         // xAI answers a bad key with 400 and a sentence about it, not with 401. Read by status

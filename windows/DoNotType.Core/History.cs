@@ -24,7 +24,18 @@ public sealed class DictationRecord
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
     public DictationStatus Status { get; set; } = DictationStatus.Pending;
     public string Text { get; set; } = string.Empty;
+    /// <summary>What to tell the user: one sentence, from <see cref="FailureAdvice"/>.</summary>
     public string? ErrorMessage { get; set; }
+
+    /// <summary>The failure exactly as it arrived, uncut.</summary>
+    /// <remarks>
+    /// Separate from <see cref="ErrorMessage"/> because the two have different jobs and one string
+    /// cannot do both. A list needs a sentence somebody can read at a glance; debugging needs the
+    /// status, the whole response body and the exception type, with nothing dropped — a body cut at
+    /// 400 characters loses the `param` field that says which part of the request was wrong, and a
+    /// half-message pasted into an issue cannot be searched for.
+    /// </remarks>
+    public string? ErrorDetail { get; set; }
     public string Model { get; set; } = string.Empty;
     public Fidelity Fidelity { get; set; } = Fidelity.Light;
     public string? AppName { get; set; }

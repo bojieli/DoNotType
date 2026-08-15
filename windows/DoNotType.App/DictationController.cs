@@ -30,6 +30,9 @@ public sealed class DictationController : IDisposable
     public State Current { get; private set; } = State.Idle;
     public string? LastError { get; private set; }
 
+    /// <summary>Everything a dictation does, under one category so `dnt logs --grep` finds it.</summary>
+    private static readonly Log DictationLog = new("dictate");
+
     public event Action<State>? StateChanged;
 
     /// <summary>
@@ -305,8 +308,23 @@ public sealed class DictationController : IDisposable
             // `HTTP 429: {"error":{"code":"rate_limit_exceeded"…` is a log line somebody has to
             // decode weeks later; the advice says what happened and whether it is worth retrying.
             var advice = FailureAdvice.Describe(error);
+            var detail = FailureAdvice.Detail(error);
+
+            // The whole thing, in the log, on one record. Whatever the interface shows, this is
+            // what somebody diagnosing it has to be able to read.
+            DictationLog.Error(() => "transcription failed", new Dictionary<string, string>
+            {
+                ["advice"] = advice.Message,
+                ["queued"] = advice.IsQueued ? "yes" : "no",
+                ["retryable"] = advice.IsRetryable ? "yes" : "no",
+                ["provider"] = _settings.Provider.ToString(),
+                ["model"] = _settings.Model,
+                ["detail"] = detail,
+            });
+
             record.Status = DictationStatus.Failed;
             record.ErrorMessage = advice.Message;
+            record.ErrorDetail = detail;
             _history.Insert(record, wav);
             HistoryChanged?.Invoke();
 

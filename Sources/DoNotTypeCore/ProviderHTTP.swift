@@ -50,13 +50,32 @@ extension URLSession {
             throw ProviderError.malformedResponse("no HTTP response")
         }
 
+        let elapsed = LogClock.ms(Date().timeIntervalSince(started))
         log.debug(
             "response",
             [
                 "provider": provider, "model": model, "status": "\(http.statusCode)",
                 "bytes": "\(data.count)",
-                "ms": LogClock.ms(Date().timeIntervalSince(started)),
+                "ms": elapsed,
             ])
+
+        // A failed response gets its body logged, in full, at a level that is on by default.
+        //
+        // The rule above — no bodies — is about the user's audio, screen contents and transcript.
+        // None of those is in a 4xx or 5xx body: what is in it is the provider saying which field
+        // it rejected and why, which is the single most useful thing for diagnosing a failure and
+        // the thing that is gone by the time anybody thinks to turn on debug logging. Registered
+        // secrets are still redacted on the way out, as everywhere else.
+        if !(200...299).contains(http.statusCode) {
+            log.warning(
+                "error response",
+                [
+                    "provider": provider, "model": model, "status": "\(http.statusCode)",
+                    "url": request.url?.redactedForLog ?? "?",
+                    "ms": elapsed,
+                    "body": String(decoding: data, as: UTF8.self),
+                ])
+        }
         return (data, http)
     }
 }

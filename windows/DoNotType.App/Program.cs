@@ -147,6 +147,21 @@ internal sealed class TrayApplication : ApplicationContext
         };
         menu.Items.Add(new ToolStripMenuItem(status) { Enabled = false });
 
+        // A menu item cannot hold a response body, so the label is cut — but the whole failure has
+        // to be reachable from somewhere, and the tray is where somebody looks after the overlay
+        // has gone. This copies the status, the body and the exception type, uncut.
+        var lastFailure = _controller.History.All()
+            .FirstOrDefault(r => r.Status == DictationStatus.Failed);
+        if (lastFailure is not null)
+        {
+            var copyError = new ToolStripMenuItem("Copy the last error");
+            copyError.Click += (_, _) => Clipboard.SetText(
+                $"{lastFailure.CreatedAt:O} [{lastFailure.Status}] "
+                + $"{lastFailure.Model}: {lastFailure.ErrorMessage}"
+                + (lastFailure.ErrorDetail is { } detail ? $"\n\n{detail}" : string.Empty));
+            menu.Items.Add(copyError);
+        }
+
         var retryable = _controller.History.Retryable().Count;
         if (retryable > 0)
         {

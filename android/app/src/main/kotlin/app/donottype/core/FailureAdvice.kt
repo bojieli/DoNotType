@@ -95,6 +95,28 @@ object FailureAdvice {
         }
     }
 
+    /**
+     * The failure exactly as it arrived, for pasting into an issue.
+     *
+     * Everything [describe] deliberately leaves out: the exception type, the status as a number,
+     * and the whole response body with nothing dropped. The two are separate because they answer
+     * different questions — "what do I do now" and "what actually happened" — and a single string
+     * tuned for the first is useless for the second.
+     */
+    fun detail(error: Throwable): String {
+        if (error is ProviderException && error.status > 0) {
+            return "ProviderException status=${error.status}\n${error.body}"
+        }
+
+        val lines = mutableListOf("${error::class.simpleName}: ${error.message}")
+        var cause = error.cause
+        while (cause != null) {
+            lines += "caused by ${cause::class.simpleName}: ${cause.message}"
+            cause = cause.cause
+        }
+        return lines.joinToString("\n")
+    }
+
     private fun describeHttp(status: Int, body: String): Guidance {
         // xAI answers a bad key with 400 and a sentence about it, not with 401. Read by status
         // alone that lands in the default branch and becomes advice that cannot ever work, for a

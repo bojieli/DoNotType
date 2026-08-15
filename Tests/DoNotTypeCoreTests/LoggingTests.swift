@@ -158,6 +158,35 @@ final class LoggingTests: XCTestCase {
         XCTAssertEqual((parsed["fields"] as? [String: String])?["url"], "https://x/y")
     }
 
+    /// A response body belongs in the log in full — it is the thing somebody is reading the log to
+    /// see — but a raw newline in it would split one entry into several, and every line after the
+    /// first would have no timestamp, level or category to be found by.
+    func testAMultiLineFieldStaysOnOneLineWithoutLosingAnything() {
+        let body = "{\n  \"error\": {\n    \"message\": \"nope\"\n  }\n}"
+        let event = LogEvent(
+            level: .error, category: "http", message: "request failed", fields: ["detail": body])
+
+        let text = event.render()
+        XCTAssertFalse(text.contains("\n"), "one event is one line: \(text)")
+        XCTAssertTrue(text.contains("\\n"), "the newlines are escaped, not dropped")
+        XCTAssertTrue(text.contains("nope"), "nothing inside it is lost")
+
+        // And the JSON renderer, which already had to solve this.
+        let json = event.renderJSON()
+        XCTAssertFalse(json.dropLast().contains("\n"))
+        let parsed = try! JSONSerialization.jsonObject(with: Data(json.utf8)) as! [String: Any]
+        XCTAssertEqual((parsed["fields"] as? [String: String])?["detail"], body)
+    }
+
+    /// Nothing in the logging path shortens a value. A body cut to fit is a body that cannot be
+    /// pasted into an issue.
+    func testALongFieldIsNotShortened() {
+        let body = String(repeating: "x", count: 20_000)
+        let event = LogEvent(level: .error, category: "http", message: "big", fields: ["b": body])
+        XCTAssertTrue(event.render().contains(body))
+        XCTAssertTrue(event.renderJSON().contains(body))
+    }
+
     // MARK: - File sink
 
     func testFileSinkAppendsAndRotates() throws {

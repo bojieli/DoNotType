@@ -199,4 +199,41 @@ class FailureAdviceTest {
             )
         }
     }
+
+    // ---- Nothing is cut -------------------------------------------------------------------------
+
+    /**
+     * The advice is for reading; the detail is for pasting into an issue. A body cut to fit loses
+     * the field name that says which part of the request was wrong, and half a message cannot be
+     * searched for.
+     */
+    @Test
+    fun `the detail keeps the whole body`() {
+        val body = "abcdefghij".repeat(500) // 5,000 characters
+        val detail = FailureAdvice.detail(ProviderException("HTTP 400", status = 400, body = body))
+
+        assertTrue("the body was cut", detail.contains(body))
+        assertTrue(detail.contains("status=400"))
+    }
+
+    @Test
+    fun `the detail names the kind of failure and its cause`() {
+        val detail = FailureAdvice.detail(
+            java.io.IOException("socket closed", IllegalStateException("no route")),
+        )
+        assertTrue(detail, detail.contains("IOException"))
+        assertTrue(detail, detail.contains("caused by IllegalStateException"))
+    }
+
+    /** A log line has to stay one line, and a response body is full of newlines. */
+    @Test
+    fun `a log field keeps everything and stays on one line`() {
+        val body = "{\n  \"error\": {\n    \"message\": \"nope\"\n  }\n}"
+        val line = LogEvent(1, 0, LogLevel.ERROR, "http", "request failed", mapOf("detail" to body))
+            .render()
+
+        assertFalse(line, line.contains("\n"))
+        assertTrue(line, line.contains("\\n"))
+        assertTrue(line, line.contains("nope"))
+    }
 }

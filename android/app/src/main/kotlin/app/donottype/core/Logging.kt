@@ -90,7 +90,7 @@ data class LogEvent(
             append("  ")
             append(
                 fields.keys.sorted().joinToString(" ") { key ->
-                    val value = fields.getValue(key)
+                    val value = flatten(fields.getValue(key))
                     if (value.contains(' ') || value.isEmpty()) "$key=\"$value\"" else "$key=$value"
                 },
             )
@@ -99,6 +99,20 @@ data class LogEvent(
 
     private companion object {
         val TIME = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
+
+        /**
+         * A field value, kept whole and kept on one line.
+         *
+         * Escaped rather than shortened. A response body belongs in the log in full — it is the
+         * thing somebody is reading the log to see — but a raw newline inside it would split one
+         * entry into several, and every line after the first would have no timestamp, level or
+         * category. A grep would then find a fragment and show it without the message it belongs to.
+         */
+        fun flatten(value: String): String = value
+            .replace("\\", "\\\\")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\"", "\\\"")
     }
 }
 

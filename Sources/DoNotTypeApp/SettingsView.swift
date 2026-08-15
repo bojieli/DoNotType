@@ -607,9 +607,13 @@ private struct HistoryRow: View {
             // button of its own.
             if record.status != .completed, let message = record.errorMessage {
                 Button {
+                    // The detail, not the label. What is on screen is one sentence chosen to be
+                    // readable; what somebody pastes into an issue has to be the whole failure,
+                    // including the status and the response body exactly as it arrived.
                     Diagnostics.copyToPasteboard(
                         "\(record.createdAt.ISO8601Format()) [\(record.status.rawValue)] "
-                            + "\(record.provider)/\(record.model): \(message)")
+                            + "\(record.provider)/\(record.model): \(message)"
+                            + (record.errorDetail.map { "\n\n\($0)" } ?? ""))
                 } label: {
                     Image(systemName: "exclamationmark.bubble")
                 }

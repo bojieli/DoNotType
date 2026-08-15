@@ -31,7 +31,17 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
     /// The rewritten version, when a style other than verbatim was used.
     public var styledText: String?
     public var style: RewriteStyle?
+    /// What to tell the user: one sentence, from `FailureAdvice`.
     public var errorMessage: String?
+
+    /// The failure exactly as it arrived, uncut.
+    ///
+    /// Separate from `errorMessage` because the two have different jobs and one string cannot do
+    /// both. A list needs a sentence somebody can read at a glance; debugging needs the status, the
+    /// whole response body and the exception type, with nothing dropped — a body cut at 400
+    /// characters loses the `param` field that says which part of the request was wrong, and a
+    /// half-message pasted into an issue cannot be searched for.
+    public var errorDetail: String?
 
     /// Which backend produced it, so a change of provider is visible in the history.
     public var provider: String
@@ -86,6 +96,7 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         styledText: String? = nil,
         style: RewriteStyle? = nil,
         errorMessage: String? = nil,
+        errorDetail: String? = nil,
         provider: String,
         model: String,
         fidelity: Fidelity,
@@ -110,6 +121,7 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         self.styledText = styledText
         self.style = style
         self.errorMessage = errorMessage
+        self.errorDetail = errorDetail
         self.provider = provider
         self.model = model
         self.fidelity = fidelity

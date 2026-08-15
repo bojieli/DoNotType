@@ -207,4 +207,45 @@ public sealed class FailureAdviceTests
             TranscriptionService.IsTransient(error),
             FailureAdvice.Describe(error).IsRetryable);
     }
+
+    // ---- Nothing is cut -------------------------------------------------------------------------
+
+    /// <summary>
+    /// The advice is for reading; the detail is for pasting into an issue. A body cut to fit loses
+    /// the field name that says which part of the request was wrong, and half a message cannot be
+    /// searched for.
+    /// </summary>
+    [Fact]
+    public void TheDetailKeepsTheWholeBody()
+    {
+        var body = string.Concat(Enumerable.Repeat("abcdefghij", 500)); // 5,000 characters
+        var detail = FailureAdvice.Detail(
+            new ProviderException("HTTP 400") { Status = 400, Body = body });
+
+        Assert.Contains(body, detail);
+        Assert.Contains("status=400", detail);
+    }
+
+    [Fact]
+    public void TheDetailNamesTheKindOfFailureAndItsCause()
+    {
+        var detail = FailureAdvice.Detail(
+            new IOException("disk went away", new InvalidOperationException("no handle")));
+        Assert.Contains("IOException", detail);
+        Assert.Contains("caused by InvalidOperationException", detail);
+    }
+
+    /// <summary>A log line has to stay one line, and a response body is full of newlines.</summary>
+    [Fact]
+    public void ALogFieldKeepsEverythingAndStaysOnOneLine()
+    {
+        var body = "{\n  \"error\": {\n    \"message\": \"nope\"\n  }\n}";
+        var line = new LogEvent(
+            1, DateTimeOffset.UnixEpoch, LogLevel.Error, "http", "request failed",
+            new Dictionary<string, string> { ["detail"] = body }).Render();
+
+        Assert.DoesNotContain("\n", line);
+        Assert.Contains("\\n", line);
+        Assert.Contains("nope", line);
+    }
 }

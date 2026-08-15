@@ -32,6 +32,13 @@ final class DictationController {
     /// Opened at hotkey-down so the upload handshake happens while the user is still speaking.
     private var uploader: AudioUploader?
     private var levelTimer: Timer?
+    /// The in-flight dictation's id, from the key press to the insertion.
+    private var pendingID = UUID()
+
+    /// Eight characters is enough to pick one dictation out of a day's log and short enough to
+    /// sit in every line without pushing the interesting fields off the end.
+    static func short(_ id: UUID) -> String { String(id.uuidString.prefix(8)) }
+
     /// Which key started the in-flight recording decides whether it is rewritten.
     private var pendingStyle: RewriteStyle = .verbatim
 
@@ -112,6 +119,23 @@ final class DictationController {
             state = .recording
             InteractionSounds.playStart()
 
+            // One id from the key press to the insertion, on every line and on the history row.
+            // Without it a log with three dictations in it is three interleaved stories, and the
+            // question being asked is always about one of them.
+            pendingID = UUID()
+            log.info(
+                "recording started",
+                [
+                    "dictation": Self.short(pendingID),
+                    "mode": Settings.shared.hotkeyMode.rawValue,
+                    "style": pendingStyle.rawValue,
+                    "device": Settings.shared.microphoneUID ?? "system default",
+                    "provider": Settings.shared.provider.rawValue,
+                    "model": Settings.shared.model,
+                    "fidelity": Settings.shared.fidelity.rawValue,
+                    "grounding": Settings.shared.groundingEnabled ? "on" : "off",
+                ])
+
             // Phase 2 of the capture: the expensive accessibility walk runs while the user is
             // still speaking, so grounding costs no perceived latency.
             grounding.beginCapture()
@@ -132,13 +156,20 @@ final class DictationController {
             overlay.show(phase: .recording, hint: Settings.shared.hotkeyMode.overlayHint)
             startLevelUpdates()
         } catch {
-            log.error("could not start recording: \(error.localizedDescription)")
+            log.error(
+                "could not start recording",
+                [
+                    "dictation": Self.short(pendingID),
+                    "device": Settings.shared.microphoneUID ?? "system default",
+                    "detail": FailureAdvice.detail(of: error),
+                ])
             fail(error.localizedDescription)
         }
     }
 
     private func cancelRecording() {
         guard state == .recording else { return }
+        log.info("recording cancelled", ["dictation": Self.short(pendingID)])
         recorder.cancel()
         grounding.cancel()
         Task { [uploader] in await uploader?.cancel() }
@@ -174,7 +205,10 @@ final class DictationController {
         do {
             audio = try recorder.stop()
         } catch AudioRecorder.RecorderError.tooShort {
-            // A tap rather than a hold. Silently return to idle; not worth interrupting anyone.
+            // A tap rather than a hold. Silently return to idle; not worth interrupting anyone —
+            // but logged, because "I pressed the key and nothing happened" is a real report and
+            // this is the most common innocent explanation for it.
+            log.info("recording too short to send", ["dictation": Self.short(pendingID)])
             grounding.cancel()
             Task { [uploader] in await uploader?.cancel() }
             uploader = nil
@@ -186,6 +220,15 @@ final class DictationController {
             fail(error.localizedDescription)
             return
         }
+
+        log.info(
+            "recording finished",
+            [
+                "dictation": Self.short(pendingID),
+                "seconds": String(format: "%.2f", audio.durationSeconds ?? 0),
+                "bytes": "\(audio.data.count)",
+                "type": audio.mimeType,
+            ])
 
         state = .transcribing
         overlay.update(phase: .transcribing)
@@ -215,6 +258,7 @@ final class DictationController {
         }
 
         var record = DictationRecord(
+            id: pendingID,
             status: .pending,
             provider: settings.provider.rawValue,
             model: settings.model,
@@ -234,6 +278,20 @@ final class DictationController {
             fail("Offline — saved, and it will send itself when you reconnect.")
             return
         }
+
+        log.info(
+            "transcribing",
+            [
+                "dictation": Self.short(pendingID),
+                "provider": settings.provider.rawValue, "model": settings.model,
+                "fidelity": settings.fidelity.rawValue,
+                "style": style.rawValue,
+                "seconds": String(format: "%.2f", audio.durationSeconds ?? 0),
+                "grounded": context == nil ? "no" : "yes",
+                "contextChars": "\(context?.visibleText?.count ?? 0)",
+                "screenshot": context?.screenshotPNG == nil ? "no" : "yes",
+                "app": record.appName ?? "?",
+            ])
 
         do {
             // Pre-uploaded if the session opened and the upload landed; inline otherwise. The
@@ -264,7 +322,26 @@ final class DictationController {
             let text = result.transcript.transcript
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
+            log.info(
+                "transcript received",
+                [
+                    "dictation": Self.short(pendingID),
+                    "chars": "\(text.count)",
+                    "language": result.transcript.language,
+                    "chunks": "\(result.chunkCount)",
+                    "audioTokens": result.usage.audioTokens.map(String.init) ?? "unreported",
+                    "provider": outcome.attribution.provider,
+                    "model": outcome.attribution.model,
+                    "hedged": outcome.attribution.provider == settings.provider.rawValue
+                        ? "no" : "yes",
+                    "ms": LogClock.ms(Date().timeIntervalSince(requestStart)),
+                ])
+            log.content("transcript", text, level: .trace)
+
             guard !text.isEmpty else {
+                // Not an error, and the one outcome people report as one: the key worked, the
+                // request worked, and nothing was said.
+                log.info("nothing was said", ["dictation": Self.short(pendingID)])
                 overlay.hide()
                 state = .idle  // silence in, nothing out
                 return
@@ -279,10 +356,35 @@ final class DictationController {
             if style.isRewrite, let instruction = rewriteInstruction(for: style) {
                 overlay.update(phase: .deriving(style))
                 let rewriteStart = Date()
-                if let styled = try? await coordinator.service.rewrite(text, instruction: instruction) {
+                log.info(
+                    "second stage",
+                    [
+                        "dictation": Self.short(pendingID), "style": style.rawValue,
+                        "chars": "\(text.count)",
+                    ])
+                do {
+                    let styled = try await coordinator.service.rewrite(
+                        text, instruction: instruction)
                     record.styledText = styled
                     record.style = style
                     delivered = styled
+                    log.info(
+                        "second stage finished",
+                        [
+                            "dictation": Self.short(pendingID),
+                            "chars": "\(styled.count)", "from": "\(text.count)",
+                            "ms": LogClock.ms(Date().timeIntervalSince(rewriteStart)),
+                        ])
+                } catch {
+                    // The words survive either way, so this is a warning rather than a failure —
+                    // but it used to be `try?`, which meant a rewrite that failed every time was
+                    // indistinguishable from one that had never been asked for.
+                    log.warning(
+                        "second stage failed, delivering the verbatim transcript",
+                        [
+                            "dictation": Self.short(pendingID), "style": style.rawValue,
+                            "detail": FailureAdvice.detail(of: error),
+                        ])
                 }
                 record.rewriteSeconds = Date().timeIntervalSince(rewriteStart)
             }
@@ -292,23 +394,41 @@ final class DictationController {
             onHistoryChange?()
 
             state = .idle
-            await TextInjector.insert(delivered)
+            await TextInjector.insert(delivered, dictation: Self.short(pendingID))
             insertions.record(recordID: record.id, delivered: delivered, verbatim: text)
+            log.info(
+                "dictation complete",
+                [
+                    "dictation": Self.short(pendingID), "chars": "\(delivered.count)",
+                    "totalMs": LogClock.ms(Date().timeIntervalSince(releasedAt)),
+                ])
             // Confirm rather than vanish: a silent disappearance leaves the user checking whether
             // anything happened, especially when the target app scrolled.
             overlay.confirmInserted(characters: delivered.count)
         } catch {
-            log.error("transcription failed: \(error.localizedDescription)")
+            let advice = FailureAdvice.describe(
+                error, isOnline: await Reachability.shared.isOnline)
+            let detail = FailureAdvice.detail(of: error)
+
+            // The whole thing, in the log, on one record. Whatever the interface shows, this is
+            // what somebody diagnosing it has to be able to read.
+            log.error(
+                "transcription failed",
+                [
+                    "advice": advice.message, "queued": advice.isQueued ? "yes" : "no",
+                    "retryable": advice.isRetryable ? "yes" : "no",
+                    "provider": settings.provider.rawValue, "model": settings.model,
+                    "detail": detail,
+                ])
 
             // The recording is kept so this can be retried from the history window, or
             // automatically at the next launch. A failed dictation is not lost work.
             record.status = .failed
-            record.errorMessage = error.localizedDescription
+            record.errorMessage = advice.message
+            record.errorDetail = detail
             await store.insert(record, audio: try? Data(contentsOf: audio.url))
             onHistoryChange?()
 
-            let advice = FailureAdvice.describe(
-                error, isOnline: await Reachability.shared.isOnline)
             fail(advice.message)
         }
     }

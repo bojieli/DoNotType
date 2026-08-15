@@ -18,7 +18,18 @@ data class DictationRecord(
     val createdAt: Long = System.currentTimeMillis(),
     var status: Status = Status.PENDING,
     var text: String = "",
+    /** What to tell the user: one sentence, from [FailureAdvice]. */
     var errorMessage: String? = null,
+    /**
+     * The failure exactly as it arrived, uncut.
+     *
+     * Separate from [errorMessage] because the two have different jobs and one string cannot do
+     * both. A list needs a sentence somebody can read at a glance; debugging needs the status, the
+     * whole response body and the exception type, with nothing dropped — a body cut at 400
+     * characters loses the field name that says which part of the request was wrong, and a
+     * half-message pasted into an issue cannot be searched for.
+     */
+    var errorDetail: String? = null,
     /**
      * The backend that actually produced this transcript.
      *
@@ -100,6 +111,7 @@ data class DictationRecord(
         .put("status", status.id)
         .put("text", text)
         .put("errorMessage", errorMessage)
+        .put("errorDetail", errorDetail)
         .put("model", model)
         .put("fidelity", fidelity.id)
         .put("appName", appName)
@@ -120,6 +132,7 @@ data class DictationRecord(
             status = Status.from(json.optString("status")),
             text = json.optString("text"),
             errorMessage = json.optString("errorMessage").takeIf { it.isNotEmpty() },
+            errorDetail = json.optString("errorDetail").takeIf { it.isNotEmpty() },
             model = json.optString("model"),
             fidelity = Fidelity.from(json.optString("fidelity")),
             appName = json.optString("appName").takeIf { it.isNotEmpty() },

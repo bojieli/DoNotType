@@ -183,7 +183,7 @@ public sealed class GeminiProvider(
         if (!response.IsSuccessStatusCode)
         {
             var status = (int)response.StatusCode;
-            throw new ProviderException($"HTTP {status}: {Truncate(text, 400)}")
+            throw new ProviderException($"HTTP {status}: {text}")
             {
                 IsTransient = status is 408 or 429 or >= 500,
                 Status = status,

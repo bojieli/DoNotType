@@ -147,6 +147,35 @@ public enum FailureAdvice {
             needsUserAction: false)
     }
 
+    /// The failure exactly as it arrived, for pasting into an issue.
+    ///
+    /// Everything `describe` deliberately leaves out: the error's own type, the status as a number,
+    /// and the whole response body with nothing dropped. The two are separate because they answer
+    /// different questions — "what do I do now" and "what actually happened" — and a single string
+    /// tuned for the first is useless for the second.
+    public static func detail(of error: any Error) -> String {
+        if let providerError = error as? ProviderError {
+            switch providerError {
+            case .http(let status, let body):
+                return "ProviderError.http status=\(status)\n\(body)"
+            case .missingAPIKey(let envVar):
+                return "ProviderError.missingAPIKey envVar=\(envVar)"
+            default:
+                return "\(String(describing: providerError)) — "
+                    + (providerError.errorDescription ?? "")
+            }
+        }
+
+        let nsError = error as NSError
+        var lines = ["\(type(of: error)) \(nsError.domain) code=\(nsError.code)"]
+        lines.append(nsError.localizedDescription)
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+            lines.append("underlying: \(underlying.domain) code=\(underlying.code) "
+                + underlying.localizedDescription)
+        }
+        return lines.joined(separator: "\n")
+    }
+
     private static func describeHTTP(_ status: Int, _ body: String = "") -> Guidance {
         // xAI answers a bad key with 400 and a sentence about it, not with 401. Read by status
         // alone that lands in the default branch below and becomes "saved, retry from History" —

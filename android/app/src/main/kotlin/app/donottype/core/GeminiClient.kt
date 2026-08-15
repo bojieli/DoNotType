@@ -147,7 +147,7 @@ class GeminiClient(
             ProviderHttp.response(name, model, status, text.length, System.currentTimeMillis() - startedAt)
 
             if (status !in 200..299) {
-                throw ProviderException("HTTP $status: ${text.take(400)}", status = status, body = text)
+                throw ProviderException("HTTP $status: $text", status = status, body = text)
             }
 
             val root = JSONObject(text)

@@ -87,6 +87,17 @@ public sealed record LogEvent(
     IReadOnlyDictionary<string, string> Fields)
 {
     /// <summary>`12:04:31.512 INFO  dictation    transcribed  chars=142 ms=980`</summary>
+    /// <summary>A field value, kept whole and kept on one line.</summary>
+    /// <remarks>
+    /// Escaped rather than shortened. A response body belongs in the log in full — it is the thing
+    /// somebody is reading the log to see — but a raw newline inside it would split one entry into
+    /// several, and every line after the first would have no timestamp, level or category. A grep
+    /// would then find a fragment and show it without the message it belongs to.
+    /// </remarks>
+    private static string Flatten(string value) =>
+        value.Replace("\\", "\\\\").Replace("\n", "\\n").Replace("\r", "\\r")
+            .Replace("\"", "\\\"");
+
     public string Render(bool includeTime = true)
     {
         var builder = new StringBuilder();
@@ -104,7 +115,7 @@ public sealed record LogEvent(
             builder.Append(string.Join(" ", Fields.Keys.OrderBy(k => k, StringComparer.Ordinal)
                 .Select(key =>
                 {
-                    var value = Fields[key];
+                    var value = Flatten(Fields[key]);
                     return value.Contains(' ') || value.Length == 0 ? $"{key}=\"{value}\"" : $"{key}={value}";
                 })));
         }

@@ -117,7 +117,10 @@ public enum ProviderError: Error, LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .http(let status, let body):
-            return "HTTP \(status): \(body.prefix(400))"
+            // Uncut. This is the string somebody pastes into an issue, and the part that was being
+            // dropped is routinely the useful part: providers put the offending field name and the
+            // request id at the end of the body, after the human-readable message.
+            return "HTTP \(status): \(body)"
         case .malformedResponse(let detail):
             return "Malformed response: \(detail)"
         case .emptyOutput:

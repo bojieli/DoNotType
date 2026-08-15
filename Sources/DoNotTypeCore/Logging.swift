@@ -132,8 +132,19 @@ public struct LogEvent: Sendable, Identifiable {
         return "{" + parts.joined(separator: ",") + "}"
     }
 
+    /// A field value, kept whole and kept on one line.
+    ///
+    /// Escaped rather than shortened. A response body belongs in the log in full — it is the thing
+    /// somebody is reading the log to see — but a raw newline inside it would split one entry into
+    /// several, and every line after the first would have no timestamp, no level and no category.
+    /// `dnt logs --grep` would then find a fragment and show it without the message it belongs to.
     private func quoted(_ value: String) -> String {
-        value.contains(" ") || value.isEmpty ? "\"\(value)\"" : value
+        let flattened = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return flattened.contains(" ") || flattened.isEmpty ? "\"\(flattened)\"" : flattened
     }
 
     private func escaped(_ value: String) -> String {

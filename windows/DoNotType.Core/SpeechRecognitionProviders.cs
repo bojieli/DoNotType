@@ -152,10 +152,10 @@ public sealed class DeepgramProvider(
     {
         var channel = JsonNode.Parse(body)?["results"]?["channels"]?[0]
             ?? throw new ProviderException(
-                $"No transcript in response: {SpeechRecognition.Truncate(body, 200)}");
+                $"No transcript in response: {body}");
         var text = channel["alternatives"]?[0]?["transcript"]?.GetValue<string>()
             ?? throw new ProviderException(
-                $"No transcript in response: {SpeechRecognition.Truncate(body, 200)}");
+                $"No transcript in response: {body}");
         return new Transcript(text.Trim(), channel["detected_language"]?.GetValue<string>() ?? "");
     }
 
@@ -171,12 +171,12 @@ public sealed class DeepgramProvider(
             {
                 (not null, not null) => $"{message} ({code})",
                 (not null, null) => message,
-                _ => SpeechRecognition.Truncate(body, 400),
+                _ => body,
             };
         }
         catch (Exception)
         {
-            return SpeechRecognition.Truncate(body, 400);
+            return body;
         }
     }
 }
@@ -262,7 +262,7 @@ public sealed class MistralProvider(
             ?? throw new ProviderException("Response was not a JSON object.");
         var text = root["text"]?.GetValue<string>()
             ?? throw new ProviderException(
-                $"No text in response: {SpeechRecognition.Truncate(body, 200)}");
+                $"No text in response: {body}");
         // `language` is present but observed null on every clip tested, including ones Voxtral
         // transcribed correctly in Mandarin. Absent means "not reported", not "English".
         return new Transcript(text.Trim(), root["language"]?.GetValue<string>() ?? "");
@@ -285,11 +285,11 @@ public sealed class MistralProvider(
             var root = JsonNode.Parse(body)?.AsObject();
             var message = root?["message"]?.GetValue<string>()
                 ?? root?["error"]?["message"]?.GetValue<string>();
-            return message ?? SpeechRecognition.Truncate(body, 400);
+            return message ?? body;
         }
         catch (Exception)
         {
-            return SpeechRecognition.Truncate(body, 400);
+            return body;
         }
     }
 }
@@ -381,12 +381,12 @@ public sealed class XAISpeechProvider(
             {
                 (not null, not null) => $"{message} ({code})",
                 (not null, null) => message,
-                _ => SpeechRecognition.Truncate(body, 400),
+                _ => body,
             };
         }
         catch (Exception)
         {
-            return SpeechRecognition.Truncate(body, 400);
+            return body;
         }
     }
 }

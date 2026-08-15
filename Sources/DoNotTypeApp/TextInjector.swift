@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import DoNotTypeCore
 
@@ -20,8 +21,25 @@ enum TextInjector {
     /// instead of the transcript.
     private static let restoreDelay: Duration = .milliseconds(220)
 
-    static func insert(_ text: String) async {
+    static func insert(_ text: String, dictation: String = "-") async {
         guard !text.isEmpty else { return }
+
+        // Logged because "it transcribed but nothing appeared" is a distinct failure from "it did
+        // not transcribe", and from the outside they look the same. Accessibility being off is the
+        // usual cause and produces no error at all: the keystroke is simply never delivered.
+        let trusted = AXIsProcessTrusted()
+        let target = NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"
+        log.info(
+            "inserting",
+            [
+                "dictation": dictation, "chars": "\(text.count)", "app": target,
+                "accessibility": trusted ? "granted" : "MISSING",
+            ])
+        if !trusted {
+            log.error(
+                "cannot insert: Accessibility permission is not granted",
+                ["dictation": dictation, "app": target])
+        }
 
         let pasteboard = NSPasteboard.general
         let archive = archiveContents(of: pasteboard)
@@ -33,6 +51,7 @@ enum TextInjector {
 
         try? await Task.sleep(for: restoreDelay)
         restore(archive, to: pasteboard)
+        log.debug("clipboard restored", ["dictation": dictation])
     }
 
     // MARK: - Private

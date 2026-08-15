@@ -24,6 +24,9 @@ import java.net.UnknownHostException
  */
 class DictationService(private val context: Context) {
 
+    /** Everything a dictation does, under one category so a log filter finds all of it. */
+    private val log = Log("dictate")
+
     val history: HistoryStore by lazy {
         HistoryStore(File(context.filesDir, "history")).also {
             it.configure(Settings.retention, Settings.keepAudio)
@@ -190,8 +193,25 @@ class DictationService(private val context: Context) {
             // The advice rather than the exception. A history row that reads
             // `HTTP 429: {"error":{"code":"rate_limit_exceeded"…` is a log line somebody has to
             // decode weeks later; the advice says what happened and whether it is worth retrying.
+            val advice = FailureAdvice.describe(error)
+            val detail = FailureAdvice.detail(error)
+
+            // The whole thing, in the log, on one record. Whatever the keyboard shows — and it has
+            // one line — this is what somebody diagnosing it has to be able to read.
+            log.error(
+                mapOf(
+                    "advice" to advice.message,
+                    "queued" to if (advice.isQueued) "yes" else "no",
+                    "retryable" to if (advice.isRetryable) "yes" else "no",
+                    "provider" to Settings.provider.id,
+                    "model" to Settings.model,
+                    "detail" to detail,
+                ),
+            ) { "transcription failed" }
+
             record.status = DictationRecord.Status.FAILED
-            record.errorMessage = FailureAdvice.describe(error).message
+            record.errorMessage = advice.message
+            record.errorDetail = detail
             history.insert(record, wav)
             Result.failure(error)
         }
