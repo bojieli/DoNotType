@@ -84,6 +84,13 @@ text to `name.txt` and the transcript to `name.verbatim.txt` beside it. A summar
 against what was actually said is a summary you have to take on faith, which is the thing this
 project exists to argue against.
 
+With more than one recording, `--output` is a directory and each transcript is named after its
+source. Two sources that want the same name keep their extension to tell them apart — `speech.wav`
+and `speech.mp3` become `speech.txt` and `speech.mp3.txt` — and two with the *same* name in
+different folders are numbered in the order you gave them. The names are worked out before the
+first request, so a collision cannot cost you the file it would have overwritten. This used to
+overwrite silently and report success twice.
+
 Rewriting and summarising need a language model. If your backend is a recogniser (`xai`,
 `deepgram`, `mistral`) the command refuses **before uploading anything** and tells you the two ways
 forward — switch backend, or keep the fast recogniser and add a model for the second stage:
