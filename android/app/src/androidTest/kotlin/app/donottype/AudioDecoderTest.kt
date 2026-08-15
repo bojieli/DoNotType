@@ -1,8 +1,8 @@
 package app.donottype
 
 import android.net.Uri
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.filters.LargeTest
 import app.donottype.audio.AudioDecoder
 import java.io.File
@@ -30,15 +30,25 @@ import org.junit.runner.RunWith
 @LargeTest
 class AudioDecoderTest {
 
-    private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+    /**
+     * Two contexts, deliberately.
+     *
+     * The fixtures are bundled in the *test* APK, so they come from the instrumentation's own
+     * context; the decoder runs against the app's, which is the one it has in production. Reading
+     * assets from the app context finds nothing — its asset manager has never heard of them.
+     */
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val context = instrumentation.targetContext
 
-    /** Copies a bundled fixture somewhere the decoder can be handed a real `content:`-style URI. */
-    private fun fixture(name: String): Uri {
+    /** Copies a bundled fixture somewhere the decoder can be handed a real file URI. */
+    private fun fixture(name: String): Uri = Uri.fromFile(copyOut(name, name))
+
+    private fun copyOut(asset: String, name: String): File {
         val target = File(context.cacheDir, name)
-        context.assets.open(name).use { input ->
+        instrumentation.context.assets.open(asset).use { input ->
             target.outputStream().use { output -> input.copyTo(output) }
         }
-        return Uri.fromFile(target)
+        return target
     }
 
     @Test
@@ -87,10 +97,7 @@ class AudioDecoderTest {
     /** A file whose extension lies, because that is a thing recorders do. */
     @Test
     fun theContainerIsSniffedRatherThanTrustedToTheExtension() {
-        val mislabelled = File(context.cacheDir, "actually-an-mp3.wav")
-        context.assets.open("speech.mp3").use { input ->
-            mislabelled.outputStream().use { output -> input.copyTo(output) }
-        }
+        val mislabelled = copyOut("speech.mp3", "actually-an-mp3.wav")
         assertDecodesToSpeech(
             AudioDecoder.decodeToWav(context, Uri.fromFile(mislabelled)), "actually-an-mp3.wav")
     }

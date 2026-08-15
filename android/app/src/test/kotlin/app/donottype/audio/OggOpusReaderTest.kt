@@ -235,3 +235,74 @@ class ResamplePhaseTest {
         assertTrue("expected about 960 samples, got $samples", samples in 950..970)
     }
 }
+
+/**
+ * How long a packet is, which is the number every packet has to be queued with.
+ *
+ * A timestamp of zero is not a harmless placeholder: Android's Opus decoder reads a timestamp that
+ * does not advance as a seek and discards its seek pre-roll again for every packet. Every Opus file
+ * decoded to two thirds of its length, with no error anywhere.
+ */
+class OpusPacketDurationTest {
+
+    private fun fixture(): ByteArray {
+        var directory = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        repeat(8) {
+            val candidate = File(directory, "eval/audio/formats/speech.opus")
+            if (candidate.exists()) return candidate.readBytes()
+            directory = directory.parentFile ?: return@repeat
+        }
+        throw AssertionError("fixture not found from ${System.getProperty("user.dir")}")
+    }
+
+    /**
+     * The assertion that matters, and the one the old code could not have passed: the packets have
+     * to add up to the length of the recording. The fixture is 1.5 seconds.
+     */
+    @Test
+    fun `the packets add up to the length of the recording`() {
+        val stream = OggOpusReader.demux(fixture())
+        val samples = stream.packets.sumOf { OggOpusReader.packetSamples(it) } - stream.preSkip
+        val seconds = samples / 48_000.0
+        assertTrue("expected about 1.5 s of packets, got ${"%.3f".format(seconds)} s",
+            seconds > 1.4 && seconds < 1.6)
+    }
+
+    /**
+     * RFC 6716 §3.1, spot-checked at each mode boundary. These are the configurations a file from
+     * another encoder arrives in, and the ones an assumption of 20 ms gets wrong.
+     */
+    @Test
+    fun `the frame size comes from the configuration bits`() {
+        // config << 3, with a frame count of 1.
+        assertEquals("SILK NB 10 ms", 480, OggOpusReader.packetSamples(byteArrayOf((0 shl 3).toByte())))
+        assertEquals("SILK NB 20 ms", 960, OggOpusReader.packetSamples(byteArrayOf((1 shl 3).toByte())))
+        assertEquals("SILK NB 40 ms", 1_920, OggOpusReader.packetSamples(byteArrayOf((2 shl 3).toByte())))
+        assertEquals("SILK NB 60 ms", 2_880, OggOpusReader.packetSamples(byteArrayOf((3 shl 3).toByte())))
+        assertEquals("SILK WB 60 ms", 2_880, OggOpusReader.packetSamples(byteArrayOf((11 shl 3).toByte())))
+        assertEquals("hybrid 10 ms", 480, OggOpusReader.packetSamples(byteArrayOf((12 shl 3).toByte())))
+        assertEquals("hybrid 20 ms", 960, OggOpusReader.packetSamples(byteArrayOf((13 shl 3).toByte())))
+        assertEquals("CELT 2.5 ms", 120, OggOpusReader.packetSamples(byteArrayOf((16 shl 3).toByte())))
+        assertEquals("CELT FB 20 ms", 960, OggOpusReader.packetSamples(byteArrayOf((31 shl 3).toByte())))
+    }
+
+    @Test
+    fun `the frame count multiplies it`() {
+        val twentyMs = 1 shl 3
+        assertEquals(960, OggOpusReader.packetSamples(byteArrayOf(twentyMs.toByte())))
+        assertEquals(1_920, OggOpusReader.packetSamples(byteArrayOf((twentyMs or 1).toByte())))
+        assertEquals(1_920, OggOpusReader.packetSamples(byteArrayOf((twentyMs or 2).toByte())))
+        // An arbitrary count, in the low six bits of the second byte.
+        assertEquals(3 * 960, OggOpusReader.packetSamples(byteArrayOf((twentyMs or 3).toByte(), 3)))
+    }
+
+    /** Nothing a corrupt file can say should run the clock forward by minutes. */
+    @Test
+    fun `a malformed packet cannot claim an unbounded duration`() {
+        assertEquals(0, OggOpusReader.packetSamples(ByteArray(0)))
+        val arbitrary = ((1 shl 3) or 3).toByte()
+        assertTrue(OggOpusReader.packetSamples(byteArrayOf(arbitrary)) <= 960 * 48)
+        assertTrue(OggOpusReader.packetSamples(byteArrayOf(arbitrary, 0)) <= 960 * 48)
+        assertTrue(OggOpusReader.packetSamples(byteArrayOf(arbitrary, 63)) <= 2_880 * 48)
+    }
+}

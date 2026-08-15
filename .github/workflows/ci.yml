@@ -254,9 +254,20 @@ jobs:
       # while producing a bundle with no CFBundleIdentifier and no CFBundleExecutable, which no
       # device could install. `test` installs the app in a simulator and drives it, so that class
       # of failure cannot pass again.
+      # Whichever iPhone the image happens to ship. Naming one is how this broke: `iPhone 16`
+      # was correct until the runner image moved on, and the failure — "no available devices
+      # matched the request" — looks like a broken test rather than a renamed simulator.
+      - name: Pick a simulator
+        id: simulator
+        run: |
+          name=$(xcrun simctl list devices available --json \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["name"] for r in sorted(d, reverse=True) for x in d[r] if x["name"].startswith("iPhone")))')
+          echo "Using $name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
       - name: Test app and keyboard extension
         working-directory: ios
         run: |
           xcodebuild test -project DoNotType.xcodeproj -scheme DoNotType \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination "platform=iOS Simulator,name=${{ steps.simulator.outputs.name }}" \
             -configuration Debug CODE_SIGNING_ALLOWED=NO

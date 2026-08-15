@@ -152,6 +152,7 @@ object OggOpusReader {
         val output = ByteArrayOutputStream()
         val info = MediaCodec.BufferInfo()
         var next = 0
+        var presentedSamples = 0L
         var sawInputEnd = false
         var sawOutputEnd = false
         var skipRemaining = stream.preSkip
@@ -172,7 +173,12 @@ object OggOpusReader {
                             val buffer = codec.getInputBuffer(index)!!
                             buffer.clear()
                             buffer.put(packet)
-                            codec.queueInputBuffer(index, 0, packet.size, 0, 0)
+                            // The timestamp is not decoration. See [packetSamples].
+                            codec.queueInputBuffer(
+                                index, 0, packet.size,
+                                presentedSamples * 1_000_000L / DECODE_RATE, 0,
+                            )
+                            presentedSamples += packetSamples(packet)
                         }
                     }
                 }
@@ -235,6 +241,47 @@ object OggOpusReader {
         header.putShort(0)                             // output gain
         header.put(0)                                  // channel mapping family: mono or stereo
         return header.array()
+    }
+
+    /**
+     * How many samples a packet decodes to, from the byte that says so.
+     *
+     * Needed because every packet has to be queued with a presentation timestamp, and a timestamp
+     * of zero is not a harmless placeholder: Android's Opus decoder reads a timestamp that does not
+     * advance as a seek, and discards its seek pre-roll again for every packet. Files decoded to
+     * two thirds of their length — 1.02 seconds of a 1.5 second recording — with no error anywhere,
+     * which is a third of somebody's meeting missing from a transcript that looks complete.
+     *
+     * Read from the packet rather than assumed to be 20 ms. That is what this project's own encoder
+     * emits, so the assumption would have been right for every file it produced and wrong for
+     * anything recorded elsewhere at 40 or 60 ms — the same shape of bug again, but only on files
+     * from other people's tools, where it is hardest to see.
+     *
+     * The table is RFC 6716 §3.1: the top five bits of the first byte select the mode and frame
+     * size, and the bottom two say how many frames the packet carries.
+     */
+    internal fun packetSamples(packet: ByteArray): Int {
+        if (packet.isEmpty()) return 0
+        val toc = packet[0].toInt() and 0xFF
+        val config = toc shr 3
+
+        val frameSamples = when {
+            // SILK, 10/20/40/60 ms, at three bandwidths.
+            config < 12 -> intArrayOf(480, 960, 1920, 2880)[config and 3]
+            // Hybrid, 10 or 20 ms.
+            config < 16 -> intArrayOf(480, 960)[config and 1]
+            // CELT, 2.5/5/10/20 ms.
+            else -> intArrayOf(120, 240, 480, 960)[config and 3]
+        }
+
+        val frames = when (toc and 3) {
+            0 -> 1
+            1, 2 -> 2
+            // An arbitrary count, in the low six bits of the next byte.
+            else -> if (packet.size >= 2) packet[1].toInt() and 0x3F else 1
+        }
+        // A malformed count would otherwise run the clock forward by minutes.
+        return frameSamples * frames.coerceIn(1, 48)
     }
 
     /** csd-1 and csd-2 are 64-bit nanosecond counts, not sample counts. */
