@@ -124,8 +124,8 @@ internal sealed class FileTranscriptionTab
         {
             Title = "Choose a recording",
             Filter =
-                "Audio (*.wav;*.mp3;*.opus;*.ogg;*.wma;*.flac)"
-                + "|*.wav;*.mp3;*.opus;*.ogg;*.wma;*.flac"
+                "Audio (*.wav;*.mp3;*.m4a;*.aac;*.opus;*.ogg;*.wma;*.flac)"
+                + "|*.wav;*.mp3;*.m4a;*.aac;*.opus;*.ogg;*.wma;*.flac"
                 + "|All files (*.*)|*.*",
         };
         if (dialog.ShowDialog() != DialogResult.OK) return;

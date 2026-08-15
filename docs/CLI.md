@@ -108,7 +108,7 @@ How each platform gets there differs, and the differences are worth knowing when
 |---|---|---|---|
 | macOS, iOS | CoreAudio | CoreAudio | CoreAudio |
 | Android | `MediaExtractor` | `MediaExtractor` + `MediaCodec` | own Ogg reader + `MediaCodec` |
-| Windows | managed code | Media Foundation (MP3; **not M4A**) | own Ogg reader + libopus |
+| Windows | managed code | Media Foundation | own Ogg reader + libopus |
 
 Two of those are ours rather than the platform's, for the same reason in both cases — the system
 would not do it everywhere the app runs:
@@ -124,17 +124,11 @@ would not do it everywhere the app runs:
 The container is sniffed from the bytes, not the extension: a `.wav` that is really an MP3 is a
 thing recorders do, and dispatching on the name would send it to the wrong reader.
 
-**M4A does not work on Windows yet.** Media Foundation returns about a quarter of the audio — 0.4
-seconds of a 1.5 second file, measured on CI — so it is left out of the file dialog and the
-supported list rather than silently transcribing a fraction of a recording. Convert it, or use one
-of the other three platforms:
-
-```bash
-ffmpeg -i meeting.m4a -ar 16000 -ac 1 meeting.wav
-```
-
-The test that characterises it is skipped rather than deleted, with what has already been ruled out
-written down in it.
+One decoder quirk is worth knowing, because it produced a bug that looked like nothing: an AAC
+decoder advertises a default output format before it has parsed the stream — 32 kHz stereo for a
+file that is 16 kHz mono — and corrects itself on the first read. Code that believes the first
+answer converts every buffer with the wrong sample rate, which is not an error, just wrong. A 1.5
+second file came out at 0.4 seconds and nothing anywhere said so.
 
 ### Screen context
 

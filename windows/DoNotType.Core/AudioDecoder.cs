@@ -33,21 +33,12 @@ public static class AudioDecoder
 
     public sealed class DecodeException(string message) : Exception(message);
 
-    /// <summary>
-    /// Extensions worth offering in a file dialog.
-    /// </summary>
-    /// <remarks>
-    /// `.m4a` is deliberately absent. Media Foundation decodes it short — 0.4 seconds of a 1.5
-    /// second file, measured on CI — and offering a format that silently returns a quarter of
-    /// somebody's meeting is worse than not offering it. It goes back when the test that
-    /// characterises it does.
-    /// </remarks>
+    /// <summary>Extensions worth offering in a file dialog.</summary>
     public static IReadOnlyList<string> OpenableExtensions { get; } =
-        [".wav", ".wave", ".mp3", ".opus", ".ogg", ".wma", ".flac"];
+        [".wav", ".wave", ".mp3", ".m4a", ".aac", ".mp4", ".opus", ".ogg", ".wma", ".flac"];
 
     /// <summary>What to tell someone whose file did not open, in one place.</summary>
-    public const string SupportedFormats =
-        "WAV, MP3 and Opus (M4A decodes incorrectly on Windows and is not offered)";
+    public const string SupportedFormats = "WAV, MP3, M4A/AAC, Opus, and anything else Windows plays";
 
     /// <summary>Loads a recording as something the pipeline can chunk, time and compress.</summary>
     public static byte[] Load(string path)

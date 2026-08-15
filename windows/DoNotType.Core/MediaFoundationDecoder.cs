@@ -66,16 +66,23 @@ public static class MediaFoundationDecoder
                 "opening the file");
             try
             {
-                var format = Configure(reader, name);
-                var raw = ReadAll(reader, name);
-                if (raw.Length == 0)
+                var segments = ReadAll(reader, name, Configure(reader, name));
+                if (segments.Count == 0)
                 {
                     throw new AudioDecoder.DecodeException($"{name} decoded to no audio at all.");
                 }
 
-                // Media Foundation hands back whatever the decoder natively produces — usually
-                // 44.1 kHz stereo — and the managed path finishes the job.
-                var pcm = AudioDecoder.ToTargetPcm(raw, format, name);
+                // Each run is converted with the format that was actually in force for it, then
+                // joined. Media Foundation hands back whatever the decoder natively produces and
+                // the managed path finishes the job.
+                var format = segments[^1].Format;
+                using var joined = new MemoryStream();
+                foreach (var (segmentFormat, bytes) in segments)
+                {
+                    var converted = AudioDecoder.ToTargetPcm(bytes, segmentFormat, name);
+                    joined.Write(converted, 0, converted.Length);
+                }
+                var pcm = joined.ToArray();
 
                 Log.Info(() => "decoded recording", new Dictionary<string, string>
                 {
@@ -136,7 +143,14 @@ public static class MediaFoundationDecoder
             Marshal.ReleaseComObject(type);
         }
 
-        // What the decoder actually produces, which is usually 44.1 kHz stereo.
+        // Only a first answer. A decoder that has not parsed the stream yet may be describing a
+        // default rather than the file — see ReadAll.
+        return CurrentFormat(reader, name);
+    }
+
+    /// <summary>What the decoder says it is producing, right now.</summary>
+    private static AudioDecoder.WavFormat CurrentFormat(IMFSourceReader reader, string name)
+    {
         Check(
             reader.GetCurrentMediaType(FirstAudioStream, out var actual), name,
             "reading the decoded format");
@@ -162,10 +176,35 @@ public static class MediaFoundationDecoder
     private static int ReadUInt32(IMFMediaType type, Guid key, int fallback) =>
         type.GetUINT32(key, out var value) >= 0 && value > 0 ? value : fallback;
 
-    private static byte[] ReadAll(IMFSourceReader reader, string name)
+    /// <summary>
+    /// Every buffer the decoder produces, grouped by the format that was in force when it did.
+    /// </summary>
+    /// <remarks>
+    /// The grouping is the whole point. An AAC decoder advertises a default output type before it
+    /// has parsed the stream — 32 kHz stereo for a file that is 16 kHz mono — and corrects itself
+    /// on the first read by setting MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED. Code that reads the
+    /// type once and believes it converts every buffer with the wrong sample rate and channel
+    /// count, which is not an error, just wrong: a 1.5 second file came out at 0.4 seconds and
+    /// nothing anywhere said so.
+    ///
+    /// So the flag is honoured, and because a stream may in principle change format more than once,
+    /// what comes back is a list of runs rather than one blob. In practice there is one, or two
+    /// with the first empty.
+    /// </remarks>
+    private static List<(AudioDecoder.WavFormat Format, byte[] Bytes)> ReadAll(
+        IMFSourceReader reader, string name, AudioDecoder.WavFormat initial)
     {
-        using var output = new MemoryStream();
+        var segments = new List<(AudioDecoder.WavFormat, byte[])>();
+        var format = initial;
+        var current = new MemoryStream();
         var reads = 0;
+
+        void CloseSegment()
+        {
+            if (current.Length > 0) segments.Add((format, current.ToArray()));
+            current = new MemoryStream();
+        }
+
         while (true)
         {
             Check(
@@ -174,13 +213,24 @@ public static class MediaFoundationDecoder
                 name, "reading a sample");
             reads++;
 
+            if ((flags & CurrentMediaTypeChanged) != 0)
+            {
+                CloseSegment();
+                format = CurrentFormat(reader, name);
+                Log.Debug(() => "the decoder changed its output format", new Dictionary<string, string>
+                {
+                    ["file"] = name,
+                    ["now"] = $"{format.SampleRate} Hz, {format.Channels} ch, {format.BitsPerSample}-bit",
+                });
+            }
+
             // The final buffer can arrive *with* the end-of-stream flag rather than after it, so
             // the sample is processed before the loop exits. Breaking first drops it.
             var finished = (flags & EndOfStream) != 0;
             if (sample == IntPtr.Zero)
             {
                 if (finished) break;
-                continue; // a gap or a format change; keep going
+                continue; // a gap or a tick; keep going
             }
 
             var managed = (IMFSample)Marshal.GetObjectForIUnknown(sample);
@@ -194,7 +244,7 @@ public static class MediaFoundationDecoder
                     {
                         var bytes = new byte[length];
                         Marshal.Copy(pointer, bytes, 0, length);
-                        output.Write(bytes, 0, length);
+                        current.Write(bytes, 0, length);
                     }
                     finally
                     {
@@ -214,13 +264,17 @@ public static class MediaFoundationDecoder
             if (finished) break;
         }
 
+        CloseSegment();
+        current.Dispose();
+
         Log.Debug(() => "read the stream", new Dictionary<string, string>
         {
             ["file"] = name,
             ["reads"] = reads.ToString(),
-            ["bytes"] = output.Length.ToString(),
+            ["segments"] = segments.Count.ToString(),
+            ["bytes"] = segments.Sum(s => s.Item2.Length).ToString(),
         });
-        return output.ToArray();
+        return segments;
     }
 
     private static void Check(int result, string name, string what)
@@ -249,6 +303,12 @@ public static class MediaFoundationDecoder
     private const uint FirstAudioStream = 0xFFFFFFFD;
     private const uint MediaSourceAllStreams = 0xFFFFFFFE;
     private const int EndOfStream = 0x00000002; // MF_SOURCE_READERF_ENDOFSTREAM
+
+    /// <summary>
+    /// MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED. The decoder has corrected what it said it would
+    /// produce, and anything read before this describes a different format.
+    /// </summary>
+    private const int CurrentMediaTypeChanged = 0x00000001;
 
     private static readonly Guid MajorType = new("48eba18e-f8c9-4687-bf11-0a74c9f96a8f");
     private static readonly Guid SubType = new("f7e34c9a-42e8-4714-b74b-cb29d72c35e5");
