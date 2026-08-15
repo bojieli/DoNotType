@@ -54,7 +54,18 @@ object AudioDecoder {
         // the name, because a file picked from a content provider may have neither an extension nor
         // an honest MIME type.
         val head = readHead(context, uri)
-        if (head != null && OggOpusReader.isOggOpus(head)) {
+
+        // Said plainly. An empty file is what a share that failed halfway looks like, and what
+        // comes back otherwise is MediaExtractor's "setDataSource failed", which reads as a bug in
+        // the app rather than a description of the file.
+        if (head == null || head.isEmpty()) {
+            throw DecodeException(
+                "That file is empty, or could not be opened. If it was just shared or downloaded, " +
+                    "it may not have finished copying.",
+            )
+        }
+
+        if (OggOpusReader.isOggOpus(head)) {
             val whole = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 ?: throw DecodeException("That file could not be opened.")
             val pcm = OggOpusReader.decodeToPcm(whole)

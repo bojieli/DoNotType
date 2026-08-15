@@ -601,3 +601,64 @@ public sealed class OutputNamingTests
         Assert.Equal(2, names.Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 }
+
+/// <summary>
+/// What someone is told when the file is not a recording.
+/// </summary>
+/// <remarks>
+/// docs/MANUAL-CHECKS.md names the standard: the message should say what is wrong, rather than
+/// describing the symptom. A folder and a zero-byte file both reached the decoder and came back as
+/// an unexplained failure from whichever library got to them first.
+/// </remarks>
+public sealed class DecodeFailureMessageTests : IDisposable
+{
+    private readonly string _directory =
+        Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+
+    public DecodeFailureMessageTests() => Directory.CreateDirectory(_directory);
+
+    public void Dispose() => Directory.Delete(_directory, recursive: true);
+
+    private string Message(string path)
+    {
+        try
+        {
+            AudioDecoder.Load(path);
+            return "(it loaded)";
+        }
+        catch (Exception error)
+        {
+            return error.Message;
+        }
+    }
+
+    [Fact]
+    public void AFolderSaysItIsAFolder() => Assert.Contains("folder", Message(_directory));
+
+    [Fact]
+    public void AnEmptyFileSaysItIsEmpty()
+    {
+        var path = Path.Combine(_directory, "cut-short.wav");
+        File.WriteAllBytes(path, []);
+        Assert.Contains("empty", Message(path));
+    }
+
+    [Fact]
+    public void AMissingFileSaysSo() =>
+        Assert.Contains("No such file", Message(Path.Combine(_directory, "nope.wav")));
+
+    /// <summary>
+    /// Not WAV and not Opus, so this is the route to the system decoder — which does not exist off
+    /// Windows, and the message has to say that rather than blaming the file.
+    /// </summary>
+    [Fact]
+    public void SomethingThatIsNotAudioSaysSo()
+    {
+        var path = Path.Combine(_directory, "notes.wav");
+        File.WriteAllText(path, "This is not a recording, it is a paragraph about one.");
+
+        var message = Message(path);
+        Assert.False(message == "(it loaded)", "a text file decoded as audio");
+        Assert.Contains("notes.wav", message);
+    }
+}

@@ -43,7 +43,18 @@ public static class AudioDecoder
     /// <summary>Loads a recording as something the pipeline can chunk, time and compress.</summary>
     public static byte[] Load(string path)
     {
+        // Said plainly, because what comes back otherwise describes the symptom rather than the
+        // cause: a folder dragged onto the window and a file that finished copying as zero bytes
+        // both reached the decoder and came out as an unexplained HRESULT.
+        if (Directory.Exists(path))
+        {
+            throw new DecodeException($"{path} is a folder, not a recording.");
+        }
         if (!File.Exists(path)) throw new DecodeException($"No such file: {path}");
+        if (new FileInfo(path).Length == 0)
+        {
+            throw new DecodeException($"{Path.GetFileName(path)} is empty.");
+        }
 
         var name = Path.GetFileName(path);
         var started = DateTimeOffset.Now;

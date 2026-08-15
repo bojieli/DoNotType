@@ -64,8 +64,21 @@ public enum AudioDecoder {
     /// - Parameter url: any file CoreAudio can open.
     public static func load(_ url: URL) throws -> AudioFile {
         let name = url.lastPathComponent
-        guard FileManager.default.fileExists(atPath: url.path) else {
+
+        // Said plainly, because what CoreAudio says instead is "The operation couldn't be
+        // completed. (com.apple.coreaudio.avfaudio error 2003334207.)" — a sentence that has told
+        // nobody anything. A folder dragged onto the window, a shell glob that matched a directory,
+        // and a file that finished copying as zero bytes all landed there.
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
             throw DecodeError.unreadable(name: name, detail: "no such file")
+        }
+        guard !isDirectory.boolValue else {
+            throw DecodeError.unreadable(name: name, detail: "that is a folder, not a recording")
+        }
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? nil
+        if size == 0 {
+            throw DecodeError.unreadable(name: name, detail: "the file is empty")
         }
 
         if let existing = try? Data(contentsOf: url), isAlreadyTarget(existing) {
@@ -103,6 +116,28 @@ public enum AudioDecoder {
         return channels == 1 && rate == Int(sampleRate) && bits == 16
     }
 
+    /// What CoreAudio meant, for the two answers it actually gives.
+    ///
+    /// Its own wording is "The operation couldn't be completed. (com.apple.coreaudio.avfaudio error
+    /// 1954115647.)", which is a four-character code printed as a decimal — `typ?` in this case.
+    /// Nobody has ever read that and learned anything. `docs/MANUAL-CHECKS.md` calls out this exact
+    /// sentence as the thing a failure must not say.
+    private static func plainly(_ error: Error) -> String {
+        switch (error as NSError).code {
+        // 'typ?' — the file is not a container CoreAudio recognises at all.
+        case 1_954_115_647:
+            return "that is not a recording — no audio format this can read is in it"
+        // 'fmt?' — a container it knows, holding audio it cannot decode.
+        case 1_718_449_215:
+            return "the audio inside is in a format this cannot decode"
+        // 'wht?' — unspecified, which usually means truncated.
+        case 2_003_334_207:
+            return "the file could not be read; it may be incomplete"
+        default:
+            return error.localizedDescription
+        }
+    }
+
     /// Streams the file through a converter rather than reading it whole.
     ///
     /// An hour of 44.1 kHz stereo is 1.3 GB as float PCM. Decoding in blocks keeps peak memory at
@@ -114,7 +149,7 @@ public enum AudioDecoder {
         do {
             file = try AVAudioFile(forReading: url)
         } catch {
-            throw DecodeError.unreadable(name: name, detail: error.localizedDescription)
+            throw DecodeError.unreadable(name: name, detail: Self.plainly(error))
         }
 
         let inputFormat = file.processingFormat

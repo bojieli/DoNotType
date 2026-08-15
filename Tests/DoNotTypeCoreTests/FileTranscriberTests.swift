@@ -218,6 +218,60 @@ final class FileTranscriberTests: XCTestCase {
 }
 
 /// The decoder that lets any recording reach the pipeline.
+/// What someone is told when the file is not a recording.
+///
+/// `docs/MANUAL-CHECKS.md` names the standard: the message should say what is wrong, not "The
+/// operation couldn't be completed". CoreAudio's own answer is a four-character code printed as a
+/// decimal, and every one of these used to produce it.
+final class DecodeFailureMessageTests: XCTestCase {
+    private var directory = URL(fileURLWithPath: "/tmp")
+
+    override func setUpWithError() throws {
+        directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    private func message(for url: URL) -> String {
+        do {
+            _ = try AudioDecoder.load(url)
+            return "(it loaded)"
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    func testAFolderSaysItIsAFolder() {
+        XCTAssertTrue(message(for: directory).contains("folder"), message(for: directory))
+    }
+
+    func testAnEmptyFileSaysItIsEmpty() throws {
+        let url = directory.appendingPathComponent("cut-short.wav")
+        try Data().write(to: url)
+        XCTAssertTrue(message(for: url).contains("empty"), message(for: url))
+    }
+
+    func testSomethingThatIsNotAudioSaysSo() throws {
+        let url = directory.appendingPathComponent("notes.wav")
+        try Data("This is not a recording, it is a paragraph about one.".utf8).write(to: url)
+
+        let result = message(for: url)
+        XCTAssertTrue(result.contains("not a recording"), result)
+        XCTAssertFalse(
+            result.contains("couldn\u{2019}t be completed"),
+            "the standard in docs/MANUAL-CHECKS.md is that this sentence never reaches a user")
+    }
+
+    func testAMissingFileSaysSo() {
+        let result = message(for: directory.appendingPathComponent("nope.wav"))
+        XCTAssertTrue(result.contains("no such file"), result)
+    }
+}
+
 /// Where a batch of transcripts lands.
 final class OutputNamingTests: XCTestCase {
     private func names(_ paths: [String]) -> [String] {
