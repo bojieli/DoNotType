@@ -176,11 +176,9 @@ public sealed class TranscriptionService(
 
         if (chunks.Count <= 1)
         {
-            var single = await TranscribeWithRetryAsync(
+            return await TranscribeWithRetryAsync(
                     wav, context, audioPart, attempts, cancellationToken)
                 .ConfigureAwait(false);
-            onProgress?.Invoke(1, 1);
-            return single;
         }
 
         // Bounded concurrency: a ten-minute dictation is ten simultaneous requests otherwise, which

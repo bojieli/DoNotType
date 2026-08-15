@@ -74,10 +74,11 @@ public sealed class RecordingOverlay : Form
         Invalidate();
     }
 
-    public void SetPhase(Phase phase, string hint)
+    /// <param name="hint">Extra detail under the phase, or null when there is none worth showing.</param>
+    public void SetPhase(Phase phase, string? hint)
     {
         _phase = phase;
-        _hint = hint;
+        _hint = hint ?? string.Empty;
         Invalidate();
     }
 

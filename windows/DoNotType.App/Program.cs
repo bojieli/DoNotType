@@ -38,8 +38,12 @@ internal sealed class TrayApplication : ApplicationContext
 
         _controller = new DictationController(_settings);
         _controller.StateChanged += OnStateChanged;
+        // Only when there is more than one part. A single-chunk dictation is the ordinary case, and
+        // "part 1 of 1" underneath a label that already says Transcribing is noise.
         _controller.ChunkProgress += (done, total) => _overlay.BeginInvoke(() =>
-            _overlay.SetPhase(RecordingOverlay.Phase.Transcribing, $"part {Math.Min(done + 1, total)} of {total}"));
+            _overlay.SetPhase(
+                RecordingOverlay.Phase.Transcribing,
+                total > 1 ? $"part {Math.Min(done + 1, total)} of {total}" : null));
         _controller.HistoryChanged += () => BeginInvokeOnTray(RebuildMenu);
 
         _tray = new NotifyIcon
