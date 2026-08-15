@@ -254,6 +254,17 @@ public sealed class SettingsForm : Form
             await _controller.RetryAsync(record).ConfigureAwait(true);
             RefreshHistory();
         };
+        // The point of the whole grounding argument: if the app reads your screen, you can read
+        // what it read. One click from the row it belongs to, rather than a separate screen you
+        // have to know exists.
+        var inspectOne = new ToolStripMenuItem("Show what was sent…");
+        inspectOne.Click += (_, _) =>
+        {
+            if (SelectedRecord() is not { } record) return;
+            using var inspector = new ContextInspectorForm(record);
+            inspector.ShowDialog(this);
+        };
+
         var copyOne = new ToolStripMenuItem("Copy transcript");
         copyOne.Click += (_, _) =>
         {
@@ -266,7 +277,8 @@ public sealed class SettingsForm : Form
             copyOne.Enabled = record?.Text.Length > 0;
             deleteOne.Enabled = record is not null;
         };
-        rowMenu.Items.AddRange([retryOne, copyOne, new ToolStripSeparator(), deleteOne]);
+        rowMenu.Items.AddRange(
+            [inspectOne, retryOne, copyOne, new ToolStripSeparator(), deleteOne]);
         _history.ContextMenuStrip = rowMenu;
 
         _history.KeyDown += (_, e) =>

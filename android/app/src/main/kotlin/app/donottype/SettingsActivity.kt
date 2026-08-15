@@ -716,6 +716,10 @@ class SettingsActivity : AppCompatActivity() {
             }
         )
 
+        // The point of the whole grounding argument: if the app reads your screen, you can read
+        // what it read. On the row it belongs to, rather than on a screen you have to know exists.
+        row.setOnClickListener { ContextInspector.show(this, record) }
+
         if (record.canRetry) {
             row.addView(
                 Button(this).apply {
