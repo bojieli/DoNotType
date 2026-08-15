@@ -146,4 +146,25 @@ class TranscriptModeTest {
             )
         }
     }
+
+    /**
+     * The word shown while the second request is in flight, which is the one thing on screen
+     * during the slowest part of a two-request mode. Four interfaces read it, so it is in the
+     * table with everything else that must not drift.
+     */
+    @Test
+    fun `the progress label is identical on every platform`() {
+        val table = listOf(
+            "verbatim" to "Finishing…",
+            "rewrite:formal" to "Rewriting…",
+            "rewrite:concise" to "Tightening…",
+            "rewrite:bullets" to "Making bullets…",
+            "summary:brief" to "Summarising…",
+            "summary:bullets" to "Summarising into bullets…",
+            "summary:actions" to "Picking out the actions…",
+        )
+        table.forEach { (typed, expected) ->
+            assertEquals(typed, expected, TranscriptMode.from(typed)?.progressLabel)
+        }
+    }
 }

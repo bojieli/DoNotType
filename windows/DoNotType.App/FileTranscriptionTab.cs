@@ -281,7 +281,7 @@ internal sealed class FileTranscriptionTab
         FileTranscriber.Progress.Decoding => "Reading the file…",
         FileTranscriber.Progress.Transcribing chunk =>
             chunk.Of > 1 ? $"Transcribing part {chunk.Done} of {chunk.Of}…" : "Transcribing…",
-        FileTranscriber.Progress.Deriving => "Writing the result…",
+        FileTranscriber.Progress.Deriving deriving => deriving.Mode.ProgressLabel,
         _ => string.Empty,
     };
 

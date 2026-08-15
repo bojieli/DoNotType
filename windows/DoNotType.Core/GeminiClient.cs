@@ -85,6 +85,18 @@ public sealed class ProviderException(string message) : Exception(message)
     /// just burns the user's time; a 503 or a dropped connection is what retry exists for.
     /// </summary>
     public bool IsTransient { get; init; } = true;
+
+    /// <summary>The HTTP status, when this came from a response. Zero when it did not.</summary>
+    /// <remarks>
+    /// Carried as a number rather than left inside the message. The status used to exist only as
+    /// text — `HTTP 401: {body}` — and callers that needed it asked whether the message
+    /// <em>contained</em> "HTTP 401", which is a substring search over a body the provider wrote.
+    /// A provider quoting a status in its own error text was enough to misclassify the failure.
+    /// </remarks>
+    public int Status { get; init; }
+
+    /// <summary>The response body, for the sentence the provider put in it.</summary>
+    public string Body { get; init; } = string.Empty;
 }
 
 /// <summary>
@@ -174,6 +186,8 @@ public sealed class GeminiProvider(
             throw new ProviderException($"HTTP {status}: {Truncate(text, 400)}")
             {
                 IsTransient = status is 408 or 429 or >= 500,
+                Status = status,
+                Body = text,
             };
         }
 

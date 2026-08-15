@@ -88,6 +88,35 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
         }
     }
 
+    /// What to show while the second request is in flight.
+    ///
+    /// The mode's own word rather than "Working…". Somebody who chose Bullets is waiting for
+    /// bullets, and a label that says so is the difference between a wait that makes sense and one
+    /// that looks like the app has stalled after already getting the words — which is what it looks
+    /// like, because the transcript exists by then and nothing on screen is moving.
+    ///
+    /// Here rather than in each interface because there are five of them, and a summary that is
+    /// called one thing on a phone and another on a laptop is the kind of drift nobody notices
+    /// until they are looking at both.
+    public var progressLabel: String {
+        switch self {
+        case .verbatim: "Finishing…"
+        case .rewrite(let style):
+            switch style {
+            case .verbatim: "Finishing…"
+            case .formal: "Rewriting…"
+            case .concise: "Tightening…"
+            case .bullets: "Making bullets…"
+            }
+        case .summary(let style):
+            switch style {
+            case .brief: "Summarising…"
+            case .bullets: "Summarising into bullets…"
+            case .actions: "Picking out the actions…"
+            }
+        }
+    }
+
     /// The `RewriteStyle` this mode applied, for the history row that already has that column.
     /// Nil for verbatim and for summaries, which are not a rewrite style and must not be recorded
     /// as one.

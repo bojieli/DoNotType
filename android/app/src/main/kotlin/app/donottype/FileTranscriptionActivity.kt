@@ -188,7 +188,7 @@ class FileTranscriptionActivity : AppCompatActivity() {
                                 } else {
                                     "Transcribing…"
                                 }
-                            is FileTranscriber.Progress.Deriving -> "Writing the result…"
+                            is FileTranscriber.Progress.Deriving -> progress.mode.progressLabel
                         }
                     }
                 },

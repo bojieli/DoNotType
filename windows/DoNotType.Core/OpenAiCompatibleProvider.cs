@@ -118,6 +118,8 @@ public sealed class OpenAiCompatibleProvider(
             throw new ProviderException($"HTTP {status}: {text[..Math.Min(400, text.Length)]}")
             {
                 IsTransient = status is 408 or 429 or >= 500,
+                Status = status,
+                Body = text,
             };
         }
 

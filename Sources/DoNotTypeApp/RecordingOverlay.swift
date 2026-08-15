@@ -128,17 +128,6 @@ private struct OverlayView: View {
     @Bindable var state: OverlayState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// The style's own word, not "Processing…". Somebody who chose Bullets is waiting for bullets,
-    /// and a label that says so is the difference between a wait that makes sense and one that
-    /// looks like the app has stalled after already getting the words.
-    static func derivingLabel(for style: RewriteStyle) -> String {
-        switch style {
-        case .verbatim: "Finishing…"
-        case .formal: "Rewriting…"
-        case .concise: "Tightening…"
-        case .bullets: "Making bullets…"
-        }
-    }
 
     var body: some View {
         content
@@ -177,7 +166,7 @@ private struct OverlayView: View {
                     .monospacedDigit()
             case .deriving(let style):
                 ThinkingDots()
-                Text(Self.derivingLabel(for: style))
+                Text(TranscriptMode.rewrite(style).progressLabel)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
             case .inserted(let characters):

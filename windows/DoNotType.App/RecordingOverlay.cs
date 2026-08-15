@@ -17,6 +17,11 @@ public sealed class RecordingOverlay : Form
     {
         Recording,
         Transcribing,
+        /// <summary>
+        /// Brief confirmation that words were inserted, so success is visible rather than a silent
+        /// disappearance the user has to infer from the text appearing.
+        /// </summary>
+        Inserted,
         Failed,
     }
 
@@ -27,6 +32,20 @@ public sealed class RecordingOverlay : Form
     private static readonly string[] BarWeights = ["0.45", "0.75", "1.0", "0.7", "0.5"];
 
     private readonly System.Windows.Forms.Timer _animation = new() { Interval = 33 };
+    /// <summary>Room for a waveform and a few words. Everything but a failure fits.</summary>
+    private const int CompactWidth = 240;
+    private const int CompactHeight = 52;
+
+    /// <summary>
+    /// Wider, and as tall as the text needs, for a failure.
+    /// </summary>
+    /// <remarks>
+    /// The message used to be cut to 48 characters by the caller, which is shorter than every
+    /// sentence worth reading — "The API key was rejected. Check it in Settings." does not fit, and
+    /// what somebody saw was the first half of the diagnosis with the instruction missing.
+    /// </remarks>
+    private const int FailureWidth = 420;
+
     private double _level;
     private double _phaseOffset;
     private Phase _phase = Phase.Recording;
@@ -38,7 +57,7 @@ public sealed class RecordingOverlay : Form
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
-        Size = new Size(240, 52);
+        Size = new Size(CompactWidth, CompactHeight);
         BackColor = Color.Black;
         // Rounded pill: the region is cheaper and crisper than an alpha-blended layered window.
         DoubleBuffered = true;
@@ -68,6 +87,7 @@ public sealed class RecordingOverlay : Form
     {
         _phase = phase;
         _hint = hint;
+        ResizeForPhase();
         PositionAtBottomOfActiveScreen();
         if (!Visible) base.Show();
         _animation.Start();
@@ -79,7 +99,27 @@ public sealed class RecordingOverlay : Form
     {
         _phase = phase;
         _hint = hint ?? string.Empty;
+        ResizeForPhase();
+        PositionAtBottomOfActiveScreen();
         Invalidate();
+    }
+
+    /// <summary>
+    /// A failure gets as much room as its sentence needs; everything else stays a pill.
+    /// </summary>
+    private void ResizeForPhase()
+    {
+        if (_phase != Phase.Failed)
+        {
+            Size = new Size(CompactWidth, CompactHeight);
+            return;
+        }
+
+        using var graphics = CreateGraphics();
+        using var font = MessageFont();
+        var measured = graphics.MeasureString(
+            _hint, font, FailureWidth - TextLeft - 24);
+        Size = new Size(FailureWidth, Math.Max(CompactHeight, (int)measured.Height + 28));
     }
 
     public new void Hide()
@@ -111,14 +151,15 @@ public sealed class RecordingOverlay : Form
         Region = new Region(path);
 
         using var textBrush = new SolidBrush(Color.FromArgb(200, 235, 235, 235));
-        using var font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 9f, FontStyle.Regular);
+        using var font = MessageFont();
 
         switch (_phase)
         {
             case Phase.Recording:
                 DrawWaveform(g, new Rectangle(20, Height / 2 - 11, 76, 22));
-                g.DrawString(_hint, font, textBrush, 108, Height / 2 - 8);
+                g.DrawString(_hint, font, textBrush, TextLeft, Height / 2 - 8);
                 break;
+
             case Phase.Transcribing:
                 // Dots rather than a static label alone. After the user stops talking the wait is
                 // dead time, and the failure to prevent is them deciding nothing happened and
@@ -127,15 +168,47 @@ public sealed class RecordingOverlay : Form
                 // pretending to be a signal.
                 DrawThinkingDots(g, new Rectangle(20, Height / 2 - 4, 76, 8));
                 var label = _hint.Length == 0 ? "Transcribing…" : $"Transcribing… {_hint}";
-                g.DrawString(label, font, textBrush, 108, Height / 2 - 8);
+                g.DrawString(label, font, textBrush, TextLeft, Height / 2 - 8);
                 break;
+
+            case Phase.Inserted:
+                DrawTick(g, new Rectangle(24, Height / 2 - 7, 14, 14));
+                g.DrawString(_hint, font, textBrush, 48, Height / 2 - 8);
+                break;
+
             default:
                 using (var warn = new SolidBrush(Color.FromArgb(230, 240, 160, 90)))
+                using (var format = new StringFormat { Trimming = StringTrimming.EllipsisWord })
                 {
-                    g.DrawString(_hint, font, warn, 24, Height / 2 - 8);
+                    // Wrapped rather than cut. The advice is a sentence about what to do, and half
+                    // a sentence about what to do is worse than none.
+                    g.DrawString(
+                        _hint, font, warn,
+                        new RectangleF(24, 14, Width - 48, Height - 24), format);
                 }
                 break;
         }
+    }
+
+    private static Font MessageFont() =>
+        new(SystemFonts.MessageBoxFont!.FontFamily, 9f, FontStyle.Regular);
+
+    /// <summary>Where the label starts, clear of the waveform or the dots.</summary>
+    private const int TextLeft = 108;
+
+    /// <summary>A tick, drawn rather than shipped as an icon so it inherits the pill's colours.</summary>
+    private static void DrawTick(Graphics g, Rectangle bounds)
+    {
+        using var pen = new Pen(Color.FromArgb(230, 120, 210, 130), 2.2f)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+        };
+        g.DrawLines(pen, [
+            new PointF(bounds.Left, bounds.Top + bounds.Height * 0.55f),
+            new PointF(bounds.Left + bounds.Width * 0.38f, bounds.Bottom - 1),
+            new PointF(bounds.Right, bounds.Top + 1),
+        ]);
     }
 
     /// <summary>

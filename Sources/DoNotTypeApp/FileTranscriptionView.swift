@@ -148,7 +148,7 @@ struct FileTranscriptionView: View {
         case .decoding: "Reading the file…"
         case .transcribing(let done, let total):
             total > 1 ? "Transcribing part \(done) of \(total)…" : "Transcribing…"
-        case .deriving: "Writing the result…"
+        case .deriving(let label): label
         default: ""
         }
     }

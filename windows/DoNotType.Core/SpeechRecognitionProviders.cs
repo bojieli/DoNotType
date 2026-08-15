@@ -120,6 +120,8 @@ public sealed class DeepgramProvider(
             throw new ProviderException($"HTTP {(int)response.StatusCode}: {ErrorMessage(body)}")
             {
                 IsTransient = (int)response.StatusCode is 408 or 429 or >= 500,
+                Status = (int)response.StatusCode,
+                Body = body,
             };
         }
 

@@ -288,14 +288,17 @@ public sealed class DictationController : IDisposable
         {
             // The recording is kept so this can be retried from the history window, or
             // automatically at the next launch. A failed dictation is not lost work.
+            //
+            // What is stored is the advice rather than the exception. A history row that reads
+            // `HTTP 429: {"error":{"code":"rate_limit_exceeded"…` is a log line somebody has to
+            // decode weeks later; the advice says what happened and whether it is worth retrying.
+            var advice = FailureAdvice.Describe(error);
             record.Status = DictationStatus.Failed;
-            record.ErrorMessage = error.Message;
+            record.ErrorMessage = advice.Message;
             _history.Insert(record, wav);
             HistoryChanged?.Invoke();
 
-            Fail(TranscriptionService.IsTransient(error)
-                ? $"{error.Message} — saved, retry from History."
-                : error.Message);
+            Fail(advice.Message);
         }
     }
 

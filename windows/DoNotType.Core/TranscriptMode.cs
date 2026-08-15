@@ -110,6 +110,34 @@ public abstract record TranscriptMode
         _ => "Verbatim — word for word",
     };
 
+    /// <summary>What to show while the second request is in flight.</summary>
+    /// <remarks>
+    /// The mode's own word rather than "Writing the result…". Somebody who chose Bullets is waiting
+    /// for bullets, and a label that says so is the difference between a wait that makes sense and
+    /// one that looks like the app has stalled after already getting the words — which is what it
+    /// looks like, because the transcript exists by then and nothing on screen is moving.
+    ///
+    /// Here rather than in each interface because there are five of them, and a summary called one
+    /// thing on a phone and another on a laptop is drift nobody notices until they see both.
+    /// </remarks>
+    public string ProgressLabel => this switch
+    {
+        RewriteMode rewrite => rewrite.Style switch
+        {
+            RewriteStyle.Formal => "Rewriting…",
+            RewriteStyle.Concise => "Tightening…",
+            RewriteStyle.Bullets => "Making bullets…",
+            _ => "Finishing…",
+        },
+        SummaryMode summary => summary.Style switch
+        {
+            SummaryStyle.Bullets => "Summarising into bullets…",
+            SummaryStyle.Actions => "Picking out the actions…",
+            _ => "Summarising…",
+        },
+        _ => "Finishing…",
+    };
+
     /// <summary>
     /// Whether a second, text-only request is needed. False only for verbatim.
     /// </summary>

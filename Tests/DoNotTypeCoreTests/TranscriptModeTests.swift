@@ -204,4 +204,22 @@ final class TranscriptModeTests: XCTestCase {
                 "`\(typed)` must parse the same here as on Windows, Android and iOS")
         }
     }
+
+    /// The word shown while the second request is in flight, which is the one thing on screen
+    /// during the slowest part of a two-request mode. Four interfaces read it, so it is in the
+    /// table with everything else that must not drift.
+    func testTheProgressLabelIsIdenticalOnEveryPlatform() {
+        let table: [(String, String)] = [
+            ("verbatim", "Finishing…"),
+            ("rewrite:formal", "Rewriting…"),
+            ("rewrite:concise", "Tightening…"),
+            ("rewrite:bullets", "Making bullets…"),
+            ("summary:brief", "Summarising…"),
+            ("summary:bullets", "Summarising into bullets…"),
+            ("summary:actions", "Picking out the actions…"),
+        ]
+        for (typed, expected) in table {
+            XCTAssertEqual(TranscriptMode(rawValue: typed)?.progressLabel, expected, typed)
+        }
+    }
 }

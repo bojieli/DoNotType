@@ -18,7 +18,7 @@ final class FileTranscriptionModel {
         case idle
         case decoding
         case transcribing(done: Int, of: Int)
-        case deriving
+        case deriving(String)
         case finished
         case failed(String)
 
@@ -140,7 +140,8 @@ final class FileTranscriptionModel {
         switch progress {
         case .decoding: phase = .decoding
         case .transcribing(let done, let total): phase = .transcribing(done: done, of: total)
-        case .deriving: phase = .deriving
+        // The mode's own word — "Summarising…", "Making bullets…".
+        case .deriving(let mode): phase = .deriving(mode.progressLabel)
         }
     }
 
@@ -273,7 +274,7 @@ struct FileTranscriptionView: View {
         case .decoding: "Reading the file…"
         case .transcribing(let done, let total):
             total > 1 ? "Transcribing part \(done) of \(total)…" : "Transcribing…"
-        case .deriving: "Writing the result…"
+        case .deriving(let label): label
         default: ""
         }
     }

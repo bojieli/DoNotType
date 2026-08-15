@@ -79,6 +79,33 @@ sealed class TranscriptMode {
         }
 
     /**
+     * What to show while the second request is in flight.
+     *
+     * The mode's own word rather than "Writing the result…". Somebody who chose Bullets is waiting
+     * for bullets, and a label that says so is the difference between a wait that makes sense and
+     * one that looks like the app has stalled after already getting the words — which is what it
+     * looks like, because the transcript exists by then and nothing on screen is moving.
+     *
+     * Here rather than in each interface because there are five of them, and a summary called one
+     * thing on a phone and another on a laptop is drift nobody notices until they see both.
+     */
+    val progressLabel: String
+        get() = when (this) {
+            is Verbatim -> "Finishing…"
+            is Rewrite -> when (style) {
+                RewriteStyle.FORMAL -> "Rewriting…"
+                RewriteStyle.CONCISE -> "Tightening…"
+                RewriteStyle.BULLETS -> "Making bullets…"
+                RewriteStyle.VERBATIM -> "Finishing…"
+            }
+            is Summary -> when (style) {
+                SummaryStyle.BRIEF -> "Summarising…"
+                SummaryStyle.BULLETS -> "Summarising into bullets…"
+                SummaryStyle.ACTIONS -> "Picking out the actions…"
+            }
+        }
+
+    /**
      * Whether a second, text-only request is needed. False only for verbatim.
      *
      * This is also the question "can a speech recognition backend do this?" — a recogniser has no

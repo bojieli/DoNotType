@@ -549,6 +549,24 @@ public sealed class TranscriptModeParityTests
     {
         Assert.Equal(expected, TranscriptMode.Parse(typed)?.Id);
     }
+
+    /// <summary>
+    /// The word shown while the second request is in flight, which is the one thing on screen
+    /// during the slowest part of a two-request mode. Four interfaces read it, so it is in the
+    /// table with everything else that must not drift.
+    /// </summary>
+    [Theory]
+    [InlineData("verbatim", "Finishing…")]
+    [InlineData("rewrite:formal", "Rewriting…")]
+    [InlineData("rewrite:concise", "Tightening…")]
+    [InlineData("rewrite:bullets", "Making bullets…")]
+    [InlineData("summary:brief", "Summarising…")]
+    [InlineData("summary:bullets", "Summarising into bullets…")]
+    [InlineData("summary:actions", "Picking out the actions…")]
+    public void TheProgressLabelIsIdenticalOnEveryPlatform(string typed, string expected)
+    {
+        Assert.Equal(expected, TranscriptMode.Parse(typed)!.ProgressLabel);
+    }
 }
 
 /// <summary>Where a batch of transcripts lands.</summary>
