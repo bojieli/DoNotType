@@ -116,6 +116,37 @@ public static class TextInjector
         }
     }
 
+    /// <summary>
+    /// Deletes the last <paramref name="count"/> characters with simulated backspaces.
+    /// </summary>
+    /// <remarks>
+    /// By keystroke rather than by setting the field's value: the target window belongs to another
+    /// application and most of them expose no settable value, which is the same reason insertion
+    /// goes through the clipboard.
+    ///
+    /// Sent in one batch. A loop of individual SendInput calls interleaves with whatever the user
+    /// types next, and the failure mode is deleting characters they typed after the dictation.
+    /// </remarks>
+    public static void DeleteBackward(int count, string dictation = "-")
+    {
+        if (count <= 0) return;
+
+        Log.Info(() => "deleting an insertion", new Dictionary<string, string>
+        {
+            ["dictation"] = dictation,
+            ["chars"] = count.ToString(),
+            ["window"] = Interop.ForegroundWindowTitle(),
+        });
+
+        var inputs = new Interop.INPUT[count * 2];
+        for (var index = 0; index < count; index++)
+        {
+            inputs[index * 2] = KeyEvent(Interop.VK_BACK, down: true);
+            inputs[index * 2 + 1] = KeyEvent(Interop.VK_BACK, down: false);
+        }
+        Interop.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Interop.INPUT>());
+    }
+
     private static void SendPaste()
     {
         var inputs = new[]

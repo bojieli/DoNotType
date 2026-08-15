@@ -10,6 +10,32 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **The rewrite works in live dictation on every client.** It was on macOS only, then macOS and
+  Windows. Android gets style chips above the talk button; iOS gets a segmented picker above the
+  record button. A phone has no second hotkey, so the choice is a control — but the rule the
+  desktop's second key preserves is kept: chosen *before* speaking, never from a menu afterwards.
+  Both hide the control entirely when no configured backend can rewrite text, because a control
+  that cannot work is worse than one that is not there.
+
+- **The numeric guard runs on Windows and Android.** The one feature this project is actually about
+  was on one platform out of four. Every regression grounding has produced in the evaluation suite
+  is a number — 1.5 becoming 2.5, 4240 becoming 1024 — and unlike a misspelled name a wrong number
+  is not recoverable by reading it. The Swift tests were ported case for case, including the
+  Mandarin code-switch regression, and all eighteen passed first time in both languages.
+
+- **Undo, revert-to-verbatim and re-paste on Windows** — `Ctrl+Shift+Z`, `Ctrl+Alt+Z`,
+  `Ctrl+Alt+V`. Not `Ctrl+Z`, which belongs to whatever you are typing into.
+
+- **A pinned microphone and start/stop tones on Windows.** The system default follows whatever was
+  plugged in last, so a headset quietly becomes a monitor's microphone across the room and the only
+  sign is a worse transcript. Stored by name, not by index — indices shift when a device is
+  unplugged, which would reintroduce the exact failure the setting prevents.
+
+- **[docs/PARITY.md](docs/PARITY.md)**, which says what each client can do and why anything missing
+  is missing. Screen grounding on iOS is the one real capability difference: the sandbox forbids
+  reading another app's screen, and everything downstream of grounding is therefore absent there
+  too. The rest of the gaps are named, with the reason.
+
 - **The rewrite key works on Windows.** Hold-to-talk there was verbatim only: `RewriteStyle`
   existed in the core and the file transcriber, and the live path never touched it, so the two
   desktop apps had different products behind the same hotkey. Windows now has the same optional

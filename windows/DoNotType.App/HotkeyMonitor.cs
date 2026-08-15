@@ -59,6 +59,15 @@ public sealed class HotkeyMonitor : IDisposable
     public event Action? Released;
     public event Action? Cancelled;
 
+    /// <summary>Ctrl+Shift+Z — take the last insertion back out of the field.</summary>
+    public event Action? UndoRequested;
+
+    /// <summary>Ctrl+Alt+Z — swap a rewrite for the words that were actually said.</summary>
+    public event Action? RevertToVerbatimRequested;
+
+    /// <summary>Ctrl+Alt+V — put the last transcript in again, for when it landed in the wrong window.</summary>
+    public event Action? RepasteRequested;
+
     /// <summary>Set by the owner so tap-toggle knows whether a tap should start or stop.</summary>
     public Func<bool> IsRecording { get; set; } = () => false;
 
@@ -140,6 +149,28 @@ public sealed class HotkeyMonitor : IDisposable
         {
             // Escape aborts a recording in flight without inserting anything.
             Cancelled?.Invoke();
+        }
+        else if (isDown)
+        {
+            // Chords, checked against the modifiers held right now. GetAsyncKeyState rather than a
+            // tracked flag: this hook does not see keys pressed before it was installed, and a
+            // modifier held from before would otherwise read as up.
+            var ctrl = (Interop.GetAsyncKeyState(Interop.VK_CONTROL) & 0x8000) != 0;
+            var shift = (Interop.GetAsyncKeyState(Interop.VK_SHIFT) & 0x8000) != 0;
+            var alt = (Interop.GetAsyncKeyState(Interop.VK_MENU) & 0x8000) != 0;
+
+            if (ctrl && info.vkCode == Interop.VK_Z)
+            {
+                // Ctrl+Shift+Z takes the last insertion back; Ctrl+Alt+Z swaps a rewrite for what
+                // was actually said. Deliberately not Ctrl+Z, which belongs to the app being typed
+                // into and would be stolen from every text field on the system.
+                if (shift) { UndoRequested?.Invoke(); }
+                else if (alt) { RevertToVerbatimRequested?.Invoke(); }
+            }
+            else if (ctrl && alt && info.vkCode == Interop.VK_V)
+            {
+                RepasteRequested?.Invoke();
+            }
         }
 
         // Never swallow the key: the trigger keeps working as an ordinary modifier.

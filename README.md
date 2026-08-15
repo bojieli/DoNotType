@@ -96,6 +96,10 @@ hour's work rather than a project.
 | **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | ✅ | — | `cd android && gradle assembleDebug` |
 | **iOS** | containing app; keyboard inserts | ❌ not possible in the sandbox | ✅ | — | `cd ios && xcodegen generate` |
 
+Feature by feature, with the reason for every gap: [docs/PARITY.md](docs/PARITY.md). The one real
+capability difference is screen grounding on iOS, which the sandbox forbids rather than nobody
+having built it.
+
 All four send the **same** `PROMPT.md`, copied into each bundle at build time rather than
 duplicated, so no platform can quietly drift from what the evaluation measures. All four also
 transcribe recordings you already have, in all three modes, and write a readable log — see
@@ -257,9 +261,10 @@ for masking before the first request, and anything else key-shaped is caught by 
 - **Hotkey** — which key, whether a tap toggles or a hold talks, and an optional **second key
   bound to a rewrite** (formal, concise, bullets) for when you want an email rather than a
   transcript. Your main key always stays verbatim.
-- **Shortcuts (macOS)** — `⌘⇧Z` undoes the last insertion, `⌘⌥Z` reverts a rewrite to what you
-  actually said, `⌘⌃V` pastes the last transcript again. Windows has the second key but not these
-  yet; the verbatim transcript is in History either way, which is what makes any of them cheap.
+- **Shortcuts** — undo the last insertion, revert a rewrite to what you actually said, or paste
+  the last transcript again: `⌘⇧Z` / `⌘⌥Z` / `⌘⌃V` on macOS, `Ctrl+Shift+Z` / `Ctrl+Alt+Z` /
+  `Ctrl+Alt+V` on Windows. All three are cheap only because the verbatim transcript is always
+  kept. Not `Ctrl+Z`, which belongs to whatever you are typing into.
 - **Audio** — pin a microphone rather than following the system default; start/stop tones are on
   by default and can be disabled.
 - **Fidelity** — `raw`, `light` (default), `tidy`. Even `tidy` only changes typography, never words.
@@ -351,6 +356,7 @@ predicted. See [CONTRIBUTING.md](CONTRIBUTING.md).
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the pieces fit, and which decisions were measured |
 | [docs/LOCALIZATION.md](docs/LOCALIZATION.md) | translating the interface, and why the prompt is never translated |
 | [docs/MANUAL-CHECKS.md](docs/MANUAL-CHECKS.md) | the four checks a machine cannot do, run once per release |
+| [docs/PARITY.md](docs/PARITY.md) | what each of the four clients can do, and why anything missing is missing |
 | [docs/CLI.md](docs/CLI.md) | `dnt`: file transcription, history, diagnostics — and the logging |
 | [docs/EVALUATION.md](docs/EVALUATION.md) | how quality is measured and what the numbers say |
 | [docs/MODELS.md](docs/MODELS.md) | which models and providers can actually do this job |

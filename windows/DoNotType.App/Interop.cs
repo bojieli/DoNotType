@@ -51,6 +51,10 @@ internal static partial class Interop
     internal const uint KEYEVENTF_KEYUP = 0x0002;
     internal const ushort VK_CONTROL = 0x11;
     internal const ushort VK_V = 0x56;
+    internal const ushort VK_BACK = 0x08;
+    internal const ushort VK_Z = 0x5A;
+    internal const ushort VK_SHIFT = 0x10;
+    internal const ushort VK_MENU = 0x12;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct INPUT
@@ -102,6 +106,9 @@ internal static partial class Interop
     // and a dictation tool should not pull in a dependency to record a mono stream.
 
     internal const int WAVE_MAPPER = -1;
+
+    [LibraryImport("user32.dll")]
+    internal static partial short GetAsyncKeyState(int vKey);
 
     [LibraryImport("winmm.dll")]
     internal static partial uint waveInGetNumDevs();

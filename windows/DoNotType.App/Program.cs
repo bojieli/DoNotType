@@ -45,6 +45,11 @@ internal sealed class TrayApplication : ApplicationContext
                 RecordingOverlay.Phase.Transcribing,
                 total > 1 ? $"part {Math.Min(done + 1, total)} of {total}" : null));
         _controller.HistoryChanged += () => BeginInvokeOnTray(RebuildMenu);
+        _controller.Undone += message => BeginInvokeOnTray(() =>
+        {
+            _overlay.Show(RecordingOverlay.Phase.Inserted, message);
+            _ = HideOverlayAfter(TimeSpan.FromSeconds(1.4));
+        });
         _controller.Inserted += insertion => BeginInvokeOnTray(() =>
         {
             var plural = insertion.Characters == 1 ? string.Empty : "s";
