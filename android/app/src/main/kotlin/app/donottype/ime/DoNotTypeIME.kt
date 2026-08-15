@@ -4,11 +4,13 @@ import app.donottype.PromptAssets
 import app.donottype.Settings
 import app.donottype.accessibility.ScreenReaderService
 import app.donottype.audio.WavRecorder
+import app.donottype.SettingsActivity
 import app.donottype.core.DictationService
 import app.donottype.core.FailureAdvice
 import app.donottype.core.Log as DntLog
 import app.donottype.core.ScreenContext
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.inputmethodservice.InputMethodService
@@ -116,6 +118,11 @@ class DoNotTypeIME : InputMethodService() {
             setTextColor(Color.parseColor("#8A9BA8"))
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 28)
+            // Tapping it opens the app, when the app is where the problem gets fixed. A keyboard
+            // cannot request a runtime permission or hold an API key, so every one of its dead ends
+            // is "go to the app" — and telling somebody to go somewhere is not the same as taking
+            // them there, especially on a phone where the app is behind a home-screen search.
+            setOnClickListener { if (openAppOnTap) openTheApp() }
         }
 
         indicator = DictationIndicatorView(this)
@@ -238,7 +245,7 @@ class DoNotTypeIME : InputMethodService() {
             log.warn(
                 mapOf("permission" to "RECORD_AUDIO"),
             ) { "cannot record: the microphone permission is not granted" }
-            statusLabel.text = "Open DoNotType and grant microphone access"
+            showFixInTheApp("Microphone access is off — tap here to grant it")
             state = State.ERROR
             return
         }
@@ -265,7 +272,7 @@ class DoNotTypeIME : InputMethodService() {
             .onSuccess { state = State.RECORDING }
             .onFailure {
                 Log.e(TAG, "could not start recording", it)
-                statusLabel.text = it.message ?: "Could not start recording"
+                showStatus(it.message ?: "Could not start recording")
                 state = State.ERROR
             }
     }
@@ -285,7 +292,7 @@ class DoNotTypeIME : InputMethodService() {
 
         val key = Settings.apiKey
         if (key.isNullOrBlank()) {
-            statusLabel.text = "Open DoNotType and add your API key"
+            showFixInTheApp("No API key yet — tap here to add one")
             state = State.ERROR
             return
         }
@@ -307,10 +314,43 @@ class DoNotTypeIME : InputMethodService() {
                     // What happened and what to do about it, rather than a generic reassurance
                     // or a raw exception. On a keyboard there is one line for it, which is why the
                     // advice is written to fit one.
-                    statusLabel.text = FailureAdvice.describe(error).message
+                    showStatus(FailureAdvice.describe(error).message)
                     state = State.ERROR
                 },
             )
+        }
+    }
+
+    /// Whether tapping the status label should open the app. Only when it is showing something
+    /// the app can fix, so an ordinary status line is not a surprise button.
+    private var openAppOnTap = false
+
+    /// Says what is wrong and makes the label the way to fix it.
+    private fun showFixInTheApp(message: String) {
+        statusLabel.text = message
+        openAppOnTap = true
+    }
+
+    /// Every other status goes through here, so the label stops being a button the moment it stops
+    /// showing something the app can fix. A status line that silently opens an app is worse than
+    /// one that does nothing.
+    private fun showStatus(message: String) {
+        statusLabel.text = message
+        openAppOnTap = false
+    }
+
+    private fun openTheApp() {
+        log.info(mapOf("reason" to statusLabel.text.toString())) { "opening the app to fix it" }
+        try {
+            startActivity(
+                Intent(this, SettingsActivity::class.java).apply {
+                    // A keyboard has no task of its own to start an activity in.
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                },
+            )
+        } catch (error: Exception) {
+            log.warn(mapOf("error" to (error.message ?: ""))) { "could not open the app" }
+            statusLabel.text = "Open DoNotType from the home screen to fix this"
         }
     }
 
@@ -318,18 +358,20 @@ class DoNotTypeIME : InputMethodService() {
         if (!::statusLabel.isInitialized) return
         when (state) {
             State.IDLE -> {
-                statusLabel.text = if (ScreenReaderService.instance == null) {
-                    "Tap to talk · screen grounding off"
-                } else {
-                    "Tap to talk, or hold"
-                }
+                showStatus(
+                    if (ScreenReaderService.instance == null) {
+                        "Tap to talk · screen grounding off"
+                    } else {
+                        "Tap to talk, or hold"
+                    },
+                )
                 talkButton.text = "Tap to talk"
                 talkButton.isEnabled = true
                 indicator.mode = DictationIndicatorView.Mode.IDLE
                 stopLevelUpdates()
             }
             State.RECORDING -> {
-                statusLabel.text = "Listening…"
+                showStatus("Listening…")
                 talkButton.text = "Tap to stop"
                 talkButton.isEnabled = true
                 indicator.mode = DictationIndicatorView.Mode.RECORDING
@@ -338,7 +380,7 @@ class DoNotTypeIME : InputMethodService() {
             State.TRANSCRIBING -> {
                 // Named rather than left as a spinner: after you stop talking the wait is dead
                 // time, and "Transcribing" tells you what is consuming it and that it will end.
-                statusLabel.text = "Transcribing…"
+                showStatus("Transcribing…")
                 talkButton.text = "Working…"
                 talkButton.isEnabled = false
                 indicator.mode = DictationIndicatorView.Mode.TRANSCRIBING

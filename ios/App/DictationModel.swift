@@ -18,6 +18,8 @@ final class DictationModel {
     /// Everything a dictation does, under one category so a log filter finds all of it.
     private let log = Log("dictate")
 
+    private var hasOpenedSettings = false
+
     /// The in-flight dictation's id, from the tap to the transcript.
     private var pendingID = UUID()
 
@@ -342,7 +344,14 @@ final class DictationModel {
 
     private func beginRecording() async {
         guard await requestMicrophone() else {
-            state = .failed("Microphone access is required. Enable it in Settings › DoNotType.")
+            // Taking somebody to the setting rather than describing where it is. On iOS the app's
+            // own page is one tap from here and several taps from the home screen, and a person
+            // who has just tried to dictate is at the exact moment when they want to fix it.
+            log.error(
+                "cannot record: the microphone permission is not granted",
+                ["permission": "microphone"])
+            state = .failed("Microphone access is off. Opening Settings…")
+            openAppSettings()
             return
         }
 
@@ -426,6 +435,18 @@ final class DictationModel {
                 self.level = max(0, min(1, (power + 50) / 50))
             }
         }
+    }
+
+    /// Opens this app's page in Settings, where every permission it needs lives.
+    ///
+    /// Once per run: somebody who has decided not to grant it should not have Settings thrown at
+    /// them on every tap, and the second time it opens it is no longer guidance.
+    private func openAppSettings() {
+        guard !hasOpenedSettings, let url = URL(string: UIApplication.openSettingsURLString) else {
+            return
+        }
+        hasOpenedSettings = true
+        UIApplication.shared.open(url)
     }
 
     private func requestMicrophone() async -> Bool {

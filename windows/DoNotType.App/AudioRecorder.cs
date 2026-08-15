@@ -63,9 +63,23 @@ public sealed class AudioRecorder : IDisposable
                 CALLBACK_FUNCTION);
             if (result != 0)
             {
-                throw new InvalidOperationException(
-                    "Could not open the microphone. Check Settings › Privacy & security › "
-                    + "Microphone, and that a recording device is connected.");
+                // The distinction matters: one of these is a permission somebody can grant in ten
+                // seconds and the other is a missing device. Told apart here rather than making
+                // the user guess from one sentence covering both.
+                //
+                // MMSYSERR_BADDEVICEID (2) and MMSYSERR_NODRIVER (6) mean there is nothing to
+                // record from. MMSYSERR_ALLOCATED (4) means another application holds it. A
+                // privacy block surfaces as one of these rather than as a code of its own, so the
+                // Settings page is offered in every case except "no device at all".
+                var reason = result switch
+                {
+                    2 or 6 => "no recording device is connected",
+                    4 => "another application is using the microphone",
+                    _ => "Windows refused access to the microphone",
+                };
+                throw new MicrophoneUnavailableException(
+                    $"Could not open the microphone: {reason} (waveInOpen returned {result}).",
+                    canBeFixedInSettings: result is not (2 or 6));
             }
 
             _pinned = new GCHandle[BufferCount];
@@ -200,4 +214,21 @@ public sealed class AudioRecorder : IDisposable
         writer.Flush();
         return stream.ToArray();
     }
+}
+
+/// <summary>
+/// The microphone could not be opened, and whether Settings is where that gets fixed.
+/// </summary>
+/// <remarks>
+/// Its own type so the caller can offer the privacy page rather than printing a sentence about
+/// where it is. Windows has no permission prompt for the microphone — access is a toggle somebody
+/// has to find — which makes "here is the toggle" the whole of the guidance.
+/// </remarks>
+public sealed class MicrophoneUnavailableException(string message, bool canBeFixedInSettings)
+    : Exception(message)
+{
+    public bool CanBeFixedInSettings { get; } = canBeFixedInSettings;
+
+    /// <summary>The privacy page for the microphone, which opens without elevation.</summary>
+    public const string SettingsUri = "ms-settings:privacy-microphone";
 }

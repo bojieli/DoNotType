@@ -54,6 +54,20 @@ enum TextInjector {
         log.debug("clipboard restored", ["dictation": dictation])
     }
 
+    /// Puts the transcript on the clipboard and leaves it there.
+    ///
+    /// For the case where the paste cannot happen — Accessibility revoked, which macOS does on
+    /// every signature change. The words have been recorded, sent and paid for by that point, and
+    /// the difference between "press ⌘V" and "nothing happened" is the difference between a
+    /// permission to fix and an app that looks broken.
+    static func copyForManualPaste(_ text: String, dictation: String = "-") {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        log.info(
+            "left on the clipboard for a manual paste",
+            ["dictation": dictation, "chars": "\(text.count)"])
+    }
+
     // MARK: - Private
 
     /// Every type of every item, so non-text clipboard contents survive.

@@ -156,9 +156,50 @@ public sealed class DictationController : IDisposable
                 }
             }
         }
+        catch (MicrophoneUnavailableException error)
+        {
+            // Windows has no permission prompt for the microphone: access is a toggle somebody has
+            // to find, which makes opening the page the whole of the guidance. Once per run — the
+            // second time it opens it is no longer help, it is an argument.
+            DictationLog.Error(() => "cannot record", new Dictionary<string, string>
+            {
+                ["dictation"] = Short(_pendingId),
+                ["detail"] = error.Message,
+                ["fixable"] = error.CanBeFixedInSettings ? "in Settings" : "no device",
+            });
+
+            if (error.CanBeFixedInSettings && !_openedMicrophoneSettings)
+            {
+                _openedMicrophoneSettings = true;
+                OpenSettingsPage(MicrophoneUnavailableException.SettingsUri);
+                Fail($"{error.Message} Opening Settings…");
+            }
+            else
+            {
+                Fail(error.Message);
+            }
+        }
         catch (InvalidOperationException error)
         {
             Fail(error.Message);
+        }
+    }
+
+    private bool _openedMicrophoneSettings;
+
+    /// <summary>Opens a `ms-settings:` page, which needs the shell rather than a plain start.</summary>
+    private static void OpenSettingsPage(string uri)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
+        }
+        catch (Exception error)
+        {
+            DictationLog.Warn(
+                () => "could not open the settings page",
+                new Dictionary<string, string> { ["uri"] = uri, ["error"] = error.Message });
         }
     }
 

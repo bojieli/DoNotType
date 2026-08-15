@@ -90,10 +90,18 @@ final class KeyboardViewController: UIInputViewController {
     private func reload() {
         entries = store.load()
 
-        if TranscriptStore.containerURL == nil {
+        // Asked of the system rather than inferred from the container being nil. Both produce an
+        // empty list, and they are different problems: one is a switch the user can turn on, the
+        // other is an app-group misconfiguration in a build, which no amount of tapping fixes. A
+        // keyboard extension cannot open Settings, so the exact path is the whole of the guidance.
+        if !hasFullAccess {
             statusLabel.text =
-                "Turn on Full Access in Settings › General › Keyboard › DoNotType so this keyboard "
-                + "can read your transcripts."
+                "Turn on Full Access in Settings › General › Keyboard › Keyboards › DoNotType so "
+                + "this keyboard can read your transcripts."
+        } else if TranscriptStore.containerURL == nil {
+            statusLabel.text =
+                "Full Access is on, but the shared container is missing — this build is "
+                + "misconfigured. Please report it."
         } else if entries.isEmpty {
             statusLabel.text = "Open DoNotType and dictate — transcripts appear here to insert."
         } else {

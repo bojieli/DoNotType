@@ -113,6 +113,16 @@ final class DictationController {
 
     private func beginRecording() {
         guard state == .idle else { return }
+
+        // Checked here rather than only at onboarding. A recording made without this permission is
+        // not refused — it is silence, and silence costs a request and produces an empty transcript
+        // that reads as the app being broken.
+        if let missing = PermissionGuide.microphone() {
+            PermissionGuide.present(missing)
+            fail(missing.message)
+            return
+        }
+
         do {
             recorder.preferredDeviceUID = Settings.shared.microphoneUID
             try recorder.start()
@@ -394,6 +404,17 @@ final class DictationController {
             onHistoryChange?()
 
             state = .idle
+
+            // The words exist by now; only the last step cannot happen. So they go on the
+            // clipboard and the user is told to paste — which is a working dictation with one
+            // extra keystroke, rather than a failure.
+            if let missing = PermissionGuide.accessibility() {
+                TextInjector.copyForManualPaste(delivered, dictation: Self.short(pendingID))
+                PermissionGuide.present(missing)
+                fail("Copied — press ⌘V. Accessibility is off, so it could not paste itself.")
+                return
+            }
+
             await TextInjector.insert(delivered, dictation: Self.short(pendingID))
             insertions.record(recordID: record.id, delivered: delivered, verbatim: text)
             log.info(
