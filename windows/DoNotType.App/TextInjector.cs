@@ -1,3 +1,4 @@
+using DoNotType.Core;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -19,9 +20,21 @@ public static class TextInjector
     /// </summary>
     private static readonly TimeSpan RestoreDelay = TimeSpan.FromMilliseconds(250);
 
-    public static async Task InsertAsync(string text)
+    public static async Task InsertAsync(string text, string dictation = "-")
     {
         if (string.IsNullOrEmpty(text)) return;
+
+        // Logged because "it transcribed but nothing appeared" is a distinct failure from "it did
+        // not transcribe", and from the outside they look the same. The window that receives the
+        // keystrokes is the fact that separates them: a UAC-elevated window silently discards
+        // input from an unelevated sender, and nothing anywhere reports that.
+        var target = Interop.ForegroundWindowTitle();
+        Log.Info(() => "inserting", new Dictionary<string, string>
+        {
+            ["dictation"] = dictation,
+            ["chars"] = text.Length.ToString(),
+            ["window"] = target.Length == 0 ? "untitled" : target,
+        });
 
         var archive = SaveClipboard();
         SetClipboardText(text);
@@ -30,7 +43,14 @@ public static class TextInjector
         await Task.Delay(RestoreDelay).ConfigureAwait(false);
 
         RestoreClipboard(archive);
+        Log.Debug(
+            () => "clipboard restored",
+            new Dictionary<string, string> { ["dictation"] = dictation });
     }
+
+    private static readonly Log Log = new("inject");
+
+
 
     /// <summary>
     /// Every format currently on the clipboard, so a copied image or rich text survives.

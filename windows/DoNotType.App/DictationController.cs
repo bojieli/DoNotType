@@ -33,6 +33,15 @@ public sealed class DictationController : IDisposable
     /// <summary>Everything a dictation does, under one category so `dnt logs --grep` finds it.</summary>
     private static readonly Log DictationLog = new("dictate");
 
+    /// <summary>The in-flight dictation's id, from the key press to the insertion.</summary>
+    private Guid _pendingId = Guid.NewGuid();
+
+    /// <summary>
+    /// Eight characters is enough to pick one dictation out of a day's log and short enough to sit
+    /// in every line without pushing the interesting fields off the end.
+    /// </summary>
+    private static string Short(Guid id) => id.ToString("N")[..8];
+
     public event Action<State>? StateChanged;
 
     /// <summary>
@@ -104,6 +113,21 @@ public sealed class DictationController : IDisposable
             _recorder.Start();
             SetState(State.Recording);
 
+            // One id from the key press to the insertion, on every line and on the history row.
+            // Without it a log with three dictations in it is three interleaved stories, and the
+            // question being asked is always about one of them.
+            _pendingId = Guid.NewGuid();
+            DictationLog.Info(() => "recording started", new Dictionary<string, string>
+            {
+                ["dictation"] = Short(_pendingId),
+                ["mode"] = _settings.HotkeyMode.ToString(),
+                ["trigger"] = _settings.Trigger.ToString(),
+                ["provider"] = _settings.Provider.ToString(),
+                ["model"] = _settings.Model,
+                ["fidelity"] = _settings.Fidelity.Id(),
+                ["grounding"] = _settings.GroundingEnabled ? "on" : "off",
+            });
+
             // Phase 1: cheap, synchronous, before focus can move.
             _pendingContext = _settings.GroundingEnabled ? _screen.CaptureIdentity() : null;
 
@@ -156,13 +180,25 @@ public sealed class DictationController : IDisposable
         var wav = _recorder.Stop();
         if (wav is null)
         {
-            // A tap rather than a hold. Not worth interrupting anyone over.
+            // A tap rather than a hold. Not worth interrupting anyone over — but logged, because
+            // "I pressed the key and nothing happened" is a real report and this is the most
+            // common innocent explanation for it.
+            DictationLog.Info(
+                () => "recording too short to send",
+                new Dictionary<string, string> { ["dictation"] = Short(_pendingId) });
             _uploader?.Cancel();
             _uploader = null;
             _groundingCts?.Cancel();
             SetState(State.Idle);
             return;
         }
+
+        DictationLog.Info(() => "recording finished", new Dictionary<string, string>
+        {
+            ["dictation"] = Short(_pendingId),
+            ["bytes"] = wav.Length.ToString(),
+            ["seconds"] = AudioChunker.DurationSeconds(wav).ToString("F2"),
+        });
 
         SetState(State.Transcribing);
         await TranscribeAsync(wav).ConfigureAwait(false);
@@ -248,12 +284,25 @@ public sealed class DictationController : IDisposable
         var releasedAt = Stopwatch.GetTimestamp();
         var record = new DictationRecord
         {
+            Id = _pendingId,
             Model = _settings.Model,
             Fidelity = _settings.Fidelity,
             AppName = context?.AppName,
             WindowTitle = context?.WindowTitle,
             DurationSeconds = AudioRecorder.DurationSeconds(wav),
         };
+
+        DictationLog.Info(() => "transcribing", new Dictionary<string, string>
+        {
+            ["dictation"] = Short(_pendingId),
+            ["provider"] = _settings.Provider.ToString(),
+            ["model"] = _settings.Model,
+            ["fidelity"] = _settings.Fidelity.Id(),
+            ["seconds"] = record.DurationSeconds.ToString("F2"),
+            ["grounded"] = context is null ? "no" : "yes",
+            ["contextChars"] = (context?.VisibleText?.Length ?? 0).ToString(),
+            ["app"] = context?.AppName ?? "?",
+        });
 
         try
         {
@@ -283,8 +332,26 @@ public sealed class DictationController : IDisposable
             record.AudioTokens = result.Usage.AudioTokens;
             var text = result.Transcript.Text.Trim();
 
+            DictationLog.Info(() => "transcript received", new Dictionary<string, string>
+            {
+                ["dictation"] = Short(_pendingId),
+                ["chars"] = text.Length.ToString(),
+                ["language"] = result.Transcript.Language ?? string.Empty,
+                ["chunks"] = result.ChunkCount.ToString(),
+                ["audioTokens"] = result.Usage.AudioTokens?.ToString() ?? "unreported",
+                ["model"] = outcome.Attribution.Model,
+                ["hedged"] = outcome.Attribution.Model == _settings.Model ? "no" : "yes",
+                ["ms"] = ((long)Stopwatch.GetElapsedTime(requestStart).TotalMilliseconds).ToString(),
+            });
+            DictationLog.Content("transcript", () => text, LogLevel.Trace);
+
             if (text.Length == 0)
             {
+                // Not an error, and the one outcome people report as one: the key worked, the
+                // request worked, and nothing was said.
+                DictationLog.Info(
+                    () => "nothing was said",
+                    new Dictionary<string, string> { ["dictation"] = Short(_pendingId) });
                 SetState(State.Idle); // silence in, nothing out
                 return;
             }
@@ -296,8 +363,15 @@ public sealed class DictationController : IDisposable
             HistoryChanged?.Invoke();
 
             SetState(State.Idle);
-            await TextInjector.InsertAsync(text).ConfigureAwait(false);
+            await TextInjector.InsertAsync(text, Short(_pendingId)).ConfigureAwait(false);
             Inserted?.Invoke(text.Length);
+            DictationLog.Info(() => "dictation complete", new Dictionary<string, string>
+            {
+                ["dictation"] = Short(_pendingId),
+                ["chars"] = text.Length.ToString(),
+                ["totalMs"] = ((long)Stopwatch.GetElapsedTime(releasedAt).TotalMilliseconds)
+                    .ToString(),
+            });
         }
         catch (Exception error) when (error is ProviderException or HttpRequestException or TaskCanceledException)
         {
@@ -319,6 +393,7 @@ public sealed class DictationController : IDisposable
                 ["retryable"] = advice.IsRetryable ? "yes" : "no",
                 ["provider"] = _settings.Provider.ToString(),
                 ["model"] = _settings.Model,
+                ["dictation"] = Short(_pendingId),
                 ["detail"] = detail,
             });
 

@@ -18,6 +18,13 @@ final class DictationModel {
     /// Everything a dictation does, under one category so a log filter finds all of it.
     private let log = Log("dictate")
 
+    /// The in-flight dictation's id, from the tap to the transcript.
+    private var pendingID = UUID()
+
+    /// Eight characters is enough to pick one dictation out of a day's log and short enough to sit
+    /// in every line without pushing the interesting fields off the end.
+    static func short(_ id: UUID) -> String { String(id.uuidString.prefix(8)) }
+
     enum State: Equatable {
         case idle
         case recording
@@ -363,9 +370,26 @@ final class DictationModel {
             recorder.record()
             self.recorder = recorder
             state = .recording
+
+            // One id from the tap to the transcript, on every line and on the history row. A phone
+            // has nowhere to show a trace, so the log is the only place this can be reconstructed.
+            pendingID = UUID()
+            log.info(
+                "recording started",
+                [
+                    "dictation": Self.short(pendingID),
+                    "provider": provider.rawValue, "model": model,
+                    "fidelity": fidelity.rawValue,
+                ])
             startMetering()
         } catch {
-            state = .failed(error.localizedDescription)
+            log.error(
+                "could not start recording",
+                [
+                    "dictation": Self.short(pendingID),
+                    "detail": FailureAdvice.detail(of: error),
+                ])
+            state = .failed(FailureAdvice.describe(error).message)
         }
     }
 
@@ -377,10 +401,17 @@ final class DictationModel {
         level = 0
 
         guard let url = recordingURL else {
+            log.info("recording produced no file", ["dictation": Self.short(pendingID)])
             state = .idle
             return
         }
         recordingURL = nil
+        log.info(
+            "recording finished",
+            [
+                "dictation": Self.short(pendingID),
+                "bytes": "\((try? Data(contentsOf: url))?.count ?? 0)",
+            ])
         state = .transcribing
         Task { await transcribe(url: url) }
     }
@@ -418,6 +449,7 @@ final class DictationModel {
         let releasedAt = Date()
         let audioDuration = (try? AudioFile(contentsOf: url))?.durationSeconds ?? 0
         var record = DictationRecord(
+            id: pendingID,
             status: .pending, provider: provider.rawValue,
             model: model, fidelity: fidelity, durationSeconds: audioDuration)
 
@@ -437,7 +469,22 @@ final class DictationModel {
             let text = result.transcript.transcript
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
+            log.info(
+                "transcript received",
+                [
+                    "dictation": Self.short(pendingID), "chars": "\(text.count)",
+                    "language": result.transcript.language,
+                    "chunks": "\(result.chunkCount)",
+                    "audioTokens": result.usage.audioTokens.map(String.init) ?? "unreported",
+                    "model": outcome.attribution.model,
+                    "ms": LogClock.ms(Date().timeIntervalSince(requestStart)),
+                ])
+            log.content("transcript", text, level: .trace)
+
             guard !text.isEmpty else {
+                // Not an error, and the one outcome people report as one: the tap worked, the
+                // request worked, and nothing was said.
+                log.info("nothing was said", ["dictation": Self.short(pendingID)])
                 state = .idle
                 return
             }

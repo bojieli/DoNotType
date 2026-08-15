@@ -22,6 +22,13 @@ public static class AudioChunker
     private const int BytesPerSample = 2;
     private const int BytesPerSecond = SampleRate * BytesPerSample;
 
+    /// <summary>Length of a decoded 16 kHz mono recording, from its header.</summary>
+    public static double DurationSeconds(byte[] wav)
+    {
+        var body = PcmBody(wav);
+        return body is null ? 0 : body.Length / (double)(AudioDecoder.SampleRate * 2);
+    }
+
     public readonly record struct Chunk(int Index, byte[] Data, double StartSeconds, double DurationSeconds);
 
     /// <summary>Splits 16-bit PCM WAV data, or returns one chunk when it is short enough.</summary>

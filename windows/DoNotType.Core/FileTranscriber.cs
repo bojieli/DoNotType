@@ -160,7 +160,7 @@ public sealed class FileTranscriber(
             Language = result.Transcript.Language,
             Usage = result.Usage,
             ChunkCount = result.ChunkCount,
-            DurationSeconds = DurationOf(wav),
+            DurationSeconds = AudioChunker.DurationSeconds(wav),
             DecodeSeconds = decodeSeconds,
             TranscriptionSeconds = transcriptionSeconds,
             Provider = service.Provider.Name,
@@ -198,13 +198,6 @@ public sealed class FileTranscriber(
             SecondStageProvider =
                 deriver.Provider.Name == service.Provider.Name ? null : deriver.Provider.Name,
         };
-    }
-
-    /// <summary>Length from the decoded 16 kHz mono header, which is all this ever sees.</summary>
-    private static double DurationOf(byte[] wav)
-    {
-        var body = AudioChunker.PcmBody(wav);
-        return body is null ? 0 : body.Length / (double)(AudioDecoder.SampleRate * 2);
     }
 
     /// <summary>One output name per input, unique by construction.</summary>

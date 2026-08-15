@@ -6,6 +6,7 @@ import app.donottype.accessibility.ScreenReaderService
 import app.donottype.audio.WavRecorder
 import app.donottype.core.DictationService
 import app.donottype.core.FailureAdvice
+import app.donottype.core.Log as DntLog
 import app.donottype.core.ScreenContext
 import android.Manifest
 import android.content.pm.PackageManager
@@ -40,6 +41,10 @@ import kotlinx.coroutines.withContext
  * Press and hold to talk; release to transcribe and insert.
  */
 class DoNotTypeIME : InputMethodService() {
+
+    /** Everything the keyboard does, under the same category as the service it calls. */
+    private val log = DntLog("dictate")
+
 
     private enum class State { IDLE, RECORDING, TRANSCRIBING, ERROR }
 
@@ -230,10 +235,23 @@ class DoNotTypeIME : InputMethodService() {
         ) {
             // An IME cannot request a runtime permission itself; it has to be granted from the
             // settings activity, which is why onboarding sends the user there first.
+            log.warn(
+                mapOf("permission" to "RECORD_AUDIO"),
+            ) { "cannot record: the microphone permission is not granted" }
             statusLabel.text = "Open DoNotType and grant microphone access"
             state = State.ERROR
             return
         }
+
+        log.info(
+            mapOf(
+                "provider" to Settings.provider.id,
+                "model" to Settings.model,
+                "fidelity" to Settings.fidelity.id,
+                "grounding" to if (Settings.groundingEnabled) "on" else "off",
+                "package" to (currentInputEditorInfo?.packageName ?: "?"),
+            ),
+        ) { "recording started" }
 
         // Phase 1 equivalent: snapshot the screen at press, while the field being dictated into is
         // still the focused one.

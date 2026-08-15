@@ -65,6 +65,23 @@ class DictationService(private val context: Context) {
             durationSeconds = WavRecorder.durationSeconds(wav),
         )
 
+        // One id for the whole dictation, on every line and on the history row. Without it a log
+        // with three dictations in it is three interleaved stories, and the question being asked
+        // is always about one of them.
+        val id = record.id.take(8)
+        log.info(
+            mapOf(
+                "dictation" to id,
+                "provider" to Settings.provider.id,
+                "model" to Settings.model,
+                "fidelity" to Settings.fidelity.id,
+                "seconds" to "%.2f".format(record.durationSeconds ?: 0.0),
+                "bytes" to wav.size.toString(),
+                "grounded" to if (screenContext == null) "no" else "yes",
+                "app" to (appName ?: "?"),
+            ),
+        ) { "transcribing" }
+
         return try {
             val instruction = PromptAssets.systemInstruction(context, Settings.fidelity)
             val client = ProviderFactory.create(Settings.provider, key, Settings.model)
@@ -182,10 +199,36 @@ class DictationService(private val context: Context) {
             record.model = outcome.attribution.model
 
             val text = outcome.result.transcript.transcript
+            log.info(
+                mapOf(
+                    "dictation" to id,
+                    "chars" to text.length.toString(),
+                    "language" to outcome.result.transcript.language,
+                    "audioTokens" to (outcome.result.usage.audioTokens?.toString() ?: "unreported"),
+                    "model" to outcome.attribution.model,
+                    "hedged" to if (outcome.attribution.model == Settings.model) "no" else "yes",
+                    "ms" to (record.requestMillis ?: 0).toString(),
+                ),
+            ) { "transcript received" }
+            log.content("transcript", LogLevel.TRACE) { text }
+
+            if (text.isBlank()) {
+                // Not an error, and the one outcome people report as one: the key worked, the
+                // request worked, and nothing was said.
+                log.info(mapOf("dictation" to id)) { "nothing was said" }
+            }
+
             record.status = DictationRecord.Status.COMPLETED
             record.text = text
             record.latencyMillis = System.currentTimeMillis() - releasedAt
             history.insert(record, if (Settings.keepAudio) wav else null)
+            log.info(
+                mapOf(
+                    "dictation" to id,
+                    "chars" to text.length.toString(),
+                    "totalMs" to (record.latencyMillis ?: 0).toString(),
+                ),
+            ) { "dictation complete" }
             Result.success(record)
         } catch (error: Exception) {
             // Audio is kept so this can be retried from the settings screen, or when the keyboard
@@ -205,6 +248,7 @@ class DictationService(private val context: Context) {
                     "retryable" to if (advice.isRetryable) "yes" else "no",
                     "provider" to Settings.provider.id,
                     "model" to Settings.model,
+                    "dictation" to id,
                     "detail" to detail,
                 ),
             ) { "transcription failed" }
