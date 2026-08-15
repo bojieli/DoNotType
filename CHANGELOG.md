@@ -116,12 +116,66 @@ deliberate:
   [manual checklist](docs/MANUAL-CHECKS.md) for the four things no runner can do, and
   [what this project will never do](README.md#what-this-will-never-do).
 
-- **CI runs what ships.** Both CLIs are built and executed, the macOS app is launched and has to
-  still be alive and to have logged its own startup, and the Windows core tests run on Windows —
-  where they immediately found two real bugs in the Media Foundation interop and a third that is now
-  documented rather than silently truncating audio.
+- **CI runs what ships, on every platform's own decoders.** Both CLIs are built and executed, the
+  macOS app is launched and has to still be alive and to have logged its own startup, the Windows
+  core tests run on Windows, and an emulator decodes all four audio formats on Android.
+
+  This is the part that paid for itself. Media Foundation and `MediaCodec` are the platforms' own
+  decoders and neither has an off-platform equivalent, so most of what the audio layer does had
+  never been executed by any test. The Windows job found three bugs in the interop on its first run;
+  the Android one found a fourth on its first run, which had been silently discarding a third of
+  every Opus recording. Every one of them was a wrong number rather than a failure — audio that
+  decodes to something plausible and shorter, which nothing downstream can detect.
 
 ### Fixed
+
+- **Every Opus recording on Android decoded to two thirds of its length.** A 1.5 second file came
+  back as 1.02, and a forty-minute meeting would have lost thirteen minutes from the middle of a
+  transcript that looked complete. Nothing threw and nothing logged. The cause was a presentation
+  timestamp of zero on every packet handed to the decoder: Android reads a timestamp that does not
+  advance as a seek, and discards its seek pre-roll again for each one. Packet duration is now read
+  from the packet — RFC 6716 §3.1 — rather than assumed to be 20 ms, which is what this project's
+  own encoder emits and would have been wrong for anything recorded elsewhere.
+
+  Found by a new instrumentation test on its first run. `MediaExtractor` and `MediaCodec` have no
+  JVM equivalent, so the whole compressed-audio path had never been executed by a test.
+
+- **M4A files decoded short on Windows.** The same shape of bug, found the same way. An AAC decoder
+  advertises a default output format before it has parsed the stream — 32 kHz stereo for a file that
+  is 16 kHz mono — and Media Foundation does not reliably announce the correction. The output format
+  is now specified from the container's own declaration, which is available before decoding starts.
+  M4A is back in the file dialog and the supported list.
+
+- **A batch of recordings could overwrite its own transcripts.** `dnt transcribe a/speech.wav
+  b/speech.mp3 --output out/` wrote both to `out/speech.txt` and reported success twice. Output
+  names are worked out for the whole batch before the first request, and compared without case,
+  because APFS and NTFS are both case-insensitive by default.
+
+- **A crash decoding certain Opus files on Android.** The resampler carries its fractional position
+  between decoder blocks, and that position could be exactly -1.0 — the next block then read
+  `samples[-1]`. It needed the block length and the rate ratio to line up, which they do at 48 kHz
+  to 16 kHz, the rate Opus decodes at.
+
+- **Two processes writing to the same log file overwrote each other's lines** on macOS and iOS. The
+  sink held a handle positioned at the end once, at open, rather than appending. `DNT_LOG_FILE`
+  pointing at the app's log, or two `dnt` invocations at once, lost lines silently.
+
+- **`--mode rewrite:` meant different things on different platforms** — the stage default on Apple,
+  rejected on Windows and Android. All four now agree, and [docs/mode-parity.md](docs/mode-parity.md)
+  is the table, repeated in each language's tests.
+
+- **`--path` and `--probe` were the same flag.** The Windows argument parser matched a flag by its
+  first letter, so every flag was aliased to its initial and asking about an empty name threw. The
+  parser also moved out of a Windows-only executable, which is why it had never been tested.
+
+- **A folder or an empty file produced "The operation couldn't be completed."** That sentence is
+  named in [docs/MANUAL-CHECKS.md](docs/MANUAL-CHECKS.md) as the thing a failure must not say, and
+  it was reachable from the file picker in one gesture. All three platforms now say which of those
+  it was.
+
+- **Six places listed the supported formats by hand and had drifted.** Every list on Apple and
+  Android had lost Opus, the format this project's own encoder produces — which is part of why
+  nobody noticed it was broken there. They read from the decoder's own constant now.
 
 - **The app never passed the environment to `ProviderFactory`, so several documented variables did
   nothing.** Every caller that already had a key — from the Keychain or a settings field — wrote
