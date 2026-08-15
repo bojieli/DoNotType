@@ -42,9 +42,21 @@ final class FileTranscriberTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        // Two seconds of 16 kHz mono silence, in a real WAV container — enough for the decoder's
-        // already-in-target-format path and for a duration to be read back.
-        let pcm = Data(count: 16_000 * 2 * 2)
+        // Two seconds of audio with speech-like structure, in a real WAV container.
+        //
+        // It used to be silence, which was simpler and stopped working the moment nothing without
+        // speech in it was allowed to be sent. That is the gate doing its job: a fixture of pure
+        // silence is exactly the recording a model would invent a sentence from, and these tests
+        // are about the pipeline rather than about what audio does to a model. Modulated rather
+        // than a steady tone, because a tone has no dynamics and reads as a hum.
+        var pcm = Data(capacity: 16_000 * 2 * 2)
+        for index in 0..<(16_000 * 2) {
+            let t = Double(index) / 16_000
+            // Syllable-rate amplitude modulation, which is what distinguishes speech from noise.
+            let envelope = max(0, sin(2 * .pi * 4 * t))
+            let sample = Int16(8_000 * envelope * sin(2 * .pi * 220 * t))
+            withUnsafeBytes(of: sample.littleEndian) { pcm.append(contentsOf: $0) }
+        }
         let wav = AudioChunker.wrapInWavContainer(pcm, format: AudioChunker.Format())
         recording = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(UUID().uuidString).wav")

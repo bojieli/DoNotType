@@ -19,6 +19,22 @@ import Foundation
 /// always — including for summaries, where the derived text is by definition missing most of what
 /// was said. A caller that only wants the summary can ignore `verbatim`; a caller that discards it
 /// has made that choice explicitly, which is the whole difference this project is arguing for.
+/// Why a file could not be transcribed, for the reasons that are about the file rather than the
+/// request.
+public enum FileTranscriptionError: LocalizedError, Sendable {
+    /// The recording contains no speech, so nothing was sent.
+    case noSpeech(name: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .noSpeech(let name):
+            return "\(name) has no speech in it — nothing was sent. A model given a recording "
+                + "with only silence or noise in it does not reliably return nothing; it returns "
+                + "a plausible sentence, which is worse than an error."
+        }
+    }
+}
+
 public struct FileTranscriber: Sendable {
     /// What the caller can show while this runs. A forty-minute file is not a spinner.
     public enum Progress: Sendable, Equatable {
@@ -150,6 +166,17 @@ public struct FileTranscriber: Sendable {
         let decodeStart = Date()
         let audio = try AudioDecoder.load(url)
         let decodeSeconds = Date().timeIntervalSince(decodeStart)
+
+        // The same gate as live dictation, for the same reason: a model handed a recording with
+        // no speech in it returns a plausible sentence rather than nothing. Here it is an error
+        // rather than a silent no-op, because somebody who pointed at a file and pressed go is
+        // owed an answer — and "there is no speech in this recording" is a better one than a
+        // paragraph the model made up.
+        let activity = SpeechActivity.measure(wav: audio.data)
+        guard activity.hasSpeech else {
+            log.info("no speech in the recording", ["file": name, "audio": activity.summary])
+            throw FileTranscriptionError.noSpeech(name: name)
+        }
 
         let transcribeStart = Date()
         let result = try await service.transcribeLong(
