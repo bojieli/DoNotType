@@ -62,6 +62,9 @@ android {
     // The contract is shared, not duplicated: PROMPT.md is copied out of the repo root at build
     // time so Android cannot drift from macOS or from what the eval harness measures.
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/assets"))
+    // The same four recordings the other three platforms decode, so "it works on Android" means
+    // the same thing it means everywhere else. See eval/audio/formats/README.md.
+    sourceSets["androidTest"].assets.srcDir(rootProject.file("../eval/audio/formats"))
 }
 
 val syncContract by tasks.registering(Copy::class) {
