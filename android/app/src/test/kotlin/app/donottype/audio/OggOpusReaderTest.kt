@@ -97,4 +97,89 @@ class OggOpusReaderTest {
             error?.message?.contains("Vorbis") == true,
         )
     }
+
+    /**
+     * Truncated at every length, including inside a page header and inside a lacing table.
+     *
+     * A demuxer is a parser fed bytes from outside the program, and the failures that matter are
+     * not "does it decode" but "does it terminate, and does it fail somewhere the caller can catch
+     * it". A partial download and an interrupted copy both reach this code. The timing assertion is
+     * the real one: a page whose length does not advance the cursor is an infinite loop, and it is
+     * the shape a corrupt byte produces most easily.
+     */
+    @Test
+    fun `truncation never hangs and never throws something uncatchable`() {
+        val whole = fixture("speech.opus")
+        val started = System.currentTimeMillis()
+
+        var length = 1
+        while (length < whole.size) {
+            val cut = whole.copyOf(length)
+            try {
+                OggOpusReader.isOggOpus(cut)
+                val stream = OggOpusReader.demux(cut)
+                stream.packets.forEach { assertTrue(it.isNotEmpty()) }
+                assertTrue(stream.preSkip >= 0)
+                assertTrue(stream.channels in 1..8)
+            } catch (error: AudioDecoder.DecodeException) {
+                // The documented failure.
+            }
+            length += 97
+        }
+
+        assertTrue(
+            "demuxing truncated input took more than ten seconds",
+            System.currentTimeMillis() - started < 10_000,
+        )
+    }
+
+    /** A page header claiming more segments than the file has, which is one corrupt byte. */
+    @Test
+    fun `a lying segment count is survived`() {
+        val whole = fixture("speech.opus")
+        var count = 1
+        while (count <= 255) {
+            val corrupt = whole.copyOf()
+            corrupt[26] = count.toByte()
+            try {
+                OggOpusReader.demux(corrupt)
+            } catch (error: AudioDecoder.DecodeException) {
+            }
+            count += 37
+        }
+    }
+
+    /** Random bytes that happen to start with the capture pattern. */
+    @Test
+    fun `garbage behind a valid magic is survived`() {
+        val random = java.util.Random(20260815) // fixed, so a failure is reproducible
+        repeat(200) {
+            val noise = ByteArray(28 + random.nextInt(4_068))
+            random.nextBytes(noise)
+            "OggS".toByteArray().copyInto(noise)
+            try {
+                OggOpusReader.isOggOpus(noise)
+                OggOpusReader.demux(noise)
+            } catch (error: AudioDecoder.DecodeException) {
+            }
+        }
+    }
+
+    /**
+     * A page with no segments at all is legal Ogg, and is the shape that would make a reader whose
+     * cursor does not advance spin forever.
+     */
+    @Test
+    fun `an empty page does not stall the reader`() {
+        val page = ByteArray(27)
+        "OggS".toByteArray().copyInto(page)
+        val doubled = page + page
+
+        val started = System.currentTimeMillis()
+        try {
+            OggOpusReader.demux(doubled)
+        } catch (error: AudioDecoder.DecodeException) {
+        }
+        assertTrue("an empty page stalled the reader", System.currentTimeMillis() - started < 5_000)
+    }
 }

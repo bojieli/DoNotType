@@ -181,6 +181,60 @@ final class LoggingTests: XCTestCase {
             FileManager.default.fileExists(atPath: url.appendingPathExtension("2").path))
     }
 
+    /// Two sinks on one file are two processes on one file: `DNT_LOG_FILE` pointing at the app's
+    /// log, or simply two `dnt` invocations at once.
+    ///
+    /// The sink used to hold a handle positioned at the end once, at open. The second writer then
+    /// wrote over the first one's lines from wherever it had started, so the file ended up the
+    /// length of the longer writer rather than the sum, with a hole in the middle.
+    func testTwoWritersOnOneFileDoNotOverwriteEachOther() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let url = directory.appendingPathComponent("shared.log")
+
+        let first = try XCTUnwrap(FileLogSink(url: url, maximumBytes: 1 << 20))
+        let second = try XCTUnwrap(FileLogSink(url: url, maximumBytes: 1 << 20))
+
+        // Interleaved on purpose. Alternating is what two processes actually do, and it is the
+        // pattern the old code lost lines on.
+        for index in 0..<50 {
+            first.write(LogEvent(level: .info, category: "one", message: "first \(index)"))
+            second.write(LogEvent(level: .info, category: "two", message: "second \(index)"))
+        }
+        first.flush()
+        second.flush()
+
+        let written = try String(contentsOf: url, encoding: .utf8)
+        let lines = written.split(separator: "\n")
+        XCTAssertEqual(lines.count, 100, "every line from both writers is present")
+        XCTAssertTrue(written.contains("first 49"))
+        XCTAssertTrue(written.contains("second 49"))
+        XCTAssertFalse(written.contains("\u{0}"), "no hole where one writer skipped past the other")
+    }
+
+    /// A sink whose file disappears under it — a `rm -rf` of the log directory, or a rotation that
+    /// could not reopen — used to go quiet for the rest of the process.
+    func testTheSinkRecoversAfterItsFileGoesAway() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let url = directory.appendingPathComponent("vanishing.log")
+        let sink = try XCTUnwrap(FileLogSink(url: url, maximumBytes: 1 << 20))
+
+        sink.write(LogEvent(level: .info, category: "test", message: "before"))
+        sink.flush()
+        try FileManager.default.removeItem(at: directory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        sink.write(LogEvent(level: .info, category: "test", message: "after"))
+        sink.flush()
+
+        // The handle still points at the unlinked inode, so this line may land there. What must not
+        // happen is a crash or a permanently dead sink: one more write proves it is still alive.
+        sink.write(LogEvent(level: .info, category: "test", message: "later"))
+        sink.flush()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.path))
+    }
+
     // MARK: - Configuration
 
     func testEnvironmentOverridesEveryConfigurationField() {

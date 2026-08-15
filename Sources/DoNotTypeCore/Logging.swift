@@ -523,15 +523,24 @@ public final class FileLogSink: LogSink, @unchecked Sendable {
         self.json = json
         self.maximumBytes = maximumBytes
 
-        let manager = FileManager.default
-        try? manager.createDirectory(
+        try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if !manager.fileExists(atPath: url.path) {
-            guard manager.createFile(atPath: url.path, contents: nil) else { return nil }
-        }
-        guard let opened = try? FileHandle(forWritingTo: url) else { return nil }
+        guard let opened = Self.openForAppending(url) else { return nil }
         handle = opened
-        written = (try? opened.seekToEnd()).map(Int.init) ?? 0
+        written = (try? opened.offset()).map(Int.init) ?? 0
+    }
+
+    /// Opens in append mode, which is a correctness requirement rather than a convenience.
+    ///
+    /// `FileHandle(forWritingTo:)` writes at its own offset. Two processes with the same file open
+    /// — `DNT_LOG_FILE` pointing at the app's log, or simply two `dnt` invocations at once — each
+    /// hold their own idea of the end and overwrite each other's lines. With `O_APPEND` the kernel
+    /// positions every write at the real end, and a write this size lands whole, so the worst case
+    /// is interleaved lines rather than lost ones.
+    private static func openForAppending(_ url: URL) -> FileHandle? {
+        let descriptor = open(url.path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
+        guard descriptor >= 0 else { return nil }
+        return FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
     }
 
     deinit { try? handle?.close() }
@@ -542,7 +551,16 @@ public final class FileLogSink: LogSink, @unchecked Sendable {
 
         lock.lock()
         defer { lock.unlock() }
+
+        // A rotation that could not reopen the file left this nil. Try again rather than staying
+        // silently dead for the rest of the process: a full disk that empties, or a directory
+        // somebody deleted and recreated, should not cost every later line.
+        if handle == nil {
+            handle = Self.openForAppending(url)
+            written = (try? handle?.offset()).map(Int.init) ?? 0
+        }
         guard let handle else { return }
+
         try? handle.write(contentsOf: data)
         written += data.count
         if written > maximumBytes { rotate() }
@@ -562,9 +580,7 @@ public final class FileLogSink: LogSink, @unchecked Sendable {
         handle = nil
         try? manager.removeItem(at: previous)
         try? manager.moveItem(at: url, to: previous)
-        guard manager.createFile(atPath: url.path, contents: nil),
-            let reopened = try? FileHandle(forWritingTo: url)
-        else { return }
+        guard let reopened = Self.openForAppending(url) else { return }
         handle = reopened
         written = 0
     }
