@@ -72,7 +72,52 @@ class SpeechActivityTest {
         assertTrue(reading.summary, reading.speechMilliseconds < 100)
     }
 
+    /**
+     * The recording this gate was rebuilt around: one mouse click in a very quiet room. 380 ms
+     * above the floor is past the 200 ms threshold, and a −37 dB transient over a −63 dB floor is
+     * 26 dB of range — in a silent room any sound clears a relative margin. What it does not have
+     * is a voice's spectrum.
+     */
+    @Test
+    fun `a mouse click in a quiet room is not a sentence`() {
+        val reading = SpeechActivity.measureWav(silence("mouse-click-quiet-room"))
+        assertTrue(
+            "the premise is that duration alone lets it through — ${reading.summary}",
+            reading.speechMilliseconds > SpeechActivity.MINIMUM_SPEECH_MILLISECONDS,
+        )
+        assertFalse(reading.summary, reading.hasSpeech)
+    }
+
     // ---- Everything that is speech gets through --------------------------------------------------
+
+    /**
+     * The constraint on the spectral test. "Yes." is a single 320 ms burst — the same duration and
+     * shape as the mouse click above, so any rule separating them by length or burst count would
+     * drop this.
+     */
+    @Test
+    fun `a one word answer is still a sentence`() {
+        val reading = SpeechActivity.measureWav(fixture("eval/audio/short-word.wav"))
+        assertTrue(
+            "this must be short enough that the spectral test admits it — ${reading.summary}",
+            reading.speechMilliseconds < SpeechActivity.STRONG_SPEECH_MILLISECONDS,
+        )
+        assertTrue(reading.summary, reading.hasSpeech)
+    }
+
+    /** Stated as a number so narrowing it has to be an argument rather than an edit. */
+    @Test
+    fun `the voice band separates a click from a voice`() {
+        val click = SpeechActivity.measureWav(silence("mouse-click-quiet-room"))
+        val word = SpeechActivity.measureWav(fixture("eval/audio/short-word.wav"))
+
+        assertTrue(click.summary, click.voiceBandRatio < SpeechActivity.MINIMUM_VOICE_BAND_RATIO)
+        assertTrue(word.summary, word.voiceBandRatio > SpeechActivity.MINIMUM_VOICE_BAND_RATIO)
+        assertTrue(
+            "the threshold is only defensible while these are far apart",
+            word.voiceBandRatio - click.voiceBandRatio > 0.08,
+        )
+    }
 
     /**
      * The failure that would matter more than the one this prevents. A stray "Thank you." is

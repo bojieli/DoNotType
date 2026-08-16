@@ -43,16 +43,27 @@ public static class SpeechActivity
         int SpeechMilliseconds,
         double NoiseFloorDecibels,
         double PeakDecibels,
-        double DurationSeconds)
+        double DurationSeconds,
+        double VoiceBandRatio)
     {
-        public bool HasSpeech => SpeechMilliseconds >= MinimumSpeechMilliseconds;
+        public bool HasSpeech
+        {
+            get
+            {
+                if (SpeechMilliseconds < MinimumSpeechMilliseconds) return false;
+                // Enough speech to be sure on duration alone. The spectral test is for the
+                // ambiguous short clip and must never get the chance to veto a real dictation.
+                if (SpeechMilliseconds >= StrongSpeechMilliseconds) return true;
+                return VoiceBandRatio >= MinimumVoiceBandRatio;
+            }
+        }
 
         /// <summary>
         /// For the log, where a user who disagrees with the decision has to be able to see why.
         /// </summary>
         public string Summary =>
             $"speech={SpeechMilliseconds}ms floor={NoiseFloorDecibels:F1}dB "
-            + $"peak={PeakDecibels:F1}dB of {DurationSeconds:F2}s";
+            + $"peak={PeakDecibels:F1}dB voice={VoiceBandRatio * 100:F0}% of {DurationSeconds:F2}s";
     }
 
     /// <summary>Below this, nothing is sent. See the measurements in the README.</summary>
@@ -74,6 +85,26 @@ public static class SpeechActivity
 
     private const int FrameMilliseconds = 20;
 
+    /// <summary>
+    /// Above this, duration alone settles it and the spectral test is not consulted.
+    ///
+    /// <para>Set above every ambiguous case measured and below every real dictation: the longest
+    /// click produced 380 ms, the shortest genuine dictation 1320 ms.</para>
+    /// </summary>
+    public const int StrongSpeechMilliseconds = 700;
+
+    /// <summary>
+    /// The share of energy a voice puts at or below <see cref="VoiceBandHertz"/>. Midway between
+    /// the two populations measured: clicks at 23-24%, the quietest-scoring real speech at 39%.
+    /// </summary>
+    public const double MinimumVoiceBandRatio = 0.32;
+
+    /// <summary>
+    /// Cutoff for the voice-band measurement. 250 Hz separated the two populations most widely of
+    /// the cutoffs measured (100-500 Hz).
+    /// </summary>
+    private const double VoiceBandHertz = 250.0;
+
     /// <param name="pcm">16 kHz mono 16-bit little-endian samples, without a WAV header.</param>
     public static Reading Measure(ReadOnlySpan<byte> pcm, int sampleRate = 16_000)
     {
@@ -81,7 +112,7 @@ public static class SpeechActivity
         var sampleCount = pcm.Length / 2;
         var duration = sampleCount / (double)sampleRate;
 
-        if (sampleCount < frameSamples) return new Reading(0, -120, -120, duration);
+        if (sampleCount < frameSamples) return new Reading(0, -120, -120, duration, 0);
 
         var levels = new List<double>(sampleCount / frameSamples);
         for (var start = 0; start + frameSamples <= sampleCount; start += frameSamples)
@@ -97,7 +128,7 @@ public static class SpeechActivity
             levels.Add(10 * Math.Log10(mean / (32_768.0 * 32_768.0) + 1e-12));
         }
 
-        if (levels.Count == 0) return new Reading(0, -120, -120, duration);
+        if (levels.Count == 0) return new Reading(0, -120, -120, duration, 0);
 
         // The tenth percentile rather than the minimum: one anomalously quiet frame should not
         // define the room, and speech contains real pauses that sit at the floor.
@@ -105,15 +136,60 @@ public static class SpeechActivity
         var floor = sorted[Math.Min(sorted.Count - 1, sorted.Count / 10)];
         var peak = sorted[^1];
 
-        var speaking = levels.Count(
-            level => level > floor + MarginDecibels && level > AbsoluteFloorDecibels);
-        return new Reading(speaking * FrameMilliseconds, floor, peak, duration);
+        var isSpeaking = levels
+            .Select(level => level > floor + MarginDecibels && level > AbsoluteFloorDecibels)
+            .ToList();
+        var speaking = isSpeaking.Count(x => x);
+        return new Reading(
+            speaking * FrameMilliseconds, floor, peak, duration,
+            VoiceBand(pcm, sampleRate, frameSamples, isSpeaking));
+    }
+
+    /// <summary>
+    /// Median share of frame energy surviving a low-pass at <see cref="VoiceBandHertz"/>, over the
+    /// frames that counted as speech.
+    ///
+    /// <para>A one-pole filter rather than a transform: this separates two populations 11 points
+    /// apart, which a 6 dB/octave roll-off does perfectly well, and it has to stay identical to
+    /// three hand-written ports without an FFT going subtly different in any of them.</para>
+    ///
+    /// <para>The filter runs across the whole recording, including frames that are not speech, so
+    /// its state is continuous — restarting it per frame would ring at every boundary. The median
+    /// rather than the mean, because one frame of a door closing should not decide what a sentence
+    /// was.</para>
+    /// </summary>
+    private static double VoiceBand(
+        ReadOnlySpan<byte> pcm, int sampleRate, int frameSamples, List<bool> isSpeaking)
+    {
+        var alpha = 1 - Math.Exp(-2 * Math.PI * VoiceBandHertz / sampleRate);
+        var ratios = new List<double>(isSpeaking.Count);
+        double filtered = 0;
+
+        for (var frame = 0; frame < isSpeaking.Count; frame++)
+        {
+            var start = frame * frameSamples;
+            double total = 0;
+            double low = 0;
+            for (var index = start; index < start + frameSamples; index++)
+            {
+                double value = BitConverter.ToInt16(pcm[(index * 2)..(index * 2 + 2)]);
+                filtered += alpha * (value - filtered);
+                if (!isSpeaking[frame]) continue;
+                total += value * value;
+                low += filtered * filtered;
+            }
+            if (isSpeaking[frame] && total > 0) ratios.Add(low / total);
+        }
+
+        if (ratios.Count == 0) return 0;
+        var sorted = ratios.Order().ToList();
+        return sorted[sorted.Count / 2];
     }
 
     /// <param name="wav">A 16 kHz mono 16-bit WAV, header and all.</param>
     public static Reading MeasureWav(byte[] wav)
     {
         var body = AudioChunker.PcmBody(wav);
-        return body is null ? new Reading(0, -120, -120, 0) : Measure(body);
+        return body is null ? new Reading(0, -120, -120, 0, 0) : Measure(body);
     }
 }

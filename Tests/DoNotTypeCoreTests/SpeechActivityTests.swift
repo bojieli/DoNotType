@@ -61,7 +61,54 @@ final class SpeechActivityTests: XCTestCase {
         XCTAssertLessThan(reading.speechMilliseconds, 100, reading.summary)
     }
 
+    /// The recording that this gate was rebuilt around: one mouse click in a very quiet room.
+    ///
+    /// It defeats every structural test. 380 ms above the floor is past the 200 ms threshold, and
+    /// a −37 dB transient over a −63 dB floor is 26 dB of dynamic range — in a silent room any
+    /// sound clears a relative margin. What it does not have is a voice's spectrum.
+    func testAMouseClickInAQuietRoomIsNotASentence() throws {
+        let reading = SpeechActivity.measure(wav: try silence("mouse-click-quiet-room"))
+        XCTAssertGreaterThan(
+            reading.speechMilliseconds, SpeechActivity.minimumSpeechMilliseconds,
+            "the premise of this test is that duration alone lets it through — \(reading.summary)")
+        XCTAssertFalse(reading.hasSpeech, reading.summary)
+    }
+
     // MARK: - Everything that is speech gets through
+
+    /// The constraint on the spectral test, and the reason it only runs on short clips.
+    ///
+    /// "Yes." is a single 320 ms burst — the same duration and the same shape as the mouse click
+    /// above. Any rule that separated them by length or by burst count would drop this, which is
+    /// the unforgivable failure rather than the annoying one.
+    func testAOneWordAnswerIsStillASentence() throws {
+        let reading = SpeechActivity.measure(wav: try fixture("eval/audio/short-word.wav"))
+        XCTAssertLessThan(
+            reading.speechMilliseconds, SpeechActivity.strongSpeechMilliseconds,
+            "this has to be short enough that the spectral test is what admits it — \(reading.summary)")
+        XCTAssertTrue(reading.hasSpeech, reading.summary)
+    }
+
+    /// Stated as a number so narrowing it has to be an argument rather than an edit. Calibrated on
+    /// two voices and two clicks, which is why the gap is the whole of the evidence.
+    func testTheVoiceBandSeparatesAClickFromAVoice() throws {
+        let click = SpeechActivity.measure(wav: try silence("mouse-click-quiet-room"))
+        let word = SpeechActivity.measure(wav: try fixture("eval/audio/short-word.wav"))
+
+        XCTAssertLessThan(click.voiceBandRatio, SpeechActivity.minimumVoiceBandRatio, click.summary)
+        XCTAssertGreaterThan(word.voiceBandRatio, SpeechActivity.minimumVoiceBandRatio, word.summary)
+        XCTAssertGreaterThan(
+            word.voiceBandRatio - click.voiceBandRatio, 0.08,
+            "the threshold is only defensible while these are far apart")
+    }
+
+    /// A long dictation must never reach the spectral test at all — that is what confines a
+    /// heuristic calibrated on two voices to the cases where the other evidence is already weak.
+    func testRealDictationNeverReachesTheSpectralTest() throws {
+        let reading = SpeechActivity.measure(pcm: try speechPCM())
+        XCTAssertGreaterThanOrEqual(
+            reading.speechMilliseconds, SpeechActivity.strongSpeechMilliseconds, reading.summary)
+    }
 
     /// The failure that would matter more than the one this prevents. A stray "Thank you." is
     /// annoying; dropping a sentence somebody said is unforgivable.

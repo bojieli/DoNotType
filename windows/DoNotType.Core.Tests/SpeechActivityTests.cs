@@ -75,7 +75,56 @@ public sealed class SpeechActivityTests
         Assert.True(reading.SpeechMilliseconds < 100, reading.Summary);
     }
 
+    /// <summary>
+    /// The recording this gate was rebuilt around: one mouse click in a very quiet room. 380 ms
+    /// above the floor is past the 200 ms threshold, and a −37 dB transient over a −63 dB floor is
+    /// 26 dB of range — in a silent room any sound clears a relative margin. What it does not have
+    /// is a voice's spectrum.
+    /// </summary>
+    [Fact]
+    public void AMouseClickInAQuietRoomIsNotASentence()
+    {
+        var reading = SpeechActivity.MeasureWav(Silence("mouse-click-quiet-room"));
+        Assert.True(
+            reading.SpeechMilliseconds > SpeechActivity.MinimumSpeechMilliseconds,
+            $"the premise is that duration alone lets it through — {reading.Summary}");
+        Assert.False(reading.HasSpeech, reading.Summary);
+    }
+
     // ---- Everything that is speech gets through --------------------------------------------------
+
+    /// <summary>
+    /// The constraint on the spectral test. "Yes." is a single 320 ms burst — the same duration and
+    /// shape as the mouse click above, so any rule separating them by length or burst count would
+    /// drop this.
+    /// </summary>
+    [Fact]
+    public void AOneWordAnswerIsStillASentence()
+    {
+        var reading = SpeechActivity.MeasureWav(
+            Fixture(Path.Combine("eval", "audio", "short-word.wav")));
+        Assert.True(
+            reading.SpeechMilliseconds < SpeechActivity.StrongSpeechMilliseconds,
+            $"this must be short enough that the spectral test is what admits it — {reading.Summary}");
+        Assert.True(reading.HasSpeech, reading.Summary);
+    }
+
+    /// <summary>
+    /// Stated as a number so narrowing it has to be an argument rather than an edit.
+    /// </summary>
+    [Fact]
+    public void TheVoiceBandSeparatesAClickFromAVoice()
+    {
+        var click = SpeechActivity.MeasureWav(Silence("mouse-click-quiet-room"));
+        var word = SpeechActivity.MeasureWav(
+            Fixture(Path.Combine("eval", "audio", "short-word.wav")));
+
+        Assert.True(click.VoiceBandRatio < SpeechActivity.MinimumVoiceBandRatio, click.Summary);
+        Assert.True(word.VoiceBandRatio > SpeechActivity.MinimumVoiceBandRatio, word.Summary);
+        Assert.True(
+            word.VoiceBandRatio - click.VoiceBandRatio > 0.08,
+            "the threshold is only defensible while these are far apart");
+    }
 
     /// <summary>
     /// The failure that would matter more than the one this prevents. A stray "Thank you." is

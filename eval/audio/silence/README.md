@@ -1,6 +1,6 @@
 # Recordings with nothing in them
 
-Six files that a dictation tool must never produce words from, and the reason a gate exists at all.
+Seven files that a dictation tool must never produce words from, and the reason a gate exists at all.
 
 ## Why these matter more than they look
 
@@ -30,6 +30,7 @@ against. A backend cannot hallucinate audio it never received.
 | `hum.wav` | 3 s of 50 Hz tone | mains buzz — *louder than quiet speech*, and still not speech |
 | `click.wav` | one 8 ms transient | a key press or a desk knock; huge dynamic range, no duration |
 | `too-short.wav` | 0.33 s of quiet noise | a tap on the hotkey rather than a hold |
+| `mouse-click-quiet-room.wav` | 0.76 s, one real mouse click | **the one that got through** — see below |
 
 All are 16 kHz mono 16-bit, the format everything downstream assumes. Rebuild them with
 `make-silence.py` in this directory; the generator is seeded, so the files are reproducible.
@@ -46,6 +47,7 @@ does not — and counts how much audio sits clearly above the recording's own no
 | steady noise | 0 ms |
 | hum | 0 ms |
 | click | 20 ms |
+| **mouse click, quiet room** | **380 ms** — past the threshold |
 | **real speech** | **1160 ms** |
 | real speech at −32 dB | 1160 ms |
 | real speech at −46 dB | 800 ms |
@@ -72,3 +74,27 @@ the audio reaching the model, and the eval measures what the model would have do
 dnt-eval silence --provider gemini
 dnt-eval silence --provider deepgram   # the interesting one: it never sees the contract
 ```
+
+## The one that got through
+
+`mouse-click-quiet-room.wav` is not synthesised. It is a real recording this app stored, and it
+defeated the gate as originally written: 380 ms above the floor, comfortably past the 200 ms
+threshold, because the room was quiet enough (−63 dB) that a −37 dB click sat 26 dB above it. In a
+silent room *any* sound clears a relative margin.
+
+The model was then handed it along with 10,000 characters of screen context and answered with 876
+characters of fluent prose about what the screen appeared to be discussing. Nine words of that
+appeared on screen; the rest was invented. That is the failure this whole corpus exists to prevent,
+happening in production.
+
+Nothing structural separates it from a real one-word answer — compare `../short-word.wav`:
+
+| | this click | "Yes." |
+|---|---|---|
+| detected | 380 ms | 320 ms |
+| separate bursts | 1 | 1 |
+| energy at/below 250 Hz | 23% | 50% |
+
+Only the last row differs, which is why `SpeechActivity` ends with a spectral test and why that
+test only runs on clips too short to settle on duration alone. A change that makes this file pass
+has reintroduced the bug; a change that makes `../short-word.wav` fail has broken one-word answers.

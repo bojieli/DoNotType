@@ -18,6 +18,10 @@ eval/audio/*.wav
 eval/audio/*.flac
 eval/audio/*.ogg
 eval/audio/*.aiff
+# Synthesised by make-audio.sh and asserted on by the speech gate in all three languages, so it
+# has to exist in a fresh clone: it is the one-word answer that no tightening of SpeechActivity is
+# allowed to drop. See eval/audio/silence/README.md.
+!eval/audio/short-word.wav
 
 # The ordinary-dictation corpus is cut from the maintainer's own recordings: the clips are private
 # speech and the manifest names the source files and offsets they came from. All of it stays on
