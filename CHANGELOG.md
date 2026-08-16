@@ -237,6 +237,41 @@ deliberate:
 
 ### Changed
 
+- **The contract moved from `PROMPT.md` into `prompt/`, one part per file — and doing it fixed a bug
+  that had been in every request since the contract was written.** `PROMPT.md` was two documents
+  under one filename: about 95 lines that ship to the model, and 250 of argument, ablation tables and
+  changelog. `<!-- BEGIN SYSTEM -->` markers existed only so the loader could tell them apart, and
+  the loader took the *first* match anywhere in the file. Line 5 quoted that marker inside backticks
+  while explaining what the loader did, so every request carried eight lines of the file's own
+  documentation ahead of rule 1 — and because that same sentence also mentions `{{FIDELITY_RULE}}`,
+  **the fidelity clause was being sent twice**. The 2026-08-09 entry in `PROMPT.md`'s changelog
+  records that restating the fidelity rule made substitution worse, 11/19 → 15/18; the prompt had
+  been doing an accidental version of exactly that throughout every measurement in it.
+
+  A part is a whole file now — no markers, no fences, nothing stripped — so there is no convention
+  left to get wrong. All nine marker and placeholder constants are gone from Swift, C# and Kotlin
+  alike, and the assembled instruction drops from 41 lines to 33. `PROMPT.md` keeps its name and its
+  job as the argument for the contract and the home of the changelog; it ships nothing.
+
+  Overrides are per part, which removes a failure mode rather than tidying one. The old override was
+  the whole file, so a prompt edited before summaries existed had no summary block and the stage
+  failed outright — there was an error string apologising for it. Editing `system.md` now says
+  nothing about `summary.md`, and a part you never touched cannot go stale. An existing edited
+  `PROMPT.md` is split into part files once, on first launch, and only the parts that actually
+  differ from the shipped text become overrides; the original is kept alongside as
+  `PROMPT.md.migrated`.
+
+  Each of the four settings screens becomes a part picker over one editor rather than the whole
+  contract in a single scrolling box, with per-part *Restore default*.
+
+  **The measured numbers in `PROMPT.md`'s changelog were all taken with the stray preamble present
+  and have not been re-measured without it.**
+
+  Two things this turned up on the way. The fallback transcriber and the retry coordinator read the
+  bundled contract directly while the primary read the store, so an edited prompt applied to a first
+  attempt and not to its retry — on macOS, Windows and iOS. And `eval/local-gpu-benchmark.py`
+  reimplemented the loader in Python, so it carried its own copy of the same bug.
+
 - **A fresh install now defaults to Gemini 3.6 Flash via Google, not xAI.** A recogniser cannot see
   the screen, so defaulting to one shipped the product with the feature it exists for switched off,
   in a way no setting revealed: grounding was not disabled, it was structurally impossible, and the
