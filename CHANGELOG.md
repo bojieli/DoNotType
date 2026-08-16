@@ -291,6 +291,14 @@ deliberate:
   audio reaches them in pieces small enough to draw: 100 ms buffers on Windows, 50 ms reads on
   Android.
 
+  iOS had no bars at all — a ring around the record button that pulsed with the level, which at
+  least was already in decibels. It gets the same twenty-four bars, under the button, on the same
+  scale and the same 60 ms a bar, and the ring keeps pulsing with the newest one. `AVAudioRecorder`
+  writes the file itself and never hands over the samples, so there the level is the recorder's own
+  reading of each interval rather than the loudest of three 20 ms frames, and clipping is its peak
+  meter reaching full scale rather than a count of clamped samples: the same question, asked with
+  what the platform can see.
+
 - **The contract moved from `PROMPT.md` into `prompt/`, one part per file — and doing it fixed a bug
   that had been in every request since the contract was written.** `PROMPT.md` was two documents
   under one filename: about 95 lines that ship to the model, and 250 of argument, ablation tables and

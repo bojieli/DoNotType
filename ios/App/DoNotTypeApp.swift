@@ -32,6 +32,12 @@ struct ContentView: View {
                 Spacer()
                 styleChips
                 recordButton
+                // Reserved rather than inserted: a meter that appears on the first word would push
+                // the button under the thumb that is holding it.
+                LevelMeter(bars: model.levels)
+                    .frame(width: LevelMeter.width, height: 36)
+                    .opacity(model.state == .recording ? 1 : 0)
+                    .accessibilityHidden(true)
                 statusLine
                 Spacer()
                 if let latest = model.records.first(where: { $0.status == .completed }) {
@@ -131,12 +137,14 @@ struct ContentView: View {
 
     private var recordButton: some View {
         ZStack {
-            // The ring pulses with the microphone level, so it is obvious the mic is live.
+            // The ring pulses with the newest bar, so the microphone is visibly live from the
+            // corner of the eye that is watching the button rather than the meter.
+            let newest = model.levels.last?.level ?? 0
             Circle()
                 .stroke(Color.accentColor.opacity(0.25), lineWidth: 10)
                 .frame(width: 168, height: 168)
-                .scaleEffect(1 + model.level * 0.22)
-                .animation(.easeOut(duration: 0.08), value: model.level)
+                .scaleEffect(1 + newest * 0.22)
+                .animation(.easeOut(duration: 0.08), value: newest)
 
             Circle()
                 .fill(model.state == .recording ? Color.red : Color.accentColor)
@@ -223,6 +231,49 @@ struct ContentView: View {
                     systemImage: "arrow.clockwise")
             }
             .buttonStyle(.bordered)
+        }
+    }
+}
+
+/// The last second and a half of the microphone, walking leftwards.
+///
+/// The ring alone answered "is the microphone live". It could not answer "how loud am I", which is
+/// the question somebody asks when the transcript comes back wrong and they are wondering whether
+/// they were heard at all. Every bar here is 60 ms of audio that actually happened, on the same
+/// decibel scale as the desktop and the keyboard — see `AudioLevelMeter` for where the span came
+/// from — so silence is a flat row of dots that keeps scrolling, and a voice is a shape.
+///
+/// Hidden from VoiceOver: it says nothing that the button's own label and the status line do not,
+/// and a row of twenty-four unlabelled shapes is noise to somebody who cannot see it.
+struct LevelMeter: View {
+    let bars: [AudioLevelMeter.Bar]
+
+    private static let barWidth = 4.0
+    private static let spacing = 3.0
+    static var width: Double {
+        Double(DictationModel.visibleBars) * barWidth
+            + Double(DictationModel.visibleBars - 1) * spacing
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            HStack(alignment: .center, spacing: Self.spacing) {
+                ForEach(Array(bars.enumerated()), id: \.offset) { _, bar in
+                    Capsule()
+                        // Amber is not decoration: the input is loud enough to be clamped on the
+                        // way in, and a recording distorted before it is sent is worth one colour.
+                        .fill(bar.isClipping ? Color.orange : Color.accentColor)
+                        .frame(
+                            width: Self.barWidth,
+                            // Silence is a row of dots rather than nothing at all: a meter that
+                            // disappears when the room is quiet cannot be told apart from one that
+                            // has stopped.
+                            height: max(Self.barWidth, geometry.size.height * bar.level))
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // One bar's worth, so the uneven arrival of readings does not show up as a stutter.
+            .animation(.linear(duration: 0.05), value: bars)
         }
     }
 }

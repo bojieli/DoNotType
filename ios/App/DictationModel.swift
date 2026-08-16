@@ -42,7 +42,11 @@ final class DictationModel {
 
     private(set) var allRecords: [DictationRecord] = []
     private(set) var records: [DictationRecord] = []
-    private(set) var level: Double = 0
+    /// The last second and a half of the microphone, oldest first.
+    ///
+    /// Always full, so the meter starts flat rather than growing in from the left: an empty meter
+    /// and a silent one should not look different.
+    private(set) var levels = DictationModel.silentMeter
     private(set) var retryingIDs: Set<UUID> = []
     private(set) var audioBytes: Int64 = 0
     private(set) var connectionStatus: String?
@@ -497,7 +501,7 @@ final class DictationModel {
         levelTimer = nil
         recorder?.stop()
         recorder = nil
-        level = 0
+        levels = Self.silentMeter
 
         guard let url = recordingURL else {
             log.info("recording produced no file", ["dictation": Self.short(pendingID)])
@@ -534,14 +538,37 @@ final class DictationModel {
         Task { await transcribe(url: url) }
     }
 
+    /// How much of the recording the meter shows: 24 bars of 60 ms, so a second and a half.
+    static let visibleBars = 24
+
+    /// A recording that has just started, or one hearing nothing: flat, and still scrolling.
+    static var silentMeter: [AudioLevelMeter.Bar] {
+        [AudioLevelMeter.Bar](repeating: .silent, count: visibleBars)
+    }
+
+    /// A peak this close to full scale is a sample at the rail.
+    ///
+    /// The shared meter decides this by counting clamped samples in a frame, which is the better
+    /// question — but `AVAudioRecorder` writes the file itself and never hands over PCM, so the
+    /// only view of the waveform here is the two numbers it reports. `peakPower` reaching 0 dBFS
+    /// is what it can say, and it says it about a whole 60 ms rather than about eight samples.
+    private static let railDecibels = -0.1
+
     private func startMetering() {
-        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+        levels = Self.silentMeter
+        // 60 ms, which is one bar — the same bar the other three clients draw, so the meter walks
+        // across at the same speed everywhere. What differs is where the number comes from: this
+        // one is the recorder's own reading of the interval rather than the loudest of three 20 ms
+        // frames measured off the samples.
+        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.06, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, let recorder = self.recorder else { return }
                 recorder.updateMeters()
-                // -50 dB is about the noise floor of a phone mic in a quiet room.
-                let power = Double(recorder.averagePower(forChannel: 0))
-                self.level = max(0, min(1, (power + 50) / 50))
+                let bar = AudioLevelMeter.Bar(
+                    level: AudioLevelMeter.level(
+                        decibels: Double(recorder.averagePower(forChannel: 0))),
+                    isClipping: Double(recorder.peakPower(forChannel: 0)) >= Self.railDecibels)
+                self.levels = Array((self.levels + [bar]).suffix(Self.visibleBars))
             }
         }
     }
