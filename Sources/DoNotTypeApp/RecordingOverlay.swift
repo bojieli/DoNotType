@@ -64,8 +64,20 @@ final class RecordingOverlay {
     // MARK: - Private
 
     private func makePanel() -> NSPanel {
+        // Wider than any pill it will hold, rather than the size of one.
+        //
+        // A window clips its content to its own frame, and the pill sizes itself to whatever it is
+        // currently saying — which at 220 points was routinely more than it had room for. SwiftUI
+        // does not overflow: it wraps, and then it truncates. So the effect was invisible in the
+        // code and plain on screen. "Release or tap to send" broke onto two lines, and a failure
+        // message reached the two-line limit and ended in an ellipsis, which is the one thing this
+        // project does not do to an error — that text is what somebody copies to find out what
+        // went wrong.
+        //
+        // Transparent and mouse-ignoring, so the room it does not draw in costs nothing, and the
+        // pill goes on centring itself inside it.
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 220, height: 56),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 64),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered, defer: false)
 
