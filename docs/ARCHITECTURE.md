@@ -78,8 +78,7 @@ The guard lives on the provider protocol, not in an allowlist, because any backe
 |---|---|---|
 | `ContextEncoder` | `ScreenContext` → request parts | Does no analysis. No term extraction, no ranking, no summarising — a distilled list throws away exactly what a multimodal model was chosen for. |
 | `TokenBudget` | estimate + truncate | Truncation keeps the **tail**: the end of a buffer is the part nearest the caret. |
-| `TranscriptionProvider` | one backend | `SupportsPreUpload` and audio-token reporting are on the interface because omitting them would let it lie. |
-| `AudioUploader` | route the recording | Degrades to inline on any failure. A flaky network should cost latency, never words. |
+| `TranscriptionProvider` | one backend | Audio-token reporting is on the interface because omitting it would let it lie: the guard against a backend that accepts audio and discards it needs a number. |
 | `OggOpusWriter` | container for compressed upload | CoreAudio encodes Opus but only into CAF; the API decodes Ogg. 16× smaller uploads, ~25% lower latency, identical transcripts. |
 | `TranscriptionService` | first attempt and retries | Same code path both times, so a retry is not a lesser attempt. |
 | `HistoryStore` | persistence | A failed entry keeps its audio until it succeeds, whatever retention says — otherwise Retry is a button that cannot work. |

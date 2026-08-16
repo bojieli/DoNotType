@@ -204,11 +204,12 @@ the decoy in the caret window, where substitution actually bites:
 | visible text | 30% | 8% | — |
 | **caret window** | **75%** | **20%** | 9.4 s vs 7.9 s |
 
-The guard works where it is needed most. `NumberCheckPolicy.whenCaretHasNumbers` is therefore the
-default: it spends the second request only when the text around the caret contains digits, and
-never for ordinary dictation into an empty field. Digits in the visible text alone do not trigger
-it — a sidebar, a timestamp or a row count would make the cost constant while the benefit stayed
-occasional.
+The guard worked where it was needed most, so `NumberCheckPolicy.whenCaretHasNumbers` was made the
+default: it spent the second request only when the text around the caret contained digits, and
+never for ordinary dictation into an empty field. Digits in the visible text alone did not trigger
+it — a sidebar, a timestamp or a row count would have made the cost constant while the benefit
+stayed occasional. That reasoning was right about where the benefit is and wrong about how often
+the trigger fires; see below.
 
 **A latency claim of mine that needs correcting.** I recorded that the guard "roughly doubles the
 wait" from 8.6 s to 17.2 s. The run above shows 9.4 s against 7.9 s — about 1.5 s of overhead. Both
