@@ -38,9 +38,9 @@ import Foundation
 /// | the loudest frame in any fixture | −5 | 1.00 |
 ///
 /// Speech now lands in the top third and moves visibly within it, silence is flat, and a full bar
-/// means what a full bar should mean: the input is at the edge of clipping. `isClipping` marks the
-/// frames that are actually there, because a meter that pins without saying why is the state the
-/// old one was in permanently.
+/// means what a full bar should mean: the recording is using all the range it has. Whether it has
+/// run *out* of range is a separate question, answered by counting samples rather than by reading
+/// the height — see `Bar.isClipping`.
 ///
 /// ## Why frames rather than a smoothed value
 ///
@@ -55,13 +55,17 @@ public struct AudioLevelMeter: Sendable {
     public struct Bar: Sendable, Equatable {
         /// 0…1, ready to scale a bar height by.
         public let level: Double
-        /// The input reached within `clippingDecibels` of full scale, where samples start being
-        /// clamped and the recording is distorted before any backend sees it. Usually input gain
-        /// set too high, which nothing else in the app would ever tell the user.
+        /// Samples in here were clamped at the rail, so the recording is distorted before any
+        /// backend sees it. Usually input gain set too high, which nothing else in the app would
+        /// ever tell the user.
         ///
-        /// Deliberately not the same threshold as a full bar. There is 3 dB between "using all of
-        /// the meter", which a loud sentence should do, and "being damaged", which it should not,
-        /// and a warning that fires on the first is a warning nobody reads by the second.
+        /// Counted rather than inferred from the level. Speech has a crest factor around 12 dB —
+        /// its peaks run four times its own energy — so by the time a frame's *energy* is near full
+        /// scale, its peaks have been flattened for a long while. Measured on `real-brand` at twice
+        /// its recorded gain, where 1.5% of samples come back clamped: a −3 dBFS energy threshold
+        /// marks 0.3% of frames, and counting the clamped samples marks 19.5%. The first is a
+        /// warning that arrives once the recording is already ruined; the second arrives as it
+        /// starts going wrong, which is when somebody can still reach for the gain.
         public let isClipping: Bool
 
         public init(level: Double, isClipping: Bool) {
@@ -77,8 +81,28 @@ public struct AudioLevelMeter: Sendable {
     /// A full bar. Just under the loudest frame measured in any fixture, so a voice recorded at a
     /// sensible level uses the top of the meter without living there.
     public static let ceilingDecibels = -6.0
-    /// Where a bar is marked as clipping.
-    public static let clippingDecibels = -3.0
+    /// A sample this loud is at the rail: 0.21 dB below full scale, which nothing undamaged has any
+    /// reason to sit at.
+    public static let railAmplitude = 32_000
+
+    /// How many samples at the rail make a frame a clipped one.
+    ///
+    /// Not one. An undistorted waveform passes through its peak; a clamped one *stays* there, and
+    /// eight samples is half a millisecond of staying. Measured over the speech fixtures, that is
+    /// the number that separates a recording which merely touches full scale from one being
+    /// damaged by it — the share of bars marked, against playback gain:
+    ///
+    /// | fixture | ×1 | ×1.5 | ×2 | ×4 |
+    /// |---|---|---|---|---|
+    /// | `real-brand` | 0.6% | 10.5% | 24.0% | 58.9% |
+    /// | `real-acronym` | 0.6% | 5.4% | 12.3% | 41.4% |
+    /// | `real-talk-gemini15` | 0% | 0.8% | 4.4% | 21.0% |
+    /// | every other fixture | 0% | | | |
+    ///
+    /// So a good recording is quiet and a spoiled one is unmistakable. At three samples instead of
+    /// eight, `real-brand` marks 3% of its bars at its own recorded gain — an amber bar every two
+    /// seconds on audio nobody would call clipped, which is how a warning stops being read.
+    public static let railSamplesPerFrame = 8
 
     /// Matches `SpeechActivity`, so the two agree about what a frame is.
     public static let frameMilliseconds = 20
@@ -87,19 +111,18 @@ public struct AudioLevelMeter: Sendable {
     public static let framesPerBar = 3
 
     /// The 0…1 height for one frame's level. Pure, so the table above can be asserted directly.
-    public static func bar(decibels: Double) -> Bar {
-        let span = ceilingDecibels - floorDecibels
-        return Bar(
-            level: min(1, max(0, (decibels - floorDecibels) / span)),
-            isClipping: decibels >= clippingDecibels)
+    public static func level(decibels: Double) -> Double {
+        min(1, max(0, (decibels - floorDecibels) / (ceilingDecibels - floorDecibels)))
     }
 
     private let frameLength: Int
     private var frameEnergy = 0.0
     private var frameSamples = 0
+    private var frameRailSamples = 0
     /// Bars peak-hold their frames: a transient that only exists for 20 ms is exactly the thing a
     /// meter must not average away, since it is what clips.
     private var barPeak = -Double.infinity
+    private var barClipped = false
     private var barFrames = 0
 
     public init(sampleRate: Double = 16_000) {
@@ -117,21 +140,28 @@ public struct AudioLevelMeter: Sendable {
         for sample in samples {
             let value = Double(sample) / 32_768.0
             frameEnergy += value * value
+            // `magnitude` rather than `abs`: the one Int16 without a positive counterpart is
+            // Int16.min, and negating it traps.
+            if Int(sample.magnitude) >= Self.railAmplitude { frameRailSamples += 1 }
             frameSamples += 1
             guard frameSamples == frameLength else { continue }
 
             // The same epsilon as `SpeechActivity`: digital silence is a number rather than
             // negative infinity, and the number it is is −120 dBFS.
             let decibels = 10 * log10(frameEnergy / Double(frameLength) + 1e-12)
+            let clipped = frameRailSamples >= Self.railSamplesPerFrame
             frameEnergy = 0
             frameSamples = 0
+            frameRailSamples = 0
 
             barPeak = max(barPeak, decibels)
+            barClipped = barClipped || clipped
             barFrames += 1
             guard barFrames == Self.framesPerBar else { continue }
 
-            bars.append(Self.bar(decibels: barPeak))
+            bars.append(Bar(level: Self.level(decibels: barPeak), isClipping: barClipped))
             barPeak = -.infinity
+            barClipped = false
             barFrames = 0
         }
         return bars

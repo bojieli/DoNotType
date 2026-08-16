@@ -76,33 +76,70 @@ final class AudioLevelMeterTests: XCTestCase {
         ]
         for (decibels, level) in expected {
             XCTAssertEqual(
-                AudioLevelMeter.bar(decibels: decibels).level, level, accuracy: 0.01,
+                AudioLevelMeter.level(decibels: decibels), level, accuracy: 0.01,
                 "\(decibels) dBFS should draw \(level) of a bar")
         }
     }
 
     func testTheScaleIsClampedAtBothEnds() {
-        XCTAssertEqual(AudioLevelMeter.bar(decibels: -120).level, 0)
-        XCTAssertEqual(AudioLevelMeter.bar(decibels: AudioLevelMeter.floorDecibels).level, 0)
-        XCTAssertEqual(AudioLevelMeter.bar(decibels: AudioLevelMeter.ceilingDecibels).level, 1)
-        XCTAssertEqual(AudioLevelMeter.bar(decibels: 0).level, 1)
+        XCTAssertEqual(AudioLevelMeter.level(decibels: -120), 0)
+        XCTAssertEqual(AudioLevelMeter.level(decibels: AudioLevelMeter.floorDecibels), 0)
+        XCTAssertEqual(AudioLevelMeter.level(decibels: AudioLevelMeter.ceilingDecibels), 1)
+        XCTAssertEqual(AudioLevelMeter.level(decibels: 0), 1)
     }
 
-    /// Full scale is where the recording is being damaged, and only there.
-    func testClippingIsMarkedOnlyAtTheTop() {
-        XCTAssertTrue(AudioLevelMeter.bar(decibels: 0).isClipping)
-        XCTAssertTrue(AudioLevelMeter.bar(decibels: AudioLevelMeter.clippingDecibels).isClipping)
-        XCTAssertFalse(AudioLevelMeter.bar(decibels: -4).isClipping)
-        // Loud speech is not clipping, or the warning would mean nothing.
-        XCTAssertFalse(AudioLevelMeter.bar(decibels: -14).isClipping)
-    }
+    // MARK: - Clipping
 
-    func testFullScaleAudioClips() {
+    /// Audio clamped at the rail says so.
+    func testAudioAtTheRailClips() {
         var meter = AudioLevelMeter()
-        let loud = [Int16](repeating: 32_000, count: 16_000)
-        let bars = meter.append(loud)
+        let bars = meter.append([Int16](repeating: 32_100, count: 16_000))
         XCTAssertFalse(bars.isEmpty)
         XCTAssertTrue(bars.allSatisfy { $0.isClipping && $0.level == 1 })
+    }
+
+    /// A full bar is not a clipped one. This tone uses the whole meter and touches nothing.
+    func testALoudCleanToneFillsTheMeterWithoutClipping() {
+        var meter = AudioLevelMeter()
+        // −6 dBFS peak: half of full scale, which is loud and entirely undamaged.
+        let tone = (0..<16_000).map { index in
+            Int16(16_384 * sin(Double(index) * 2 * .pi * 220 / 16_000))
+        }
+        let bars = meter.append(tone)
+        XCTAssertFalse(bars.isEmpty)
+        XCTAssertFalse(bars.contains { $0.isClipping })
+    }
+
+    /// One sample landing on the rail is a peak, not a clipped waveform.
+    func testASingleSampleAtTheRailIsNotClipping() {
+        var meter = AudioLevelMeter()
+        var frame = [Int16](repeating: 1_000, count: 960)  // one bar
+        frame[100] = 32_767
+        frame[400] = -32_768
+        XCTAssertFalse(meter.append(frame).contains { $0.isClipping })
+    }
+
+    /// The measurement the sample-counting rule replaced an energy threshold for.
+    ///
+    /// `real-brand` played back at twice its recorded gain clamps 1.5% of its samples — audible
+    /// distortion, and the point at which somebody can still fix it by turning the gain down. The
+    /// old rule (a frame's energy within 3 dB of full scale) marked 0.3% of frames, which at 60 ms
+    /// a bar is one amber bar every twenty seconds: invisible. Counting clamped samples marks
+    /// roughly a fifth of them.
+    func testTheOnsetOfClippingIsVisible() throws {
+        let wav = try fixture("eval/audio/real-brand.wav")
+        let pcm = try XCTUnwrap(AudioChunker.pcmBody(of: wav))
+        let doubled = samples(of: pcm).map { sample in
+            Int16(max(-32_768, min(32_767, Int(sample) * 2)))
+        }
+
+        var meter = AudioLevelMeter()
+        let bars = meter.append(doubled)
+        let clipping = Double(bars.filter(\.isClipping).count) / Double(bars.count)
+        XCTAssertGreaterThan(
+            clipping, 0.10,
+            "only \(String(format: "%.1f%%", clipping * 100)) of bars report a recording that is "
+                + "clamping 1.5% of its samples")
     }
 
     // MARK: - What a voice looks like
@@ -114,16 +151,23 @@ final class AudioLevelMeterTests: XCTestCase {
     /// else. A voice recorded at a sane level should reach the top of the meter rarely enough that
     /// arriving there still means something: measured, one bar in 333 in the loudest fixture, and
     /// none at all in the other fifteen.
-    func testSpeechBarelyEverPinsTheMeter() throws {
+    func testSpeechNeitherPinsTheMeterNorReadsAsClipping() throws {
         for path in Self.speechFixtures {
             let levels = try bars(of: path).map(\.level)
             let pinned = Double(levels.filter { $0 >= 0.999 }.count) / Double(levels.count)
             XCTAssertLessThan(
                 pinned, 0.01,
                 "\(path) spends \(String(format: "%.0f%%", pinned * 100)) of itself at full scale")
-            XCTAssertFalse(
-                try bars(of: path).contains { $0.isClipping },
-                "\(path) is a normally-recorded voice and should not be reported as clipping")
+
+            // Nor called clipped. Three of these recordings do touch the rail here and there —
+            // they are normalised, and `real-brand` marks 0.6% of its bars — but a voice recorded
+            // at a sane level must never *read* as clipping, which is a claim about how often.
+            let clipping = try Double(bars(of: path).filter(\.isClipping).count)
+                / Double(levels.count)
+            XCTAssertLessThan(
+                clipping, 0.01,
+                "\(path) is a normally-recorded voice and reports clipping on "
+                    + "\(String(format: "%.1f%%", clipping * 100)) of its bars")
         }
     }
 

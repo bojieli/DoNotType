@@ -44,11 +44,11 @@ public sealed class AudioLevelMeter
 {
     /// <param name="Level">0…1, ready to scale a bar height by.</param>
     /// <param name="IsClipping">
-    /// The input reached within <see cref="ClippingDecibels"/> of full scale, where samples start
-    /// being clamped and the recording is distorted before any backend sees it. Usually input gain
-    /// set too high, which nothing else in the app would ever tell the user. Deliberately not the
-    /// same threshold as a full bar: there is 3 dB between "using all of the meter", which a loud
-    /// sentence should do, and "being damaged", which it should not.
+    /// Samples in here were clamped at the rail, so the recording is distorted before any backend
+    /// sees it. Usually input gain set too high, which nothing else in the app would ever tell the
+    /// user. Counted rather than inferred from the level: speech peaks run about 12 dB above its
+    /// own energy, so by the time a frame's energy is near full scale its peaks have been flattened
+    /// for a long while.
     /// </param>
     public readonly record struct Bar(double Level, bool IsClipping)
     {
@@ -64,8 +64,20 @@ public sealed class AudioLevelMeter
     /// </summary>
     public const double CeilingDecibels = -6.0;
 
-    /// <summary>Where a bar is marked as clipping.</summary>
-    public const double ClippingDecibels = -3.0;
+    /// <summary>
+    /// A sample this loud is at the rail: 0.21 dB below full scale, which nothing undamaged has any
+    /// reason to sit at.
+    /// </summary>
+    public const int RailAmplitude = 32_000;
+
+    /// <summary>
+    /// How many samples at the rail make a frame a clipped one — half a millisecond of staying
+    /// there rather than passing through. Measured over the speech fixtures, the share of bars
+    /// marked at ×1 / ×1.5 / ×2 playback gain: `real-brand` 0.6% / 10.5% / 24.0%, `real-acronym`
+    /// 0.6% / 5.4% / 12.3%, everything else silent at its own gain. See the Swift original for the
+    /// whole table.
+    /// </summary>
+    public const int RailSamplesPerFrame = 8;
 
     /// <summary>Matches <see cref="SpeechActivity"/>, so the two agree about what a frame is.</summary>
     public const int FrameMilliseconds = 20;
@@ -79,12 +91,14 @@ public sealed class AudioLevelMeter
     private readonly int _frameLength;
     private double _frameEnergy;
     private int _frameSamples;
+    private int _frameRailSamples;
 
     /// <summary>
     /// Bars peak-hold their frames: a transient that only exists for 20 ms is exactly the thing a
     /// meter must not average away, since it is what clips.
     /// </summary>
     private double _barPeak = double.NegativeInfinity;
+    private bool _barClipped;
     private int _barFrames;
 
     /// <summary>Half a sample left over from the previous call. See <see cref="Append"/>.</summary>
@@ -94,9 +108,8 @@ public sealed class AudioLevelMeter
         _frameLength = Math.Max(1, sampleRate * FrameMilliseconds / 1_000);
 
     /// <summary>The 0…1 height for one frame's level. Pure, so the table above can be asserted.</summary>
-    public static Bar BarFor(double decibels) => new(
-        Math.Clamp((decibels - FloorDecibels) / (CeilingDecibels - FloorDecibels), 0, 1),
-        decibels >= ClippingDecibels);
+    public static double LevelFor(double decibels) =>
+        Math.Clamp((decibels - FloorDecibels) / (CeilingDecibels - FloorDecibels), 0, 1);
 
     /// <summary>
     /// Feeds captured audio in and returns whatever bars it completed.
@@ -134,21 +147,27 @@ public sealed class AudioLevelMeter
 
             var value = sample / 32_768.0;
             _frameEnergy += value * value;
+            // Compared as an int: negating short.MinValue overflows.
+            if (Math.Abs((int)sample) >= RailAmplitude) _frameRailSamples += 1;
             _frameSamples += 1;
             if (_frameSamples < _frameLength) continue;
 
             // The same epsilon as SpeechActivity: digital silence is a number rather than negative
             // infinity, and the number it is is −120 dBFS.
             var decibels = 10 * Math.Log10(_frameEnergy / _frameLength + 1e-12);
+            var clipped = _frameRailSamples >= RailSamplesPerFrame;
             _frameEnergy = 0;
             _frameSamples = 0;
+            _frameRailSamples = 0;
 
             _barPeak = Math.Max(_barPeak, decibels);
+            _barClipped |= clipped;
             _barFrames += 1;
             if (_barFrames < FramesPerBar) continue;
 
-            bars.Add(BarFor(_barPeak));
+            bars.Add(new Bar(LevelFor(_barPeak), _barClipped));
             _barPeak = double.NegativeInfinity;
+            _barClipped = false;
             _barFrames = 0;
         }
 

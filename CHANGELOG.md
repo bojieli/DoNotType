@@ -251,10 +251,10 @@ deliberate:
   conversational speech (−21) is 0.72 of a bar, and a bar that reaches the top means the input is at
   the edge of clipping rather than that somebody spoke. Over the same fixtures the meter now pins
   one bar in 333 in the loudest of them and none at all in the other fifteen, and moves through
-  25–77% of its height as the voice does. Frames within 3 dB of full scale are drawn amber, which is
-  the only thing in the app that will ever mention input gain set too high. Silence is a flat row of
-  dots that keeps scrolling: the microphone is live and hearing nothing, which is a different report
-  from a meter that has stopped.
+  25–77% of its height as the voice does. Bars containing samples that were clamped at the rail are
+  drawn amber, which is the only thing in the app that will ever mention input gain set too high.
+  Silence is a flat row of dots that keeps scrolling: the microphone is live and hearing nothing,
+  which is a different report from a meter that has stopped.
 
   Levels are measured in 20 ms frames on the capture thread and collected by the UI, rather than the
   UI sampling a current value. A tap buffer is around 85 ms, so a meter redrawing thirty times a

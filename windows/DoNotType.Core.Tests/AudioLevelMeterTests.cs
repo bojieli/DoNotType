@@ -70,45 +70,89 @@ public sealed class AudioLevelMeterTests
     [InlineData(-14, 0.85)]  // loud speech
     [InlineData(-5, 1.00)]  // the loudest frame in any fixture
     public void TheScaleIsTheDocumentedTable(double decibels, double level) =>
-        Assert.Equal(level, AudioLevelMeter.BarFor(decibels).Level, 2);
+        Assert.Equal(level, AudioLevelMeter.LevelFor(decibels), 2);
 
     [Fact]
     public void TheScaleIsClampedAtBothEnds()
     {
-        Assert.Equal(0, AudioLevelMeter.BarFor(-120).Level);
-        Assert.Equal(0, AudioLevelMeter.BarFor(AudioLevelMeter.FloorDecibels).Level);
-        Assert.Equal(1, AudioLevelMeter.BarFor(AudioLevelMeter.CeilingDecibels).Level);
-        Assert.Equal(1, AudioLevelMeter.BarFor(0).Level);
+        Assert.Equal(0, AudioLevelMeter.LevelFor(-120));
+        Assert.Equal(0, AudioLevelMeter.LevelFor(AudioLevelMeter.FloorDecibels));
+        Assert.Equal(1, AudioLevelMeter.LevelFor(AudioLevelMeter.CeilingDecibels));
+        Assert.Equal(1, AudioLevelMeter.LevelFor(0));
     }
 
-    /// <summary>Full scale is where the recording is being damaged, and only there.</summary>
-    [Fact]
-    public void ClippingIsMarkedOnlyAtTheTop()
-    {
-        Assert.True(AudioLevelMeter.BarFor(0).IsClipping);
-        Assert.True(AudioLevelMeter.BarFor(AudioLevelMeter.ClippingDecibels).IsClipping);
-        Assert.False(AudioLevelMeter.BarFor(-4).IsClipping);
-        // Loud speech is not clipping, or the warning would mean nothing.
-        Assert.False(AudioLevelMeter.BarFor(-14).IsClipping);
-    }
+    // ---- Clipping --------------------------------------------------------------------------------
 
-    [Fact]
-    public void FullScaleAudioClips()
+    private static byte[] Pcm(IEnumerable<short> samples)
     {
-        var loud = new byte[32_000];
-        for (var index = 0; index + 1 < loud.Length; index += 2)
+        var list = samples.ToList();
+        var bytes = new byte[list.Count * 2];
+        for (var index = 0; index < list.Count; index++)
         {
-            loud[index] = 0x00;
-            loud[index + 1] = 0x7D;  // 32000, near full scale
+            bytes[index * 2] = (byte)(list[index] & 0xFF);
+            bytes[(index * 2) + 1] = (byte)((list[index] >> 8) & 0xFF);
         }
+        return bytes;
+    }
 
-        var bars = new AudioLevelMeter().Append(loud);
+    /// <summary>Audio clamped at the rail says so.</summary>
+    [Fact]
+    public void AudioAtTheRailClips()
+    {
+        var bars = new AudioLevelMeter().Append(Pcm(Enumerable.Repeat((short)32_100, 16_000)));
         Assert.NotEmpty(bars);
         Assert.All(bars, bar =>
         {
             Assert.True(bar.IsClipping);
             Assert.Equal(1, bar.Level);
         });
+    }
+
+    /// <summary>A full bar is not a clipped one: this tone uses the whole meter and touches nothing.</summary>
+    [Fact]
+    public void ALoudCleanToneFillsTheMeterWithoutClipping()
+    {
+        // −6 dBFS peak: half of full scale, which is loud and entirely undamaged.
+        var tone = Enumerable.Range(0, 16_000)
+            .Select(index => (short)(16_384 * Math.Sin(index * 2 * Math.PI * 220 / 16_000)));
+
+        var bars = new AudioLevelMeter().Append(Pcm(tone));
+        Assert.NotEmpty(bars);
+        Assert.DoesNotContain(bars, bar => bar.IsClipping);
+    }
+
+    /// <summary>One sample landing on the rail is a peak, not a clipped waveform.</summary>
+    [Fact]
+    public void ASingleSampleAtTheRailIsNotClipping()
+    {
+        var frame = Enumerable.Repeat((short)1_000, 960).ToArray();  // one bar
+        frame[100] = short.MaxValue;
+        frame[400] = short.MinValue;
+        Assert.DoesNotContain(new AudioLevelMeter().Append(Pcm(frame)), bar => bar.IsClipping);
+    }
+
+    /// <summary>
+    /// The measurement the sample-counting rule replaced an energy threshold for. `real-brand` at
+    /// twice its recorded gain clamps 1.5% of its samples — audible distortion, and the point at
+    /// which somebody can still fix it by turning the gain down. An energy threshold of −3 dBFS
+    /// marked 0.3% of frames, which at 60 ms a bar is one amber bar every twenty seconds.
+    /// </summary>
+    [Fact]
+    public void TheOnsetOfClippingIsVisible()
+    {
+        var pcm = AudioChunker.PcmBody(Fixture(Path.Combine("eval", "audio", "real-brand.wav")))!;
+        var doubled = new short[pcm.Length / 2];
+        for (var index = 0; index < doubled.Length; index++)
+        {
+            var sample = BitConverter.ToInt16(pcm, index * 2) * 2;
+            doubled[index] = (short)Math.Clamp(sample, short.MinValue, short.MaxValue);
+        }
+
+        var bars = new AudioLevelMeter().Append(Pcm(doubled));
+        var clipping = bars.Count(bar => bar.IsClipping) / (double)bars.Count;
+        Assert.True(
+            clipping > 0.10,
+            $"only {clipping:P1} of bars report a recording clamping 1.5% of its samples");
     }
 
     // ---- What a voice looks like -----------------------------------------------------------------
@@ -121,12 +165,17 @@ public sealed class AudioLevelMeterTests
     /// </summary>
     [Theory]
     [MemberData(nameof(SpeechFixtures))]
-    public void SpeechBarelyEverPinsTheMeter(string name)
+    public void SpeechNeitherPinsTheMeterNorReadsAsClipping(string name)
     {
         var bars = Bars(name);
         var pinned = bars.Count(bar => bar.Level >= 0.999) / (double)bars.Count;
         Assert.True(pinned < 0.01, $"{name} spends {pinned:P0} of itself at full scale");
-        Assert.DoesNotContain(bars, bar => bar.IsClipping);
+
+        // Three of these recordings do touch the rail here and there — they are normalised, and
+        // `real-brand` marks 0.6% of its bars — but a voice recorded at a sane level must never
+        // *read* as clipping, which is a claim about how often.
+        var clipping = bars.Count(bar => bar.IsClipping) / (double)bars.Count;
+        Assert.True(clipping < 0.01, $"{name} reports clipping on {clipping:P1} of its bars");
     }
 
     /// <summary>Speech lives in the top of the meter, so the bars read at a glance.</summary>

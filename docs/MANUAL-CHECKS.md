@@ -117,16 +117,17 @@ Hold the key and watch the pill rather than the screen:
   reason this check exists.
 - **Stop talking, keep holding.** The meter should go flat and *keep scrolling*. Frozen means the
   levels stopped arriving; still waving means something is animating that is not the microphone.
-- **Say one word loudly, close to the mic.** Bars should reach the top and turn amber.
+- **Say one word loudly, close to the mic.** The bars should reach the top. Amber is a separate
+  claim — that samples are being clamped — so on a sanely-set input it may take real shouting, and
+  it not appearing at all is a pass rather than a fault.
 
 **Passes if** all three do what they say, and the meter tracks your voice closely enough that the
 bar for a word is drawn while you are still saying the next one.
 
 **Watch for** a meter that advances in blocks rather than one bar at a time (capture buffers too
-long — this is what half-second buffers looked like on Windows), amber at a normal speaking voice
-(input gain set too high, which is a real finding, not a bug — say so in the notes), and no amber
-however loudly you shout into it (the clipping threshold is not being reached, which means the
-input is quieter than the scale assumes).
+long — this is what half-second buffers looked like on Windows), and amber at a normal speaking
+voice, which is a real finding rather than a bug: the input gain is set high enough to be damaging
+the recording before any backend sees it. Say which it was in the notes.
 
 ---
 
