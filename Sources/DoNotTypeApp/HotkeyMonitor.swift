@@ -109,7 +109,8 @@ final class HotkeyMonitor {
     private var runLoopSource: CFRunLoopSource?
     private var watchdog: Timer?
     private var isHeld = false
-    private var pressedAt: Date?
+    /// The press's own event timestamp, not the moment this code got to it. See `seconds(from:to:)`.
+    private var pressedAt: CGEventTimestamp?
     /// Whether the in-flight recording began with this press, for `automatic` mode.
     private var startedByTap = false
     /// Which key began the in-flight recording, so release routes to the same style.
@@ -187,9 +188,9 @@ final class HotkeyMonitor {
             isHeld = down
             if down {
                 usedSecondary = isSecondary
-                handlePress()
+                handlePress(at: event.timestamp)
             } else {
-                handleRelease()
+                handleRelease(at: event.timestamp)
             }
 
         case .keyDown:
@@ -214,8 +215,8 @@ final class HotkeyMonitor {
 
     // MARK: - Press semantics
 
-    private func handlePress() {
-        pressedAt = Date()
+    private func handlePress(at stamp: CGEventTimestamp) {
+        pressedAt = stamp
         onPressStyled?(usedSecondary)
         switch mode {
         case .pushToTalk:
@@ -234,8 +235,8 @@ final class HotkeyMonitor {
         }
     }
 
-    private func handleRelease() {
-        let held = pressedAt.map { Date().timeIntervalSince($0) } ?? 0
+    private func handleRelease(at stamp: CGEventTimestamp) {
+        let held = pressedAt.map { Self.seconds(from: $0, to: stamp) } ?? 0
         pressedAt = nil
 
         switch mode {
@@ -254,6 +255,36 @@ final class HotkeyMonitor {
             // Otherwise it was a tap: recording continues until the next press.
         }
     }
+
+    /// How long the key was actually held, from the events' own clock rather than from when this
+    /// code got round to them.
+    ///
+    /// It has to be the event clock, because `handlePress` calls straight into `beginRecording`
+    /// and the first dictation of a launch pays the audio stack's cold start there — measured at
+    /// ~250 ms of `AVAudioEngine` setup, plus the overlay's one-off panel and the first
+    /// accessibility read, ~300 ms in total. All of it runs inside this tap callback, so the
+    /// release event waits in the queue until it returns. Timed with `Date()` at handling time, a
+    /// 40 ms tap measured as a 300 ms hold, crossed `holdThreshold`, and stopped the recording it
+    /// had just started: the first press of a launch died after ~57 ms of audio, silently, because
+    /// that is below `AudioRecorder.minimumDuration`, and only the second press ever worked. The
+    /// timestamps below are stamped by the window server when the key physically moved, so they
+    /// describe the gesture rather than how busy the main thread was.
+    ///
+    /// `warmUpAudio` removes most of that delay, but only this makes the reading independent of it.
+    private static func seconds(from start: CGEventTimestamp, to end: CGEventTimestamp) -> TimeInterval {
+        // A synthesised event can carry a zero timestamp. Reading a non-positive delta as a tap
+        // leaves the recording running, which costs a second key press; reading it as a hold would
+        // cut the recording off, which costs the dictation.
+        guard end > start else { return 0 }
+        return Double(end - start) * machTickSeconds
+    }
+
+    /// Mach ticks are not nanoseconds, and the ratio is fixed for the life of the process.
+    private static let machTickSeconds: Double = {
+        var timebase = mach_timebase_info_data_t()
+        mach_timebase_info(&timebase)
+        return Double(timebase.numer) / Double(timebase.denom) / 1_000_000_000
+    }()
 
     private func reviveIfDisabled() {
         guard let tap, !CGEvent.tapIsEnabled(tap: tap) else { return }
