@@ -59,7 +59,7 @@ android {
 
     sourceSets["main"].java.srcDir("src/main/kotlin")
     sourceSets["androidTest"].java.srcDir("src/androidTest/kotlin")
-    // The contract is shared, not duplicated: PROMPT.md is copied out of the repo root at build
+    // The contract is shared, not duplicated: prompt/ is copied out of the repo root at build
     // time so Android cannot drift from macOS or from what the eval harness measures.
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/assets"))
     // The same four recordings the other three platforms decode, so "it works on Android" means
@@ -67,8 +67,13 @@ android {
     sourceSets["androidTest"].assets.srcDir(rootProject.file("../eval/audio/formats"))
 }
 
-val syncContract by tasks.registering(Copy::class) {
-    from(rootProject.file("../PROMPT.md"))
+// The directory layout is preserved, because a part is found by its path under prompt/.
+//
+// Sync rather than Copy, and over the whole generated assets directory rather than prompt/ alone:
+// a Copy leaves whatever a previous build put there, so the single PROMPT.md this replaced stayed
+// in the APK, and a part deleted from the repo would keep shipping from a stale local build.
+val syncContract by tasks.registering(Sync::class) {
+    from(rootProject.file("../prompt")) { into("prompt") }
     into(layout.buildDirectory.dir("generated/assets"))
 }
 

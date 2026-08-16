@@ -335,41 +335,86 @@ class SettingsActivity : AppCompatActivity() {
         )
 
         // ---- Prompt ----
-        // Editable because this is open-source software whose entire behaviour is a prompt;
-        // making it readable but not editable would be an odd line to draw.
+        // Editable because this is open-source software whose entire behaviour is a prompt; making
+        // it readable but not editable would be an odd line to draw. One file at a time rather than
+        // one box for everything, because the contract is twelve separate instructions — and a
+        // single buffer holding all of them is how the shipped text and the documentation about it
+        // came to live in the same place, with a marker convention as the only thing telling them
+        // apart.
         column.addView(sectionTitle("Prompt"))
         column.addView(
             body(
-                "The transcription contract. Editing it invalidates the measured numbers in the "
+                "The transcription contract, one part per file. Everything in the box below is "
+                    + "sent in full. Editing a part invalidates the measured numbers in the "
                     + "project's changelog, which describe the shipped text."
             )
         )
+
+        val parts = PromptPart.all
+        var selectedPart = parts.first()
         val promptEditor = EditText(this).apply {
             setTypeface(Typeface.MONOSPACE)
             textSize = 10f
             minLines = 8
             maxLines = 16
             gravity = Gravity.TOP or Gravity.START
-            setText(PromptAssets.activeTemplate(this@SettingsActivity))
         }
-        column.addView(promptEditor)
         val promptStatus = body("")
+
+        fun loadPart() {
+            promptEditor.setText(PromptAssets.editableText(this, selectedPart))
+            val edited = if (PromptAssets.isCustom(this, selectedPart)) "edited" else "shipped"
+            promptStatus.text =
+                "${selectedPart.relativePath} ($edited) — ${selectedPart.summaryLine}"
+        }
+
+        val partPicker = Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@SettingsActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                parts.map { "${it.group} · ${it.label}" },
+            )
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(p: AdapterView<*>?, v: View?, position: Int, id: Long) {
+                    selectedPart = parts[position]
+                    loadPart()
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            }
+        }.also { it.contentDescription = "prompt-part" }
+        column.addView(partPicker)
+        column.addView(promptEditor)
         column.addView(promptStatus)
+        loadPart()
+
         column.addView(
-            button("Save prompt") {
+            button("Save part") {
                 promptStatus.text = runCatching {
-                    PromptAssets.saveCustomPrompt(this, promptEditor.text.toString())
+                    PromptAssets.saveCustomPrompt(this, promptEditor.text.toString(), selectedPart)
                 }.fold(
-                    onSuccess = { "Saved. Re-measure before trusting the published numbers." },
-                    onFailure = { it.message ?: "The prompt could not be saved." },
+                    onSuccess = {
+                        "Saved ${selectedPart.relativePath}. Re-measure before trusting the " +
+                            "published numbers."
+                    },
+                    onFailure = { it.message ?: "The part could not be saved." },
                 )
             }
         )
+        // Restores the selected part only. The others keep whatever they are, which is the point of
+        // per-part overrides: editing one clause should not pin the whole contract.
         column.addView(
-            button("Restore default prompt") {
-                PromptAssets.restoreDefault(this)
-                promptEditor.setText(PromptAssets.activeTemplate(this))
-                promptStatus.text = "Restored the shipped prompt."
+            button("Restore this part") {
+                PromptAssets.restoreDefault(this, selectedPart)
+                loadPart()
+                promptStatus.text = "Restored the shipped ${selectedPart.relativePath}."
+            }
+        )
+        column.addView(
+            button("Restore every part") {
+                PromptAssets.restoreAll(this)
+                loadPart()
+                promptStatus.text = "Restored every part to the shipped contract."
             }
         )
 

@@ -7,6 +7,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ScrollView
 import android.widget.Spinner
+import app.donottype.core.Fidelity
 import app.donottype.core.LogRouter
 import app.donottype.core.TranscriptMode
 import androidx.core.view.WindowInsetsCompat
@@ -196,10 +197,36 @@ class SettingsActivityTest {
     fun theShippedPromptIsReadableInTheApp() {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.onActivity {
-                val prompt = PromptAssets.activeTemplate(it)
+                val prompt = PromptAssets.editableText(it, PromptPart.SYSTEM)
                 assertTrue(
-                    "the prompt editor should be populated from the bundled PROMPT.md",
+                    "the prompt editor should be populated from the bundled prompt/system.md",
                     prompt.contains("SPELLING"))
+            }
+        }
+    }
+
+    /**
+     * Every part has to be in the APK, not just the one the editor opens on. A missing asset is
+     * invisible until somebody picks that fidelity or style, and then it fails mid-dictation.
+     */
+    @Test
+    fun everyPartIsBundledAndAssembles() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                for (part in PromptPart.all) {
+                    val text = PromptAssets.text(activity, part)
+                    assertTrue("${part.relativePath} is empty", text.isNotBlank())
+                    assertTrue("${part.relativePath} carries a marker", !text.contains("<!--"))
+                }
+                for (fidelity in Fidelity.entries) {
+                    val instruction = PromptAssets.systemInstruction(activity, fidelity)
+                    assertTrue(
+                        "the ${fidelity.id} instruction is not the contract",
+                        instruction.startsWith("You are a transcription engine."))
+                    assertTrue(
+                        "an unfilled placeholder reached the model",
+                        !instruction.contains("{{"))
+                }
             }
         }
     }
