@@ -235,6 +235,30 @@ deliberate:
   every Opus recording. Every one of them was a wrong number rather than a failure — audio that
   decodes to something plausible and shorter, which nothing downstream can detect.
 
+### Changed
+
+- **A fresh install now defaults to Gemini 3.6 Flash via Google, not xAI.** A recogniser cannot see
+  the screen, so defaulting to one shipped the product with the feature it exists for switched off,
+  in a way no setting revealed: grounding was not disabled, it was structurally impossible, and the
+  first run misrepresented what the tool does.
+
+  The near-miss suite measures exactly that axis, and the two shipping configurations are not
+  close — **43/48 for Gemini grounded against 15/48 for xAI**. The cost is latency, and it is real:
+  on the 100-clip ordinary-dictation corpus xAI returns in **0.98 s median** against several
+  seconds for a model, and that corpus is why xAI was the default in the first place. Those numbers
+  are unchanged and still in [docs/EVALUATION.md](docs/EVALUATION.md); what changed is which axis
+  the default is chosen on.
+
+  One number is deliberately not quoted: the 5.44 s on record is the same model class through
+  OpenRouter, and nobody has timed the first-party API on that corpus. The near-miss suite says
+  first-party beats the gateway on accuracy (15/15 against 12/15), which says nothing about speed.
+  Quoting the gateway's figure as this default's cost would be inventing a measurement, so the
+  honest statement is "several seconds rather than one, exact figure unmeasured".
+
+  Nothing changes for an existing install: this is the value used when no provider has been stored,
+  and a configured one keeps its provider, its key and its model. Anyone who wants the latency back
+  picks xAI in Settings — one dropdown, and it keeps its own key and model.
+
 ### Removed
 
 - **Paste last transcript** (`⌘⌃V` on macOS, `Ctrl+Alt+V` on Windows), along with its menu bar item

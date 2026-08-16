@@ -766,9 +766,17 @@ nothing. Whatever it scores when it works, a backend that silently drops two thi
 cannot be a default for anyone who speaks it. That single number disqualifies the option that the
 near-miss suite ranked second.
 
-`xai` is the default that falls out: fastest at every clip length, `0.050×` realtime, and 1 failure
-in 100. The model is 5.5× slower for a grounding benefit measured at **+4 improved against 3
-regressed**, and at two minutes of speech the gap is 2.8 s against 16.9 s.
+`xai` is the fastest backend here by a wide margin: fastest at every clip length, `0.050×` realtime,
+and 1 failure in 100. The model is 5.5× slower for a grounding benefit measured at **+4 improved
+against 3 regressed** on this axis, and at two minutes of speech the gap is 2.8 s against 16.9 s.
+
+**This corpus chose the default for a while, and no longer does.** On latency alone `xai` wins and
+it shipped as the default on that basis. What the argument left out is that a recogniser cannot see
+the screen at all, so a fresh install had the feature this project exists for switched off in a way
+no setting revealed. The near-miss suite measures that axis directly — 43/48 grounded against
+15/48 — and it is the one this repository is about. The default is now `google`; the numbers above
+are unchanged and are the honest statement of what it costs. `xai` is one dropdown away for anyone
+who wants latency back, which is a real preference and why it is still here.
 
 ### Agreement, and a metric bug it caught
 
@@ -1100,8 +1108,8 @@ recorded so the numbers can be re-checked without a key or a bill.
 
 | configuration | this session | previously | verdict |
 |---|---|---|---|
-| **xai · grok-stt** (the default) | **15 / 48**, 0 regressed | 15 / 48 | replicates exactly |
-| **gemini · native · 3.6-flash · grounded** | **43 / 48**, 2 regressed | 44 / 48 ×2, 1 regressed | within the noise floor |
+| **xai · grok-stt** | **15 / 48**, 0 regressed | 15 / 48 | replicates exactly |
+| **google · native · 3.6-flash · grounded** (the default) | **43 / 48**, 2 regressed | 44 / 48 ×2, 1 regressed | within the noise floor |
 
 ```bash
 swift run dnt-eval suite eval/nearmiss --provider xai --model grok-stt \

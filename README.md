@@ -249,9 +249,10 @@ for masking before the first request, and anything else key-shaped is caught by 
   feeding the recogniser whatever was on screen — including the term you did not say. Without them
   xAI scores **15/48** on the near-miss suite against native Gemini's **43–44/48**, at 1.19 s
   against 5–60 s — an order of magnitude faster, and much less accurate on exactly the identifiers
-  that suite is built from. It is the default anyway, because that suite is adversarial by
-  construction and the choice was made on the ordinary-dictation corpus, where it is the fastest
-  backend that does not fall over on Chinese; Deepgram cannot transcribe Chinese under any
+  that suite is built from. **Gemini via Google is the default**, because grounding is what this
+  tool is for and a recogniser cannot do it at all: defaulting to one shipped a fresh install with
+  the headline feature structurally inert. The speed is a real preference and xAI is one dropdown
+  away, keeping its own key and model. Deepgram cannot transcribe Chinese under any
   autodetecting setting, failing 44 of 68 Mandarin clips outright. Voxtral and xAI both handle
   Mandarin and English together. Measured in [docs/EVALUATION.md](docs/EVALUATION.md).
 - **Fallback** — an optional second backend, started only once the primary has clearly stalled.

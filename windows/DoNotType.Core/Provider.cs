@@ -135,7 +135,14 @@ public static class ProviderFactory
     /// model's 5.44 s) and the only recogniser that does not fall over on non-English speech —
     /// Deepgram failed 44 of 68 Chinese clips outright. See docs/EVALUATION.md.
     /// </summary>
-    public const ProviderKind DefaultForNewInstalls = ProviderKind.XAI;
+    /// <summary>
+    /// What a fresh install uses. A model, because a recogniser cannot see the screen and screen
+    /// grounding is the entire point of this project: on the near-miss suite Gemini grounded
+    /// scores 43/48 against xAI's 15/48. It is bought with latency — a recogniser is 0.98 s median
+    /// on the ordinary-dictation corpus against several seconds for a model — and the exact
+    /// first-party figure is unmeasured, so it is not quoted here. See docs/EVALUATION.md.
+    /// </summary>
+    public const ProviderKind DefaultForNewInstalls = ProviderKind.Gemini;
 
     public static string DefaultModel(this ProviderKind kind) => kind switch
     {

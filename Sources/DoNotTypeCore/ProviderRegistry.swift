@@ -62,32 +62,44 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     /// What a fresh install uses, and the one setting in this file that is a product decision
     /// rather than a fact about an API.
     ///
-    /// A recogniser rather than a model, measured on the 100-clip ordinary-dictation corpus —
-    /// real speech with nothing on screen contradicting it, which is the distribution a default
-    /// actually serves. The adversarial near-miss suite says a model is more accurate; it says
-    /// nothing about the dictation people mostly do.
+    /// A model, because a recogniser cannot see the screen and screen grounding is the entire
+    /// point of this project. On the adversarial near-miss suite — the thing this repository
+    /// exists to measure — the two shipping configurations are not close:
+    ///
+    /// | configuration | near-miss | regressed |
+    /// |---|---|---|
+    /// | **google · gemini-3.6-flash · grounded** | **43 / 48** | 2 |
+    /// | xai · grok-stt | 15 / 48 | 0 |
+    ///
+    /// This is bought with latency, and the price is real. On the 100-clip ordinary-dictation
+    /// corpus — real speech, nothing on screen contradicting it — a recogniser is several times
+    /// faster:
     ///
     /// | backend | median latency | ×realtime | failed |
     /// |---|---|---|---|
-    /// | xai | **0.98 s** | 0.053× | **1 / 100** |
+    /// | xai | 0.98 s | 0.053× | 1 / 100 |
     /// | deepgram | 1.23 s | 0.066× | 48 / 100 |
     /// | mistral | 1.29 s | 0.069× | 3 / 100 |
     /// | openrouter (model) | 5.44 s | 0.282× | 0 / 100 |
     ///
-    /// `.xai` wins on the two things a default has to get right: it is the fastest, and it is the
-    /// only recogniser that does not fall over on the corpus's actual language. Deepgram failed
-    /// 44 of 68 Chinese clips outright — it is disqualified as a default for anyone who is not
-    /// exclusively English-speaking, whatever it scores when it works.
+    /// Note what that table does *not* contain: a first-party `.google` row. The 5.44 s is the
+    /// same model class through a gateway, and the near-miss suite says first-party beats the
+    /// gateway on accuracy (15/15 against 12/15), but nobody has timed `.google` on the ordinary
+    /// corpus. Quoting the gateway's number as this default's cost would be inventing a
+    /// measurement; the honest statement is that it is several seconds rather than one, and that
+    /// the exact figure is unmeasured.
     ///
-    /// The model is not gone, it is demoted: it is 5.5× slower for a benefit that measured
-    /// **+4 improved against 3 regressed** on the near-miss suite, which is close to nothing for
-    /// a lot of waiting. Choose it in Settings when dictating identifiers with the reference on
-    /// screen, which is the case where grounding genuinely pays.
+    /// The trade was made deliberately: a default that is fast at the thing the README says this
+    /// tool does not do — leaving the caret unspelled — serves nobody, and a fresh install that
+    /// ships with grounding structurally inert misrepresents the product on first run. A user who
+    /// wants the speed back picks `.xai` in Settings; it is one dropdown, and it keeps its own key
+    /// and model.
     ///
-    /// Deepgram is deliberately not the fallback here despite being the second recogniser added:
-    /// it returned nothing for 44 of 68 Mandarin clips on that corpus, which disqualifies it as a
-    /// default for anyone who is not exclusively English-speaking.
-    public static let defaultForNewInstalls: ProviderKind = .xai
+    /// Deepgram is deliberately neither the default nor the fallback despite being the second
+    /// recogniser added: it returned nothing for 44 of 68 Mandarin clips on that corpus, which
+    /// disqualifies it for anyone who is not exclusively English-speaking, whatever it scores
+    /// when it works.
+    public static let defaultForNewInstalls: ProviderKind = .google
 
     /// Reads a name written before the providers were named after themselves rather than after
     /// their models.

@@ -96,13 +96,18 @@ enum class ProviderKind(
         /**
          * What a fresh install uses.
          *
-         * A recogniser rather than a model, measured on the 100-clip ordinary-dictation corpus:
-         * xAI is the fastest backend tested (0.98 s median against the model's 5.44 s) and the
-         * only recogniser that does not fall over on non-English speech — Deepgram failed 44 of
-         * 68 Chinese clips outright. The model is one tap away in this picker for the case where
-         * grounding pays: dictating identifiers with the reference on screen.
+         * A model rather than a recogniser, because a recogniser cannot see the screen and screen
+         * grounding is the entire point of this project. On the adversarial near-miss suite the
+         * two shipping configurations are not close: Gemini grounded scores 43/48 against xAI's
+         * 15/48.
+         *
+         * It is bought with latency. On the 100-clip ordinary-dictation corpus a recogniser is
+         * far faster — xAI 0.98 s median — while a model is several seconds. The exact figure for
+         * the first-party API is unmeasured (the 5.44 s on record is the same model class through
+         * a gateway), so no number for it is quoted here. A user who wants the speed back picks
+         * xAI in this picker; it keeps its own key and model.
          */
-        val DEFAULT = XAI
+        val DEFAULT = GEMINI
 
         fun from(id: String?): ProviderKind =
             entries.firstOrNull { it.id == id } ?: DEFAULT
