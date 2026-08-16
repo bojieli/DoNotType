@@ -6,9 +6,30 @@ import Foundation
 ///
 /// Transcription latency is *bimodal* rather than slow. Six sequential requests for one
 /// three-second clip took 4.9, 61.6, 50.5, 5.8, 5.9 and 30.2 seconds, with zero thought tokens
-/// throughout — that is queueing, not model work. A dictation tool that usually answers in five
-/// seconds and sometimes in sixty is worse than one that always takes six, and the fix for a draw
-/// that landed in the tail is another draw.
+/// throughout. A dictation tool that usually answers in five seconds and sometimes in sixty is
+/// worse than one that always takes six, and the fix for a draw that landed in the tail is
+/// another draw.
+///
+/// ## What that evidence was actually showing — read this before tuning anything here
+///
+/// The spread above was originally read as provider-side queueing. It was not, and the difference
+/// decides whether this type can work at all.
+///
+/// Replaying one recording with its screen context 102 times over twenty minutes, on connections
+/// that were being used continuously, gave p50 2.10 s, p95 2.62 s, worst 4.07 s, and no failures.
+/// The bimodality disappears entirely when the connection is warm. What produced it was a pooled
+/// TCP connection going bad while idle — see `ProviderTransport` for the measurements and the
+/// mechanism.
+///
+/// That mattered here because a duplicate request used to be sent on the same `URLSession`, which
+/// HTTP/2 multiplexed onto the same connection. So the "second draw" was the same draw. In the
+/// history that motivated this file, the hedge fired three times and lost three times, each time
+/// failing in the same millisecond as the request it was hedging — once at 51.8 s, without having
+/// reached any timeout of its own, because the connection under it died.
+///
+/// A hedge is therefore only a hedge if it gets its own connection, which is what `isHedge` is
+/// for: the caller turns it into `ConnectionPreference.fresh`. Anyone changing that back should
+/// know they are turning this file into a way to spend twice as much on the same answer.
 ///
 /// ## When a request counts as stalled
 ///
@@ -75,12 +96,16 @@ public enum StallHedge {
     ///
     /// `attempt` is called twice at most, so it must be safe to run concurrently with itself —
     /// which for an HTTP request it is, and for anything that writes to shared state it is not.
+    ///
+    /// It is told which of the two it is. The duplicate has to reach the backend by a route the
+    /// original is not already stuck on, and only the caller knows what that means; passing the
+    /// flag keeps this type from having to know anything about connections.
     public static func race<T: Sendable>(
         deadlineSeconds: Double,
         onHedge: @escaping @Sendable () -> Void = {},
-        attempt: @escaping @Sendable () async throws -> T
+        attempt: @escaping @Sendable (_ isHedge: Bool) async throws -> T
     ) async throws -> T {
-        guard deadlineSeconds > 0 else { return try await attempt() }
+        guard deadlineSeconds > 0 else { return try await attempt(false) }
 
         let deadline = Duration.seconds(deadlineSeconds)
         // Monotonic rather than wall-clock: the elapsed time below decides whether a second request
@@ -88,7 +113,7 @@ public enum StallHedge {
         let started = ContinuousClock.now
 
         return try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { try await attempt() }
+            group.addTask { try await attempt(false) }
             group.addTask {
                 // Sleeping inside the group rather than scheduling separately means cancelling the
                 // winner's siblings also cancels a hedge that never fired, so a request that
@@ -96,7 +121,7 @@ public enum StallHedge {
                 try await Task.sleep(for: deadline)
                 onHedge()
                 do {
-                    return try await attempt()
+                    return try await attempt(true)
                 } catch {
                     throw HedgeFailure(underlying: error)
                 }

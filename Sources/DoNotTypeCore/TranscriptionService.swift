@@ -110,7 +110,8 @@ public struct TranscriptionService: Sendable {
     public var grounding: GroundingSupport { provider.grounding(forModel: model) }
 
     public func transcribe(
-        audio: AudioFile, context: ScreenContext?
+        audio: AudioFile, context: ScreenContext?,
+        connection: ConnectionPreference = .pooled
     ) async throws -> TranscriptionResult {
         var parts: [InputPart] = []
         var keyterms: [String] = []
@@ -149,13 +150,14 @@ public struct TranscriptionService: Sendable {
                 "keyterms": "\(keyterms.count)",
                 "fidelity": fidelity.rawValue,
                 "audio": payload.description,
+                "connection": connection == .fresh ? "fresh" : "pooled",
             ])
 
         let started = Date()
         var result = try await provider.transcribe(
             TranscriptionRequest(
                 model: model, systemInstruction: systemInstruction, parts: parts,
-                fidelity: fidelity, keyterms: keyterms))
+                fidelity: fidelity, keyterms: keyterms, connection: connection))
         Self.log.debug(
             "transcribed",
             [
@@ -208,10 +210,11 @@ public struct TranscriptionService: Sendable {
     /// chunk rather than the whole dictation. That is the right denominator — a chunk is what the
     /// request is being asked to transcribe.
     private func hedgedAttempt(
-        audio: AudioFile, context: ScreenContext?
+        audio: AudioFile, context: ScreenContext?,
+        connection: ConnectionPreference = .pooled
     ) async throws -> TranscriptionResult {
         guard hedgeStalledRequests else {
-            return try await transcribe(audio: audio, context: context)
+            return try await transcribe(audio: audio, context: context, connection: connection)
         }
 
         let deadline = StallHedge.deadlineSeconds(audioSeconds: audio.durationSeconds)
@@ -230,7 +233,14 @@ public struct TranscriptionService: Sendable {
                         "after": String(format: "%.1fs", deadline),
                     ])
             },
-            attempt: { try await transcribe(audio: audio, context: context) })
+            // The duplicate goes out on a connection of its own. On the same one it is not a
+            // second draw — it is a second stream on whatever the original is stuck behind, which
+            // is how this feature came to fire three times and lose three times. See `StallHedge`.
+            attempt: { isHedge in
+                try await transcribe(
+                    audio: audio, context: context,
+                    connection: isHedge ? .fresh : connection)
+            })
     }
 
     /// Retries with exponential backoff, giving up early on errors that will not change.
@@ -245,7 +255,15 @@ public struct TranscriptionService: Sendable {
 
         for attempt in 1...max(1, attempts) {
             do {
-                return try await hedgedAttempt(audio: audio, context: context)
+                // Every attempt after the first opens its own connection. The one it would
+                // otherwise reuse is the one that just failed, and in this app's measured history
+                // that is the whole reason a retry succeeds: all sixteen slow dictations finished
+                // in 2–6 s once the request went out on a new connection. Before this it happened
+                // by luck — the failure had made URLSession discard the dead connection — rather
+                // than because anything asked for it.
+                return try await hedgedAttempt(
+                    audio: audio, context: context,
+                    connection: attempt == 1 ? .pooled : .fresh)
             } catch {
                 lastError = error
                 guard attempt < attempts, Self.isTransient(error) else {

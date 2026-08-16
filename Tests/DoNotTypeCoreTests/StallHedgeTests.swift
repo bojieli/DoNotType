@@ -41,7 +41,7 @@ final class StallHedgeTests: XCTestCase {
     func testAFastRequestIsNeverDuplicated() async throws {
         let sent = Counter()
 
-        let value = try await StallHedge.race(deadlineSeconds: 30) {
+        let value = try await StallHedge.race(deadlineSeconds: 30) { _ in
             await sent.increment()
             return "first"
         }
@@ -59,7 +59,7 @@ final class StallHedgeTests: XCTestCase {
         let value = try await StallHedge.race(
             deadlineSeconds: 0.02,
             onHedge: { hedged.fulfill() }
-        ) {
+        ) { _ in
             let attempt = await sent.increment()
             // The first request stalls for effectively ever; the second answers straight away.
             if attempt == 1 { try await Task.sleep(for: .seconds(30)) }
@@ -75,7 +75,7 @@ final class StallHedgeTests: XCTestCase {
     func testTheFirstRequestStillWinsIfItAnswersAfterTheDeadline() async throws {
         let sent = Counter()
 
-        let value = try await StallHedge.race(deadlineSeconds: 0.02) {
+        let value = try await StallHedge.race(deadlineSeconds: 0.02) { _ in
             let attempt = await sent.increment()
             if attempt == 1 { try await Task.sleep(for: .milliseconds(60)) }
             if attempt == 2 { try await Task.sleep(for: .seconds(30)) }
@@ -91,7 +91,7 @@ final class StallHedgeTests: XCTestCase {
         let started = ContinuousClock.now
 
         do {
-            _ = try await StallHedge.race(deadlineSeconds: 30) {
+            _ = try await StallHedge.race(deadlineSeconds: 30) { _ in
                 throw ProviderError.http(status: 500, body: "boom")
             }
             XCTFail("expected the failure to surface")
@@ -111,7 +111,7 @@ final class StallHedgeTests: XCTestCase {
     func testAFailureAfterTheHedgeWaitsForTheDuplicate() async throws {
         let sent = Counter()
 
-        let value = try await StallHedge.race(deadlineSeconds: 0.02) {
+        let value = try await StallHedge.race(deadlineSeconds: 0.02) { _ in
             let attempt = await sent.increment()
             if attempt == 1 {
                 // Long enough that the hedge has certainly started before this gives up.
@@ -132,7 +132,7 @@ final class StallHedgeTests: XCTestCase {
         let sent = Counter()
 
         do {
-            _ = try await StallHedge.race(deadlineSeconds: 0.02) {
+            _ = try await StallHedge.race(deadlineSeconds: 0.02) { _ in
                 let attempt = await sent.increment()
                 if attempt == 1 {
                     try await Task.sleep(for: .milliseconds(60))
@@ -152,7 +152,7 @@ final class StallHedgeTests: XCTestCase {
     func testANonPositiveDeadlineSendsOneRequest() async throws {
         let sent = Counter()
 
-        let value = try await StallHedge.race(deadlineSeconds: 0) {
+        let value = try await StallHedge.race(deadlineSeconds: 0) { _ in
             let attempt = await sent.increment()
             try await Task.sleep(for: .milliseconds(30))
             return "attempt \(attempt)"
@@ -162,6 +162,56 @@ final class StallHedgeTests: XCTestCase {
         let count = await sent.value
         XCTAssertEqual(count, 1)
     }
+
+    // MARK: - Which attempt is which
+
+    /// The flag that makes the duplicate a second *draw* rather than a second stream on whatever
+    /// the original is stuck behind.
+    ///
+    /// This is the regression that cost sixty-five seconds a dictation and left no trace anyone
+    /// could read: both requests went out on one pooled connection, so when it died they died
+    /// together — the hedge at 51.8 s, without ever having reached a timeout of its own. Nothing
+    /// about that is visible from the outside except the wait, which is why it is pinned here.
+    func testTheOriginalAndTheDuplicateCanTellThemselvesApart() async throws {
+        let flags = FlagLog()
+        let hedged = expectation(description: "the hedge fired")
+
+        let value = try await StallHedge.race(
+            deadlineSeconds: 0.02,
+            onHedge: { hedged.fulfill() }
+        ) { isHedge in
+            await flags.record(isHedge)
+            if !isHedge { try await Task.sleep(for: .seconds(60)) }
+            return isHedge ? "duplicate" : "original"
+        }
+
+        await fulfillment(of: [hedged], timeout: 2)
+        XCTAssertEqual(value, "duplicate")
+        let seen = await flags.seen
+        XCTAssertEqual(
+            seen, [false, true],
+            "the original must be told it is the original, and the duplicate that it is not")
+    }
+
+    /// A request that answers in time is never told it is a hedge, because there is no second one.
+    func testTheSoleAttemptIsNotAHedge() async throws {
+        let flags = FlagLog()
+
+        _ = try await StallHedge.race(deadlineSeconds: 30) { isHedge in
+            await flags.record(isHedge)
+            return "done"
+        }
+
+        let seen = await flags.seen
+        XCTAssertEqual(seen, [false])
+    }
+}
+
+/// Which attempts ran, and which of them believed it was the duplicate.
+private actor FlagLog {
+    private(set) var seen: [Bool] = []
+
+    func record(_ isHedge: Bool) { seen.append(isHedge) }
 }
 
 /// How many times the raced closure ran, which is the whole cost question.
