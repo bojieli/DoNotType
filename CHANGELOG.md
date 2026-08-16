@@ -203,6 +203,18 @@ deliberate:
 
 ### Fixed
 
+- **The API key field on macOS could be typed into but not pasted into.** Cut, Copy, Paste, Select
+  All and Undo are menu items on macOS rather than behaviour built into a text field:
+  `NSApplication` dispatches ⌘V by walking `mainMenu` for a matching key equivalent. This app builds
+  every window in code and never set a main menu, so the one field whose contents always arrive on
+  the clipboard — 50-odd random characters from a provider dashboard, never typed by hand — was the
+  one field that would not take them.
+
+  There is now a main menu carrying the standard editing commands, plus ⌘W and ⌘Q. It stays
+  invisible: `LSUIElement` apps do not own the menu bar, so activating this one still leaves the
+  frontmost app showing its own menus, and the items exist only so the key equivalents have
+  somewhere to land.
+
 - **Retrying a failed dictation on Windows and Android asked a different question.** Neither kept
   the screen context the original request was sent with, so a retry re-ran *ungrounded* — no screen
   text, no caret window — on a history row that still named the same provider and model. A
