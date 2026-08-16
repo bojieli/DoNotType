@@ -251,11 +251,21 @@ final class SettingsModel {
 
     // MARK: - Prompt
 
-    /// The prompt actually in force. Editable, because an open-source app whose entire behaviour
-    /// is a prompt should not make that prompt read-only.
+    /// Which part the editor is showing. One file at a time, because the contract is twelve
+    /// separate instructions and editing them in one scrolling buffer was how the shipped text and
+    /// the documentation about it ended up in the same box.
+    var selectedPart: PromptPart = .system {
+        didSet { if selectedPart != oldValue { loadPrompt() } }
+    }
+
+    /// The selected part's text. Editable, because an open-source app whose entire behaviour is a
+    /// prompt should not make that prompt read-only.
     var promptText: String = ""
     private(set) var promptStatus: String?
-    private(set) var isPromptCustom = false
+    private(set) var customParts: Set<PromptPart> = []
+
+    /// Whether the *selected* part is the user's rather than the shipped one.
+    var isPromptCustom: Bool { customParts.contains(selectedPart) }
 
     // MARK: - History
 
@@ -314,45 +324,78 @@ final class SettingsModel {
         retention = settings.retention
         keepAudio = settings.keepAudio
         loadPrompt()
+        // Before the first dictation, not when the window opens: this model is built at launch and
+        // the controller reads the same store.
+        migrateLegacyPromptIfNeeded()
     }
 
     // MARK: - Prompt editing
 
     static func bundledPromptURL() -> URL? {
-        Bundle.main.url(forResource: "PROMPT", withExtension: "md") ?? PromptBuilder.findPromptFile()
+        Bundle.main.url(forResource: "prompt", withExtension: nil)
+            ?? PromptBuilder.findPromptDirectory()
     }
 
     func loadPrompt() {
-        guard let defaultURL = Self.bundledPromptURL() else {
-            promptStatus = "Could not locate the bundled PROMPT.md."
+        guard let bundled = Self.bundledPromptURL() else {
+            promptStatus = "Could not locate the bundled prompt/ directory."
             return
         }
-        promptText = (try? prompts.activeTemplate(default: defaultURL)) ?? ""
-        isPromptCustom = prompts.hasCustomPrompt
-        promptStatus = nil
+        customParts = Set(prompts.customParts)
+        do {
+            promptText = try prompts.source(bundled: bundled).editableText(for: selectedPart)
+            promptStatus = nil
+        } catch {
+            promptText = ""
+            promptStatus = error.localizedDescription
+        }
     }
 
-    /// Validated before saving. A prompt that cannot build would surface as a mid-dictation
-    /// failure rather than an error at the moment of editing.
+    /// Validated before saving. A part that cannot build would surface as a mid-dictation failure
+    /// rather than an error at the moment of editing.
     func savePrompt() {
         do {
-            try prompts.save(promptText)
-            isPromptCustom = true
-            promptStatus = "Saved. The measured numbers in the changelog no longer apply to this "
-                + "prompt — re-run `dnt-eval suite --prompt` to measure your own."
+            try prompts.save(promptText, for: selectedPart)
+            customParts.insert(selectedPart)
+            promptStatus = "Saved \(selectedPart.relativePath). The measured numbers in the "
+                + "changelog no longer describe this part — re-run `dnt-eval suite --prompt` to "
+                + "measure your own."
         } catch {
             promptStatus = error.localizedDescription
         }
     }
 
+    /// Restores the selected part only. The others keep whatever they are, which is the point of
+    /// per-part overrides: editing one clause should not pin the whole contract.
     func restoreDefaultPrompt() {
         do {
-            try prompts.restoreDefault()
+            try prompts.restore(selectedPart)
             loadPrompt()
-            promptStatus = "Restored the shipped prompt."
+            promptStatus = "Restored the shipped \(selectedPart.relativePath)."
         } catch {
             promptStatus = error.localizedDescription
         }
+    }
+
+    func restoreAllPrompts() {
+        do {
+            try prompts.restoreAll()
+            loadPrompt()
+            promptStatus = "Restored every part to the shipped contract."
+        } catch {
+            promptStatus = error.localizedDescription
+        }
+    }
+
+    /// Splits a pre-split `PROMPT.md` override into part files, once, at launch.
+    func migrateLegacyPromptIfNeeded() {
+        guard let bundled = Self.bundledPromptURL() else { return }
+        guard let migration = try? prompts.migrateLegacyPrompt(bundled: bundled) else { return }
+        loadPrompt()
+        guard !migration.migrated.isEmpty else { return }
+        promptStatus = "Your edited prompt was split into "
+            + "\(migration.migrated.map(\.relativePath).joined(separator: ", "))"
+            + ". The original is at \(migration.archivedAt.path)."
     }
 
     var resolvedKeySource: String {
@@ -496,7 +539,7 @@ final class SettingsModel {
         guard let key = Settings.shared.resolvedAPIKey(), !key.isEmpty,
             let provider = try? ProviderFactory.make(provider, apiKey: key),
             let promptURL = Self.bundledPromptURL(),
-            let instruction = try? prompts.builder(default: promptURL)
+            let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(fidelity: fidelity)
         else { return nil }
 

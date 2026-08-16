@@ -494,7 +494,7 @@ final class DictationController {
     private func rewriteInstruction(for style: RewriteStyle) -> String? {
         guard let promptURL = SettingsModel.bundledPromptURL() else { return nil }
         return try? PromptStore(directory: HistoryStore.defaultDirectory())
-            .builder(default: promptURL)
+            .builder(bundled: promptURL)
             .rewriteInstruction(style: style)
     }
 
@@ -526,7 +526,12 @@ final class DictationController {
             let key = settings.resolvedAPIKey(for: kind), !key.isEmpty,
             let backend = try? ProviderFactory.make(kind, apiKey: key),
             let promptURL = SettingsModel.bundledPromptURL(),
-            let instruction = try? PromptBuilder(contentsOf: promptURL)
+            // Through the store, not the bundle: a fallback that sent the shipped contract while
+            // the primary sent an edited one would make the two disagree about the only files
+            // that matter, and which one you got would depend on whether the first request timed
+            // out.
+            let instruction = try? PromptStore(directory: HistoryStore.defaultDirectory())
+                .builder(bundled: promptURL)
                 .systemInstruction(fidelity: settings.fidelity)
         else {
             return FallbackTranscriber(primary: primary)
@@ -545,9 +550,11 @@ final class DictationController {
         let settings = Settings.shared
         guard let key = settings.resolvedAPIKey(), !key.isEmpty,
             let provider = try? ProviderFactory.make(settings.provider, apiKey: key),
-            let promptURL = Bundle.main.url(forResource: "PROMPT", withExtension: "md")
-                ?? PromptBuilder.findPromptFile(),
-            let instruction = try? PromptBuilder(contentsOf: promptURL)
+            let promptURL = SettingsModel.bundledPromptURL(),
+            // Same reason as the fallback above: a retry has to reproduce the request, and a
+            // request built from a different prompt is not the same request.
+            let instruction = try? PromptStore(directory: HistoryStore.defaultDirectory())
+                .builder(bundled: promptURL)
                 .systemInstruction(fidelity: settings.fidelity)
         else { return nil }
 

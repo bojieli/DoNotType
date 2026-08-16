@@ -43,7 +43,9 @@ struct ProviderOptions: ParsableArguments {
     @Option(name: .long, help: "Fidelity: raw, light, or tidy.")
     var fidelity: String = Fidelity.default.rawValue
 
-    @Option(name: .long, help: "Path to PROMPT.md. Found by walking up from cwd if omitted.")
+    @Option(
+        name: .long,
+        help: "Path to the prompt/ directory. Found by walking up from cwd if omitted.")
     var prompt: String?
 
     @Option(
@@ -89,11 +91,11 @@ struct ProviderOptions: ParsableArguments {
     func resolveSystemInstruction() throws -> String {
         let url =
             prompt.map { URL(fileURLWithPath: $0) }
-            ?? PromptBuilder.findPromptFile()
+            ?? PromptBuilder.findPromptDirectory()
         guard let url else {
-            throw ValidationError("Could not find PROMPT.md — pass --prompt.")
+            throw ValidationError("Could not find the prompt/ directory — pass --prompt.")
         }
-        return try PromptBuilder(contentsOf: url).systemInstruction(fidelity: try resolveFidelity())
+        return try PromptBuilder(directory: url).systemInstruction(fidelity: try resolveFidelity())
     }
 
     func resolveCassetteMode() throws -> CassetteStore.Mode {

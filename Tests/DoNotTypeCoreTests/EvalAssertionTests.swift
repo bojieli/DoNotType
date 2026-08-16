@@ -90,9 +90,9 @@ final class EvalAssertionTests: XCTestCase {
 }
 
 extension EvalAssertionTests {
-    /// Tests run from `.build`, so walk up to the directory holding PROMPT.md.
+    /// Tests run from `.build`, so walk up to the directory holding prompt/.
     static var repositoryRoot: URL {
-        PromptBuilder.findPromptFile(startingAt: URL(fileURLWithPath: #filePath))?
+        PromptBuilder.findPromptDirectory(startingAt: URL(fileURLWithPath: #filePath))?
             .deletingLastPathComponent()
             ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }

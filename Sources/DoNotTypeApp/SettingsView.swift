@@ -670,45 +670,93 @@ private struct HistoryRow: View {
 
 // MARK: - Prompt
 
-/// The prompt, editable in place.
+/// The prompt, editable one part at a time.
 ///
 /// Exposed because this is open-source software whose entire behaviour is a prompt; making it
-/// readable but not editable would be an odd line to draw. The warning is not boilerplate — the
-/// measured numbers in the changelog describe the shipped text and stop applying the moment it is
-/// edited, which is what `dnt-eval --prompt` is for.
+/// readable but not editable would be an odd line to draw. One box per file rather than one box for
+/// everything, because the contract is twelve separate instructions — and a single buffer holding
+/// all of them is how the shipped text and the documentation about it came to live in the same
+/// place, with a marker convention as the only thing telling them apart.
+///
+/// The warning is not boilerplate: the measured numbers in the changelog describe the shipped text
+/// and stop applying to whichever part is edited, which is what `dnt-eval --prompt` is for.
 private struct PromptTab: View {
     @Bindable var model: SettingsModel
 
+    private var groups: [(name: String, parts: [PromptPart])] {
+        var order: [String] = []
+        var byGroup: [String: [PromptPart]] = [:]
+        for part in PromptPart.allCases {
+            if byGroup[part.group] == nil { order.append(part.group) }
+            byGroup[part.group, default: []].append(part)
+        }
+        return order.map { ($0, byGroup[$0] ?? []) }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Label(
-                    model.isPromptCustom ? "Using your edited prompt" : "Using the shipped prompt",
-                    systemImage: model.isPromptCustom ? "pencil.circle.fill" : "checkmark.seal")
-                    .foregroundStyle(model.isPromptCustom ? .orange : .secondary)
-                    .font(.callout)
-                Spacer()
-                Button("Restore default") { model.restoreDefaultPrompt() }
-                    .disabled(!model.isPromptCustom)
-                Button("Save") { model.savePrompt() }
-                    .keyboardShortcut("s", modifiers: .command)
+        HSplitView {
+            List(selection: $model.selectedPart) {
+                ForEach(groups, id: \.name) { group in
+                    Section(group.name) {
+                        ForEach(group.parts, id: \.self) { part in
+                            HStack(spacing: 6) {
+                                Text(part.label)
+                                Spacer()
+                                if model.customParts.contains(part) {
+                                    Image(systemName: "pencil.circle.fill")
+                                        .foregroundStyle(.orange)
+                                        .help("Edited — the shipped version is one button away")
+                                }
+                            }
+                            .tag(part)
+                        }
+                    }
+                }
             }
-            .padding(10)
+            .frame(minWidth: 170, idealWidth: 190, maxWidth: 260)
 
-            Divider()
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.selectedPart.relativePath)
+                            .font(.system(.callout, design: .monospaced))
+                        Text(model.selectedPart.summaryLine)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Restore default") { model.restoreDefaultPrompt() }
+                        .disabled(!model.isPromptCustom)
+                    Button("Save") { model.savePrompt() }
+                        .keyboardShortcut("s", modifiers: .command)
+                }
+                .padding(10)
 
-            TextEditor(text: $model.promptText)
-                .font(.system(.body, design: .monospaced))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            if let status = model.promptStatus {
                 Divider()
-                Text(status)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                TextEditor(text: $model.promptText)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Divider()
+
+                HStack(alignment: .top) {
+                    Text(
+                        model.promptStatus
+                            ?? "Sent in full — everything in this box reaches the model.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !model.customParts.isEmpty {
+                        Button("Restore all \(model.customParts.count)") {
+                            model.restoreAllPrompts()
+                        }
+                        .font(.footnote)
+                    }
+                }
+                .padding(10)
             }
+            .frame(minWidth: 360)
         }
     }
 }

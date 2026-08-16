@@ -143,9 +143,13 @@ struct Doctor: AsyncParsableCommand {
                 bad("prompt", error.localizedDescription)
             }
         } else {
-            bad("prompt", "PROMPT.md not found — pass --prompt or run from a checkout")
+            bad("prompt", "the prompt/ directory was not found — pass --prompt or run from a checkout")
         }
-        row("custom copy", store.hasCustomPrompt ? "yes — \(store.customURL.path)" : "no")
+        row(
+            "edited parts",
+            store.hasCustomPrompt
+                ? "\(store.customParts.map(\.id).joined(separator: ", ")) — in \(store.promptDirectory.path)"
+                : "none — all shipped")
 
         section("History")
         let history = HistoryStore(directory: HistoryStore.defaultDirectory())

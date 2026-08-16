@@ -105,7 +105,9 @@ struct BackendOptions: ParsableArguments {
     @Option(name: .long, help: "Fidelity: raw, light or tidy.")
     var fidelity: String?
 
-    @Option(name: .long, help: "Path to PROMPT.md. Found by walking up from the working directory.")
+    @Option(
+        name: .long,
+        help: "Path to the prompt/ directory. Found by walking up from the working directory.")
     var prompt: String?
 
     @Flag(
@@ -147,11 +149,11 @@ struct BackendOptions: ParsableArguments {
 
     func promptURL() throws -> URL {
         if let prompt { return URL(fileURLWithPath: prompt) }
-        guard let found = PromptBuilder.findPromptFile() ?? Self.bundledPromptURL else {
+        guard let found = PromptBuilder.findPromptDirectory() ?? Self.bundledPromptURL else {
             throw ValidationError(
                 """
-                Could not find PROMPT.md. Run this from inside a checkout, pass --prompt, or \
-                install the app — the CLI looks beside its own binary too.
+                Could not find the prompt/ directory. Run this from inside a checkout, pass \
+                --prompt, or install the app — the CLI looks beside its own binary too.
                 """)
         }
         return found
@@ -166,18 +168,21 @@ struct BackendOptions: ParsableArguments {
         let candidates = [
             binary.deletingLastPathComponent()
                 .deletingLastPathComponent()
-                .appendingPathComponent("Resources/PROMPT.md"),
-            URL(fileURLWithPath: "/Applications/DoNotType.app/Contents/Resources/PROMPT.md"),
+                .appendingPathComponent("Resources/prompt"),
+            URL(fileURLWithPath: "/Applications/DoNotType.app/Contents/Resources/prompt"),
         ]
-        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
+        return candidates.first {
+            FileManager.default.fileExists(
+                atPath: $0.appendingPathComponent(PromptPart.system.relativePath).path)
+        }
     }
 
-    /// The prompt actually in force: the user's edited copy when they have one, exactly as the app
-    /// would use it. A CLI that silently sent the shipped prompt while the app sent an edited one
-    /// would make the two disagree about the only file that matters.
+    /// The prompt actually in force: the user's edited parts when they have any, exactly as the app
+    /// would use them. A CLI that silently sent the shipped prompt while the app sent an edited one
+    /// would make the two disagree about the only files that matter.
     func promptBuilder() throws -> PromptBuilder {
         let store = PromptStore(directory: HistoryStore.defaultDirectory())
-        return try store.builder(default: try promptURL())
+        return store.builder(bundled: try promptURL())
     }
 
     func makeService(

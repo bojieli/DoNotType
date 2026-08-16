@@ -209,56 +209,86 @@ struct PromptCommand: ParsableCommand {
     struct PromptPath: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "path",
-            abstract: "Which file is in force, shipped or edited.")
+            abstract: "Which file is in force for each part, shipped or edited.")
 
         @OptionGroup var backend: BackendOptions
 
+        @Option(
+            name: .long,
+            help: "One part — \(PromptPart.acceptedSpellings.joined(separator: ", ")).")
+        var part: String?
+
         mutating func run() throws {
             let store = PromptStore(directory: HistoryStore.defaultDirectory())
-            if store.hasCustomPrompt {
-                Out.stdout(store.customURL.path)
-                Out.note("edited copy — the measured numbers in PROMPT.md's changelog do not apply")
-            } else {
-                Out.stdout(try backend.promptURL().path)
-                Out.note("the shipped contract")
+            let source = store.source(bundled: try backend.promptURL())
+
+            if let part {
+                guard let parsed = PromptPart(id: part) else { throw Self.unknown(part) }
+                Out.stdout(source.url(for: parsed).path)
+                return
             }
+
+            for entry in PromptPart.allCases {
+                let edited = source.isOverridden(entry)
+                Out.stdout(
+                    "\(entry.id.padded(22))\(edited ? "edited " : "shipped")  "
+                        + source.url(for: entry).path)
+            }
+            if !source.overriddenParts.isEmpty {
+                Out.note(
+                    "\(source.overriddenParts.count) part(s) edited — the measured numbers in "
+                        + "PROMPT.md's changelog do not apply to them")
+            }
+        }
+
+        static func unknown(_ part: String) -> ValidationError {
+            ValidationError(
+                "Unknown part '\(part)'. Options: "
+                    + PromptPart.acceptedSpellings.joined(separator: ", "))
         }
     }
 
     struct ValidatePrompt: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "validate",
-            abstract: "Check that every block and placeholder a request needs resolves.")
+            abstract: "Check that every part and placeholder a request needs resolves.")
 
         @OptionGroup var backend: BackendOptions
 
-        @Argument(help: "A prompt file to check. Defaults to the one in force.", completion: .file())
-        var file: String?
+        @Argument(
+            help: "A prompt/ directory to check. Defaults to the one in force.",
+            completion: .directory)
+        var directory: String?
 
         mutating func run() throws {
-            let template: String
-            if let file {
-                template = try String(contentsOf: URL(fileURLWithPath: file), encoding: .utf8)
+            let builder: PromptBuilder
+            if let directory {
+                builder = PromptBuilder(directory: URL(fileURLWithPath: directory))
             } else {
-                template = try PromptStore(directory: HistoryStore.defaultDirectory())
-                    .activeTemplate(default: try backend.promptURL())
+                builder = try backend.promptBuilder()
             }
 
-            // `PromptStore.validate` covers what a *dictation* needs. The optional stages are
-            // checked separately and reported rather than thrown: a prompt without a summary block
-            // is still a working prompt for everything except summaries, and failing validation
-            // over it would be wrong.
-            try PromptStore.validate(template)
-            Out.stdout("system block      ok (every fidelity resolves)")
-
-            let builder = PromptBuilder(template: template)
-            for style in RewriteStyle.allCases where style.isRewrite {
-                let ok = (try? builder.rewriteInstruction(style: style)) != nil
-                Out.stdout("rewrite:\(style.rawValue.padded(10))\(ok ? "ok" : "MISSING")")
+            // Reported rather than thrown, part by part. A prompt whose summary part is unreadable
+            // is still a working prompt for everything except summaries, and failing the whole
+            // check over it would say less than naming the one that is broken.
+            var failures = 0
+            for part in PromptPart.allCases {
+                do {
+                    _ = try builder.text(for: part)
+                    Out.stdout("\(part.id.padded(22))ok")
+                } catch {
+                    failures += 1
+                    Out.stdout("\(part.id.padded(22))\(error.localizedDescription)")
+                }
             }
-            for style in SummaryStyle.allCases {
-                let ok = (try? builder.summaryInstruction(style: style)) != nil
-                Out.stdout("summary:\(style.rawValue.padded(10))\(ok ? "ok" : "MISSING")")
+            for fidelity in Fidelity.allCases {
+                let ok = (try? builder.systemInstruction(fidelity: fidelity)) != nil
+                if !ok { failures += 1 }
+                Out.stdout("assembles: \(fidelity.rawValue.padded(11))\(ok ? "ok" : "FAILED")")
+            }
+
+            if failures > 0 {
+                throw ValidationError("\(failures) part(s) would fail at request time.")
             }
         }
     }

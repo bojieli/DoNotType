@@ -2,61 +2,244 @@ import XCTest
 
 @testable import DoNotTypeCore
 
+/// These run against the shipped `prompt/`, not a fixture.
+///
+/// The previous version of this class parsed a synthetic template, and that is exactly why it
+/// passed for as long as the contract was one file: the fixture mentioned each marker once, so a
+/// first-match search could not go wrong in it. The real file documented its own markers and every
+/// request carried eight lines of that documentation. A test that cannot see the shipped bytes
+/// cannot catch what happens to them.
 final class PromptBuilderTests: XCTestCase {
-    private let template = """
-        # PROMPT.md
-        Preamble that must not be sent.
-
-        <!-- BEGIN SYSTEM -->
-        You are a transcription engine.
-        5. {{FIDELITY_RULE}}
-        <!-- END SYSTEM -->
-
-        ### raw
-        ```
-        Fidelity is RAW. Transcribe every sound.
-        ```
-
-        ### light
-        ```
-        Fidelity is LIGHT. Drop filler sounds,
-        keep every real word.
-        ```
-        """
-
-    func testSystemInstructionExcludesEverythingOutsideTheMarkers() throws {
-        let instruction = try PromptBuilder(template: template).systemInstruction(fidelity: .raw)
-
-        XCTAssertTrue(instruction.hasPrefix("You are a transcription engine."))
-        XCTAssertFalse(instruction.contains("Preamble"))
-        XCTAssertFalse(instruction.contains("BEGIN SYSTEM"))
-    }
-
-    func testExactlyOneFidelityClauseIsSubstituted() throws {
-        let builder = PromptBuilder(template: template)
-
-        let light = try builder.systemInstruction(fidelity: .light)
-        XCTAssertTrue(light.contains("Fidelity is LIGHT. Drop filler sounds, keep every real word."))
-        XCTAssertFalse(light.contains("RAW"))
-        XCTAssertFalse(light.contains("{{FIDELITY_RULE}}"))
-    }
-
-    func testMissingMarkersAreRejectedRatherThanSilentlyProducingAnEmptyPrompt() {
-        XCTAssertThrowsError(
-            try PromptBuilder(template: "no markers here").systemInstruction())
-    }
-
-    /// The real file has to build, or the app ships with a broken contract.
-    func testShippedPromptFileBuildsForEveryFidelity() throws {
-        guard let url = PromptBuilder.findPromptFile() else {
-            throw XCTSkip("PROMPT.md not found from the test working directory")
+    private func shipped() throws -> PromptBuilder {
+        guard let url = PromptBuilder.findPromptDirectory() else {
+            throw XCTSkip("prompt/ not found from the test working directory")
         }
-        let builder = try PromptBuilder(contentsOf: url)
+        return PromptBuilder(directory: url)
+    }
+
+    func testShippedPromptBuildsForEveryFidelity() throws {
+        let builder = try shipped()
         for fidelity in Fidelity.allCases {
             let instruction = try builder.systemInstruction(fidelity: fidelity)
+            XCTAssertTrue(instruction.hasPrefix("You are a transcription engine."))
             XCTAssertTrue(instruction.contains("Context corrects SPELLING, never CONTENT"))
-            XCTAssertFalse(instruction.contains("{{"))
+            XCTAssertFalse(instruction.contains("{{"), "an unfilled placeholder reached the model")
         }
+    }
+
+    /// The regression test for the bug the split ended: the assembled instruction must be the
+    /// contract and nothing else. Documentation, markers and build instructions are not sent.
+    func testNothingButTheContractIsSent() throws {
+        let instruction = try shipped().systemInstruction(fidelity: .light)
+
+        for leak in ["BEGIN SYSTEM", "END SYSTEM", "PromptBuilder", "dnt-eval", "changelog"] {
+            XCTAssertFalse(instruction.contains(leak), "\(leak) reached the model")
+        }
+    }
+
+    /// Substituting a clause must place it once. The fidelity rule appearing twice is measurable
+    /// harm, not cosmetic — see the 2026-08-09 entry in PROMPT.md, where restating it moved
+    /// substitution from 11/19 to 15/18.
+    func testTheFidelityClauseAppearsExactlyOnce() throws {
+        let builder = try shipped()
+        let clause = try builder.text(for: .fidelity(.light))
+        let instruction = try builder.systemInstruction(fidelity: .light)
+
+        XCTAssertEqual(
+            instruction.components(separatedBy: clause).count - 1, 1,
+            "the fidelity clause is not in the instruction exactly once")
+        XCTAssertFalse(instruction.contains("Fidelity is RAW"))
+        XCTAssertFalse(instruction.contains("Fidelity is TIDY"))
+    }
+
+    /// A part file is sent in full, so anything that looks like an annotation in one is a mistake.
+    func testNoPartContainsMarkupThatWasMeantToBeStripped() throws {
+        let builder = try shipped()
+        for part in PromptPart.allCases {
+            let text = try builder.text(for: part)
+            XCTAssertFalse(text.contains("<!--"), "\(part.id) contains a comment marker")
+            XCTAssertFalse(text.contains("```"), "\(part.id) contains a code fence")
+            if part.isClause {
+                XCTAssertFalse(text.contains("\n"), "\(part.id) is a clause and must be one line")
+            }
+        }
+    }
+
+    /// Every part a picker can reach must exist, or choosing it fails at request time.
+    func testEveryPartResolves() throws {
+        try shipped().validate()
+
+        let builder = try shipped()
+        for style in RewriteStyle.allCases where style.isRewrite {
+            let instruction = try builder.rewriteInstruction(style: style)
+            XCTAssertFalse(instruction.contains("{{"), "\(style.rawValue) left a placeholder")
+        }
+        for style in SummaryStyle.allCases {
+            let instruction = try builder.summaryInstruction(style: style)
+            XCTAssertFalse(instruction.contains("{{"), "\(style.rawValue) left a placeholder")
+        }
+    }
+
+    func testAMissingPartNamesTheFileAndThePart() throws {
+        let empty = PromptBuilder(directory: URL(fileURLWithPath: "/nonexistent-prompt-dir"))
+        XCTAssertThrowsError(try empty.systemInstruction()) { error in
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("system.md"), "the message must name the file: \(message)")
+            XCTAssertTrue(
+                message.contains("/nonexistent-prompt-dir"),
+                "the message must name where it looked: \(message)")
+        }
+    }
+}
+
+/// Per-part overrides, and the one-time split of the single-file format they replaced.
+final class PromptStoreTests: XCTestCase {
+    private var directory = URL(fileURLWithPath: "/tmp")
+
+    override func setUpWithError() throws {
+        directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("prompt-store-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    private func bundled() throws -> URL {
+        guard let url = PromptBuilder.findPromptDirectory() else {
+            throw XCTSkip("prompt/ not found from the test working directory")
+        }
+        return url
+    }
+
+    /// The reason for splitting, as a test: editing one part must not freeze the others.
+    func testEditingOnePartLeavesTheRestShipped() throws {
+        let store = PromptStore(directory: directory)
+        try store.save("Fidelity is MINE.", for: .fidelity(.light))
+
+        XCTAssertEqual(store.customParts, [.fidelity(.light)])
+
+        let instruction = try store.builder(bundled: try bundled())
+            .systemInstruction(fidelity: .light)
+        XCTAssertTrue(instruction.contains("Fidelity is MINE."))
+        // Still the shipped contract around it.
+        XCTAssertTrue(instruction.hasPrefix("You are a transcription engine."))
+
+        // And a fidelity they did not touch is untouched.
+        let raw = try store.builder(bundled: try bundled()).systemInstruction(fidelity: .raw)
+        XCTAssertTrue(raw.contains("Fidelity is RAW"))
+    }
+
+    func testAPartThatWouldDropItsClauseIsRejectedAndNotWritten() throws {
+        let store = PromptStore(directory: directory)
+        XCTAssertThrowsError(try store.save("No placeholder in here.", for: .system)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("{{FIDELITY_RULE}}"))
+        }
+        XCTAssertFalse(store.isCustom(.system), "a rejected part must not be written")
+        XCTAssertThrowsError(try store.save("   ", for: .rewrite))
+    }
+
+    func testRestoringOnePartLeavesTheOthersEdited() throws {
+        let store = PromptStore(directory: directory)
+        try store.save("MINE. {{FIDELITY_RULE}}", for: .system)
+        try store.save("Fidelity is MINE.", for: .fidelity(.tidy))
+
+        try store.restore(.system)
+        XCTAssertEqual(store.customParts, [.fidelity(.tidy)])
+
+        try store.restoreAll()
+        XCTAssertTrue(store.customParts.isEmpty)
+    }
+
+    /// Migrating a copy of the *shipped* file must produce no overrides at all.
+    ///
+    /// Someone who opened the prompt editor, saved without changing anything, and thereby got a
+    /// verbatim copy of the contract should come out of this with zero edited parts — not twelve
+    /// pinned to whatever the contract said that day.
+    func testMigratingAnUnchangedCopyProducesNoOverrides() throws {
+        let store = PromptStore(directory: directory)
+        try legacyFile(fromShipped: try bundled()).write(
+            to: store.legacyURL, atomically: true, encoding: .utf8)
+
+        let migration = try XCTUnwrap(try store.migrateLegacyPrompt(bundled: try bundled()))
+        XCTAssertTrue(
+            migration.migrated.isEmpty,
+            "an unchanged copy became overrides: \(migration.migrated.map(\.id))")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.legacyURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: migration.archivedAt.path))
+    }
+
+    func testMigrationKeepsOnlyTheEditedParts() throws {
+        let store = PromptStore(directory: directory)
+        let legacy = try legacyFile(fromShipped: try bundled())
+            .replacingOccurrences(of: "Fidelity is TIDY.", with: "Fidelity is CUSTOM.")
+        try legacy.write(to: store.legacyURL, atomically: true, encoding: .utf8)
+
+        let migration = try XCTUnwrap(try store.migrateLegacyPrompt(bundled: try bundled()))
+        XCTAssertEqual(migration.migrated, [.fidelity(.tidy)])
+        XCTAssertTrue(try store.builder(bundled: try bundled())
+            .systemInstruction(fidelity: .tidy).contains("Fidelity is CUSTOM."))
+    }
+
+    /// The migrator must not repeat the bug it is migrating away from.
+    ///
+    /// A user's custom prompt was usually a copy of the shipped file, and the shipped file quoted
+    /// `<!-- BEGIN SYSTEM -->` in a sentence above the real marker. Splitting with the original
+    /// first-match rule would carry that sentence into their new system.md forever.
+    func testMigrationIgnoresAMarkerQuotedInProse() throws {
+        let store = PromptStore(directory: directory)
+        let legacy = """
+            # PROMPT.md
+
+            `PromptBuilder` reads everything below the `<!-- BEGIN SYSTEM -->` marker, substitutes
+            `{{FIDELITY_RULE}}` with the active fidelity clause.
+
+            <!-- BEGIN SYSTEM -->
+            You are a transcription engine.
+            5. {{FIDELITY_RULE}}
+            <!-- END SYSTEM -->
+
+            ### light
+            ```
+            Fidelity is LIGHT.
+            ```
+            """
+        try legacy.write(to: store.legacyURL, atomically: true, encoding: .utf8)
+
+        _ = try store.migrateLegacyPrompt(bundled: try bundled())
+
+        let system = try String(contentsOf: store.url(for: .system), encoding: .utf8)
+        XCTAssertTrue(system.hasPrefix("You are a transcription engine."))
+        XCTAssertFalse(system.contains("PromptBuilder"))
+        XCTAssertFalse(system.contains("BEGIN SYSTEM"))
+    }
+
+    func testNothingToMigrateIsNotAnError() throws {
+        let store = PromptStore(directory: directory)
+        XCTAssertNil(try store.migrateLegacyPrompt(bundled: try bundled()))
+    }
+
+    /// Rebuilds the old single-file format out of the shipped parts, for the migration tests.
+    private func legacyFile(fromShipped url: URL) throws -> String {
+        let source = PromptSource(bundled: url)
+        func fenced(_ heading: String, _ part: PromptPart) throws -> String {
+            "### \(heading)\n```\n\(try source.editableText(for: part))\n```\n"
+        }
+        var text = "# PROMPT.md\n\nPreamble.\n\n"
+        text += "<!-- BEGIN SYSTEM -->\n\(try source.editableText(for: .system))\n<!-- END SYSTEM -->\n\n"
+        text += "<!-- BEGIN REWRITE -->\n\(try source.editableText(for: .rewrite))\n<!-- END REWRITE -->\n\n"
+        text += "<!-- BEGIN SUMMARY -->\n\(try source.editableText(for: .summary))\n<!-- END SUMMARY -->\n\n"
+        for fidelity in Fidelity.allCases {
+            text += try fenced(fidelity.rawValue, .fidelity(fidelity)) + "\n"
+        }
+        for style in RewriteStyle.allCases where style.isRewrite {
+            text += try fenced("style: \(style.rawValue)", .style(style)) + "\n"
+        }
+        for style in SummaryStyle.allCases {
+            text += try fenced("summary: \(style.rawValue)", .summaryStyle(style)) + "\n"
+        }
+        return text
     }
 }
 

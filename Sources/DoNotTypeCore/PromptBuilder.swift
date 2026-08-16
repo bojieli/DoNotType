@@ -1,119 +1,163 @@
 import Foundation
 
-/// Assembles the system instruction from `PROMPT.md`.
+/// Where a part's text comes from: the shipped `prompt/` directory, or the user's copy of one file
+/// in it.
 ///
-/// The contract lives in a markdown file at the repo root rather than a Swift string literal
-/// because it is the actual product, it has to stay identical across platforms, and it is what
-/// contributors will want to argue about. Keeping it in a file makes changes reviewable as
-/// changes to the product rather than as changes to code.
-public struct PromptBuilder: Sendable {
+/// The override is per part rather than all-or-nothing, which is the point of the split. Someone
+/// who tuned `fidelity/light.md` keeps getting shipped updates to `system.md`, and a part they
+/// never touched cannot be stale. The old single-file override froze the whole contract at
+/// whatever it looked like on the day it was edited — a prompt customised before the summary stage
+/// existed had no summary block at all, and the stage failed outright rather than falling back.
+public struct PromptSource: Sendable {
     public enum Error: Swift.Error, LocalizedError {
-        case markersMissing(String)
+        case partMissing(PromptPart, URL)
+        case partEmpty(PromptPart, URL)
 
         public var errorDescription: String? {
             switch self {
-            case .markersMissing(let detail): "PROMPT.md is malformed: \(detail)"
+            case .partMissing(let part, let url):
+                "The prompt is missing \(part.relativePath) — nothing to send for \(part.id). "
+                    + "Looked in \(url.path)."
+            case .partEmpty(let part, let url):
+                "\(url.path) is empty. A part file is sent in full, so an empty one would send "
+                    + "nothing for \(part.id)."
             }
         }
     }
 
-    public static let beginMarker = "<!-- BEGIN SYSTEM -->"
-    public static let endMarker = "<!-- END SYSTEM -->"
-    public static let fidelityPlaceholder = "{{FIDELITY_RULE}}"
-    static let rewriteBeginMarker = "<!-- BEGIN REWRITE -->"
-    static let rewriteEndMarker = "<!-- END REWRITE -->"
-    static let stylePlaceholder = "{{STYLE_RULE}}"
-    static let summaryBeginMarker = "<!-- BEGIN SUMMARY -->"
-    static let summaryEndMarker = "<!-- END SUMMARY -->"
-    static let summaryPlaceholder = "{{SUMMARY_RULE}}"
+    /// The shipped directory. Always complete; every part resolves here.
+    public let bundled: URL
+    /// The user's directory, if they have edited anything. Sparse — only edited parts exist.
+    public let overrides: URL?
 
-    public let template: String
-
-    /// - Parameter template: full text of `PROMPT.md`.
-    public init(template: String) {
-        self.template = template
+    public init(bundled: URL, overrides: URL? = nil) {
+        self.bundled = bundled
+        self.overrides = overrides
     }
 
-    public init(contentsOf url: URL) throws {
-        self.template = try String(contentsOf: url, encoding: .utf8)
+    /// The file actually in force for a part.
+    public func url(for part: PromptPart) -> URL {
+        if let custom = overrideURL(for: part),
+            FileManager.default.fileExists(atPath: custom.path)
+        {
+            return custom
+        }
+        return bundled.appendingPathComponent(part.relativePath)
     }
 
-    /// Locates `PROMPT.md` by walking up from a starting path.
+    /// Where a part's override would live, whether or not it exists.
+    public func overrideURL(for part: PromptPart) -> URL? {
+        overrides?.appendingPathComponent(part.relativePath)
+    }
+
+    public func isOverridden(_ part: PromptPart) -> Bool {
+        guard let custom = overrideURL(for: part) else { return false }
+        return FileManager.default.fileExists(atPath: custom.path)
+    }
+
+    public var overriddenParts: [PromptPart] {
+        PromptPart.allCases.filter(isOverridden)
+    }
+
+    /// The part's text, exactly as it will be sent.
     ///
-    /// Lets `dnt-eval` run from anywhere in the tree without a `--prompt` flag.
-    public static func findPromptFile(startingAt start: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)) -> URL? {
+    /// Clause parts are joined into one line — see `PromptPart.isClause`. That is the only
+    /// transform applied to any part, and it exists because a clause lands inside a numbered list
+    /// item in another part.
+    public func text(for part: PromptPart) throws -> String {
+        let url = url(for: part)
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
+            throw Error.partMissing(part, url)
+        }
+        let trimmed = raw.trimmed
+        guard !trimmed.isEmpty else { throw Error.partEmpty(part, url) }
+        return part.isClause ? trimmed.replacingOccurrences(of: "\n", with: " ") : trimmed
+    }
+
+    /// The text as it sits on disk, unjoined — what an editor should show and save.
+    public func editableText(for part: PromptPart) throws -> String {
+        let url = url(for: part)
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
+            throw Error.partMissing(part, url)
+        }
+        return raw.trimmed
+    }
+
+    /// Walks up from a starting path looking for `prompt/system.md`.
+    ///
+    /// Matches on a file inside the directory rather than the directory itself, so an unrelated
+    /// `prompt/` folder in a parent tree cannot shadow the real one.
+    public static func findPromptDirectory(
+        startingAt start: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    ) -> URL? {
         var directory = start.standardizedFileURL
         for _ in 0..<8 {
-            let candidate = directory.appendingPathComponent("PROMPT.md")
-            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+            let candidate = directory.appendingPathComponent("prompt")
+            if FileManager.default.fileExists(
+                atPath: candidate.appendingPathComponent(PromptPart.system.relativePath).path)
+            {
+                return candidate
+            }
             let parent = directory.deletingLastPathComponent()
             if parent.path == directory.path { break }
             directory = parent
         }
         return nil
     }
+}
+
+/// Assembles an instruction out of the parts in a `PromptSource`.
+///
+/// The contract lives in files at the repo root rather than in Swift string literals because it is
+/// the actual product, it has to stay identical across platforms, and it is what contributors will
+/// want to argue about. Keeping it in files makes changes reviewable as changes to the product
+/// rather than as changes to code.
+public struct PromptBuilder: Sendable {
+    public let source: PromptSource
+
+    public init(source: PromptSource) {
+        self.source = source
+    }
+
+    /// The shipped directory with no overrides — for measuring the contract as it ships.
+    public init(directory: URL) {
+        self.init(source: PromptSource(bundled: directory))
+    }
+
+    public static func findPromptDirectory(
+        startingAt start: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    ) -> URL? {
+        PromptSource.findPromptDirectory(startingAt: start)
+    }
 
     public func systemInstruction(fidelity: Fidelity = .default) throws -> String {
-        guard
-            let begin = template.range(of: Self.beginMarker),
-            let end = template.range(of: Self.endMarker),
-            begin.upperBound < end.lowerBound
-        else {
-            throw Error.markersMissing("expected \(Self.beginMarker) … \(Self.endMarker)")
-        }
-        let body = String(template[begin.upperBound..<end.lowerBound]).trimmed
-        guard body.contains(Self.fidelityPlaceholder) else {
-            throw Error.markersMissing("system block has no \(Self.fidelityPlaceholder)")
-        }
-        return body.replacingOccurrences(
-            of: Self.fidelityPlaceholder, with: try fidelityClause(fidelity))
+        try assemble(.system, filling: .fidelity(fidelity))
     }
 
     /// System instruction for the second-stage rewrite.
     public func rewriteInstruction(style: RewriteStyle) throws -> String {
         guard style.isRewrite else { return "" }
-        guard
-            let begin = template.range(of: Self.rewriteBeginMarker),
-            let end = template.range(of: Self.rewriteEndMarker),
-            begin.upperBound < end.lowerBound
-        else {
-            throw Error.markersMissing("expected \(Self.rewriteBeginMarker) … \(Self.rewriteEndMarker)")
-        }
-        let body = String(template[begin.upperBound..<end.lowerBound]).trimmed
-        return body.replacingOccurrences(
-            of: Self.stylePlaceholder, with: try clause(named: style.promptSection))
+        return try assemble(.rewrite, filling: .style(style))
     }
 
     /// The style rule alone, for appending to a transcription prompt in single-pass mode.
     public func styleClause(_ style: RewriteStyle) throws -> String {
-        style.isRewrite ? try clause(named: style.promptSection) : ""
+        style.isRewrite ? try source.text(for: .style(style)) : ""
     }
 
     /// System instruction for the summary stage.
     ///
-    /// A separate block from `rewriteInstruction` rather than another style inside it, because the
+    /// A separate part from `rewriteInstruction` rather than another style inside it, because the
     /// two have opposite contracts: a rewrite may never drop a fact, and a summary exists to. See
     /// "The summary stage" in `PROMPT.md`.
     public func summaryInstruction(style: SummaryStyle) throws -> String {
-        guard
-            let begin = template.range(of: Self.summaryBeginMarker),
-            let end = template.range(of: Self.summaryEndMarker),
-            begin.upperBound < end.lowerBound
-        else {
-            throw Error.markersMissing(
-                "expected \(Self.summaryBeginMarker) … \(Self.summaryEndMarker). A prompt edited "
-                    + "before summaries existed will not have one — restore the shipped prompt, or "
-                    + "copy that block across from it.")
-        }
-        let body = String(template[begin.upperBound..<end.lowerBound]).trimmed
-        return body.replacingOccurrences(
-            of: Self.summaryPlaceholder, with: try clause(named: style.promptSection))
+        try assemble(.summary, filling: .summaryStyle(style))
     }
 
     /// The instruction for whichever second stage a mode asks for, or nil when it asks for none.
     ///
-    /// One entry point, so a caller cannot route a summary through the rewrite block by picking the
-    /// wrong builder method — which is the mistake the two-block split exists to make impossible.
+    /// One entry point, so a caller cannot route a summary through the rewrite part by picking the
+    /// wrong builder method — which is the mistake the two-part split exists to make impossible.
     public func secondStageInstruction(for mode: TranscriptMode) throws -> String? {
         switch mode {
         case .verbatim: nil
@@ -122,25 +166,26 @@ public struct PromptBuilder: Sendable {
         }
     }
 
-    /// Pulls the clause out of the fenced block under `### <fidelity>`.
-    func fidelityClause(_ fidelity: Fidelity) throws -> String {
-        try clause(named: fidelity.rawValue)
+    /// Reads a part without substituting anything into it.
+    public func text(for part: PromptPart) throws -> String {
+        try source.text(for: part)
     }
 
-    private func clause(named name: String) throws -> String {
-        let heading = "### \(name)"
-        guard let headingRange = template.range(of: heading) else {
-            throw Error.markersMissing("no section \(heading)")
+    /// Checks that every part resolves and every placeholder is fillable, so a broken prompt is
+    /// found at startup rather than mid-dictation.
+    public func validate() throws {
+        for part in PromptPart.allCases {
+            _ = try source.text(for: part)
         }
-        let rest = template[headingRange.upperBound...]
-        guard
-            let open = rest.range(of: "```"),
-            let close = rest[open.upperBound...].range(of: "```")
-        else {
-            throw Error.markersMissing("no fenced clause under \(heading)")
-        }
-        return String(rest[open.upperBound..<close.lowerBound])
-            .trimmed
-            .replacingOccurrences(of: "\n", with: " ")
+        _ = try systemInstruction()
+    }
+
+    // MARK: - Private
+
+    private func assemble(_ host: PromptPart, filling clause: PromptPart) throws -> String {
+        let body = try source.text(for: host)
+        guard let placeholder = host.placeholder else { return body }
+        return body.replacingOccurrences(
+            of: placeholder, with: try source.text(for: clause))
     }
 }

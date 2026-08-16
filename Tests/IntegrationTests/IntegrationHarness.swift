@@ -26,8 +26,8 @@ enum Harness {
     }
 
     static var repositoryRoot: URL {
-        // Tests run from .build, so walk up to the directory holding PROMPT.md.
-        PromptBuilder.findPromptFile(startingAt: URL(fileURLWithPath: #filePath))?
+        // Tests run from .build, so walk up to the directory holding prompt/.
+        PromptBuilder.findPromptDirectory(startingAt: URL(fileURLWithPath: #filePath))?
             .deletingLastPathComponent()
             ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }
@@ -47,8 +47,8 @@ enum Harness {
     }
 
     static func systemInstruction(fidelity: Fidelity = .light) throws -> String {
-        let url = repositoryRoot.appendingPathComponent("PROMPT.md")
-        return try PromptBuilder(contentsOf: url).systemInstruction(fidelity: fidelity)
+        let url = repositoryRoot.appendingPathComponent("prompt")
+        return try PromptBuilder(directory: url).systemInstruction(fidelity: fidelity)
     }
 
     static func provider() throws -> GeminiProvider {

@@ -10,8 +10,8 @@ import Foundation
 /// separately from `ablate`.
 ///
 /// What a rewrite must not do is invent, drop, or "correct" content. Numbers, names and
-/// identifiers came from speech and are not the rewriter's to fix, which is rule 2 of the rewrite
-/// block in `PROMPT.md`. This measures exactly that, with no audio involved — text in, text out,
+/// identifiers came from speech and are not the rewriter's to fix, which is rule 2 of
+/// `prompt/rewrite.md`. This measures exactly that, with no audio involved — text in, text out,
 /// so a full run costs seconds rather than minutes.
 struct Rewrite: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -70,10 +70,10 @@ struct Rewrite: AsyncParsableCommand {
 
     mutating func run() async throws {
         let (runner, kind) = try options.makeRunner()
-        guard let promptURL = PromptBuilder.findPromptFile() else {
-            throw ValidationError("Could not find PROMPT.md")
+        guard let promptURL = PromptBuilder.findPromptDirectory() else {
+            throw ValidationError("Could not find the prompt/ directory")
         }
-        let builder = try PromptBuilder(contentsOf: promptURL)
+        let builder = PromptBuilder(directory: promptURL)
 
         let selected = styles.split(separator: ",").compactMap {
             RewriteStyle(rawValue: $0.trimmingCharacters(in: .whitespaces))

@@ -247,10 +247,12 @@ final class FileTranscriptionModel {
         let settings = Settings.shared
         guard let key = settings.resolvedAPIKey(), !key.isEmpty,
             let provider = try? ProviderFactory.make(settings.provider, apiKey: key),
-            let promptURL = SettingsModel.bundledPromptURL(),
-            let builder = try? PromptStore(directory: HistoryStore.defaultDirectory())
-                .builder(default: promptURL),
-            let instruction = try? builder.systemInstruction(fidelity: settings.fidelity)
+            let promptURL = SettingsModel.bundledPromptURL()
+        else { return nil }
+
+        let builder = PromptStore(directory: HistoryStore.defaultDirectory())
+            .builder(bundled: promptURL)
+        guard let instruction = try? builder.systemInstruction(fidelity: settings.fidelity)
         else { return nil }
 
         let service = TranscriptionService(

@@ -5,8 +5,7 @@ import XCTest
 /// Modes, and the wall between rewriting and summarising.
 final class TranscriptModeTests: XCTestCase {
     private var prompt: PromptBuilder {
-        let url = PromptBuilder.findPromptFile()!
-        return try! PromptBuilder(contentsOf: url)
+        PromptBuilder(directory: PromptBuilder.findPromptDirectory()!)
     }
 
     // MARK: - Parsing
@@ -90,29 +89,34 @@ final class TranscriptModeTests: XCTestCase {
             try prompt.summaryInstruction(style: .actions))
     }
 
-    /// A prompt edited before summaries existed is still a valid prompt for dictation. It must fail
-    /// on summaries with a message that says what to do, not with a generic parse error.
-    func testPromptWithoutASummaryBlockFailsHelpfully() throws {
-        let template = try String(contentsOf: PromptBuilder.findPromptFile()!, encoding: .utf8)
-        let stripped = template.replacingOccurrences(of: "<!-- BEGIN SUMMARY -->", with: "")
-        let builder = PromptBuilder(template: stripped)
+    /// A user who edited the contract before summaries existed used to break the summary stage
+    /// outright: their override was the whole file, so it had no summary block and nothing could
+    /// fall back. Per-part overrides make that unreachable — an edited `system.md` says nothing
+    /// about `summary.md`, which is still the shipped one.
+    func testEditingOnePartCannotBreakAStageItSaysNothingAbout() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("dnt-mode-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
 
-        XCTAssertNoThrow(try builder.systemInstruction(fidelity: .light), "dictation still works")
-        XCTAssertThrowsError(try builder.summaryInstruction(style: .brief)) { error in
-            let message = (error as? PromptBuilder.Error)?.errorDescription ?? ""
-            XCTAssertTrue(
-                message.contains("restore the shipped prompt"),
-                "the error has to say how to fix it, got: \(message)")
+        let store = PromptStore(directory: directory)
+        try store.save("MY ENGINE. {{FIDELITY_RULE}}", for: .system)
+        let builder = store.builder(bundled: PromptBuilder.findPromptDirectory()!)
+
+        XCTAssertTrue(try builder.systemInstruction(fidelity: .light).hasPrefix("MY ENGINE."))
+        for style in SummaryStyle.allCases {
+            XCTAssertNoThrow(try builder.summaryInstruction(style: style))
+        }
+        for style in RewriteStyle.allCases where style.isRewrite {
+            XCTAssertNoThrow(try builder.rewriteInstruction(style: style))
         }
     }
 
-    /// `PromptStore.validate` gates saving an edited prompt. It must not start rejecting prompts
-    /// that were fine before summaries existed.
-    func testValidationDoesNotRequireTheOptionalBlocks() throws {
-        let template = try String(contentsOf: PromptBuilder.findPromptFile()!, encoding: .utf8)
-        let stripped = template.replacingOccurrences(of: "<!-- BEGIN SUMMARY -->", with: "")
-            .replacingOccurrences(of: "<!-- BEGIN REWRITE -->", with: "")
-        XCTAssertNoThrow(try PromptStore.validate(stripped))
+    /// `PromptStore.validate` gates saving an edited part, and each part is judged on its own
+    /// terms — a clause has no placeholder to require.
+    func testValidationJudgesEachPartOnItsOwnTerms() {
+        XCTAssertNoThrow(try PromptStore.validate("Fidelity is MINE.", for: .fidelity(.light)))
+        XCTAssertNoThrow(try PromptStore.validate("Summarise. {{SUMMARY_RULE}}", for: .summary))
+        XCTAssertThrowsError(try PromptStore.validate("Summarise.", for: .summary))
     }
 
     // MARK: - History

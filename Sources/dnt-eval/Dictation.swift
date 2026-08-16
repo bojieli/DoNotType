@@ -83,8 +83,8 @@ struct Dictation: AsyncParsableCommand {
         }
 
         let instruction = try PromptBuilder(
-            contentsOf: PromptBuilder.findPromptFile()
-                ?? URL(fileURLWithPath: "PROMPT.md")).systemInstruction(fidelity: requested)
+            directory: PromptBuilder.findPromptDirectory()
+                ?? URL(fileURLWithPath: "prompt")).systemInstruction(fidelity: requested)
 
         print("ordinary-dictation corpus · \(entries.count) clips · "
             + "\(entries.reduce(0) { $0 + $1.seconds })s of speech")

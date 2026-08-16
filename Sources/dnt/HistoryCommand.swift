@@ -318,7 +318,7 @@ struct HistoryCommand: AsyncParsableCommand {
         mutating func run() throws {
             let directory = HistoryStore.defaultDirectory()
             Out.stdout(directory.path)
-            Out.note("  history.json, audio/, logs/, and PROMPT.md if you have edited one")
+            Out.note("  history.json, audio/, logs/, and prompt/ if you have edited any part")
         }
     }
 }

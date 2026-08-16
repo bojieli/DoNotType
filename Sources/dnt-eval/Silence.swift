@@ -8,7 +8,7 @@ import Foundation
 /// defence somebody actually relies on. This measures the thing the gate is protecting against, so
 /// the protection is a measured decision rather than a belief:
 ///
-/// - **`PROMPT.md` rule 7 is otherwise untested.** It says silent or unintelligible audio returns
+/// - **`prompt/system.md` rule 7 is otherwise untested.** It says silent or unintelligible audio returns
 ///   an empty transcript. Nothing in the suite has ever checked whether a model obeys it.
 /// - **Recognisers never receive the rule at all.** Deepgram, xAI and Mistral Voxtral have no
 ///   system instruction, so for them rule 7 does not exist. They are also the backends most
@@ -55,8 +55,8 @@ struct Silence: AsyncParsableCommand {
             throw ValidationError("Unknown provider '\(provider)'")
         }
         let instruction = try PromptBuilder(
-            contentsOf: PromptBuilder.findPromptFile()
-                ?? URL(fileURLWithPath: "PROMPT.md")).systemInstruction(fidelity: .default)
+            directory: PromptBuilder.findPromptDirectory()
+                ?? URL(fileURLWithPath: "prompt")).systemInstruction(fidelity: .default)
 
         let service = TranscriptionService(
             provider: try ProviderFactory.make(kind),
@@ -76,7 +76,7 @@ struct Silence: AsyncParsableCommand {
             "\(kind.rawValue) · \(service.model) · \(recordings.count) recordings × \(repeatCount)")
         if kind.isSpeechRecognition {
             note(
-                "note: this backend has no system instruction, so PROMPT.md rule 7 never reaches "
+                "note: this backend has no system instruction, so system.md rule 7 never reaches "
                     + "it. Whatever it does here, it does without having been asked not to.")
         }
 

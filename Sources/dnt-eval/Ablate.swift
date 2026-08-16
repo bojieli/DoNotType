@@ -100,9 +100,9 @@ struct Ablate: AsyncParsableCommand {
     mutating func run() async throws {
         let (runner, kind) = try options.makeRunner()
         let file = try AudioFile(contentsOf: URL(fileURLWithPath: audio))
-        let promptURL = PromptBuilder.findPromptFile()
-        guard let promptURL else { throw ValidationError("Could not find PROMPT.md") }
-        let builder = try PromptBuilder(contentsOf: promptURL)
+        let promptURL = PromptBuilder.findPromptDirectory()
+        guard let promptURL else { throw ValidationError("Could not find the prompt/ directory") }
+        let builder = PromptBuilder(directory: promptURL)
 
         let context = decoyBeforeCaret
             ? ScreenContext(

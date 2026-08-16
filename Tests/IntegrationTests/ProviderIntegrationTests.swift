@@ -193,41 +193,28 @@ final class SubsystemIntegrationTests: XCTestCase {
         XCTAssertEqual(failing.first?.appName, "Xcode")
     }
 
-    /// An edited prompt has to actually reach the request, or the editor is decorative.
+    /// An edited part has to actually reach the request, or the editor is decorative.
     func testCustomPromptOverridesTheBundledOne() throws {
         let directory = Harness.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let store = PromptStore(directory: directory)
-        let bundled = try XCTUnwrap(PromptBuilder.findPromptFile())
+        let bundled = try XCTUnwrap(PromptBuilder.findPromptDirectory())
 
-        // Default first.
-        let shipped = try store.builder(default: bundled).systemInstruction(fidelity: .light)
+        // Shipped first.
+        let shipped = try store.builder(bundled: bundled).systemInstruction(fidelity: .light)
         XCTAssertTrue(shipped.contains("Context corrects SPELLING, never CONTENT"))
 
-        try store.save(
-            """
-            <!-- BEGIN SYSTEM -->
-            CUSTOM ENGINE. {{FIDELITY_RULE}}
-            <!-- END SYSTEM -->
+        try store.save("CUSTOM ENGINE. {{FIDELITY_RULE}}", for: .system)
 
-            ### raw
-            ```
-            R
-            ```
-            ### light
-            ```
-            L
-            ```
-            ### tidy
-            ```
-            T
-            ```
-            """)
-
-        let custom = try store.builder(default: bundled).systemInstruction(fidelity: .light)
+        let custom = try store.builder(bundled: bundled).systemInstruction(fidelity: .light)
         XCTAssertTrue(custom.hasPrefix("CUSTOM ENGINE."))
         XCTAssertFalse(custom.contains("Context corrects SPELLING"))
+
+        // The parts the user did not touch still come from the shipped directory. This is the
+        // whole point of splitting: editing the contract must not freeze the clauses with it.
+        XCTAssertTrue(custom.contains("Fidelity is LIGHT"))
+        XCTAssertEqual(store.customParts, [.system])
     }
 
     /// Every error a user can hit must produce guidance, not a raw string.

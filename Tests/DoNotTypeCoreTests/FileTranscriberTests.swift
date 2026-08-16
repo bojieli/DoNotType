@@ -69,7 +69,7 @@ final class FileTranscriberTests: XCTestCase {
     }
 
     private var prompt: PromptBuilder {
-        try! PromptBuilder(contentsOf: PromptBuilder.findPromptFile()!)
+        PromptBuilder(directory: PromptBuilder.findPromptDirectory()!)
     }
 
     private func transcriber(
