@@ -13,7 +13,9 @@ public struct OpenAICompatibleProvider: TranscriptionProvider {
     /// Reasoning effort, when the gateway forwards it. Transcription needs none.
     public let reasoningEffort: String?
 
-    private let session: URLSession
+    /// Injected by tests only. Nil means `ProviderTransport` decides, which is what the
+    /// app does.
+    private let sessionOverride: URLSession?
 
     /// Models observed to reject `response_format`, so the fallback is paid for once rather than
     /// on every request.
@@ -45,15 +47,17 @@ public struct OpenAICompatibleProvider: TranscriptionProvider {
         apiKey: String,
         extraHeaders: [String: String] = [:],
         reasoningEffort: String? = "minimal",
-        session: URLSession = .shared
+        session: URLSession? = nil
     ) {
         self.name = name
         self.baseURL = baseURL
         self.apiKey = apiKey
         self.extraHeaders = extraHeaders
         self.reasoningEffort = reasoningEffort
-        self.session = session
+        self.sessionOverride = session
     }
+
+    public var endpointOrigin: URL? { baseURL.origin }
 
     public func transcribe(_ request: TranscriptionRequest) async throws -> TranscriptionResult {
         let useSchema = !Self.schemaUnsupported.isUnsupported(request.model)
@@ -93,8 +97,10 @@ public struct OpenAICompatibleProvider: TranscriptionProvider {
         }
         urlRequest.httpBody = try JSONSerialization.data(
             withJSONObject: body(for: request, structuredOutput: structuredOutput))
-        urlRequest.timeoutInterval = 120
+        urlRequest.timeoutInterval = ProviderTransport.requestTimeoutSeconds
 
+        let session = await ProviderTransport.session(
+            override: sessionOverride, for: baseURL, connection: request.connection)
         let (data, http) = try await session.send(
             urlRequest, provider: name, model: request.model)
         guard (200..<300).contains(http.statusCode) else {

@@ -21,6 +21,12 @@ public struct TranscriptionRequest: Sendable {
     /// Populated by `TranscriptionService`, never by a provider — deriving these requires the
     /// `ScreenContext`, which providers deliberately never see.
     public var keyterms: [String]
+    /// Whether this attempt may reuse the pooled connection.
+    ///
+    /// Set to `.fresh` by the two callers that already know it is suspect — the stall hedge and
+    /// every retry after a failure — because a second attempt down the connection that just failed
+    /// is not a second attempt. See `ProviderTransport`.
+    public var connection: ConnectionPreference
 
     public init(
         model: String,
@@ -28,7 +34,8 @@ public struct TranscriptionRequest: Sendable {
         parts: [InputPart],
         maxOutputTokens: Int = 2048,
         fidelity: Fidelity = .default,
-        keyterms: [String] = []
+        keyterms: [String] = [],
+        connection: ConnectionPreference = .pooled
     ) {
         self.model = model
         self.systemInstruction = systemInstruction
@@ -36,6 +43,7 @@ public struct TranscriptionRequest: Sendable {
         self.maxOutputTokens = maxOutputTokens
         self.fidelity = fidelity
         self.keyterms = keyterms
+        self.connection = connection
     }
 
     /// The recording, when there is one. Speech recognition endpoints send exactly this and
@@ -193,11 +201,22 @@ public protocol TranscriptionProvider: Sendable {
     /// say nothing extra.
     func grounding(forModel model: String) -> GroundingSupport
 
+    /// Where a dictation will be sent, so the connection can be opened while the user is still
+    /// speaking rather than after they stop. Nil disables warm-up for this backend.
+    ///
+    /// The origin rather than the endpoint: any answer from the host proves the connection, and a
+    /// GET to the API path would be a real call with a real bill.
+    var endpointOrigin: URL? { get }
+
     func transcribe(_ request: TranscriptionRequest) async throws -> TranscriptionResult
 }
 
 extension TranscriptionProvider {
     public func grounding(forModel model: String) -> GroundingSupport { .multimodal }
+
+    /// Nil unless a backend says otherwise, so a provider that has not been taught to warm up
+    /// behaves exactly as it did before rather than pointing warm-up at the wrong host.
+    public var endpointOrigin: URL? { nil }
 }
 
 extension TranscriptionProvider {

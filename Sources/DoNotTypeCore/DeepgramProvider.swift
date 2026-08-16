@@ -36,7 +36,9 @@ public struct DeepgramProvider: TranscriptionProvider {
     /// no autodetecting default that would spare them that.
     public let language: String?
 
-    private let session: URLSession
+    /// Injected by tests only. Nil means `ProviderTransport` decides, which is what the
+    /// app does.
+    private let sessionOverride: URLSession?
 
     /// `keyterm` is nova-3 only; earlier models reject it outright rather than ignoring it.
     ///
@@ -51,13 +53,15 @@ public struct DeepgramProvider: TranscriptionProvider {
         apiKey: String,
         endpoint: URL = URL(string: "https://api.deepgram.com/v1/listen")!,
         language: String? = nil,
-        session: URLSession = .shared
+        session: URLSession? = nil
     ) {
         self.apiKey = apiKey
         self.endpoint = endpoint
         self.language = language
-        self.session = session
+        self.sessionOverride = session
     }
+
+    public var endpointOrigin: URL? { endpoint.origin }
 
     /// Answered per-model, because the biasing channel only exists on nova-3. A provider that
     /// claimed `.keyterms` while configured with nova-2 would have the service derive terms,
@@ -78,8 +82,10 @@ public struct DeepgramProvider: TranscriptionProvider {
         urlRequest.setValue("Token \(apiKey)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue(audio.mimeType, forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = audio.data
-        urlRequest.timeoutInterval = 120
+        urlRequest.timeoutInterval = ProviderTransport.requestTimeoutSeconds
 
+        let session = await ProviderTransport.session(
+            override: sessionOverride, for: endpoint, connection: request.connection)
         let (data, http) = try await session.send(
             urlRequest, provider: name, model: request.model)
         guard (200..<300).contains(http.statusCode) else {

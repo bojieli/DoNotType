@@ -28,23 +28,27 @@ public struct MistralProvider: TranscriptionProvider {
     /// Deepgram: detection is what makes the code-switching case work.
     public let language: String?
 
-    private let session: URLSession
+    /// Injected by tests only. Nil means `ProviderTransport` decides, which is what the
+    /// app does.
+    private let sessionOverride: URLSession?
     private let boundaryProvider: @Sendable () -> String
 
     public init(
         apiKey: String,
         endpoint: URL = URL(string: "https://api.mistral.ai/v1/audio/transcriptions")!,
         language: String? = nil,
-        session: URLSession = .shared,
+        session: URLSession? = nil,
         // See `XAISpeechProvider`: an internal type cannot appear in a public default argument.
         boundaryProvider: @escaping @Sendable () -> String = { "dnt-\(UUID().uuidString)" }
     ) {
         self.apiKey = apiKey
         self.endpoint = endpoint
         self.language = language
-        self.session = session
+        self.sessionOverride = session
         self.boundaryProvider = boundaryProvider
     }
+
+    public var endpointOrigin: URL? { endpoint.origin }
 
     /// No biasing channel exists, so nothing about the screen can reach this backend.
     public func grounding(forModel model: String) -> GroundingSupport { .none }
@@ -62,8 +66,10 @@ public struct MistralProvider: TranscriptionProvider {
             "multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = Self.multipartBody(
             for: request, audio: audio, boundary: boundary, language: language)
-        urlRequest.timeoutInterval = 120
+        urlRequest.timeoutInterval = ProviderTransport.requestTimeoutSeconds
 
+        let session = await ProviderTransport.session(
+            override: sessionOverride, for: endpoint, connection: request.connection)
         let (data, http) = try await session.send(
             urlRequest, provider: name, model: request.model)
         guard (200..<300).contains(http.statusCode) else {

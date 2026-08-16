@@ -40,7 +40,9 @@ public struct XAISpeechProvider: TranscriptionProvider {
     /// true", so a request with formatting on and no language is a guaranteed 400.
     var resolvedLanguage: String { language?.trimmed.nilIfEmpty ?? "auto" }
 
-    private let session: URLSession
+    /// Injected by tests only. Nil means `ProviderTransport` decides, which is what the
+    /// app does.
+    private let sessionOverride: URLSession?
     private let boundaryProvider: @Sendable () -> String
 
     /// Documented ceilings: 100 terms, 50 characters each.
@@ -51,7 +53,7 @@ public struct XAISpeechProvider: TranscriptionProvider {
         apiKey: String,
         endpoint: URL = URL(string: "https://api.x.ai/v1/stt")!,
         language: String? = nil,
-        session: URLSession = .shared,
+        session: URLSession? = nil,
         // Spelled out rather than calling `MultipartBody.randomBoundary()`: a default argument in
         // a public initializer cannot reference an internal type.
         boundaryProvider: @escaping @Sendable () -> String = { "dnt-\(UUID().uuidString)" }
@@ -59,9 +61,11 @@ public struct XAISpeechProvider: TranscriptionProvider {
         self.apiKey = apiKey
         self.endpoint = endpoint
         self.language = language
-        self.session = session
+        self.sessionOverride = session
         self.boundaryProvider = boundaryProvider
     }
+
+    public var endpointOrigin: URL? { endpoint.origin }
 
     public func grounding(forModel model: String) -> GroundingSupport {
         .keyterms(maxTerms: Self.maxKeyterms, maxCharsPerTerm: Self.maxKeytermChars)
@@ -80,8 +84,10 @@ public struct XAISpeechProvider: TranscriptionProvider {
             "multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = Self.multipartBody(for: request, audio: audio, boundary: boundary,
             language: resolvedLanguage)
-        urlRequest.timeoutInterval = 120
+        urlRequest.timeoutInterval = ProviderTransport.requestTimeoutSeconds
 
+        let session = await ProviderTransport.session(
+            override: sessionOverride, for: endpoint, connection: request.connection)
         let (data, http) = try await session.send(
             urlRequest, provider: name, model: request.model)
         guard (200..<300).contains(http.statusCode) else {

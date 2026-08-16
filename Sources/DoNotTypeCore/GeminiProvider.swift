@@ -38,21 +38,24 @@ public struct GeminiProvider: TranscriptionProvider {
     /// transcript:" is broken. Exposed only so `dnt-eval` can measure what the constraint costs.
     public let usesStructuredOutput: Bool
 
-    private let session: URLSession
+    /// Injected by tests only. Nil means `ProviderTransport` decides, which is what the app does.
+    private let sessionOverride: URLSession?
 
     public init(
         apiKey: String,
         endpoint: URL = URL(string: "https://generativelanguage.googleapis.com/v1beta/interactions")!,
         thinkingLevel: String? = nil,
         usesStructuredOutput: Bool = true,
-        session: URLSession = .shared
+        session: URLSession? = nil
     ) {
         self.apiKey = apiKey
         self.endpoint = endpoint
         self.thinkingLevel = thinkingLevel
         self.usesStructuredOutput = usesStructuredOutput
-        self.session = session
+        self.sessionOverride = session
     }
+
+    public var endpointOrigin: URL? { endpoint.origin }
 
     public func transcribe(_ request: TranscriptionRequest) async throws -> TranscriptionResult {
         var urlRequest = URLRequest(url: endpoint)
@@ -60,8 +63,10 @@ public struct GeminiProvider: TranscriptionProvider {
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body(for: request))
-        urlRequest.timeoutInterval = 120
+        urlRequest.timeoutInterval = ProviderTransport.requestTimeoutSeconds
 
+        let session = await ProviderTransport.session(
+            override: sessionOverride, for: endpoint, connection: request.connection)
         let (data, http) = try await session.send(
             urlRequest, provider: name, model: request.model)
         // Errors arrive as a top-level JSON *array*, unlike the success shape.
