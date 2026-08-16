@@ -90,13 +90,23 @@ public struct TranscriptionResult: Sendable {
     /// How many requests the audio was split across. 1 for every ordinary dictation.
     public var chunkCount: Int
 
+    /// Whether `transcript` was emptied on the way out, and why.
+    ///
+    /// Carried rather than merely logged: deleting words the user might have said is the most
+    /// consequential thing this pipeline does silently, and a caller that cannot see it happened
+    /// cannot show it, test it, or argue with the threshold. `rawOutput` still holds what the model
+    /// actually returned.
+    public var suppressed: HallucinationGuard.Verdict
+
     public init(
-        transcript: Transcript, usage: TokenUsage, rawOutput: String, chunkCount: Int = 1
+        transcript: Transcript, usage: TokenUsage, rawOutput: String, chunkCount: Int = 1,
+        suppressed: HallucinationGuard.Verdict = .kept
     ) {
         self.transcript = transcript
         self.usage = usage
         self.rawOutput = rawOutput
         self.chunkCount = chunkCount
+        self.suppressed = suppressed
     }
 }
 

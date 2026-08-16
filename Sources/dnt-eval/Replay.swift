@@ -67,6 +67,9 @@ struct Replay: AsyncParsableCommand {
         var seconds: [Double] = []
         var text = ""
         var error: String?
+        /// What the model returned before the guard emptied it, when it did.
+        var suppressed: String?
+        var rawOutput = ""
     }
 
     mutating func run() async throws {
@@ -98,6 +101,10 @@ struct Replay: AsyncParsableCommand {
                             audio: audio, context: noContext ? nil : record.context)
                         answer.seconds.append(Date().timeIntervalSince(started))
                         answer.text = result.transcript.transcript
+                        answer.rawOutput = result.rawOutput
+                        if result.suppressed != .kept {
+                            answer.suppressed = result.suppressed.summary
+                        }
                     } catch {
                         // Uncut, and it does not abort the other backends: one dead key should not
                         // cost the run every comparison it was going to produce.
@@ -256,6 +263,14 @@ struct Replay: AsyncParsableCommand {
             ? String(format: " (%.2f–%.2f)", seconds.first ?? 0, seconds.last ?? 0) : ""
         let same = normalise(answer.text) == normalise(dictated) ? "  ≡ as dictated" : ""
         print("  \(answer.backend.padded(30))  " + String(format: "%.2f s", median) + spread + same)
+
+        // A blank line under a backend is ambiguous — it could be an empty answer or a suppressed
+        // one, and those are opposite outcomes. Say which, and show what was thrown away.
+        if let suppressed = answer.suppressed {
+            print("    ⟂ suppressed — \(suppressed)")
+            if !noTranscripts { print("      would have typed: \(oneLine(answer.rawOutput))") }
+            return
+        }
         if !noTranscripts { print("    \(oneLine(answer.text))") }
     }
 

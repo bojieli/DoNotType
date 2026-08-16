@@ -143,7 +143,7 @@ public struct TranscriptionService: Sendable {
             ])
 
         let started = Date()
-        let result = try await provider.transcribe(
+        var result = try await provider.transcribe(
             TranscriptionRequest(
                 model: model, systemInstruction: systemInstruction, parts: parts,
                 fidelity: fidelity, keyterms: keyterms))
@@ -154,6 +154,30 @@ public struct TranscriptionService: Sendable {
                 "audioTokens": result.usage.audioTokens.map(String.init) ?? "unreported",
                 "ms": LogClock.ms(Date().timeIntervalSince(started)),
             ])
+
+        // Here rather than at the call site, because every backend and every caller — dictation,
+        // file transcription, retry, the eval harness — comes through this one method, and a guard
+        // that some of them skip is a guard that will be skipped by the one that matters.
+        //
+        // The duration comes from `audio`, not from the compressed payload: `compressedForUpload`
+        // produces Opus, whose length is not readable without decoding it.
+        let (checked, verdict) = HallucinationGuard.inspect(
+            result.transcript, audioSeconds: audio.durationSeconds)
+        if verdict != .kept {
+            // Warning, not debug: text the user never said was about to be typed into whatever
+            // they had focused, and the whole measurement goes in the line so the threshold can be
+            // argued with from the log alone.
+            Self.log.warning(
+                "transcript discarded — the audio cannot contain it",
+                [
+                    "provider": provider.name, "model": model,
+                    "reason": verdict.summary,
+                ])
+            // The words themselves only under the content flag, like every other transcript.
+            Self.log.content("discarded transcript", result.transcript.transcript)
+            result.transcript = checked
+            result.suppressed = verdict
+        }
         return result
     }
 
