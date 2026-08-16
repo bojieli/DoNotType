@@ -221,10 +221,6 @@ final class SettingsModel {
         didSet { Settings.shared.screenshotEnabled = screenshotEnabled }
     }
 
-    var numberCheck: NumberCheckPolicy {
-        didSet { Settings.shared.numberCheck = numberCheck }
-    }
-
     var blockedBundleIDs: [String] {
         didSet { Settings.shared.blockedBundleIDs = blockedBundleIDs }
     }
@@ -318,7 +314,6 @@ final class SettingsModel {
         launchAtLogin = LaunchAtLogin.isEnabled
         groundingEnabled = settings.groundingEnabled
         screenshotEnabled = settings.screenshotEnabled
-        numberCheck = settings.numberCheck
         blockedBundleIDs = settings.blockedBundleIDs
         blockedURLPrefixes = settings.blockedURLPrefixes
         retention = settings.retention

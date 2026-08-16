@@ -57,7 +57,7 @@ last — does not arise the same way.
 ⁶ **Not possible.** An iOS app cannot read another app's screen; the sandbox has no equivalent of
 the accessibility APIs the other three use, and no screenshot of anything it does not own. This is
 the one real capability difference between the clients, and it is the platform's decision rather
-than ours. Everything downstream of grounding — the blocklist, the number check, keyterms — is
+than ours. Everything downstream of grounding — the blocklist, keyterms — is
 therefore absent too, because there is nothing for them to act on.
 
 ⁷ macOS falls back to a screenshot when an app exposes no readable text — Figma, a GPU-rendered

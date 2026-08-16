@@ -69,7 +69,6 @@ enum Diagnostics {
         section("Grounding")
         row("enabled", settings.groundingEnabled ? "yes" : "no")
         row("screenshot fallback", settings.screenshotEnabled ? "yes" : "no")
-        row("number check", settings.numberCheck.rawValue)
         row("blocked apps", "\(settings.blockedBundleIDs.count)")
         row("custom prompt", model.isPromptCustom ? "yes" : "no (using the bundled contract)")
 

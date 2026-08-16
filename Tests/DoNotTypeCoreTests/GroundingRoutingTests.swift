@@ -7,13 +7,19 @@ private final class RecordingProvider: TranscriptionProvider, @unchecked Sendabl
     let name = "recording"
     var groundingSupport: GroundingSupport = .multimodal
     private(set) var lastRequest: TranscriptionRequest?
+    /// Locked because a split recording transcribes its chunks concurrently.
+    private let lock = NSLock()
+    private(set) var requestCount = 0
 
     init(grounding: GroundingSupport) { self.groundingSupport = grounding }
 
     func grounding(forModel model: String) -> GroundingSupport { groundingSupport }
 
     func transcribe(_ request: TranscriptionRequest) async throws -> TranscriptionResult {
-        lastRequest = request
+        lock.withLock {
+            lastRequest = request
+            requestCount += 1
+        }
         return TranscriptionResult(
             transcript: Transcript(transcript: "ok", language: "en"), usage: TokenUsage(),
             rawOutput: "ok")
@@ -146,21 +152,23 @@ final class GroundingRoutingTests: XCTestCase {
         XCTAssertFalse(guidance.isQueued)
     }
 
-    /// The number check spends a second request to compare a grounded run against a screen-blind
-    /// one. Against a backend that never saw the screen both runs are the same run, so it must not
-    /// fire — it would double the bill and compare a transcript with itself.
-    func testNumberVerificationIsSkippedForBackendsThatCannotSeeTheScreen() async throws {
-        let provider = RecordingProvider(grounding: .keyterms(maxTerms: 100, maxCharsPerTerm: 50))
+    /// A dictation short enough not to be split costs exactly one request.
+    ///
+    /// This used to be conditional: a "number check" ran a second, screen-blind transcription and
+    /// spliced its digits into the grounded one. It was removed because the user waits on the
+    /// slower of the two, and that is the wrong thing to buy from a backend whose latency tail is
+    /// the problem. The count is asserted rather than assumed so a second request cannot come back
+    /// unnoticed.
+    func testADictationCostsExactlyOneRequest() async throws {
+        let provider = RecordingProvider(grounding: .multimodal)
         let service = TranscriptionService(
             provider: provider, model: "m", systemInstruction: "i")
 
         let wav = try wavFixture(seconds: 1)
         _ = try await service.transcribeLong(
-            audio: AudioFile(data: wav, mimeType: "audio/wav"), context: context,
-            verifyNumbers: true)
+            audio: AudioFile(data: wav, mimeType: "audio/wav"), context: context)
 
-        // One request reached the provider, not two.
-        XCTAssertEqual(provider.lastRequest?.parts.count, 1)
+        XCTAssertEqual(provider.requestCount, 1)
     }
 
     private func wavFixture(seconds: Int) throws -> Data {

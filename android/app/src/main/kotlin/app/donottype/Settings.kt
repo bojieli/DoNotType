@@ -5,7 +5,6 @@ import app.donottype.core.Log
 import app.donottype.core.LogLevel
 import app.donottype.core.LogRouter
 import app.donottype.core.ProviderKind
-import app.donottype.core.NumberCheckPolicy
 import app.donottype.core.RewriteStyle
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.TranscriptMode
@@ -25,7 +24,6 @@ object Settings {
     private const val KEY_PROVIDER = "provider"
     private const val KEY_MODEL = "model"
     private const val KEY_LIVE_STYLE = "liveStyle"
-    private const val KEY_NUMBER_CHECK = "numberCheck"
     private const val KEY_KEYTERMS = "keytermBiasing"
     private const val KEY_FALLBACK = "fallbackProvider"
     private const val KEY_FALLBACK_AFTER = "fallbackAfterSeconds"
@@ -163,22 +161,6 @@ object Settings {
             RewriteStyle.VERBATIM
         }
         set(value) { if (ready) prefs.edit().putString(KEY_LIVE_STYLE, value.id).apply() }
-
-    /**
-     * When to spend a second, screen-blind request to check the numbers.
-     *
-     * Defaults to the measured regime rather than off or always: every regression grounding has
-     * produced in the evaluation suite is a number, and the substitution rate is 75% when the text
-     * around the caret contains digits against 30% when only the wider screen does. See
-     * [NumericGuard].
-     */
-    var numberCheck: NumberCheckPolicy
-        get() = if (ready) {
-            NumberCheckPolicy.from(prefs.getString(KEY_NUMBER_CHECK, null))
-        } else {
-            NumberCheckPolicy.DEFAULT
-        }
-        set(value) { if (ready) prefs.edit().putString(KEY_NUMBER_CHECK, value.id).apply() }
 
     var keytermBiasing: Boolean
         get() = ready && prefs.getBoolean(KEY_KEYTERMS, false)

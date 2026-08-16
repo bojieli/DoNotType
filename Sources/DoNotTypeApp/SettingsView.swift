@@ -327,28 +327,6 @@ private struct GroundingTab: View {
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-
-                Picker("Check numbers", selection: $model.numberCheck) {
-                    ForEach(NumberCheckPolicy.allCases, id: \.self) { policy in
-                        Text(policy.label).tag(policy)
-                    }
-                }
-                .disabled(!model.groundingEnabled)
-
-                // The trade is stated rather than implied, because it is the whole reason this is
-                // a choice and not a fixed behaviour.
-                Text(
-                    "Every measured grounding regression has been a number, never a word — a "
-                        + "value on screen overriding the one you said. A second transcription "
-                        + "that never sees the screen supplies the digits, at the cost of one "
-                        + "extra request."
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
-                Text(model.numberCheck.detail)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
 
             Section("Never read these apps") {

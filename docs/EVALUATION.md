@@ -221,6 +221,29 @@ constant.
 **What this does not settle.** The benefit cases are synthesized, so they measure spelling transfer
 rather than transfer under ambiguous human speech.
 
+### Withdrawn: the guard was removed on 2026-08-16
+
+The measurements above stand. The feature built on them does not, and the reason is the sentence
+I bolded and then failed to act on: *the overhead is somewhere between negligible and a doubling
+depending on the connection*. That is not a cost you can accept on a user's behalf, because the
+quantity it depends on is the one that was already hurting them.
+
+Profiled against `gemini-3.6-flash` over 38 requests carrying the same 22.8 s clip, single-request
+latency was 8.9 s at the median, 21 s at p90 and 43 s at the maximum, with one connection dropped
+outright at 62 s. The guard makes a dictation wait on the **slower of two draws** from that
+distribution: p90 moves 21 s → 37 s, and the share of dictations over 20 s goes 14% → 26%. The
+1.5 s figure above was a median talking, on a day when the tail behaved.
+
+The trigger made it worse. `whenCaretHasNumbers` was meant to fire occasionally; it fires on any
+digit in a 1,000-character caret window, which in a terminal or an editor is always. Sampled
+against real stored contexts from one session, it fired on 6 of 6.
+
+A number the model got wrong is a grounding and prompt failure. Buying a second opinion and
+splicing digits out of it treats the symptom, and charges the tail of the latency distribution
+for it. `NumericGuard`, `NumberCheckPolicy`, `--verify-numbers` and the `digit-guard` ablation
+condition are all gone; the substitution rates are left here because they are still the argument
+against grounding numbers in the first place.
+
 ## Hallucination on silence
 
 The failure that needs no context to be terrible: a recording with nothing in it, transcribed as a

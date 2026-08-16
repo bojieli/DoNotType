@@ -149,8 +149,7 @@ dnt transcribe recording.wav --context-file context.json --mode verbatim
 ```
 
 Individual fields can be supplied or overridden with `--visible-text`, `--before-caret`, `--app` and
-`--window-title`. `--verify-numbers` runs the second, screen-blind pass described in
-[EVALUATION.md](EVALUATION.md).
+`--window-title`.
 
 ## `dnt doctor` — why is this not working
 

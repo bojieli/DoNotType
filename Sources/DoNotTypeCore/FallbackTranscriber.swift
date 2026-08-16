@@ -81,13 +81,11 @@ public struct FallbackTranscriber: Sendable {
         audio: AudioFile,
         context: ScreenContext?,
         audioPart: InputPart? = nil,
-        verifyNumbers: Bool = false,
         onProgress: (@Sendable (Int, Int) -> Void)? = nil
     ) async throws -> Outcome {
         guard let secondary else {
             let result = try await primary.transcribeLong(
-                audio: audio, context: context, audioPart: audioPart,
-                verifyNumbers: verifyNumbers, onProgress: onProgress)
+                audio: audio, context: context, audioPart: audioPart, onProgress: onProgress)
             return Outcome(result: result, attribution: attribution(primary, wasFallback: false))
         }
 
@@ -96,7 +94,7 @@ public struct FallbackTranscriber: Sendable {
                 Outcome(
                     result: try await primary.transcribeLong(
                         audio: audio, context: context, audioPart: audioPart,
-                        verifyNumbers: verifyNumbers, onProgress: onProgress),
+                        onProgress: onProgress),
                     attribution: attribution(primary, wasFallback: false))
             }
             group.addTask {
@@ -115,13 +113,10 @@ public struct FallbackTranscriber: Sendable {
                         "after": "\(hedgeAfter)",
                     ])
                 // The pre-uploaded reference is Google's Files API and means nothing to another
-                // backend, so the hedge always sends inline bytes. Number verification is skipped
-                // too: it spends a second screen-blind request, and the hedge exists because the
-                // clock is already the problem.
+                // backend, so the hedge always sends inline bytes.
                 return Outcome(
                     result: try await secondary.transcribeLong(
-                        audio: audio, context: context, audioPart: nil,
-                        verifyNumbers: false, onProgress: nil),
+                        audio: audio, context: context, audioPart: nil, onProgress: nil),
                     attribution: attribution(secondary, wasFallback: true))
             }
 

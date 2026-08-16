@@ -31,7 +31,6 @@ public sealed class SettingsForm : Form
     private readonly ComboBox _trigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _secondTrigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _secondStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly ComboBox _numberCheck = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _microphone = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly CheckBox _sounds = new() { Text = "Play a tone when recording starts and stops", AutoSize = true };
     private readonly Label _secondKeyNote = new()
@@ -149,7 +148,6 @@ public sealed class SettingsForm : Form
 
         layout.Controls.Add(Heading("Grounding"));
         layout.Controls.Add(_grounding);
-        layout.Controls.Add(Labelled("Check numbers", _numberCheck));
         layout.Controls.Add(Caption(
             "Every regression grounding has produced in the evaluation suite is a number — 1.5 "
             + "becoming 2.5, 4240 becoming 1024 — and unlike a misspelled name a wrong number is "
@@ -681,12 +679,6 @@ public sealed class SettingsForm : Form
         _microphone.SelectedIndex = pinned >= 0 ? pinned : 0;
         _sounds.Checked = _settings.InteractionSounds;
 
-        foreach (var policy in Enum.GetValues<NumberCheckPolicy>())
-        {
-            _numberCheck.Items.Add(policy.Label());
-        }
-        _numberCheck.SelectedIndex = (int)_settings.NumberCheck;
-
         foreach (var policy in Enum.GetValues<RetentionPolicy>()) _retention.Items.Add(policy.Label());
         _retention.SelectedIndex = (int)_settings.Retention;
         _retention.SelectedIndexChanged += (_, _) =>
@@ -730,7 +722,6 @@ public sealed class SettingsForm : Form
         };
         _settings.Fidelity = (Fidelity)_fidelity.SelectedIndex;
         _settings.GroundingEnabled = _grounding.Checked;
-        _settings.NumberCheck = (NumberCheckPolicy)_numberCheck.SelectedIndex;
         // Index 0 is "System default", which is stored as null rather than as its label.
         _settings.MicrophoneName = _microphone.SelectedIndex > 0
             ? _microphone.Items[_microphone.SelectedIndex]?.ToString()

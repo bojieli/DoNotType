@@ -90,14 +90,6 @@ struct Transcribe: AsyncParsableCommand {
         completion: .file())
     var contextFile: String?
 
-    @Flag(
-        name: .long,
-        help: """
-            Transcribe a second time without the screen context and take digits from that run. \
-            Costs one extra request; see the substitution numbers in docs/EVALUATION.md.
-            """)
-    var verifyNumbers = false
-
     mutating func run() async throws {
         logging.start()
 
@@ -171,7 +163,7 @@ struct Transcribe: AsyncParsableCommand {
             do {
                 let outcome = try await transcriber.transcribe(
                     fileAt: url, mode: parsedMode, context: context,
-                    verifyNumbers: verifyNumbers, attempts: attempts, maxConcurrent: concurrency,
+                    attempts: attempts, maxConcurrent: concurrency,
                     onProgress: { progress in
                         guard !isQuiet else { return }
                         Out.progress(Self.describe(progress, file: url.lastPathComponent))

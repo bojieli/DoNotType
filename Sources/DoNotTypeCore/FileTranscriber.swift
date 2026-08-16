@@ -145,7 +145,6 @@ public struct FileTranscriber: Sendable {
         fileAt url: URL,
         mode: TranscriptMode = .verbatim,
         context: ScreenContext? = nil,
-        verifyNumbers: Bool = false,
         attempts: Int = 3,
         maxConcurrent: Int = 3,
         onProgress: (@Sendable (Progress) -> Void)? = nil
@@ -181,7 +180,6 @@ public struct FileTranscriber: Sendable {
         let transcribeStart = Date()
         let result = try await service.transcribeLong(
             audio: audio, context: context, attempts: attempts, maxConcurrent: maxConcurrent,
-            verifyNumbers: verifyNumbers,
             onProgress: { done, total in onProgress?(.transcribing(done: done, of: total)) })
         let transcriptionSeconds = Date().timeIntervalSince(transcribeStart)
 

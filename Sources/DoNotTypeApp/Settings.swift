@@ -19,7 +19,6 @@ final class Settings {
         static let trigger = "trigger"
         static let groundingEnabled = "groundingEnabled"
         static let screenshotEnabled = "screenshotEnabled"
-        static let verifyNumbers = "verifyNumbers"
         static let keepAudio = "keepAudio"
         static let blockedBundleIDs = "blockedBundleIDs"
         static let blockedURLPrefixes = "blockedURLPrefixes"
@@ -304,20 +303,6 @@ final class Settings {
     var screenshotEnabled: Bool {
         get { defaults.bool(forKey: Key.screenshotEnabled) }
         set { defaults.set(newValue, forKey: Key.screenshotEnabled) }
-    }
-
-    /// When to spend a second, screen-blind request to check the numbers.
-    ///
-    /// Defaults to the measured middle: only when the text around the caret contains digits. That
-    /// is the regime where a screen value overwrites a spoken one 75% of the time, against 30%
-    /// when the contradiction is off in the visible text — so the request buys the most where it
-    /// is spent, and ordinary dictation into an empty field never pays for it.
-    var numberCheck: NumberCheckPolicy {
-        get {
-            defaults.string(forKey: Key.verifyNumbers)
-                .flatMap(NumberCheckPolicy.init(rawValue:)) ?? .whenCaretHasNumbers
-        }
-        set { defaults.set(newValue.rawValue, forKey: Key.verifyNumbers) }
     }
 
     /// Whether a recognition backend may be given a word list derived from the screen.

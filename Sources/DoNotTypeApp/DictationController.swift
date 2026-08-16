@@ -328,8 +328,7 @@ final class DictationController {
             // Hedged when a fallback backend is configured: the primary gets the whole delay to
             // itself, and only a stalled one is ever raced. See FallbackTranscriber.
             let outcome = try await makeTranscriber(primary: coordinator.service).transcribe(
-                audio: audio, context: context, audioPart: audioPart,
-                verifyNumbers: settings.numberCheck.applies(to: context)
+                audio: audio, context: context, audioPart: audioPart
             ) { [weak self] done, total in
                 Task { @MainActor in
                     self?.overlay.update(phase: .transcribingChunk(done: done, of: total))

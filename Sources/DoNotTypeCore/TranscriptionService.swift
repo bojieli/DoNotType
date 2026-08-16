@@ -225,59 +225,22 @@ public struct TranscriptionService: Sendable {
     ///
     /// Short recordings take the ordinary single-request path untouched, so this is safe to call
     /// unconditionally.
+    ///
+    /// One request per chunk, and never more than that. A dictation used to be able to cost two
+    /// full requests — a grounded one and a screen-blind one whose digits were spliced back in —
+    /// and that is gone. It treated a symptom of grounding by buying a second opinion, and the
+    /// bill was the wrong shape: the wait became the *slower* of two draws from a latency
+    /// distribution whose tail is the whole problem. Measured on this machine, a single request
+    /// ran 8.9 s at the median and 21 s at p90; waiting on the slower of two moved p90 to 37 s.
+    /// A number the model got wrong is a prompt and grounding problem, to be fixed where it is
+    /// caused rather than voted on afterwards.
     public func transcribeLong(
         audio: AudioFile,
         context: ScreenContext?,
         audioPart: InputPart? = nil,
         attempts: Int = 3,
         maxConcurrent: Int = 3,
-        verifyNumbers: Bool = false,
         onProgress: (@Sendable (Int, Int) -> Void)? = nil
-    ) async throws -> TranscriptionResult {
-        // The second, ungrounded run only means something when the first one was grounded. A
-        // recognition backend never sees the screen, and `Keyterms` cannot emit a digit, so there
-        // is no screen-derived number for the check to catch — it would just bill the audio twice
-        // and compare a run against itself.
-        guard verifyNumbers, grounding == .multimodal, let context, !context.isEmpty else {
-            return try await transcribeSplitting(
-                audio: audio, context: context, audioPart: audioPart, attempts: attempts,
-                maxConcurrent: maxConcurrent, onProgress: onProgress)
-        }
-
-        // Grounded and audio-only together. The audio-only run cannot have seen the screen, so its
-        // digit sequences are the ones to trust — measured at 8% substitution against 58% for the
-        // grounded run alone on the reference clip.
-        //
-        // Issued concurrently, but measurement says that does *not* make it free: the two requests
-        // contend for the same upload and the pair takes roughly twice as long as one. Which is
-        // why this is opt-in rather than the default.
-        async let grounded = transcribeSplitting(
-            audio: audio, context: context, audioPart: audioPart, attempts: attempts,
-            maxConcurrent: maxConcurrent, onProgress: onProgress)
-        async let audioOnly = transcribeSplitting(
-            audio: audio, context: nil, audioPart: nil, attempts: attempts,
-            maxConcurrent: maxConcurrent, onProgress: nil)
-
-        var result = try await grounded
-        // A failed verification pass must never cost the user their transcript: the grounded run
-        // already succeeded, and its numbers being unverified is better than no text at all.
-        guard let checked = try? await audioOnly else { return result }
-
-        let reconciled = NumericGuard.reconcile(
-            grounded: result.transcript.transcript,
-            audioOnly: checked.transcript.transcript)
-        result.transcript.transcript = reconciled.text
-        result.usage = result.usage + checked.usage
-        return result
-    }
-
-    private func transcribeSplitting(
-        audio: AudioFile,
-        context: ScreenContext?,
-        audioPart: InputPart?,
-        attempts: Int,
-        maxConcurrent: Int,
-        onProgress: (@Sendable (Int, Int) -> Void)?
     ) async throws -> TranscriptionResult {
         let chunks = AudioChunker.split(wav: audio.data)
         guard chunks.count > 1 else {
