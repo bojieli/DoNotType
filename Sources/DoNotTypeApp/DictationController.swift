@@ -82,6 +82,15 @@ final class DictationController {
         levelTimer?.invalidate()
     }
 
+    /// Builds the audio input ahead of the first dictation. See `AudioRecorder.warmUp`.
+    ///
+    /// Detached, because doing it on the main actor would only move the stall from the first key
+    /// press to launch, and launch is when the menu bar and the settings window are being built.
+    func warmUpAudio() {
+        let recorder = self.recorder
+        Task.detached(priority: .utility) { recorder.warmUp() }
+    }
+
     /// Re-reads the trigger and mode after the user changes them in settings.
     func reloadHotkey() {
         hotkey.stop()

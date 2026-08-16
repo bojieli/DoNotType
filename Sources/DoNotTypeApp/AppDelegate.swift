@@ -81,6 +81,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Immediately after the hotkey is live, because the window between the two is exactly when
+        // an eager user presses the key for the first time.
+        dictation.warmUpAudio()
+
         await settingsModel.refresh()
         rebuildMenu()
 
