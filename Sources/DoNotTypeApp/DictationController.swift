@@ -182,7 +182,7 @@ final class DictationController {
             [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.overlay.update(level: self.recorder.level)
+                self.overlay.append(levels: self.recorder.drainLevels())
             }
         }
     }

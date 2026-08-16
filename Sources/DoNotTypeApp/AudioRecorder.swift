@@ -41,10 +41,25 @@ final class AudioRecorder: @unchecked Sendable {
     private var converter: AVAudioConverter?
     private var outputURL: URL?
     private var startedAt: Date?
-    /// Recent RMS, so the UI can show that the mic is live.
-    private(set) var level: Float = 0
+    private var meter = AudioLevelMeter(sampleRate: sampleRate)
+    /// Bars the overlay has not drawn yet. See `drainLevels`.
+    private var pendingBars: [AudioLevelMeter.Bar] = []
 
     var isRecording: Bool { engine.isRunning }
+
+    /// Hands the overlay the bars captured since it last asked, oldest first.
+    ///
+    /// Drained rather than sampled. A tap buffer is 4096 frames — around 85 ms at the rates the
+    /// built-in microphone runs at — so a UI that reads "the current level" thirty times a second
+    /// is reading the same number three times over, and the meter it draws moves in steps the
+    /// audio never took. The levels are measured where the audio is, in 20 ms frames on the
+    /// capture thread, and the UI collects them at whatever rate it redraws.
+    func drainLevels() -> [AudioLevelMeter.Bar] {
+        lock.withLock {
+            defer { pendingBars.removeAll(keepingCapacity: true) }
+            return pendingBars
+        }
+    }
 
     /// Pays the audio stack's one-off setup cost at launch instead of inside the first key press.
     ///
@@ -122,6 +137,11 @@ final class AudioRecorder: @unchecked Sendable {
             commonFormat: target.commonFormat,
             interleaved: target.isInterleaved)
 
+        lock.withLock {
+            meter = AudioLevelMeter(sampleRate: Self.sampleRate)
+            pendingBars.removeAll(keepingCapacity: true)
+        }
+
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             self?.append(buffer, target: target)
         }
@@ -160,7 +180,6 @@ final class AudioRecorder: @unchecked Sendable {
         lock.withLock { file = nil }  // closing the AVAudioFile finalises the WAV header
         converter = nil
         startedAt = nil
-        level = 0
     }
 
     private func append(_ buffer: AVAudioPCMBuffer, target: AVAudioFormat) {
@@ -199,19 +218,25 @@ final class AudioRecorder: @unchecked Sendable {
 
         do {
             try file.write(from: converted)
-            level = Self.rms(converted)
+            measure(converted)
         } catch {
             log.error("audio write failed: \(error.localizedDescription)")
         }
     }
 
-    private static func rms(_ buffer: AVAudioPCMBuffer) -> Float {
-        guard let channel = buffer.int16ChannelData?[0], buffer.frameLength > 0 else { return 0 }
-        var sum = 0.0
-        for index in 0..<Int(buffer.frameLength) {
-            let sample = Double(channel[index]) / 32768.0
-            sum += sample * sample
+    /// Measures what was just written, which is what the backend will be sent — so the meter
+    /// reports the recording rather than the microphone's own format.
+    private func measure(_ buffer: AVAudioPCMBuffer) {
+        guard let channel = buffer.int16ChannelData?[0], buffer.frameLength > 0 else { return }
+        let samples = UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength))
+        pendingBars += meter.append(samples)
+        // A UI that has stopped collecting is a UI that is not drawing them either; keeping more
+        // than a few seconds of undrawn bars would only be a leak with a nice name.
+        if pendingBars.count > Self.maximumPendingBars {
+            pendingBars.removeFirst(pendingBars.count - Self.maximumPendingBars)
         }
-        return Float((sum / Double(buffer.frameLength)).squareRoot())
     }
+
+    /// About seven seconds of bars.
+    private static let maximumPendingBars = 120
 }

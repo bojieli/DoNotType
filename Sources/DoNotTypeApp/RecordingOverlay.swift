@@ -13,9 +13,9 @@ final class RecordingOverlay {
     private var dismissWork: Task<Void, Never>?
     private let state = OverlayState()
 
-    /// Live microphone level, 0...1, driving the waveform.
-    func update(level: Float) {
-        state.level = Double(max(0, min(1, level * 6)))  // speech sits low in the range
+    /// Adds however many bars the microphone has produced since the last redraw.
+    func append(levels: [AudioLevelMeter.Bar]) {
+        state.append(levels)
     }
 
     func update(phase: OverlayState.Phase) {
@@ -26,6 +26,7 @@ final class RecordingOverlay {
         dismissWork?.cancel()
         state.phase = phase
         state.hint = hint
+        state.clearLevels()
 
         if panel == nil { panel = makePanel() }
         position(panel)
@@ -134,11 +135,28 @@ final class OverlayState {
         case failed(String)
     }
 
+    /// How much of the recording the meter shows: 24 bars of 60 ms, so a second and a half.
+    ///
+    /// Long enough that the sentence you are in the middle of saying is on screen, short enough
+    /// that the bars stay wide enough to read.
+    static let visibleBars = 24
+
     var phase: Phase = .recording
-    var level: Double = 0
     var hint: String = ""
+    /// The visible history, oldest first. Always full: the meter starts flat rather than growing
+    /// in from the left, because an empty meter and a silent one should not look different.
+    private(set) var levels = [AudioLevelMeter.Bar](repeating: .silent, count: visibleBars)
     /// Drives the appear/disappear transition.
     var isPresented = false
+
+    func append(_ bars: [AudioLevelMeter.Bar]) {
+        guard !bars.isEmpty else { return }
+        levels = Array((levels + bars).suffix(Self.visibleBars))
+    }
+
+    func clearLevels() {
+        levels = [AudioLevelMeter.Bar](repeating: .silent, count: Self.visibleBars)
+    }
 }
 
 private struct OverlayView: View {
@@ -160,8 +178,8 @@ private struct OverlayView: View {
         HStack(spacing: 12) {
             switch state.phase {
             case .recording:
-                Waveform(level: state.level)
-                    .frame(width: 76, height: 22)
+                LevelMeter(bars: state.levels)
+                    .frame(width: LevelMeter.width, height: 22)
                 Text(state.hint)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
@@ -174,7 +192,7 @@ private struct OverlayView: View {
                 ProgressView(value: Double(done), total: Double(max(total, 1)))
                     .progressViewStyle(.linear)
                     .tint(.white)
-                    .frame(width: 76)
+                    .frame(width: LevelMeter.width)
                     // A determinate bar here, not the dots: with several parts in flight there is
                     // real progress to report, and reporting it beats implying it.
                 Text("Transcribing… part \(min(done + 1, total)) of \(total)")
@@ -219,35 +237,53 @@ private struct OverlayView: View {
     }
 }
 
-/// Level-driven bars. Deliberately not a real spectrum — this is a liveness indicator, and what
-/// people need from it is "the mic is hearing me", which amplitude answers.
-private struct Waveform: View {
-    let level: Double
+/// The last second and a half of the microphone, walking leftwards.
+///
+/// What replaced it is worth saying, because it looked like this one. The old meter was five bars
+/// driven by a single current level, animated by a travelling sine so that they kept moving during
+/// pauses. Two things were wrong with that. The level it drew was `min(1, rms * 6)`, which spent
+/// most of a normally-recorded voice pinned at full height — see `AudioLevelMeter` for the
+/// measurement — so it could report that sound was arriving but never how much. And the movement
+/// was invented: the bars swayed identically whether the mic was hearing a sentence or nothing at
+/// all, which is the one question somebody looks at a level meter to answer.
+///
+/// Here every bar is 60 ms of audio that actually happened, and the meter moves because the audio
+/// does. Silence is a flat line still scrolling: the mic is live and hearing nothing. That reads as
+/// a report rather than as decoration, and it is why this stays animated under Reduce Motion when
+/// the transcribing dots do not — the motion is the measurement.
+private struct LevelMeter: View {
+    let bars: [AudioLevelMeter.Bar]
 
-    private static let bars = 5
-    /// Fixed per-bar weights, so the shape reads as a waveform rather than a row of equal blocks
-    /// while staying perfectly steady when the room is silent.
-    private static let weights: [Double] = [0.45, 0.75, 1.0, 0.7, 0.5]
+    private static let barWidth = 3.0
+    private static let spacing = 2.0
+    /// Sized from the bar count so the pill's width does not depend on two numbers agreeing.
+    static var width: Double {
+        Double(OverlayState.visibleBars) * barWidth
+            + Double(OverlayState.visibleBars - 1) * spacing
+    }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            let phase = timeline.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 5) {
-                ForEach(0..<Self.bars, id: \.self) { index in
+        GeometryReader { geometry in
+            HStack(alignment: .center, spacing: Self.spacing) {
+                ForEach(Array(bars.enumerated()), id: \.offset) { _, bar in
                     Capsule()
-                        .fill(.white.opacity(0.9))
-                        .frame(width: 4, height: height(index: index, phase: phase))
+                        // Amber is not decoration: the input is loud enough to be clipped on the
+                        // way in, and a recording distorted before it is sent is worth one colour.
+                        .fill(bar.isClipping ? Color.orange : .white.opacity(0.9))
+                        .frame(width: Self.barWidth, height: height(bar, in: geometry.size.height))
                 }
             }
-            .animation(.easeOut(duration: 0.06), value: level)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // One bar's worth, so the uneven arrival of buffers does not show up as a stutter.
+            // Longer than this and the waveform smears into a blur that flatters the signal.
+            .animation(.linear(duration: 0.05), value: bars)
         }
     }
 
-    private func height(index: Int, phase: Double) -> Double {
-        // A slow travelling wave keeps it alive during pauses without implying signal.
-        let travel = sin(phase * 4 + Double(index) * 0.9) * 0.5 + 0.5
-        let amplitude = max(0.12, level) * Self.weights[index]
-        return 4 + 18 * min(1, amplitude * (0.65 + 0.35 * travel))
+    /// Silence is a row of dots rather than nothing at all: a meter that disappears when the room
+    /// is quiet cannot be told apart from one that has stopped.
+    private func height(_ bar: AudioLevelMeter.Bar, in available: Double) -> Double {
+        max(Self.barWidth, available * bar.level)
     }
 }
 
@@ -276,7 +312,7 @@ private struct ThinkingDots: View {
                         .frame(width: 6 + 3 * local, height: 6 + 3 * local)
                 }
             }
-            .frame(width: 76, alignment: .center)
+            .frame(width: LevelMeter.width, alignment: .center)
         }
     }
 }

@@ -237,6 +237,31 @@ deliberate:
 
 ### Changed
 
+- **The recording pill shows how loud you are, rather than that sound exists.** The meter was five
+  bars driven by `min(1, rms * 6)` and animated by a travelling sine wave. Measured across every
+  speech fixture in `eval/audio/`, that scale spent 4–77% of the frames somebody was actually
+  speaking in pinned flat against the top of the meter — 77% on `port-number`, 59% on the shared
+  `speech.wav` — so it could report that audio was arriving and nothing else, while quiet speech and
+  an empty room drew nearly the same sliver at the other end. The movement was invented too: the
+  bars swayed identically whether the microphone was hearing a sentence or nothing at all, which is
+  the one question somebody looks at a level meter to answer.
+
+  It is now the last 1.4 seconds of the recording — 24 bars of 60 ms, oldest to the left — on a
+  decibel scale: −60 dBFS draws nothing, −6 dBFS fills the bar. Room tone (−58) is flat,
+  conversational speech (−21) is 0.72 of a bar, and a bar that reaches the top means the input is at
+  the edge of clipping rather than that somebody spoke. Over the same fixtures the meter now pins
+  one bar in 333 in the loudest of them and none at all in the other fifteen, and moves through
+  25–77% of its height as the voice does. Frames within 3 dB of full scale are drawn amber, which is
+  the only thing in the app that will ever mention input gain set too high. Silence is a flat row of
+  dots that keeps scrolling: the microphone is live and hearing nothing, which is a different report
+  from a meter that has stopped.
+
+  Levels are measured in 20 ms frames on the capture thread and collected by the UI, rather than the
+  UI sampling a current value. A tap buffer is around 85 ms, so a meter redrawing thirty times a
+  second was reading the same number three times over and stepping through movement the audio never
+  made. The scale lives in `AudioLevelMeter` in Core, where the table above is asserted against the
+  fixtures rather than chosen by eye.
+
 - **The contract moved from `PROMPT.md` into `prompt/`, one part per file — and doing it fixed a bug
   that had been in every request since the contract was written.** `PROMPT.md` was two documents
   under one filename: about 95 lines that ship to the model, and 250 of argument, ablation tables and
@@ -342,6 +367,17 @@ deliberate:
   chord on two platforms and a row in the parity table on all four.
 
 ### Fixed
+
+- **The recording pill was being cut off by its own window.** The overlay panel was created 220
+  points wide and never resized; the pill inside it is as wide as whatever it is currently saying,
+  which measures between 253 points for the recording hint and 382 for a failure message. A window
+  clips its content to its own frame, and SwiftUI does not overflow one — it wraps, and then it
+  truncates — so this never surfaced as a layout error anywhere. It surfaced on screen: "Release or
+  tap to send" broke onto two lines, and a failure ended mid-word,
+  `Gemini rejected the request: the API key is n…`. The pill is where a failure is read and the
+  message is written to be the thing somebody quotes; nothing else in this project truncates an
+  error. The panel is now wider than any pill it will hold — still transparent, still ignoring the
+  mouse, so the room it does not draw in costs nothing.
 
 - **The Context Inspector could not be opened on macOS.** The eye button on every history row set
   the state that selects a record and nothing presented it — no `.sheet`, no `.popover`, no window,
