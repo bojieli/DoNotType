@@ -136,6 +136,17 @@ public struct LogEvent: Sendable, Identifiable {
         return "{" + parts.joined(separator: ",") + "}"
     }
 
+    /// Whether this event is the first of its calendar day, given the row above it in a viewer.
+    ///
+    /// The in-app viewers hold the last few thousand events, and a menu-bar app is not restarted
+    /// daily, so that buffer spans days as readily as the file does. They show the time on every
+    /// row and the date as a heading whenever this returns true — the date is the same for
+    /// hundreds of consecutive rows, and a column repeating it is a column of noise.
+    public func startsANewDay(after previous: LogEvent?) -> Bool {
+        guard let previous else { return true }
+        return !Calendar.current.isDate(previous.timestamp, inSameDayAs: timestamp)
+    }
+
     /// A field value, kept whole and kept on one line.
     ///
     /// Escaped rather than shortened. A response body belongs in the log in full — it is the thing
@@ -778,15 +789,30 @@ public enum LogClock {
     /// --level warn` finds the level by splitting the line on spaces and taking the second column.
     /// A stamp containing a space would shift every column, and the parser keeps lines it cannot
     /// read, so the filter would have quietly stopped filtering instead of failing.
-    static func stamp(_ date: Date) -> String {
+    static func stamp(_ date: Date) -> String { "\(day(date))T\(timeOfDay(date))" }
+
+    /// `2026-08-16`. The date alone, for a log viewer that groups its rows by day rather than
+    /// repeating the date on every one of them.
+    public static func day(_ date: Date) -> String {
+        let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return String(
+            format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0,
+            components.day ?? 0)
+    }
+
+    /// `12:04:31.512`. The time alone, for the log viewers, where the date is a heading above the
+    /// rows and a column repeating it 1,000 times would push the message off the right edge.
+    ///
+    /// Milliseconds and not seconds, on purpose: half of what this log is read for is how long
+    /// something took, and two adjacent lines a quarter of a second apart look simultaneous
+    /// without them.
+    public static func timeOfDay(_ date: Date) -> String {
         let seconds = date.timeIntervalSince1970
         let milliseconds = Int((seconds - seconds.rounded(.down)) * 1000)
-        let components = Calendar.current.dateComponents(
-            [.year, .month, .day, .hour, .minute, .second], from: date)
+        let components = Calendar.current.dateComponents([.hour, .minute, .second], from: date)
         return String(
-            format: "%04d-%02d-%02dT%02d:%02d:%02d.%03d", components.year ?? 0,
-            components.month ?? 0, components.day ?? 0, components.hour ?? 0,
-            components.minute ?? 0, components.second ?? 0, milliseconds)
+            format: "%02d:%02d:%02d.%03d", components.hour ?? 0, components.minute ?? 0,
+            components.second ?? 0, milliseconds)
     }
 
     static func iso8601(_ date: Date) -> String {

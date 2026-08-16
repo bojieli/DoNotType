@@ -138,27 +138,44 @@ struct LogsView: View {
                     "Events appear as you dictate. Set Record to Debug to see every request, the "
                         + "backend that answered and each retry."))
         } else {
-            List(model.events) { event in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(event.level.name.uppercased())
-                            .foregroundStyle(tint(event.level))
-                        Text(event.category).foregroundStyle(.secondary)
+            List {
+                // Enumerated so each row can see the one above it, which is what decides whether
+                // the date needs saying again. On a phone it is said as a heading rather than a
+                // column: there is no width here for eleven characters of date per row.
+                ForEach(Array(model.events.enumerated()), id: \.element.id) { index, event in
+                    if event.startsANewDay(after: index > 0 ? model.events[index - 1] : nil) {
+                        Text(LogClock.day(event.timestamp))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
                     }
-                    .font(.caption2)
 
-                    Text(event.message).font(.caption)
-                    if !event.fields.isEmpty {
-                        Text(
-                            event.fields.keys.sorted()
-                                .map { "\($0)=\(event.fields[$0]!)" }
-                                .joined(separator: "  ")
-                        )
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            // When it happened. Without this the screen answered "what happened"
+                            // and left "when" to the share sheet, which is a strange place to have
+                            // to go to read the log you are already looking at.
+                            Text(LogClock.timeOfDay(event.timestamp))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                            Text(event.level.name.uppercased())
+                                .foregroundStyle(tint(event.level))
+                            Text(event.category).foregroundStyle(.secondary)
+                        }
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+
+                        Text(event.message).font(.caption)
+                        if !event.fields.isEmpty {
+                            Text(
+                                event.fields.keys.sorted()
+                                    .map { "\($0)=\(event.fields[$0]!)" }
+                                    .joined(separator: "  ")
+                            )
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        }
                     }
+                    .textSelection(.enabled)
                 }
-                .textSelection(.enabled)
             }
             .listStyle(.plain)
         }

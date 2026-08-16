@@ -155,6 +155,27 @@ final class LoggingTests: XCTestCase {
         XCTAssertTrue(event.render().contains(stamp))
     }
 
+    /// The viewers show the time on every row and the date as a heading, so this decides where the
+    /// only statement of the date goes. Getting it wrong in the "first row" case would leave a
+    /// screenful of times with no date anywhere above them.
+    func testTheDateIsAnnouncedOnceADayAndAlwaysForTheFirstRow() {
+        // Anchored to local noon rather than a fixed epoch second: "same day" is a question about
+        // the reader's calendar, and an hour added to a fixed instant lands on the next day for
+        // anyone whose offset puts it at 23:00 — Sydney in daylight saving, among others.
+        let noonToday = Calendar.current.startOfDay(for: Date()).addingTimeInterval(12 * 3600)
+        func event(_ date: Date) -> LogEvent {
+            LogEvent(timestamp: date, level: .info, category: "dictate", message: "transcribed")
+        }
+
+        let noon = event(noonToday)
+        let laterThatDay = event(noonToday.addingTimeInterval(3600))
+        let aWeekLater = event(noonToday.addingTimeInterval(7 * 86_400))
+
+        XCTAssertTrue(noon.startsANewDay(after: nil), "the first row has nothing above it to date")
+        XCTAssertFalse(laterThatDay.startsANewDay(after: noon))
+        XCTAssertTrue(aWeekLater.startsANewDay(after: laterThatDay))
+    }
+
     /// `dnt logs --level warn` finds the level by splitting on spaces and taking the second
     /// column, and keeps any line it cannot parse. A stamp with a space in it would therefore not
     /// fail — it would silently stop filtering, which is the worse of the two outcomes.

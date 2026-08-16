@@ -137,8 +137,15 @@ struct LogsTab: View {
                         + "the grounding route and every retry."))
         } else {
             ScrollViewReader { proxy in
-                List(model.events) { event in
-                    LogRow(event: event).id(event.id)
+                List {
+                    // Enumerated so each row can see the one above it, which is what decides
+                    // whether the date needs saying again.
+                    ForEach(Array(model.events.enumerated()), id: \.element.id) { index, event in
+                        if event.startsANewDay(after: index > 0 ? model.events[index - 1] : nil) {
+                            DayHeading(date: event.timestamp)
+                        }
+                        LogRow(event: event).id(event.id)
+                    }
                 }
                 .listStyle(.plain)
                 .font(.system(.caption, design: .monospaced))
@@ -192,11 +199,35 @@ struct LogsTab: View {
     }
 }
 
+/// The date, said once, above the first row belonging to it.
+///
+/// The viewer buffers the last thousand events and this app is not relaunched daily, so the list
+/// spans days — and a row reading `12:04:31.512` with no date is the same defect the log *file*
+/// had. A heading costs one line per day; a date column would cost eleven characters per row.
+private struct DayHeading: View {
+    let date: Date
+
+    var body: some View {
+        Text(LogClock.day(date))
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.top, 6)
+            .listRowSeparator(.hidden)
+    }
+}
+
 private struct LogRow: View {
     let event: LogEvent
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
+            // When it happened, which is half of what anyone opens a log for — the other half
+            // being what happened, and neither answers on its own.
+            Text(LogClock.timeOfDay(event.timestamp))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .frame(width: 84, alignment: .leading)
+                .help(LogClock.day(event.timestamp))
             Text(event.level.name.uppercased())
                 .foregroundStyle(tint)
                 .frame(width: 46, alignment: .leading)
