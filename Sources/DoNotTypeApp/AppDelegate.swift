@@ -22,6 +22,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // already exist, and every key is registered for redaction here.
         Settings.shared.startLogging()
 
+        // An invisible menu bar, purely so ⌘V reaches the key field. See `MainMenu`.
+        NSApp.mainMenu = MainMenu.make()
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         setIcon(for: .idle)
 
