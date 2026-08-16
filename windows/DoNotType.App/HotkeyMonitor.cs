@@ -35,8 +35,19 @@ public sealed class HotkeyMonitor : IDisposable
         F13,
     }
 
-    /// <summary>A press shorter than this counts as a tap.</summary>
-    public static readonly TimeSpan HoldThreshold = TimeSpan.FromMilliseconds(250);
+    /// <summary>A press shorter than this counts as a tap, and a tap leaves the recording on.</summary>
+    /// <remarks>
+    /// It is <see cref="AudioRecorder.MinimumDuration"/> exactly, and the two are the same number
+    /// on purpose: a release may only end a recording the recorder would accept. While this was
+    /// the shorter 250 ms it read as the more comfortable choice, but it opened a 250 ms window
+    /// where a press was long enough to be called a hold and too short to survive
+    /// <see cref="AudioRecorder.MinimumDuration"/>. A press landing in it stopped the recording and
+    /// then threw it away, so the gesture that felt most like a tap was the one guaranteed to
+    /// produce nothing. Nobody says anything in under half a second, so every press that used to
+    /// send still sends; what changes is that a press between the two lengths now leaves the
+    /// recording running with the overlay up saying so, instead of discarding it in silence.
+    /// </remarks>
+    public static readonly TimeSpan HoldThreshold = AudioRecorder.MinimumDuration;
 
     public Mode RecordingMode { get; set; } = Mode.Automatic;
     public Trigger Key { get; set; } = Trigger.RightControl;
