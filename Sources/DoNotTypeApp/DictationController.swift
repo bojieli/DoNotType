@@ -152,6 +152,13 @@ final class DictationController {
             // still speaking, so grounding costs no perceived latency.
             grounding.beginCapture()
 
+            // The same trick, for the network. Opening a connection costs about a second, and
+            // whether the pooled one is still alive cannot be known without using it — so both
+            // happen here, against speech the user was going to produce anyway, rather than after
+            // the key comes up with somebody watching. A connection found dead is replaced
+            // mid-sentence instead of eight seconds into a wait. See `ProviderTransport`.
+            warmUpConnection()
+
             overlay.show(phase: .recording, hint: Settings.shared.hotkeyMode.overlayHint)
             startLevelUpdates()
         } catch {
@@ -510,6 +517,23 @@ final class DictationController {
                 systemInstruction: instruction, fidelity: settings.fidelity,
                 keytermBiasing: settings.keytermBiasing),
             hedgeAfter: .seconds(settings.fallbackAfterSeconds))
+    }
+
+    /// Opens the connection the dictation about to be recorded will need.
+    ///
+    /// Deliberately not routed through `makeCoordinator()`, which also reads the prompt directory
+    /// off disk. Nothing here needs the prompt — only which host the audio is going to — and this
+    /// runs on the key-down path.
+    ///
+    /// Silent on failure by design: nothing has been asked for yet, so there is nothing to report.
+    /// A dead connection found here is simply replaced, and the user never learns it happened.
+    private func warmUpConnection() {
+        let settings = Settings.shared
+        guard let key = settings.resolvedAPIKey(), !key.isEmpty,
+            let provider = try? ProviderFactory.make(settings.provider, apiKey: key),
+            let origin = provider.endpointOrigin
+        else { return }
+        Task { await ProviderTransport.shared.warmUp(origin) }
     }
 
     private func makeCoordinator() -> RetryCoordinator? {
