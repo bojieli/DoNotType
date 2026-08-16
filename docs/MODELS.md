@@ -722,7 +722,46 @@ implements by prompt, done inside the decoder where a prior can be weighted rath
 requested. That follow-up is intentionally out of scope for this campaign; the Small checkpoint
 tested here does not expose the parameter.
 
+## Latency against clip length — 2026-08-16
+
+Four Flash models, two clip lengths, 20 trials per cell across two independent runs — 160 requests,
+none failed. Native API, no screen context, thinking level as the provider picks it per family.
+Reproduce with `eval/benchmark-latency.py`; raw per-trial seconds in `eval/results/`.
+
+| model | think | short (3.0 s) median / p90 / max | long (22.0 s) median / p90 / max | Δ length |
+|---|---|---|---|---|
+| **`gemini-3.6-flash`** (default) | minimal | 4.39 s / 10.59 s / **39.06 s** | 7.00 s / 11.61 s / **33.53 s** | +2.61 s |
+| `gemini-3.7-flash` | low | 3.79 s / 15.53 s / **26.34 s** | 6.57 s / 11.91 s / 16.63 s | +2.78 s |
+| `gemini-3.5-flash` | minimal | **1.34 s** / 1.62 s / 1.93 s | **1.95 s** / 2.14 s / 2.59 s | +0.61 s |
+| `gemini-3-flash-preview` | minimal | 2.06 s / 2.41 s / 2.73 s | 1.97 s / 2.28 s / 2.56 s | **−0.09 s** |
+
+**Clip length is the axis that does not matter.** Seven times the audio — 77 audio tokens against
+550 — costs `gemini-3-flash-preview` nothing measurable and `gemini-3.5-flash` 0.6 s. It costs the
+two slower models 2.6–2.8 s, which is less than their own spread between the two runs. Anyone
+sizing a timeout against recording length is tuning the wrong variable: what a request costs here
+is set by which model answers it, not by how much was said.
+
+**There are two speed classes, and only the class boundary replicates.** 3.5 and the 3 preview sit
+at 1.3–2.1 s; 3.6 and 3.7 sit at 3.8–7.0 s. That 2–4× gap held in both runs. The ordering *inside*
+each pair did not — on the short clip 3.7 beat 3.6 in run 1 (3.79 s against 5.78 s) and lost to it
+in run 2 (4.50 s against 3.83 s). Do not read a ranking off adjacent rows.
+
+**The tail belongs entirely to the slow pair.** In 40 trials each, 3.5 never exceeded 1.93 s and
+the 3 preview never exceeded 2.73 s — the distributions are almost flat. 3.6 returned a
+three-second phrase in 39 s once, and its p90 on that same short clip is 10.6 s. The tail is also
+the least reproducible thing measured: 3.6's short-clip maximum was 39.06 s in one run and 9.06 s
+in the other, which is the load-dependence recorded in the
+[2026-08-14 corrections](EVALUATION.md) showing up again rather than a property of the model.
+
+The p90 column is the one to quote for the default, because the short clip is the common case: a
+user dictating a phrase waits about 4 s typically and about 11 s in the worst tenth of attempts.
+That is the real price of the accuracy the recommendation above is buying — see the no-context
+column before treating the fast pair as an upgrade.
+
 ## Latency against fidelity (2026-08-10)
+
+Superseded for the model rows by the 2026-08-16 sweep above, which uses more trials and reports a
+distribution; the fidelity and upload findings still stand.
 
 The default model is the slow one on purpose. Measured on this machine, same clip, everything else
 held constant:

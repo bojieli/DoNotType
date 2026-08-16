@@ -1,0 +1,167 @@
+{
+  "provider": "google",
+  "trials": 10,
+  "workers": 8,
+  "cells": {
+    "gemini-3.6-flash/short": {
+      "warmupSeconds": 5.589537024497986,
+      "seconds": [
+        3.1236259937286377,
+        2.2051891088485718,
+        2.494222044944763,
+        39.057250022888184,
+        14.897282004356384,
+        7.094027042388916,
+        4.456442952156067,
+        10.587158918380737,
+        7.7701640129089355,
+        2.4519309997558594
+      ],
+      "audioTokens": 77,
+      "outputChars": 46,
+      "sample": "We should switch to Gemini 3.5 Flash for this.",
+      "failed": 0,
+      "stderr": ""
+    },
+    "gemini-3.6-flash/long": {
+      "warmupSeconds": 18.982046961784363,
+      "seconds": [
+        5.876857042312622,
+        5.5570210218429565,
+        7.205437064170837,
+        7.617588996887207,
+        6.680384039878845,
+        11.609977006912231,
+        7.397938966751099,
+        11.95044195652008,
+        6.096346020698547,
+        33.53022003173828
+      ],
+      "audioTokens": 550,
+      "outputChars": 266,
+      "sample": "unified source, and it continues the thinking. Why this works? So we basically observe the LLM processing speed. We know",
+      "failed": 0,
+      "stderr": ""
+    },
+    "gemini-3.7-flash/short": {
+      "warmupSeconds": 3.1596839427948,
+      "seconds": [
+        4.190740942955017,
+        3.0413559675216675,
+        3.3611520528793335,
+        2.570954918861389,
+        4.133211016654968,
+        3.6707839965820312,
+        14.065472960472107,
+        4.039355993270874,
+        3.906359076499939,
+        3.013538956642151
+      ],
+      "audioTokens": 77,
+      "outputChars": 46,
+      "sample": "We should switch to Gemini 3.5 Flash for this.",
+      "failed": 0,
+      "stderr": ""
+    },
+    "gemini-3.7-flash/long": {
+      "warmupSeconds": 6.309680938720703,
+      "seconds": [
+        5.939134955406189,
+        5.588326930999756,
+        10.633733987808228,
+        12.70343804359436,
+        6.014181017875671,
+        5.839319944381714,
+        9.733378052711487,
+        11.914724111557007,
+        11.301499962806702,
+        4.813078999519348
+      ],
+      "audioTokens": 550,
+      "outputChars": 269,
+      "sample": "verified thoughts and it continues the thinking. Why this works? So, we basically observe the LLM processing speed. We k",
+      "failed": 0,
+      "stderr": ""
+    },
+    "gemini-3.5-flash/short": {
+      "warmupSeconds": 2.7734289169311523,
+      "seconds": [
+        1.432610034942627,
+        1.367447018623352,
+        1.3387110233306885,
+        1.3472809791564941,
+        1.4208059310913086,
+        1.564081072807312,
+        1.6227999925613403,
+        1.3075040578842163,
+        1.3451570272445679,
+        1.3157570362091064
+      ],
+      "audioTokens": 77,
+      "outputChars": 46,
+      "sample": "We should switch to Gemini 3.5 Flash for this.",
+      "failed": 0,
+      "stderr": ""
+    },
+    "gemini-3.5-flash/long": {
+      "warmupSeconds": 3.159395933151245,
+      "seconds": [
+        2.3390469551086426,
+        2.1015700101852417,
+        1.905761957168579,
+        2.061895966529846,
+        2.5900059938430786,
+        2.098236083984375,
+        1.7968299388885498,
+        1.8671610355377197,
+        2.140825033187866,
+        2.1158080101013184
+      ],
+      "audioTokens": 550,
+      "outputChars": 262,
+      "sample": "5 source and it continues syncing. Why this works? So we basically observe the LLM processing speed. We know that for th",
+      "failed": 0,
+      "stderr": ""
+    },
+    "gemini-3-flash-preview/short": {
+      "warmupSeconds": 3.15760600566864,
+      "seconds": [
+        1.7439889907836914,
+        1.9213889837265015,
+        1.998386025428772,
+        2.312941074371338,
+        2.2990089654922485,
+        2.3779330253601074,
+        1.8604859113693237,
+        2.4755889177322388,
+        1.7359910011291504,
+        1.8824210166931152
+      ],
+      "audioTokens": 77,
+      "outputChars": 46,
+      "sample": "We should switch to Gemini 3.5 Flash for this.",
+      "failed": 0,
+      "stderr": ""
+    },
+    "gemini-3-flash-preview/long": {
+      "warmupSeconds": 3.061257004737854,
+      "seconds": [
+        1.9825819730758667,
+        1.958274006843567,
+        1.9159239530563354,
+        1.8435659408569336,
+        2.21776807308197,
+        1.8283931016921997,
+        2.2037270069122314,
+        1.9722150564193726,
+        1.9842859506607056,
+        1.9670159816741943
+      ],
+      "audioTokens": 550,
+      "outputChars": 269,
+      "sample": "5 source and it continues this thinking. Why this works? So we basically observed the LLM processing speed. We know that",
+      "failed": 0,
+      "stderr": ""
+    }
+  }
+}
