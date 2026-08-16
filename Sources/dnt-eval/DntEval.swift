@@ -13,7 +13,7 @@ struct DntEval: AsyncParsableCommand {
         subcommands: [
             Probe.self, Once.self, Suite.self, Ablate.self, Rewrite.self, Conformance.self,
             Encode.self, OggGolden.self, ToneGolden.self, KeytermsCommand.self, Dictation.self,
-            Silence.self,
+            Silence.self, Replay.self,
         ],
         defaultSubcommand: Suite.self
     )
