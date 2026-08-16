@@ -12,6 +12,46 @@ import Foundation
 /// and a response body is their transcript; those go through `Log.content`, which is off unless
 /// someone asks for it. What is left is enough to tell a rejected key from a stalled network from
 /// a model that answered instantly with nothing.
+/// Collects one request's transport timings.
+///
+/// Attached per task rather than to the session, so this stays a property of `send` and no caller
+/// has to build a session a particular way to get it.
+final class TransportMetrics: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var collected: URLSessionTaskMetrics?
+
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask,
+        didFinishCollecting metrics: URLSessionTaskMetrics
+    ) {
+        lock.lock()
+        collected = metrics
+        lock.unlock()
+    }
+
+    /// `connect=… ttfb=… reused=…`, or nothing when the system reported no metrics.
+    ///
+    /// The three numbers that separate the three ways a request can be slow: a handshake that took
+    /// seconds, a backend that thought for a long time, and a connection that was reused when it
+    /// should not have been. Without them a log line saying `ms=60013` cannot distinguish a dead
+    /// connection from a busy model — which is exactly the question that mattered, and the reason
+    /// diagnosing the latency tail needed a separate harness rather than this log.
+    var summary: [String: String] {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let tx = collected?.transactionMetrics.last else { return [:] }
+        func gap(_ a: Date?, _ b: Date?) -> String? {
+            guard let a, let b else { return nil }
+            return LogClock.ms(b.timeIntervalSince(a))
+        }
+        var fields = ["reused": tx.isReusedConnection ? "yes" : "no"]
+        if let proto = tx.networkProtocolName { fields["proto"] = proto }
+        if let connect = gap(tx.connectStartDate, tx.connectEndDate) { fields["connectMs"] = connect }
+        if let ttfb = gap(tx.requestEndDate, tx.responseStartDate) { fields["ttfbMs"] = ttfb }
+        return fields
+    }
+}
+
 extension URLSession {
     func send(
         _ request: URLRequest, provider: String, model: String, category: String = "http"
@@ -19,6 +59,7 @@ extension URLSession {
         let log = Log(category)
         let started = Date()
         let outgoing = request.httpBody?.count ?? 0
+        let metrics = TransportMetrics()
 
         log.debug(
             "request",
@@ -31,17 +72,19 @@ extension URLSession {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await self.data(for: request)
+            (data, response) = try await self.data(for: request, delegate: metrics)
         } catch {
             // The timing matters as much as the message: a connection refused in 4 ms and a read
-            // timeout at 120 s are the same `NSError` domain and completely different problems.
+            // timeout at 25 s are the same `NSError` domain and completely different problems. The
+            // transport fields matter for the same reason — `reused=yes connectMs=–` on a request
+            // that died at 60 s is a stale pooled connection, and says so without a packet capture.
             log.warning(
                 "request failed",
                 [
                     "provider": provider, "model": model,
                     "error": error.localizedDescription,
                     "ms": LogClock.ms(Date().timeIntervalSince(started)),
-                ])
+                ].merging(metrics.summary) { current, _ in current })
             throw error
         }
 
@@ -57,7 +100,7 @@ extension URLSession {
                 "provider": provider, "model": model, "status": "\(http.statusCode)",
                 "bytes": "\(data.count)",
                 "ms": elapsed,
-            ])
+            ].merging(metrics.summary) { current, _ in current })
 
         // A failed response gets its body logged, in full, at a level that is on by default.
         //
