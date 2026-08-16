@@ -157,6 +157,37 @@ public sealed class LoggingTests : IDisposable
             LogRouter.Recent(minimumLevel: LogLevel.Error, containing: "dictation"));
     }
 
+    /// <summary>
+    /// A line that says <c>12:04:31.512</c> cannot say which day it happened on, and the log file
+    /// rotates on size rather than on the date, so one file holds however many days it takes to
+    /// fill. Matches `LoggingTests.testAPersistedLineCarriesTheDateAndNotJustTheTime` in Swift.
+    /// </summary>
+    [Fact]
+    public void APersistedLineCarriesTheDateAndNotJustTheTime()
+    {
+        var entry = new LogEvent(
+            1, new DateTimeOffset(2026, 8, 16, 12, 4, 31, 512, TimeSpan.Zero), LogLevel.Warn,
+            "fallback", "primary stalled", new Dictionary<string, string>());
+
+        Assert.StartsWith("2026-08-16T12:04:31.512 ", entry.Render());
+    }
+
+    /// <summary>
+    /// The level is found by splitting the line on spaces and taking the second column, and an
+    /// unparseable line is kept rather than dropped — so a stamp with a space in it would not
+    /// fail, it would silently stop the filter filtering.
+    /// </summary>
+    [Fact]
+    public void TheStampIsOneColumnSoTheLevelStaysTheSecond()
+    {
+        var line = new LogEvent(
+            1, DateTimeOffset.Now, LogLevel.Warn, "fallback", "primary stalled",
+            new Dictionary<string, string>()).Render();
+
+        var columns = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal("WARN", columns[1]);
+    }
+
     [Fact]
     public void FieldsRenderSortedSoTwoRunsCompare()
     {

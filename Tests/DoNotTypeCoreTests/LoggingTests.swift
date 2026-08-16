@@ -138,11 +138,39 @@ final class LoggingTests: XCTestCase {
 
     // MARK: - Rendering
 
+    /// A line that says `12:04:31.512` cannot say which day it happened on, and the log file
+    /// rotates on size rather than on the date, so one file holds however many days 8 MB takes.
+    func testAPersistedLineCarriesTheDateAndNotJustTheTime() {
+        let event = LogEvent(
+            timestamp: Date(timeIntervalSince1970: 1_770_000_271.512), level: .warning,
+            category: "fallback", message: "primary stalled")
+
+        let stamp = String(event.render().prefix(23))
+        XCTAssertEqual(stamp.count, 23, "yyyy-mm-ddThh:mm:ss.mmm")
+        XCTAssertTrue(
+            stamp.wholeMatch(of: /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}/) != nil,
+            "expected an ISO-8601 local stamp, got \(stamp)")
+        // Local time, so the calendar day is the reader's rather than UTC's — but it is a real
+        // date either way, which is the whole point.
+        XCTAssertTrue(event.render().contains(stamp))
+    }
+
+    /// `dnt logs --level warn` finds the level by splitting on spaces and taking the second
+    /// column, and keeps any line it cannot parse. A stamp with a space in it would therefore not
+    /// fail — it would silently stop filtering, which is the worse of the two outcomes.
+    func testTheStampIsOneColumnSoTheLevelStaysTheSecond() {
+        let line = LogEvent(level: .warning, category: "fallback", message: "primary stalled")
+            .render()
+        let columns = line.split(separator: " ", omittingEmptySubsequences: true)
+        XCTAssertEqual(String(columns[1]), "WARN")
+        XCTAssertEqual(LogLevel(name: String(columns[1])), .warning)
+    }
+
     func testFieldsRenderSortedSoTwoRunsCompare() {
         let event = LogEvent(
             level: .info, category: "http", message: "response",
             fields: ["status": "200", "ms": "412", "provider": "gemini"])
-        XCTAssertTrue(event.render(includesDate: false).hasSuffix("ms=412 provider=gemini status=200"))
+        XCTAssertTrue(event.render(timestamped: false).hasSuffix("ms=412 provider=gemini status=200"))
     }
 
     func testJSONRenderingIsOneLineAndEscapes() {

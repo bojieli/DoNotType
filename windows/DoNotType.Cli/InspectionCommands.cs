@@ -450,8 +450,9 @@ public static class LogsCommand
         }
         if (minimum == LogLevel.Trace) return true;
 
-        // `12:04:31.512 WARN  fallback  …` — the level is the second column. A line that does not
-        // parse (a wrapped stack trace, say) is kept rather than silently dropped.
+        // `2026-08-16T12:04:31.512 WARN  fallback  …` — the level is the second column, which is
+        // why the stamp is one token with no space in it. A line that does not parse (a wrapped
+        // stack trace, say) is kept rather than silently dropped.
         var columns = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (columns.Length < 2) return true;
         var parsed = LogLevelExtensions.Parse(columns[1]);

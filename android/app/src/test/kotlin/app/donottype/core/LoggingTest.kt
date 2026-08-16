@@ -166,4 +166,44 @@ class LoggingTest {
             event.render(includeTime = false).endsWith("ms=412 provider=gemini status=200"),
         )
     }
+
+    /**
+     * A line that says `12:04:31.512` cannot say which day it happened on, and the log file
+     * rotates on size rather than on the date, so one file holds however many days it takes to
+     * fill. Matches the Swift and C# tests of the same name.
+     */
+    @Test
+    fun `a persisted line carries the date and not just the time`() {
+        val line = LogEvent(
+            id = 1,
+            timestamp = 0,
+            level = LogLevel.WARN,
+            category = "fallback",
+            message = "primary stalled",
+        ).render()
+
+        val stamp = line.substringBefore(' ')
+        assertTrue(
+            "expected an ISO-8601 local stamp, got $stamp",
+            Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}""").matches(stamp),
+        )
+    }
+
+    /**
+     * The level is found by splitting the line on spaces and taking the second column, and a line
+     * that cannot be parsed is kept rather than dropped — so a stamp with a space in it would not
+     * fail, it would silently stop the filter filtering.
+     */
+    @Test
+    fun `the stamp is one column so the level stays the second`() {
+        val line = LogEvent(
+            id = 1,
+            timestamp = 0,
+            level = LogLevel.WARN,
+            category = "fallback",
+            message = "primary stalled",
+        ).render()
+
+        assertEquals("WARN", line.split(" ").filter { it.isNotEmpty() }[1])
+    }
 }

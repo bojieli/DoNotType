@@ -105,7 +105,8 @@ struct LogsCommand: AsyncParsableCommand {
     private func matches(_ line: String, minimum: LogLevel) -> Bool {
         if let grep, !grep.isEmpty, !line.localizedCaseInsensitiveContains(grep) { return false }
         guard minimum > .trace else { return true }
-        // `12:04:31.512 WARN  fallback  …` — the level is the second column, and a line that does
+        // `2026-08-16T12:04:31.512 WARN  fallback  …` — the level is the second column, which is
+        // why the stamp is one token with no space in it, and a line that does
         // not parse (a wrapped stack trace, say) is kept rather than silently dropped.
         let columns = line.split(separator: " ", omittingEmptySubsequences: true)
         guard columns.count > 1, let parsed = LogLevel(name: String(columns[1])) else { return true }

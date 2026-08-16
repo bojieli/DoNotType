@@ -101,9 +101,13 @@ public struct LogEvent: Sendable, Identifiable {
         self.fields = fields
     }
 
-    /// `12:04:31.512 INFO  dictation  transcribed  chars=142 ms=980`
-    public func render(includesDate: Bool = true) -> String {
-        var line = includesDate ? "\(LogClock.stamp(timestamp)) " : ""
+    /// `2026-08-16T12:04:31.512 INFO  dictation  transcribed  chars=142 ms=980`
+    ///
+    /// The parameter is about the stamp, not about the date within it: `false` omits the time
+    /// entirely, and is for the sinks whose transport stamps every line itself — `os.Logger`,
+    /// logcat, the Windows event view. Everything that persists or exports a line stamps it here.
+    public func render(timestamped: Bool = true) -> String {
+        var line = timestamped ? "\(LogClock.stamp(timestamp)) " : ""
         line += "\(level.padded) \(category.padding(toLength: 12, withPad: " ", startingAt: 0)) "
         line += message
         if !fields.isEmpty {
@@ -601,17 +605,19 @@ public final class FileLogSink: LogSink, @unchecked Sendable {
 public final class StandardErrorLogSink: LogSink, @unchecked Sendable {
     private let lock = NSLock()
     private let json: Bool
-    /// Time only, no date: a CLI invocation does not run across midnight and the date is column
-    /// noise in front of every line.
-    private let includesDate: Bool
+    /// Off by default, and this is the sink where that is right: `dnt --verbose` prints to a
+    /// terminal the reader is watching, where the wall clock is already on screen and a stamp in
+    /// front of every line is column noise. The name used to say `includesDate` while controlling
+    /// the whole stamp, so the comment here described a time-only line that was never printed.
+    private let timestamped: Bool
 
-    public init(json: Bool = false, includesDate: Bool = false) {
+    public init(json: Bool = false, timestamped: Bool = false) {
         self.json = json
-        self.includesDate = includesDate
+        self.timestamped = timestamped
     }
 
     public func write(_ event: LogEvent) {
-        let line = (json ? event.renderJSON() : event.render(includesDate: includesDate)) + "\n"
+        let line = (json ? event.renderJSON() : event.render(timestamped: timestamped)) + "\n"
         guard let data = line.data(using: .utf8) else { return }
         lock.lock()
         FileHandle.standardError.write(data)
@@ -654,7 +660,7 @@ public final class MemoryLogSink: LogSink, @unchecked Sendable {
             let logger = self.logger(for: event.category)
             // Already scrubbed by the router, so `.public` is what makes the line readable in
             // Console instead of `<private>`.
-            let line = event.render(includesDate: false)
+            let line = event.render(timestamped: false)
             switch event.level {
             case .trace: logger.debug("\(line, privacy: .public)")
             case .debug: logger.debug("\(line, privacy: .public)")
@@ -761,15 +767,26 @@ public enum LogClock {
         String(Int((seconds * 1000).rounded()))
     }
 
-    /// `12:04:31.512`. Local time, because the reader is looking at their own clock.
+    /// `2026-08-16T12:04:31.512`. Local time, because the reader is looking at their own clock.
+    ///
+    /// The date is here because the log file rotates on **size** — 8 MB and one generation — not
+    /// on the day. A menu-bar app that runs for a fortnight therefore writes a file whose lines
+    /// were time-of-day only, and "12:04:31.512" cannot tell you which of those fourteen days it
+    /// happened on. That is the one question a log is read to answer.
+    ///
+    /// One token rather than `2026-08-16 12:04:31.512`, and that is load-bearing: `dnt logs
+    /// --level warn` finds the level by splitting the line on spaces and taking the second column.
+    /// A stamp containing a space would shift every column, and the parser keeps lines it cannot
+    /// read, so the filter would have quietly stopped filtering instead of failing.
     static func stamp(_ date: Date) -> String {
         let seconds = date.timeIntervalSince1970
         let milliseconds = Int((seconds - seconds.rounded(.down)) * 1000)
         let components = Calendar.current.dateComponents(
-            [.hour, .minute, .second], from: date)
+            [.year, .month, .day, .hour, .minute, .second], from: date)
         return String(
-            format: "%02d:%02d:%02d.%03d", components.hour ?? 0, components.minute ?? 0,
-            components.second ?? 0, milliseconds)
+            format: "%04d-%02d-%02dT%02d:%02d:%02d.%03d", components.year ?? 0,
+            components.month ?? 0, components.day ?? 0, components.hour ?? 0,
+            components.minute ?? 0, components.second ?? 0, milliseconds)
     }
 
     static func iso8601(_ date: Date) -> String {

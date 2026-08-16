@@ -76,6 +76,15 @@ data class LogEvent(
     /** Rendered sorted, so two runs of the same code produce comparable output. */
     val fields: Map<String, String> = emptyMap(),
 ) {
+    /**
+     * `2026-08-16T12:04:31.512 INFO  dictation  transcribed  chars=142 ms=980`
+     *
+     * The date is in the stamp because the log file rotates on size rather than on the day, so one
+     * file holds however many days it takes to fill and a time-of-day cannot say which of them a
+     * line belongs to. One token rather than a space between date and time: the level is found by
+     * splitting the line on spaces and taking the second column, and a stamp with a space in it
+     * would shift every column silently.
+     */
     fun render(includeTime: Boolean = true): String = buildString {
         if (includeTime) {
             append(TIME.format(Date(timestamp)))
@@ -98,7 +107,7 @@ data class LogEvent(
     }
 
     private companion object {
-        val TIME = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
+        val TIME = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US)
 
         /**
          * A field value, kept whole and kept on one line.
