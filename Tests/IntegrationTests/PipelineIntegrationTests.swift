@@ -203,7 +203,7 @@ final class PipelineIntegrationTests: XCTestCase {
         // A dictation that failed while the network was down.
         let failed = DictationRecord(
             status: .failed, errorMessage: "The Internet connection appears to be offline.",
-            provider: "gemini", model: ProviderKind.gemini.defaultModel, fidelity: .light)
+            provider: "google", model: ProviderKind.google.defaultModel, fidelity: .light)
         let stored = await store.insert(failed, audio: audio.data)
         XCTAssertTrue(stored.canRetry, "a failed record must keep its audio")
 
@@ -235,7 +235,7 @@ final class PipelineIntegrationTests: XCTestCase {
 
         let service = TranscriptionService(
             provider: flaky,
-            model: ProviderKind.gemini.defaultModel,
+            model: ProviderKind.google.defaultModel,
             systemInstruction: try Harness.systemInstruction())
 
         let result = try await service.transcribeWithRetry(
@@ -257,7 +257,7 @@ final class PipelineIntegrationTests: XCTestCase {
 
         let service = TranscriptionService(
             provider: flaky,
-            model: ProviderKind.gemini.defaultModel,
+            model: ProviderKind.google.defaultModel,
             systemInstruction: try Harness.systemInstruction())
 
         do {

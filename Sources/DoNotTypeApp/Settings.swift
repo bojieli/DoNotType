@@ -194,7 +194,7 @@ final class Settings {
 
     var provider: ProviderKind {
         get {
-            ProviderKind(rawValue: defaults.string(forKey: Key.provider) ?? "")
+            ProviderKind(persistedValue: defaults.string(forKey: Key.provider) ?? "")
                 ?? .defaultForNewInstalls
         }
         set { defaults.set(newValue.rawValue, forKey: Key.provider) }
@@ -210,7 +210,14 @@ final class Settings {
             if let stored = defaults.string(forKey: modelKey(for: provider)), !stored.isEmpty {
                 return stored
             }
-            if provider == .gemini, let legacy = defaults.string(forKey: Key.model),
+            // The same per-provider key under the name this backend used to have, so renaming a
+            // case does not read as a factory reset to someone who had chosen a model.
+            if let renamed = provider.legacyPersistedValue,
+                let stored = defaults.string(forKey: "\(Key.model)-\(renamed)"), !stored.isEmpty
+            {
+                return stored
+            }
+            if provider == .google, let legacy = defaults.string(forKey: Key.model),
                 !legacy.isEmpty
             {
                 return legacy
@@ -253,7 +260,7 @@ final class Settings {
             guard let raw = defaults.string(forKey: Key.fallbackProvider), !raw.isEmpty else {
                 return nil
             }
-            let kind = ProviderKind(rawValue: raw)
+            let kind = ProviderKind(persistedValue: raw)
             // A fallback identical to the primary would double the cost to no purpose.
             return kind == provider ? nil : kind
         }
@@ -342,12 +349,17 @@ final class Settings {
     // MARK: - API key
 
     var apiKey: String? {
-        get { Keychain.read(account: provider.rawValue) }
+        get { Self.keychainKey(for: provider) }
         set {
             if let newValue, !newValue.isEmpty {
                 Keychain.write(newValue, account: provider.rawValue)
             } else {
                 Keychain.delete(account: provider.rawValue)
+                // The entry under the pre-rename name too, or the getter's fallback would
+                // resurrect a key the user has just cleared.
+                if let renamed = provider.legacyPersistedValue {
+                    Keychain.delete(account: renamed)
+                }
             }
         }
     }
@@ -370,13 +382,31 @@ final class Settings {
     /// so every accessor keyed off `provider` is the wrong one for it. Keys were already stored
     /// per provider in the Keychain; this reaches one directly.
     func resolvedAPIKey(for kind: ProviderKind) -> String? {
-        if let stored = Keychain.read(account: kind.rawValue), !stored.isEmpty { return stored }
+        if let stored = Self.keychainKey(for: kind), !stored.isEmpty { return stored }
         return Self.environmentAPIKey(for: kind)
+    }
+
+    /// The stored key, under the provider's name or the one it had before the rename.
+    ///
+    /// Keychain accounts are that name, so renaming a case without this would orphan a key that
+    /// is still perfectly good and report the backend as unconfigured. Writes always use the
+    /// current name, so the old account is read and never added to.
+    private static func keychainKey(for kind: ProviderKind) -> String? {
+        if let stored = Keychain.read(account: kind.rawValue), !stored.isEmpty { return stored }
+        guard let renamed = kind.legacyPersistedValue,
+            let stored = Keychain.read(account: renamed), !stored.isEmpty
+        else { return nil }
+        return stored
     }
 
     /// The model for a backend that is not the current selection. See `resolvedAPIKey(for:)`.
     func model(for kind: ProviderKind) -> String {
         if let stored = defaults.string(forKey: modelKey(for: kind)), !stored.isEmpty {
+            return stored
+        }
+        if let renamed = kind.legacyPersistedValue,
+            let stored = defaults.string(forKey: "\(Key.model)-\(renamed)"), !stored.isEmpty
+        {
             return stored
         }
         return kind.defaultModel

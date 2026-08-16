@@ -10,6 +10,23 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **A provider is no longer named after its model.** The picker offered "Gemini" beside
+  "Openrouter" — a model beside a gateway — under a field labelled Service, with the model in a
+  second field below it. So a configuration that is *gemini-3.6-flash through OpenRouter* read as
+  "openrouter", and "Gemini via OpenRouter" could not be said at all, even though the difference
+  is one this project measures: the same model ID scores 2–5 regressions per suite run through the
+  gateway against 1 direct.
+
+  The provider is now who serves the request, the model is what runs it, and the window states the
+  pair — *gemini-3.6-flash via Google* — under a Provider picker that names providers: Google,
+  OpenRouter, xAI, Deepgram, Mistral, Local server. `.gemini` became `.google` throughout, on
+  macOS, iOS and both CLIs.
+
+  Renaming a case would ordinarily orphan everything keyed by its name, so stored values resolve
+  through `init?(persistedValue:)`, and the per-provider model *and Keychain entry* are read under
+  the old name when the new one is empty. An install configured with Gemini keeps its key, its
+  model and its selection; `--provider gemini` still works.
+
 - **The xAI key rewrites as well as transcribes.** Selecting a recognition backend disabled the
   rewrite hotkey, the summary mode and `--text-provider` alike, on the reasoning that a
   speech-to-text endpoint has no text input. True of the endpoint, wrong about the account: the

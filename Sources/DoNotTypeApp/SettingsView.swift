@@ -43,10 +43,13 @@ private struct GeneralTab: View {
 
     var body: some View {
         Form {
-            Section("Provider") {
-                Picker("Service", selection: $model.provider) {
+            // Provider and model are two settings because they are two things: the provider is
+            // who serves the request, the model is what runs it, and one provider serves many
+            // models. "In use" states the combination, which is the thing neither field says.
+            Section("Provider and model") {
+                Picker("Provider", selection: $model.provider) {
                     ForEach(ProviderKind.allCases, id: \.self) { kind in
-                        Text(kind.rawValue.capitalized).tag(kind)
+                        Text(kind.displayName).tag(kind)
                     }
                 }
                 TextField("Model", text: $model.model)
@@ -96,6 +99,10 @@ private struct GeneralTab: View {
                 }
 
 
+                LabeledContent("In use") {
+                    Text(model.configurationSummary).foregroundStyle(.secondary)
+                }
+
                 LabeledContent("Key source") {
                     Text(model.resolvedKeySource).foregroundStyle(.secondary)
                 }
@@ -106,15 +113,15 @@ private struct GeneralTab: View {
             // second key under the first one's field is how people end up with a fallback that
             // silently never fires.
             Section("Fallback") {
-                Picker("Second service", selection: $model.fallbackProvider) {
+                Picker("Second provider", selection: $model.fallbackProvider) {
                     Text("None").tag(ProviderKind?.none)
                     ForEach(model.fallbackChoices, id: \.self) { kind in
-                        Text(kind.rawValue.capitalized).tag(ProviderKind?.some(kind))
+                        Text(kind.displayName).tag(ProviderKind?.some(kind))
                     }
                 }
 
                 if model.fallbackProvider != nil {
-                    SecureField("Second service API key", text: $model.fallbackAPIKey)
+                    SecureField("Second provider API key", text: $model.fallbackAPIKey)
                         .textContentType(.password)
 
                     LabeledContent("Start it after") {

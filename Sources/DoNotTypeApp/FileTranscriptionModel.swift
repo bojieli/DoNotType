@@ -86,11 +86,11 @@ final class FileTranscriptionModel {
             // Naming the model rather than only the backend: with xAI they are the same account
             // and different products, so "xai will do it" would not answer the question.
             let model = TextStage.model(for: stage)
-            return "\(settings.provider.rawValue) only transcribes, so the \(noun) will be "
+            return "\(settings.provider.displayName) only transcribes, so the \(noun) will be "
                 + "produced by \(model) in a second request."
         }
-        return "\(settings.provider.rawValue) is a speech recognition service and cannot \(verb). "
-            + "Add a key for a model backend in Settings, or choose Verbatim."
+        return "\(settings.provider.displayName) is a speech recognition service and cannot "
+            + "\(verb). Add a key for a model backend in Settings, or choose Verbatim."
     }
 
     private var noun: String {
@@ -174,8 +174,8 @@ final class FileTranscriptionModel {
         }
         guard transcriber.supports(selectedMode) else {
             phase = .failed(
-                "\(Settings.shared.provider.rawValue) cannot \(verb) — it only transcribes audio. "
-                    + "Add a key for a model backend, or choose Verbatim.")
+                "\(Settings.shared.provider.displayName) cannot \(verb) — it only transcribes "
+                    + "audio. Add a key for a model backend, or choose Verbatim.")
             return
         }
 

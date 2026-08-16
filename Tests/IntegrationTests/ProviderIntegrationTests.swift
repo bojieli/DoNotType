@@ -59,7 +59,7 @@ final class ProviderIntegrationTests: XCTestCase {
 
         let native = try await TranscriptionService(
             provider: try Harness.provider(),
-            model: ProviderKind.gemini.defaultModel,
+            model: ProviderKind.google.defaultModel,
             systemInstruction: instruction
         ).transcribe(audio: audio, context: nil).transcript.transcript
 

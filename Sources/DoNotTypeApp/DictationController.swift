@@ -152,7 +152,7 @@ final class DictationController {
 
             // Same trick for the network. Opening the resumable upload session now means the
             // handshake is paid for during the recording rather than after it.
-            if let key = Settings.shared.resolvedAPIKey(), Settings.shared.provider == .gemini {
+            if let key = Settings.shared.resolvedAPIKey(), Settings.shared.provider == .google {
                 let uploader = AudioUploader(apiKey: key)
                 self.uploader = uploader
                 // Declared as Ogg because that is what will actually be sent; the session's

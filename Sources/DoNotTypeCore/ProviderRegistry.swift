@@ -22,11 +22,14 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     ///
     /// Also measurably better on the near-miss suite than the same model ID through a gateway —
     /// 15/15 versus 12/15 on 2026-08-09, with the gateway regressing the spelling-correction case.
-    case gemini
+    ///
+    /// Named for the provider rather than the model it serves: Gemini is what runs here, Google
+    /// is who runs it, and the same model is reachable through `.openrouter` as well.
+    case google
     /// Any model through OpenRouter. Verified to forward audio, and useful for a second opinion
     /// or for models Google does not serve directly.
     ///
-    /// **Prefer `.gemini` for a Gemini model.** The same model ID measures worse through this
+    /// **Prefer `.google` for a Gemini model.** The same model ID measures worse through this
     /// gateway than through the first-party API, consistently and on two separate occasions:
     /// 12/15 against 15/15 on 2026-08-09, and on the near-miss suite on 2026-08-13, 38–43/48 with
     /// 2–5 regressions against native's 44/48 with 1. Regressions are the number this project
@@ -86,10 +89,56 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     /// default for anyone who is not exclusively English-speaking.
     public static let defaultForNewInstalls: ProviderKind = .xai
 
+    /// Reads a name written before the providers were named after themselves rather than after
+    /// their models.
+    ///
+    /// `gemini` meant Google. Falling back to `init?(rawValue:)` alone would quietly reset a
+    /// configured install to the default backend, so stored settings, `--provider` arguments, the
+    /// fallback picker and the Keychain account all resolve through here.
+    public init?(persistedValue: String) {
+        switch persistedValue.trimmed.lowercased() {
+        case "gemini": self = .google
+        case let value:
+            guard let kind = ProviderKind(rawValue: value) else { return nil }
+            self = kind
+        }
+    }
+
+    /// The name this backend was stored under before the rename — a defaults key, a Keychain
+    /// account — or nil for one that has always had the name it has now.
+    public var legacyPersistedValue: String? {
+        self == .google ? "gemini" : nil
+    }
+
+    /// The provider's name, never a model's.
+    ///
+    /// "Gemini" is what `.google` runs, not who serves it, and putting it here is what made
+    /// "Gemini through OpenRouter" impossible to say in a window that can do exactly that.
+    public var displayName: String {
+        switch self {
+        case .google: "Google"
+        case .openrouter: "OpenRouter"
+        case .local: "Local server"
+        case .deepgram: "Deepgram"
+        case .xai: "xAI"
+        case .mistral: "Mistral"
+        }
+    }
+
+    /// How a configuration reads out loud: what runs the request, then who serves it.
+    ///
+    /// Neither half answers on its own. OpenRouter serves hundreds of models, and the same model
+    /// ID measures differently depending on the route it took — which is the whole reason both
+    /// are settings.
+    public func label(forModel model: String) -> String {
+        let name = model.trimmed.nilIfEmpty ?? defaultModel
+        return "\(name) via \(displayName)"
+    }
+
     public var defaultModel: String {
         switch self {
         case .openrouter: "google/gemini-3.6-flash"
-        case .gemini: "gemini-3.6-flash"
+        case .google: "gemini-3.6-flash"
         // Whatever the server was started with; overridden by --model in practice.
         case .local: ProcessInfo.processInfo.environment["DNT_LOCAL_MODEL"] ?? "local-model"
         // nova-3 is the only Deepgram model with keyterm biasing, which is this backend's sole
@@ -123,7 +172,7 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     public var apiKeyEnvVar: String {
         switch self {
         case .openrouter: "OPENROUTER_API_KEY"
-        case .gemini: "GEMINI_API_KEY"
+        case .google: "GEMINI_API_KEY"
         // Most local servers ignore the key entirely; the factory supplies a placeholder so an
         // unauthenticated server does not require inventing one.
         case .local: "DNT_LOCAL_API_KEY"
@@ -157,7 +206,7 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     public var isSpeechRecognition: Bool {
         switch self {
         case .deepgram, .xai, .mistral: true
-        case .gemini, .openrouter, .local: false
+        case .google, .openrouter, .local: false
         }
     }
 
@@ -257,7 +306,7 @@ public enum ProviderFactory {
                 apiKey: key,
                 extraHeaders: ["HTTP-Referer": appURL, "X-Title": appTitle]
             )
-        case .gemini:
+        case .google:
             // DNT_NO_SCHEMA exists so `dnt-eval` can measure what the structured-output
             // constraint costs in latency. Not a supported configuration: unconstrained output
             // sometimes arrives wrapped in prose, and a dictation tool that occasionally types

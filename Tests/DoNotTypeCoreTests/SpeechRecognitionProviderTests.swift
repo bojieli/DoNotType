@@ -329,7 +329,7 @@ final class ProviderRegistrySpeechTests: XCTestCase {
         XCTAssertTrue(ProviderKind.deepgram.isSpeechRecognition)
         XCTAssertTrue(ProviderKind.xai.isSpeechRecognition)
         XCTAssertTrue(ProviderKind.mistral.isSpeechRecognition)
-        XCTAssertFalse(ProviderKind.gemini.isSpeechRecognition)
+        XCTAssertFalse(ProviderKind.google.isSpeechRecognition)
         XCTAssertFalse(ProviderKind.openrouter.isSpeechRecognition)
     }
 

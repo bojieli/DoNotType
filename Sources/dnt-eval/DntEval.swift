@@ -23,7 +23,7 @@ struct DntEval: AsyncParsableCommand {
 struct ProviderOptions: ParsableArguments {
     @Option(
         name: .long,
-        help: "Backend: gemini, openrouter, local, deepgram, xai or mistral.")
+        help: "Provider: google, openrouter, local, deepgram, xai or mistral.")
     // Defaults to whatever ships, so `make eval` measures the product rather than a backend
     // nobody is configured with.
     var provider: String = ProviderKind.defaultForNewInstalls.rawValue
@@ -68,7 +68,7 @@ struct ProviderOptions: ParsableArguments {
     var thinking: String?
 
     func resolveKind() throws -> ProviderKind {
-        guard let kind = ProviderKind(rawValue: provider.lowercased()) else {
+        guard let kind = ProviderKind(persistedValue: provider) else {
             throw ValidationError(
                 "Unknown provider '\(provider)'. Options: "
                     + ProviderKind.allCases.map(\.rawValue).joined(separator: ", "))
@@ -119,7 +119,7 @@ struct ProviderOptions: ParsableArguments {
             // called.
             backend = try ProviderFactory.make(
                 kind, environment: [kind.apiKeyEnvVar: "replaying-no-key-needed"])
-        } else if let thinking, kind == .gemini {
+        } else if let thinking, kind == .google {
             let environment = ProcessInfo.processInfo.environment
             guard let key = environment[kind.apiKeyEnvVar]?.trimmed, !key.isEmpty else {
                 throw ProviderError.missingAPIKey(envVar: kind.apiKeyEnvVar)

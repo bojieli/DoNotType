@@ -97,10 +97,12 @@ forward — switch backend, or keep the fast recogniser and add a model for the 
 
 ```bash
 dnt transcribe long-meeting.m4a --mode summary:actions \
-    --provider xai --text-provider gemini
+    --provider xai --text-provider google
 ```
 
-The audio goes to xAI, the text to Gemini, and the JSON output records both.
+The audio goes to xAI's speech endpoint, the text to Google, and the JSON output records both.
+`--text-provider xai` also works, and keeps both stages on one key: xAI serves Grok chat models
+alongside its recogniser. Older names still resolve, so `--provider gemini` remains valid.
 
 ### Formats and length
 

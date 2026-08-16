@@ -195,7 +195,7 @@ Rewriting and summarising need a language model. With a recogniser selected the 
 uploading anything, and can split the work — audio to the fast recogniser, text to a model:
 
 ```bash
-dnt transcribe long-meeting.m4a --mode summary:bullets --provider xai --text-provider gemini
+dnt transcribe long-meeting.m4a --mode summary:bullets --provider xai --text-provider google
 ```
 
 `dnt` also answers the questions that previously needed the app open, or the source:
@@ -235,13 +235,15 @@ for masking before the first request, and anything else key-shaped is caught by 
 
 ## Settings
 
-- **Providers and keys** — Gemini (default), any OpenAI-compatible gateway, a server you run
-  yourself (vLLM, llama.cpp), or a speech recognition service (Deepgram, Mistral Voxtral, xAI),
-  with a live connection test. Keys **and models are stored per provider**, so switching backends
-  to compare them is one dropdown rather than a re-typing exercise. Keys live in the Keychain /
-  DPAPI / private prefs, never in a config file.
+- **Providers and keys** — the provider is who serves the request and the model is what runs it,
+  so they are two fields and the window states the pair: *gemini-3.6-flash via Google*. Google,
+  OpenRouter, a server you run yourself (vLLM, llama.cpp), or a speech recognition service
+  (xAI, Deepgram, Mistral Voxtral), with a live connection test. Keys **and models are stored per
+  provider**, so switching backends to compare them is one dropdown rather than a re-typing
+  exercise. Keys live in the Keychain / DPAPI / private prefs, never in a config file.
 - **Recognition services are a different trade, and the app says so.** They return a transcript in
-  around 1.2 s against 6.5 s for a model, and cannot read your screen or rewrite. Selecting one
+  around 1.2 s against 6.5 s for a model, and cannot read your screen. xAI can still rewrite, on a
+  Grok chat model behind the same key; Deepgram and Voxtral cannot. Selecting one
   states that under the picker rather than leaving grounding controls that quietly do nothing.
   Spelling hints from the screen are **not offered**: measured, they made transcripts worse, by
   feeding the recogniser whatever was on screen — including the term you did not say. Without them

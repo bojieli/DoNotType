@@ -74,7 +74,7 @@ struct Dictation: AsyncParsableCommand {
         if let limit { entries = Array(entries.prefix(limit)) }
 
         let kinds = try providers.split(separator: ",").map { name -> ProviderKind in
-            guard let kind = ProviderKind(rawValue: name.trimmingCharacters(in: .whitespaces))
+            guard let kind = ProviderKind(persistedValue: String(name))
             else { throw ValidationError("Unknown provider '\(name)'") }
             return kind
         }

@@ -6,7 +6,9 @@ import Foundation
 /// gateway sits between the audio and the model, and `store: false` is honoured directly. That
 /// matters for an app whose requests contain screen contents.
 public struct GeminiProvider: TranscriptionProvider {
-    public let name = "gemini"
+    // The provider, not the model: this speaks Google's Gemini API, and which Gemini runs is
+    // whatever the request's model says.
+    public let name = "google"
     public let apiKey: String
     public let endpoint: URL
     /// Requested thinking level, or `nil` to let the model decide the cheapest it accepts.

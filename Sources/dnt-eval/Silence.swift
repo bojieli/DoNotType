@@ -18,7 +18,7 @@ import Foundation
 /// contained none, and the number worth knowing is how often.
 ///
 /// ```
-/// dnt-eval silence --provider gemini
+/// dnt-eval silence --provider google
 /// dnt-eval silence --provider deepgram --repeat-count 5
 /// ```
 struct Silence: AsyncParsableCommand {
@@ -26,7 +26,7 @@ struct Silence: AsyncParsableCommand {
         abstract: "What a backend returns for silence, noise and a keyboard click.")
 
     @Option(name: .long, help: "Backend to ask.")
-    var provider: String = "gemini"
+    var provider: String = "google"
 
     @Option(name: .long, help: "Model override.")
     var model: String?
@@ -51,7 +51,7 @@ struct Silence: AsyncParsableCommand {
     }
 
     func run() async throws {
-        guard let kind = ProviderKind(rawValue: provider) else {
+        guard let kind = ProviderKind(persistedValue: provider) else {
             throw ValidationError("Unknown provider '\(provider)'")
         }
         let instruction = try PromptBuilder(

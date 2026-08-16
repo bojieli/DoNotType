@@ -123,7 +123,7 @@ struct BackendOptions: ParsableArguments {
 
     func resolveProvider() throws -> ProviderKind {
         guard let provider else { return AppPreferences.provider }
-        guard let kind = ProviderKind(rawValue: provider.lowercased()) else {
+        guard let kind = ProviderKind(persistedValue: provider) else {
             throw ValidationError(
                 "Unknown provider '\(provider)'. Options: "
                     + ProviderKind.allCases.map(\.rawValue).joined(separator: ", "))
@@ -261,13 +261,13 @@ enum AppPreferences {
     /// as "no stored preferences" rather than "the app has never run".
     static var isAvailable: Bool {
         guard let defaults else { return false }
-        return ["provider", "model-gemini", "fidelity", "trigger", "retention"]
+        return ["provider", "model-google", "model-gemini", "fidelity", "trigger", "retention"]
             .contains { defaults.object(forKey: $0) != nil }
     }
 
     static var provider: ProviderKind {
         guard let raw = defaults?.string(forKey: "provider"),
-            let kind = ProviderKind(rawValue: raw)
+            let kind = ProviderKind(persistedValue: raw)
         else { return .defaultForNewInstalls }
         return kind
     }
@@ -276,8 +276,14 @@ enum AppPreferences {
         if let stored = defaults?.string(forKey: "model-\(kind.rawValue)"), !stored.isEmpty {
             return stored
         }
+        // The same key under the backend's pre-rename name, as in the app.
+        if let renamed = kind.legacyPersistedValue,
+            let stored = defaults?.string(forKey: "model-\(renamed)"), !stored.isEmpty
+        {
+            return stored
+        }
         // The pre-per-provider key, which an older install still has. Gemini's, as in the app.
-        if kind == .gemini, let legacy = defaults?.string(forKey: "model"), !legacy.isEmpty {
+        if kind == .google, let legacy = defaults?.string(forKey: "model"), !legacy.isEmpty {
             return legacy
         }
         return kind.defaultModel

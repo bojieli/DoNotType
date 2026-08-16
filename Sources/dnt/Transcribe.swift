@@ -136,8 +136,8 @@ struct Transcribe: AsyncParsableCommand {
                 \(kind.rawValue) is a speech recognition endpoint: it transcribes audio and cannot \
                 do anything with text, so it cannot \
                 \(parsedMode.needsSecondPass ? "produce a \(parsedMode.rawValue)" : "run this mode").
-                Either transcribe with a model (--provider gemini), or keep the recogniser and add \
-                --text-provider gemini for the second stage.
+                Either transcribe with a model (--provider google), or keep the recogniser and \
+                add --text-provider for the second stage — xai serves one itself.
                 """)
         }
 
@@ -226,7 +226,7 @@ struct Transcribe: AsyncParsableCommand {
         primary: ProviderKind
     ) throws -> (service: TranscriptionService, name: String)? {
         guard let textProvider else { return nil }
-        guard let kind = ProviderKind(rawValue: textProvider.lowercased()) else {
+        guard let kind = ProviderKind(persistedValue: textProvider) else {
             throw ValidationError(
                 "Unknown --text-provider '\(textProvider)'. Options: "
                     + ProviderKind.allCases.map(\.rawValue).joined(separator: ", "))
@@ -236,7 +236,7 @@ struct Transcribe: AsyncParsableCommand {
         guard let (service, _) = try backend.makeTextService(kind, model: textModel) else {
             throw ValidationError(
                 "--text-provider \(kind.rawValue) is a speech recognition endpoint with no text "
-                    + "input. Choose gemini, openrouter, local or xai.")
+                    + "input. Choose google, openrouter, local or xai.")
         }
         return (service, "\(kind.rawValue)/\(service.model)")
     }

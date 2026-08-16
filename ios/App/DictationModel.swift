@@ -65,7 +65,14 @@ final class DictationModel {
     }
 
     var apiKey: String {
-        didSet { KeychainStore.write(apiKey, account: provider.rawValue) }
+        didSet {
+            KeychainStore.write(apiKey, account: provider.rawValue)
+            // Clearing the field has to clear the pre-rename entry as well, or `storedKey` would
+            // read it back on the next launch.
+            if apiKey.isEmpty, let renamed = provider.legacyPersistedValue {
+                KeychainStore.write("", account: renamed)
+            }
+        }
     }
     var model: String {
         didSet { UserDefaults.standard.set(model, forKey: "model-\(provider.rawValue)") }
@@ -160,13 +167,29 @@ final class DictationModel {
         return stored > 0 ? min(max(stored, 1), 120) : 8
     }
 
+    /// The Keychain account is the provider's stored name, so a renamed backend has to look
+    /// under the old one too or a key that still works reads as missing.
+    static func storedKey(for provider: ProviderKind) -> String? {
+        if let stored = KeychainStore.read(account: provider.rawValue), !stored.isEmpty {
+            return stored
+        }
+        guard let renamed = provider.legacyPersistedValue else { return nil }
+        return KeychainStore.read(account: renamed).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
     static func storedModel(for provider: ProviderKind) -> String {
-        UserDefaults.standard.string(forKey: "model-\(provider.rawValue)")
-            .flatMap { $0.isEmpty ? nil : $0 }
-            // The pre-provider-choice install stored one flat model, and it was Gemini's.
-            ?? (provider == .gemini
-                ? UserDefaults.standard.string(forKey: "model") : nil)
-            ?? provider.defaultModel
+        let defaults = UserDefaults.standard
+        func stored(_ key: String) -> String? {
+            defaults.string(forKey: key).flatMap { $0.isEmpty ? nil : $0 }
+        }
+        if let model = stored("model-\(provider.rawValue)") { return model }
+        // The same key under the backend's pre-rename name, so a rename is not a factory reset.
+        if let renamed = provider.legacyPersistedValue, let model = stored("model-\(renamed)") {
+            return model
+        }
+        // The pre-provider-choice install stored one flat model, and it was Gemini's.
+        if provider == .google, let model = stored("model") { return model }
+        return provider.defaultModel
     }
     var fidelity: Fidelity {
         didSet { UserDefaults.standard.set(fidelity.rawValue, forKey: "fidelity") }
@@ -198,15 +221,16 @@ final class DictationModel {
 
     init() {
         let defaults = UserDefaults.standard
-        let kind = ProviderKind(rawValue: defaults.string(forKey: "provider") ?? "")
+        let kind = ProviderKind(persistedValue: defaults.string(forKey: "provider") ?? "")
             ?? .defaultForNewInstalls
         provider = kind
-        apiKey = KeychainStore.read(account: kind.rawValue) ?? ""
+        apiKey = Self.storedKey(for: kind) ?? ""
         model = Self.storedModel(for: kind)
         let fallbackRaw = defaults.string(forKey: "fallbackProvider") ?? ""
-        let fallbackKind = ProviderKind(rawValue: fallbackRaw).flatMap { $0 == kind ? nil : $0 }
+        let fallbackKind = ProviderKind(persistedValue: fallbackRaw)
+            .flatMap { $0 == kind ? nil : $0 }
         fallbackProvider = fallbackKind
-        fallbackAPIKey = fallbackKind.map { KeychainStore.read(account: $0.rawValue) ?? "" } ?? ""
+        fallbackAPIKey = fallbackKind.map { Self.storedKey(for: $0) ?? "" } ?? ""
         fallbackAfterSeconds = Self.storedFallbackSeconds()
         fidelity = Fidelity(rawValue: defaults.string(forKey: "fidelity") ?? "") ?? .default
         liveStyle = RewriteStyle(rawValue: defaults.string(forKey: "liveStyle") ?? "") ?? .verbatim

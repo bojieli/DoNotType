@@ -35,7 +35,7 @@ enum APIKeyStatus: Equatable {
     func summary(provider: ProviderKind) -> String? {
         switch self {
         case .unchecked, .checking: nil
-        case .valid: "✓ \(provider.rawValue) reachable, key accepted"
+        case .valid: "✓ \(provider.displayName) reachable, key accepted"
         case .missing: "✗ No API key set."
         case .rejected(let message): "✗ \(message)"
         case .unverified(let message): "✗ Could not check: \(message)"
@@ -46,8 +46,8 @@ enum APIKeyStatus: Equatable {
     /// has open.
     func menuTitle(provider: ProviderKind) -> String? {
         switch self {
-        case .missing: "No API key for \(provider.rawValue) — open Settings"
-        case .rejected: "The \(provider.rawValue) key was rejected — open Settings"
+        case .missing: "No API key for \(provider.displayName) — open Settings"
+        case .rejected: "The \(provider.displayName) key was rejected — open Settings"
         case .unchecked, .checking, .unverified, .valid: nil
         }
     }

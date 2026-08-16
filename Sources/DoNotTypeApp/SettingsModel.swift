@@ -88,7 +88,7 @@ final class SettingsModel {
     var fallbackSummary: String? {
         guard let kind = fallbackProvider else { return nil }
         let seconds = Int(fallbackAfterSeconds.rounded())
-        return "If \(provider.rawValue) has not answered in \(seconds)s, "
+        return "If \(provider.displayName) has not answered in \(seconds)s, "
             + "\(kind.rawValue) starts alongside it and whichever finishes first is used. "
             + "History records which one actually served each dictation."
     }
@@ -101,6 +101,17 @@ final class SettingsModel {
         return provider.grounding(forModel: model)
     }
 
+    /// What is actually configured, in the order the question is asked: the model that runs the
+    /// request, then who serves it.
+    ///
+    /// The provider alone is not an answer — OpenRouter serves hundreds of models — and this line
+    /// is the one place the pair is stated, including the second model where there is one.
+    var configurationSummary: String {
+        let base = provider.label(forModel: model)
+        guard provider.defaultTextModel != nil, !textModel.trimmed.isEmpty else { return base }
+        return "\(base) · rewrites on \(textModel)"
+    }
+
     /// One line under the provider picker explaining what selecting it gives up.
     var groundingSummary: String? {
         // Not a capability difference — the gateway forwards audio correctly — but a measured
@@ -108,8 +119,8 @@ final class SettingsModel {
         // identical.
         if provider == .openrouter {
             return "Routes through a gateway. The same Gemini model measures worse this way than "
-                + "through Gemini directly — 2 to 5 regressions per suite run against 1 — so "
-                + "prefer the Gemini service unless you need a model Google does not serve."
+                + "it does from Google directly — 2 to 5 regressions per suite run against 1 — "
+                + "so prefer the Google provider unless you need a model Google does not serve."
         }
         guard provider.isSpeechRecognition else { return nil }
 
@@ -419,7 +430,7 @@ final class SettingsModel {
         guard
             let client = try? ProviderFactory.make(provider, apiKey: key)
         else {
-            return settle(.rejected("Could not configure \(provider.rawValue)."))
+            return settle(.rejected("Could not configure \(provider.displayName)."))
         }
 
         switch await ProviderProbe.check(client, model: model) {

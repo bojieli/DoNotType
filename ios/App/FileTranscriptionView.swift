@@ -66,11 +66,12 @@ final class FileTranscriptionModel {
     var modeWarning: String? {
         guard mode.needsSecondPass, dictation.provider.isSpeechRecognition else { return nil }
         if let helper = modelBackend {
-            return "\(dictation.provider.rawValue) only transcribes, so \(helper.rawValue) will "
-                + "write the result in a second request."
+            return "\(dictation.provider.displayName) only transcribes, so "
+                + "\(helper.displayName) will write the result in a second request."
         }
-        return "\(dictation.provider.rawValue) is a speech recognition service: it cannot rewrite "
-            + "or summarise. Add a key for Gemini or OpenRouter in Settings, or choose Verbatim."
+        return "\(dictation.provider.displayName) is a speech recognition service: it cannot "
+            + "rewrite or summarise. Add a key for Google or OpenRouter in Settings, or choose "
+            + "Verbatim."
     }
 
     /// The first configured model backend, for the second stage a recogniser cannot run.
@@ -110,8 +111,8 @@ final class FileTranscriptionModel {
         }
         guard transcriber.supports(mode) else {
             phase = .failed(
-                "\(dictation.provider.rawValue) only transcribes audio. Choose Verbatim, or add a "
-                    + "key for a model backend in Settings.")
+                "\(dictation.provider.displayName) only transcribes audio. Choose Verbatim, or "
+                    + "add a key for a model backend in Settings.")
             return
         }
 

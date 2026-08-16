@@ -58,7 +58,7 @@ enum Harness {
     static func service(fidelity: Fidelity = .light) throws -> TranscriptionService {
         TranscriptionService(
             provider: try provider(),
-            model: ProviderKind.gemini.defaultModel,
+            model: ProviderKind.google.defaultModel,
             systemInstruction: try systemInstruction(fidelity: fidelity))
     }
 
