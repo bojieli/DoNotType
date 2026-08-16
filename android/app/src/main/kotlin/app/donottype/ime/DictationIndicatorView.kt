@@ -6,9 +6,9 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.view.View
+import app.donottype.core.AudioLevelMeter
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.sin
 
 /**
@@ -24,22 +24,52 @@ import kotlin.math.sin
 class DictationIndicatorView(context: Context) : View(context) {
     enum class Mode { IDLE, RECORDING, TRANSCRIBING }
 
+    companion object {
+        /**
+         * How much of the recording the meter shows: 24 bars of 60 ms, so a second and a half.
+         * Long enough that the sentence being spoken is on screen, short enough for the bars to
+         * stay readable on a phone.
+         */
+        const val VISIBLE_BARS = 24
+    }
+
     var mode: Mode = Mode.IDLE
         set(value) {
             if (field == value) return
             field = value
             phase = 0.0
-            if (value == Mode.IDLE) removeCallbacks(tick) else post(tick)
+            // Only the transcribing pulse is drawn from a clock. The meter redraws when audio
+            // arrives, which is the only time it has anything new to say.
+            if (value == Mode.TRANSCRIBING) post(tick) else removeCallbacks(tick)
+            if (value == Mode.RECORDING) clearLevels()
             invalidate()
         }
 
-    /** Microphone level, 0–1. Only meaningful while recording. */
-    var level: Float = 0f
-        set(value) {
-            field = value.coerceIn(0f, 1f)
-        }
+    /**
+     * The visible history, oldest first. Always full: the meter starts flat rather than growing in
+     * from the left, because an empty meter and a silent one should not look different.
+     */
+    private val bars = MutableList(VISIBLE_BARS) { AudioLevelMeter.Bar.SILENT }
+
+    /** Adds however many bars the microphone has produced since the last redraw. */
+    fun appendLevels(incoming: List<AudioLevelMeter.Bar>) {
+        if (incoming.isEmpty()) return
+        val kept = incoming.takeLast(VISIBLE_BARS)
+        repeat(kept.size) { bars.removeAt(0) }
+        bars += kept
+        invalidate()
+    }
+
+    fun clearLevels() {
+        for (index in bars.indices) bars[index] = AudioLevelMeter.Bar.SILENT
+        invalidate()
+    }
 
     private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#E8EDF2") }
+    // Amber is not decoration: the input is loud enough to be clamped on the way in, and a
+    // recording distorted before it is sent is worth one colour.
+    private val clippedPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#F0A05A") }
     private val pulsePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#7FB2FF") }
     private val rect = RectF()
 
@@ -67,22 +97,30 @@ class DictationIndicatorView(context: Context) : View(context) {
         }
     }
 
-    /** Level-driven bars. Not a spectrum -- what a speaker needs is "it hears me", and amplitude
-     *  answers that. A slow travelling wave keeps it alive during pauses without implying signal. */
+    /**
+     * The last second and a half of the microphone, walking leftwards.
+     *
+     * What it replaced is worth saying, because it looked like this. Five bars driven by a single
+     * current level -- a raw peak over a divisor -- and swayed by a travelling sine, so the level
+     * sat pinned at the top through most of a normally-recorded voice and the movement was the
+     * same whether the microphone was hearing a sentence or nothing at all. Here every bar is 60 ms
+     * of audio that actually happened, and the meter moves because the audio does. Silence is a
+     * flat row of dots that keeps scrolling: the microphone is live and hearing nothing.
+     */
     private fun drawBars(canvas: Canvas) {
-        val bars = 5
-        val weights = floatArrayOf(0.45f, 0.75f, 1f, 0.7f, 0.5f)
-        val barWidth = width / (bars * 2.6f)
-        val gap = barWidth * 1.6f
-        val totalWidth = bars * barWidth + (bars - 1) * gap
-        var x = (width - totalWidth) / 2f
+        val gap = width / (VISIBLE_BARS * 2.6f)
+        val barWidth = (width - gap * (VISIBLE_BARS - 1)) / VISIBLE_BARS
+        var x = 0f
 
-        for (index in 0 until bars) {
-            val travel = (sin(phase * 4 + index * 0.9) * 0.5 + 0.5).toFloat()
-            val amplitude = max(0.12f, level) * weights[index]
-            val barHeight = height * 0.18f + height * 0.62f * min(1f, amplitude * (0.65f + 0.35f * travel))
+        for (bar in bars) {
+            // Silence is a row of dots rather than nothing at all: a meter that disappears when the
+            // room is quiet cannot be told apart from one that has stopped.
+            val barHeight = max(barWidth, height * 0.8f * bar.level.toFloat())
             rect.set(x, (height - barHeight) / 2f, x + barWidth, (height + barHeight) / 2f)
-            canvas.drawRoundRect(rect, barWidth / 2f, barWidth / 2f, barPaint)
+            canvas.drawRoundRect(
+                rect, barWidth / 2f, barWidth / 2f,
+                if (bar.isClipping) clippedPaint else barPaint,
+            )
             x += barWidth + gap
         }
     }

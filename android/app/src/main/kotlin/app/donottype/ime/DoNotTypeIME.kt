@@ -339,10 +339,11 @@ class DoNotTypeIME : InputMethodService() {
         stopLevelUpdates()
         levelRunnable = object : Runnable {
             override fun run() {
-                // peakAmplitude is a raw 16-bit peak; the divisor puts ordinary speech near the
-                // top of the range rather than leaving the bars permanently short.
-                indicator.level = (recorder.consumePeak() / 12_000f).coerceIn(0f, 1f)
-                handler.postDelayed(this, 60)
+                // Collects whatever the capture thread has measured since the last pass. A bar is
+                // 60 ms of audio, so this asks about twice as often as one can appear and never
+                // has to interpolate.
+                indicator.appendLevels(recorder.drainLevels())
+                handler.postDelayed(this, 33)
             }
         }.also { handler.post(it) }
     }

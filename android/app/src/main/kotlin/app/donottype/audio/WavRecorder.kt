@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import app.donottype.core.AudioLevelMeter
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -25,6 +26,12 @@ class WavRecorder {
         const val SAMPLE_RATE = 16_000
         /** Below this it was a stray tap rather than speech. */
         const val MIN_DURATION_MS = 500L
+
+        /** 50 ms of 16-bit mono: 800 samples, 1600 bytes. */
+        private const val READ_BYTES = SAMPLE_RATE / 10
+
+        /** About seven seconds of bars. */
+        private const val MAXIMUM_PENDING_BARS = 120
 
         /**
          * Length of a recording this class produced, from its own 44-byte header.
@@ -71,19 +78,24 @@ class WavRecorder {
     private val pcm = ByteArrayOutputStream()
 
     @Volatile private var capturing = false
-    @Volatile var peakAmplitude: Int = 0
-        private set
+
+    private var meter = AudioLevelMeter(SAMPLE_RATE)
+    private val pendingBars = ArrayList<AudioLevelMeter.Bar>()
 
     /**
-     * Reads the loudest sample since the last call and resets the counter.
+     * Hands the indicator the bars captured since it last asked, oldest first.
      *
-     * Read-and-reset rather than a plain getter: a running peak that is never cleared only ever
-     * climbs, so the meter would latch at whatever the loudest moment was and stop responding.
+     * Drained rather than sampled. The meter used to read a running peak that the reader cleared,
+     * which made every draw a single number covering however long it had been since the last one —
+     * so the bars moved at the polling rate rather than at the rate the voice did. Levels are
+     * measured where the audio is, in 20 ms frames on the capture thread, and whoever draws them
+     * collects whatever has arrived.
      */
-    fun consumePeak(): Int {
-        val peak = peakAmplitude
-        peakAmplitude = 0
-        return peak
+    fun drainLevels(): List<AudioLevelMeter.Bar> = synchronized(pendingBars) {
+        if (pendingBars.isEmpty()) return emptyList()
+        val bars = ArrayList(pendingBars)
+        pendingBars.clear()
+        bars
     }
 
     private var startedAt = 0L
@@ -94,7 +106,8 @@ class WavRecorder {
     fun start() {
         if (capturing) return
         pcm.reset()
-        peakAmplitude = 0
+        meter = AudioLevelMeter(SAMPLE_RATE)
+        synchronized(pendingBars) { pendingBars.clear() }
 
         val minBuffer = AudioRecord.getMinBufferSize(
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
@@ -118,12 +131,29 @@ class WavRecorder {
         recorder.startRecording()
 
         worker = thread(name = "dnt-capture") {
-            val buffer = ByteArray(bufferSize)
+            // Read in 50 ms pieces rather than in whole buffers. AudioRecord's own buffer stays as
+            // large as it was — that is the margin against an overrun and nothing to do with us —
+            // but a read that returns a quarter of a second of audio is a quarter of a second in
+            // which the meter learns nothing, and then learns four bars at once.
+            val buffer = ByteArray(READ_BYTES)
             while (capturing) {
                 val read = recorder.read(buffer, 0, buffer.size)
                 if (read > 0) {
                     pcm.write(buffer, 0, read)
-                    peakAmplitude = maxOf(peakAmplitude, peak(buffer, read))
+                    val bars = meter.append(buffer, read)
+                    if (bars.isNotEmpty()) {
+                        synchronized(pendingBars) {
+                            pendingBars += bars
+                            // A UI that has stopped collecting is a UI that is not drawing them
+                            // either; keeping more than a few seconds of undrawn bars would only
+                            // be a leak with a nice name.
+                            if (pendingBars.size > MAXIMUM_PENDING_BARS) {
+                                pendingBars.subList(
+                                    0, pendingBars.size - MAXIMUM_PENDING_BARS,
+                                ).clear()
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -153,17 +183,6 @@ class WavRecorder {
             release()
         }
         record = null
-    }
-
-    private fun peak(buffer: ByteArray, length: Int): Int {
-        var peak = 0
-        var i = 0
-        while (i + 1 < length) {
-            val sample = ((buffer[i + 1].toInt() shl 8) or (buffer[i].toInt() and 0xFF)).toShort()
-            peak = maxOf(peak, kotlin.math.abs(sample.toInt()))
-            i += 2
-        }
-        return peak
     }
 
 }

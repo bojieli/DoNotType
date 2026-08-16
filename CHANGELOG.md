@@ -263,10 +263,12 @@ deliberate:
   fixtures rather than chosen by eye.
 
   Windows had the same five bars with a *peak* rather than an RMS feeding them, so it pinned harder
-  still, and its capture buffer is half a second — the meter could not have been more current than
-  that whatever the UI did. Both clients now run the same scale over the same fixtures, and the
-  Windows capture buffer is 100 ms so there is something to draw. Android and iOS have no level
-  meter to change.
+  still, and its capture buffer was half a second — the meter could not have been more current than
+  that whatever the UI did. The Android keyboard had the same five bars again, driven by a raw
+  16-bit peak over a divisor of 12000, which any syllable at a sensible recording level clears.
+  All three now run the same scale, asserted against the same fixtures in three languages, and the
+  audio reaches them in pieces small enough to draw: 100 ms buffers on Windows, 50 ms reads on
+  Android.
 
 - **The contract moved from `PROMPT.md` into `prompt/`, one part per file — and doing it fixed a bug
   that had been in every request since the contract was written.** `PROMPT.md` was two documents
