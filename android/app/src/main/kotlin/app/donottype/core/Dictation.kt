@@ -144,6 +144,35 @@ class DictationService(private val context: Context) {
                 }
             }
 
+            // One request, joined by a second identical one if it stalls. See StallHedge. Per
+            // request rather than around the whole job, so a split recording re-sends the chunk
+            // that stalled rather than all of them — and so the deadline is measured against what
+            // that request was actually asked to transcribe.
+            suspend fun hedged(
+                backend: TranscriptionProvider,
+                audioSeconds: Double?,
+                parts: List<InputPart>,
+                hints: List<String>,
+            ): TranscriptionResult {
+                val deadline = StallHedge.deadlineMillis(audioSeconds)
+                return StallHedge.race(
+                    deadlineMillis = deadline,
+                    onHedge = {
+                        // Info, not debug: this is the app spending a second request on the user's
+                        // behalf, and it should be visible without turning anything on.
+                        log.info(
+                            mapOf(
+                                "dictation" to id,
+                                "provider" to backend.name,
+                                "after" to "%.1fs".format(deadline / 1000.0),
+                            ),
+                        ) { "request stalled; sending a second one" }
+                    },
+                ) {
+                    backend.transcribe(instruction, parts, Settings.fidelity, hints)
+                }
+            }
+
             // One backend transcribing the whole recording, chunks and all, as a single unit —
             // so the fallback can race the finished job rather than individual chunks.
             suspend fun transcribeAll(
@@ -151,9 +180,11 @@ class DictationService(private val context: Context) {
                 hints: List<String>,
             ): TranscriptionResult {
                 val pieces = if (chunks.size == 1) {
+                    // Encoded once and reused, so a hedge re-sends the recording rather than
+                    // re-compressing it.
                     listOf(
-                        backend.transcribe(
-                            instruction, contextParts + audioPart(wav), Settings.fidelity, hints,
+                        hedged(
+                            backend, record.durationSeconds, contextParts + audioPart(wav), hints,
                         ),
                     )
                 } else {
@@ -164,10 +195,10 @@ class DictationService(private val context: Context) {
                         chunks.map { chunk ->
                             async {
                                 gate.withPermit {
-                                    backend.transcribe(
-                                        instruction,
+                                    hedged(
+                                        backend,
+                                        chunk.durationSeconds,
                                         contextParts + audioPart(chunk.data),
-                                        Settings.fidelity,
                                         hints,
                                     )
                                 }
