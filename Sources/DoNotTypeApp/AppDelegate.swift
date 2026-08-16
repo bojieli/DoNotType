@@ -276,11 +276,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Wide enough for the tab bar, and resizable so it stays that way. A macOS tab bar is a
+        // single toolbar item: it lays out whole or collapses whole into the overflow chevron,
+        // taking every tab with it. Six tabs need 625pt and this window used to be 620, so the
+        // entire settings UI was one unlabelled `»` button. `contentMinSize` is the actual fix —
+        // the width can no longer be dragged below the point where the tabs disappear.
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 520),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         window.title = "DoNotType Settings"
+        window.contentMinSize = NSSize(width: 700, height: 460)
         window.contentView = NSHostingView(rootView: SettingsView(model: settingsModel))
         window.center()
         window.isReleasedWhenClosed = false

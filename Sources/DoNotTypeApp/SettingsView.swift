@@ -23,7 +23,9 @@ struct SettingsView: View {
             LogsTab(model: logs)
                 .tabItem { Label("Logs", systemImage: "list.bullet.rectangle") }
         }
-        .frame(width: 620, height: 520)
+        // A minimum rather than a fixed size: pinning the content to an exact width left the
+        // window unable to grow past the point where the tab bar fits, which is what hid it.
+        .frame(minWidth: 700, minHeight: 460)
         .task {
             await model.refresh()
             // Only when the launch check never ran — the window opens before the permissions

@@ -246,6 +246,21 @@ deliberate:
 
 ### Fixed
 
+- **Every tab in macOS Settings was invisible, including History and Logs.** The window opened on
+  an unlabelled `»` chevron and nothing else, so the six panels behind it — General, Grounding,
+  History, Stats, Prompt, Logs — could not be found at all without knowing to click it.
+
+  A macOS tab bar is a single toolbar item rather than one per tab: it lays out whole or collapses
+  whole into the overflow menu, taking every tab with it. Six tabs need a 625pt window and this one
+  was built at 620, missing by under five points and losing the entire settings UI for it. The
+  window is now 760pt and, more to the point, resizable with a 700pt minimum, so the width can no
+  longer be dragged below where the tabs vanish. The `.frame(width:height:)` pinning the content to
+  the old size is gone too — it was what stopped the window growing out of the problem.
+
+  Measured rather than guessed: the tab bar collapses at 620pt and lays out at 625pt, with every
+  width up to 860 checked. The 700pt floor is deliberate headroom, because a longer label in a
+  translated build would otherwise reintroduce exactly this bug with no code change.
+
 - **The API key field on macOS could be typed into but not pasted into.** Cut, Copy, Paste, Select
   All and Undo are menu items on macOS rather than behaviour built into a text field:
   `NSApplication` dispatches ⌘V by walking `mainMenu` for a matching key equivalent. This app builds
