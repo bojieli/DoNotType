@@ -7,16 +7,10 @@ namespace DoNotType.Core;
 /// the retry policy. Gemini is one implementation, and the interface exists so a second one is a
 /// new file rather than a rewrite.
 ///
-/// Two members are not obviously part of "call a model", and both are here because leaving them
-/// out would make the abstraction lie:
-///
-/// <list type="bullet">
-/// <item><see cref="SupportsPreUpload"/> — the Files API is Google-specific. A gateway with no
-/// equivalent must not be handed a URI it cannot resolve.</item>
-/// <item><see cref="TokenUsage.AudioTokens"/> in the result — the guard against a provider that
-/// accepts audio and silently discards it needs a number, and only the provider can report it.
-/// </item>
-/// </list>
+/// One member is not obviously part of "call a model", and it is here because leaving it out
+/// would make the abstraction lie: <see cref="TokenUsage.AudioTokens"/> in the result. The guard
+/// against a provider that accepts audio and silently discards it needs a number, and only the
+/// provider can report it.
 /// </summary>
 public interface ITranscriptionProvider
 {
@@ -25,13 +19,6 @@ public interface ITranscriptionProvider
 
     /// <summary>Model identifier this provider was configured with.</summary>
     string Model { get; }
-
-    /// <summary>
-    /// Whether audio can be uploaded ahead of the request and referenced by URI.
-    /// Providers without an equivalent get inline bytes and never see a
-    /// <see cref="InputPart.RemoteAudio"/>.
-    /// </summary>
-    bool SupportsPreUpload { get; }
 
     /// <summary>
     /// What this backend can do with what is on screen.
@@ -48,28 +35,6 @@ public interface ITranscriptionProvider
         CancellationToken cancellationToken = default,
         Fidelity fidelity = Fidelity.Light,
         IReadOnlyList<string>? keyterms = null);
-
-    /// <summary>
-    /// Creates an uploader for the pre-upload path, or null when the provider has none.
-    /// </summary>
-    IAudioUploader? CreateUploader() => null;
-}
-
-/// <summary>
-/// Gets a recording to a provider ahead of the request that references it.
-/// </summary>
-public interface IAudioUploader
-{
-    /// <summary>Begins any handshake, without waiting. Called at hotkey-down.</summary>
-    void Prepare(int estimatedBytes, string mimeType = "audio/wav");
-
-    void Cancel();
-
-    /// <summary>
-    /// Returns the part to send. Implementations degrade to inline rather than failing, so a
-    /// flaky network costs latency and never words.
-    /// </summary>
-    Task<InputPart> PlanAsync(byte[] audio, string mimeType = "audio/wav");
 }
 
 /// <summary>

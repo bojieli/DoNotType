@@ -79,10 +79,6 @@ public enum ConformanceFixture {
                 type = "audio"
                 mimeType = mime
                 bytes = data.count
-            case .remoteAudio(let uri, let mime):
-                type = "remoteAudio"
-                text = uri
-                mimeType = mime
             }
         }
     }

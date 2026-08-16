@@ -135,11 +135,6 @@ public sealed class GeminiProvider(
 
     public string Model => model;
 
-    /// <summary>The Files API is first-party, so the pre-upload path is available here.</summary>
-    public bool SupportsPreUpload => true;
-
-    public IAudioUploader CreateUploader() => new GeminiAudioUploader(apiKey, _http);
-
     /// <remarks>
     /// <paramref name="fidelity"/> and <paramref name="keyterms"/> are ignored, and that is not an
     /// oversight: fidelity already reached this backend inside <paramref name="systemInstruction"/>,
@@ -209,7 +204,7 @@ public sealed class GeminiProvider(
     /// </summary>
     private void AssertAudioWasProcessed(IReadOnlyList<InputPart> parts, TokenUsage usage)
     {
-        var sentAudio = parts.Any(p => p is InputPart.Audio or InputPart.RemoteAudio);
+        var sentAudio = parts.Any(p => p is InputPart.Audio);
         if (sentAudio && usage.AudioTokens == 0)
         {
             throw new ProviderException(
@@ -235,13 +230,6 @@ public sealed class GeminiProvider(
             ["type"] = "audio",
             ["data"] = Convert.ToBase64String(audio.Data),
             ["mime_type"] = audio.MimeType,
-        },
-        InputPart.RemoteAudio remote => new JsonObject
-        {
-            // `uri`, not `file_uri` — the latter is rejected as an unknown parameter.
-            ["type"] = "audio",
-            ["uri"] = remote.Uri,
-            ["mime_type"] = remote.MimeType,
         },
         _ => throw new ArgumentOutOfRangeException(nameof(part)),
     };

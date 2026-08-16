@@ -450,8 +450,8 @@ Extracts 16 kHz mono clips — the same format the apps record — from any medi
 Two warnings from experience:
 
 1. **Verify the clip before trusting a failure against it.** One extracted clip was near-silent,
-   and on silence the inline path hallucinated "hello testing" while the pre-upload path returned
-   empty. That looked like a route difference and was not.
+   and two runs over it disagreed — one hallucinated "hello testing", the other returned empty.
+   That looked like a routing bug and was silence.
 2. **Ground truth needs a human.** Transcribe each clip, check it by ear, and write the verified
    text into a case file before treating any number as real.
 

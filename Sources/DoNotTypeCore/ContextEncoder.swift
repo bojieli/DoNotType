@@ -99,7 +99,7 @@ public struct ContextEncoder: Sendable {
             case .text(let value): total += TokenBudget.estimate(value)
             // A 1024px-long-edge window screenshot tiles to roughly this many tokens.
             case .image: total += 1_300
-            case .audio, .remoteAudio: break
+            case .audio: break
             }
         }
     }

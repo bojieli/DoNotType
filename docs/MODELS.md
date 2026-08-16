@@ -97,7 +97,7 @@ The same model ID served by different providers does not behave identically.
 The direction is consistent across two independent measurements, but **each is individually weak** —
 6/8 versus 4/8 is nowhere near significant on its own. Treat this as "native is probably better,
 worth preferring, not proven". Native is the default anyway, because it is first-party, honours
-`store: false` directly, and supports the pre-upload path.
+`store: false` directly.
 
 ## Caveats worth knowing before trusting any of this
 
@@ -693,9 +693,8 @@ are whatever is on screen — on `real-acronym` that is `GRPO, PPO` while the sp
 ## Recommendation
 
 **`gemini-3.6-flash` on the native Gemini API**, still, and now against a wider field: it beats
-its own successor, its two predecessors, and every speech recognition backend measured. It is also
-the only listed configuration supporting the pre-upload path. The uploaded exact fixture now
-shows that Qwen3-Omni, Voxtral Small, and Gemma 4 all fail the no-context `Gemini 1.5` gate, so none
+its own successor, its two predecessors, and every speech recognition backend measured. The
+uploaded exact fixture now shows that Qwen3-Omni, Voxtral Small, and Gemma 4 all fail the no-context `Gemini 1.5` gate, so none
 can currently replace that hosted path on this workload. OpenRouter remains a working fallback and
 useful for models Google does not serve directly.
 

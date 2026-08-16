@@ -105,8 +105,6 @@ public abstract record InputPart
     public sealed record Text(string Value) : InputPart;
     public sealed record Image(byte[] Data, string MimeType) : InputPart;
     public sealed record Audio(byte[] Data, string MimeType) : InputPart;
-    /// <summary>Audio already uploaded to the Files API; referenced rather than carried.</summary>
-    public sealed record RemoteAudio(string Uri, string MimeType) : InputPart;
 }
 
 /// <summary>

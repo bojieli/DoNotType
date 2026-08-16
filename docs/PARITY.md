@@ -74,9 +74,6 @@ dictate into, so the fallback has not been needed; it is a gap rather than an im
 | Split long recordings on silence | ✅ | ✅ | ✅ | ✅ |
 | Fallback backend when the primary stalls | ✅ | ✅ | ✅ | ✅ |
 | Compress the upload with Opus | ✅ | ✅ | ✅ | ✅ |
-| Pre-upload during recording | ✅ | ✅ | — ⁸ | ✅ |
-
-⁸ A latency optimisation for Gemini's Files API. Worth having; nobody has done it.
 
 ## Everything else
 

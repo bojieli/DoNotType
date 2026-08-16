@@ -67,9 +67,6 @@ public sealed class DeepgramProvider(
     public string Name => "deepgram";
     public string Model => model;
 
-    /// <summary>The Files API is Google-specific; there is no equivalent here.</summary>
-    public bool SupportsPreUpload => false;
-
     /// <summary>
     /// Answered per-model, because the biasing channel only exists on nova-3. A provider that
     /// claimed keyterms while configured with nova-2 would have the service derive terms, send
@@ -202,7 +199,6 @@ public sealed class MistralProvider(
 
     public string Name => "mistral";
     public string Model => model;
-    public bool SupportsPreUpload => false;
     public GroundingSupport Grounding => GroundingSupport.None;
 
     public async Task<TranscriptionResult> TranscribeAsync(
@@ -317,7 +313,6 @@ public sealed class XAISpeechProvider(
 
     public string Name => "xai";
     public string Model => model;
-    public bool SupportsPreUpload => false;
     public GroundingSupport Grounding => GroundingSupport.Keyterms(MaxKeyterms, MaxKeytermChars);
 
     public async Task<TranscriptionResult> TranscribeAsync(

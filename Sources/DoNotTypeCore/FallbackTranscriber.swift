@@ -80,12 +80,11 @@ public struct FallbackTranscriber: Sendable {
     public func transcribe(
         audio: AudioFile,
         context: ScreenContext?,
-        audioPart: InputPart? = nil,
         onProgress: (@Sendable (Int, Int) -> Void)? = nil
     ) async throws -> Outcome {
         guard let secondary else {
             let result = try await primary.transcribeLong(
-                audio: audio, context: context, audioPart: audioPart, onProgress: onProgress)
+                audio: audio, context: context, onProgress: onProgress)
             return Outcome(result: result, attribution: attribution(primary, wasFallback: false))
         }
 
@@ -93,8 +92,7 @@ public struct FallbackTranscriber: Sendable {
             group.addTask {
                 Outcome(
                     result: try await primary.transcribeLong(
-                        audio: audio, context: context, audioPart: audioPart,
-                        onProgress: onProgress),
+                        audio: audio, context: context, onProgress: onProgress),
                     attribution: attribution(primary, wasFallback: false))
             }
             group.addTask {
@@ -112,11 +110,9 @@ public struct FallbackTranscriber: Sendable {
                         "primary": primary.provider.name, "fallback": secondary.provider.name,
                         "after": "\(hedgeAfter)",
                     ])
-                // The pre-uploaded reference is Google's Files API and means nothing to another
-                // backend, so the hedge always sends inline bytes.
                 return Outcome(
                     result: try await secondary.transcribeLong(
-                        audio: audio, context: context, audioPart: nil, onProgress: nil),
+                        audio: audio, context: context, onProgress: nil),
                     attribution: attribution(secondary, wasFallback: true))
             }
 

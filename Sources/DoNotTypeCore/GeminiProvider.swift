@@ -169,9 +169,6 @@ public struct GeminiProvider: TranscriptionProvider {
             ["type": "image", "data": data.base64EncodedString(), "mime_type": mimeType]
         case .audio(let data, let mimeType):
             ["type": "audio", "data": data.base64EncodedString(), "mime_type": mimeType]
-        case .remoteAudio(let uri, let mimeType):
-            // `uri`, not `file_uri` — the latter is rejected as an unknown parameter.
-            ["type": "audio", "uri": uri, "mime_type": mimeType]
         }
     }
 

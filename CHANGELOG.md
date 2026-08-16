@@ -296,6 +296,44 @@ deliberate:
 
 ### Removed
 
+- **The number check.** It transcribed every grounded dictation a second time without the screen
+  and spliced that run's digit sequences into the first one, because every regression grounding
+  has produced in the evaluation suite is a number: `1.5` → `2.5`, `4240` → `1024`. On the
+  reference clip it cut substitution from 58% to 8%, which is why it existed.
+
+  It was removed for what it charged rather than what it bought. Two concurrent requests mean the
+  dictation waits on the *slower* of two draws from the provider's latency distribution, and that
+  distribution's tail is the thing users actually feel. Profiled over 38 requests carrying the same
+  22.8 s clip against `gemini-3.6-flash`: 8.9 s median, 21 s at p90, 43 s max, and one connection
+  dropped outright at 62 s. Waiting on the slower of two moves p90 to 37 s and puts 26% of
+  dictations past 20 seconds instead of 14%.
+
+  The trigger made that permanent rather than occasional. `whenCaretHasNumbers` fired on any digit
+  in a 1,000-character caret window, which in a terminal or an editor is every time — sampled
+  against real stored contexts, 6 of 6. A number the model got wrong is a grounding and prompt
+  failure, and it belongs where it is caused rather than in a runoff vote afterwards. The
+  substitution rates stay in EVALUATION.md, because they are still the argument against grounding
+  numbers at all.
+
+  Gone with it: `NumericGuard`, `NumberCheckPolicy`, the Settings picker on all three clients,
+  `dnt transcribe --verify-numbers`, and the `digit-guard` ablation condition.
+
+- **Pre-upload.** A resumable Files API session opened at hotkey-down so the handshake was paid
+  while the user was still speaking, and the finished recording was referenced by URI instead of
+  carried as base64. The handshake trick was sound; the rest of it did not pay.
+
+  Measured on the machine that reported it: the upload cost about a second of serial time after
+  key release and saved about a second of body transfer on the request that followed — a wash. Its
+  worst case was not a wash. `finishUpload` carried a 60-second timeout and no shorter deadline, so
+  a stalled upload held the dictation for as long as it took to give up before falling back to the
+  inline path, which then worked first time. One dictation in six paid 54 seconds for it, on a
+  network where transit was measured at 0.44 s and never exceeded 0.7 s.
+
+  The recording now always rides in the request, compressed. Gone with it: `AudioUploader`,
+  `InputPart.remoteAudio`, `ITranscriptionProvider.SupportsPreUpload` and `IAudioUploader` on
+  Windows, and the `audioPart` parameter threaded through the transcription path on both. Android
+  never had it.
+
 - **Paste last transcript** (`⌘⌃V` on macOS, `Ctrl+Alt+V` on Windows), along with its menu bar item
   and its line in the Shortcuts list. It re-inserted the newest completed transcript, which is the
   one you are least likely to have lost — you just watched it land. Anything older, which is the

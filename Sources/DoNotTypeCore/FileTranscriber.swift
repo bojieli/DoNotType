@@ -5,8 +5,8 @@ import Foundation
 /// ## Why this is a separate type from the live path
 ///
 /// Live dictation is a latency problem: the user is standing there, the audio is already in the
-/// right format, and every decision — pre-upload, hedging, chunk concurrency — exists to shorten
-/// the wait. A file on disk is a *throughput* problem. It may be forty minutes long, in a format
+/// right format, and every decision — hedging, chunk concurrency — exists to shorten the wait.
+/// A file on disk is a *throughput* problem. It may be forty minutes long, in a format
 /// nothing downstream understands, and nobody is waiting on the first word.
 ///
 /// The two share everything that matters (`TranscriptionService`, the prompt, the chunker, the

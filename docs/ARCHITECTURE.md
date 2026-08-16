@@ -51,13 +51,12 @@ let go.
 Each of these was a guess first. The guess is recorded because the reasoning was plausible and
 still wrong, and that is worth knowing before someone re-derives it.
 
-**Chunked upload during recording is impossible.** A WAV declares its length in the header. One
-written with the streaming convention (`0xFFFFFFFF`) uploads fine and is then rejected with
-`invalid argument`. So the file is uploaded once, complete, and the only thing overlapped with
-recording is the session handshake. See `AudioUploader`.
-
-**`uri`, not `file_uri`.** The Files API reference form uses `uri`; `file_uri` is rejected as an
-unknown parameter.
+**Pre-uploading the recording was not worth its worst case.** A resumable Files API session
+opened at hotkey-down, so the handshake was free, and the finished file was referenced by URI
+instead of carried as base64. Measured, it cost about a second of serial time after key release to
+save about a second of body transfer — and when the upload stalled it had sixty seconds of timeout
+to spend before falling back to a path that then worked first time. One dictation in six paid 54 s
+for it. The recording now always rides in the request.
 
 **Restating the fidelity rule nearer the audio made things worse.** 11/19 substitutions became
 15/18. The restatement used the decoy value as its example, which appears to prime it. Examples in
@@ -136,7 +135,7 @@ at a seam as firmly as anywhere else.
 ## Measuring the wait
 
 Latency is recorded from **key release**, not from the request. Everything in between — the
-accessibility walk, a pre-upload that failed and fell back, a retry — is time the user spends
+accessibility walk, a retry — is time the user spends
 looking at the overlay, and a figure that excluded it would be flattering and useless.
 
 Failures contribute no timings at all. How long an error took to arrive is a different quantity, and

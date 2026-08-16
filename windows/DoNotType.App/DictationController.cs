@@ -28,7 +28,6 @@ public sealed class DictationController : IDisposable
     private readonly HistoryStore _history;
     private readonly AppSettings _settings;
 
-    private IAudioUploader? _uploader;
     private ScreenContext? _pendingContext;
     private CancellationTokenSource? _groundingCts;
     private Task<ScreenContext>? _fullCapture;
@@ -215,18 +214,6 @@ public sealed class DictationController : IDisposable
                 var token = _groundingCts.Token;
                 _fullCapture = Task.Run(() => _screen.CaptureFull(token), token);
             }
-
-            // Same trick for the network: opening the upload session now means the handshake is
-            // paid for during recording rather than after it.
-            if (_settings.ResolvedApiKey() is { Length: > 0 } key)
-            {
-                var provider = ProviderFactory.Create(_settings.Provider, key, _settings.Model);
-                if (provider.SupportsPreUpload)
-                {
-                    _uploader = provider.CreateUploader();
-                    _uploader?.Prepare(1_000_000);
-                }
-            }
         }
         catch (MicrophoneUnavailableException error)
         {
@@ -279,8 +266,6 @@ public sealed class DictationController : IDisposable
     {
         if (Current != State.Recording) return;
         _recorder.Cancel();
-        _uploader?.Cancel();
-        _uploader = null;
         _groundingCts?.Cancel();
         _pendingContext = null;
         SetState(State.Idle);
@@ -300,8 +285,6 @@ public sealed class DictationController : IDisposable
             DictationLog.Info(
                 () => "recording too short to send",
                 new Dictionary<string, string> { ["dictation"] = Short(_pendingId) });
-            _uploader?.Cancel();
-            _uploader = null;
             _groundingCts?.Cancel();
             SetState(State.Idle);
             return;
@@ -323,8 +306,6 @@ public sealed class DictationController : IDisposable
                     ["dictation"] = Short(_pendingId),
                     ["audio"] = activity.Summary,
                 });
-            _uploader?.Cancel();
-            _uploader = null;
             _groundingCts?.Cancel();
             SetState(State.Idle);
             return;
@@ -348,11 +329,11 @@ public sealed class DictationController : IDisposable
     /// the provider, its key and the delay are all live settings.
     /// </summary>
     private FallbackTranscriber BuildTranscriber(
-        TranscriptionService primary, byte[] wav, ScreenContext? context, InputPart? audioPart)
+        TranscriptionService primary, byte[] wav, ScreenContext? context)
     {
         Task<TranscriptionResult> RunPrimary(CancellationToken token) =>
             primary.TranscribeLongAsync(
-                wav, context, audioPart,
+                wav, context,
                 onProgress: (done, total) => ChunkProgress?.Invoke(done, total),
                 cancellationToken: token);
 
@@ -380,10 +361,8 @@ public sealed class DictationController : IDisposable
             KeytermBiasing = _settings.KeytermBiasing,
         };
 
-        // The pre-uploaded reference is Google's Files API and means nothing to another backend,
-        // so the hedge always sends inline bytes.
         Task<TranscriptionResult> RunSecondary(CancellationToken token) =>
-            secondary.TranscribeLongAsync(wav, context, null, cancellationToken: token);
+            secondary.TranscribeLongAsync(wav, context, cancellationToken: token);
 
         return new FallbackTranscriber(
             RunPrimary, primary.Provider.Name, primary.Provider.Model,
@@ -453,9 +432,8 @@ public sealed class DictationController : IDisposable
             KeytermBiasing = _settings.KeytermBiasing,
         };
 
-        // From here, not from the request: reading the screen, a failed pre-upload and any retry
-        // are all time the user spends watching the overlay, and a figure that skipped them would
-        // flatter the app.
+        // From here, not from the request: reading the screen and any retry are both time the
+        // user spends watching the overlay, and a figure that skipped them would flatter the app.
         var releasedAt = Stopwatch.GetTimestamp();
         var record = new DictationRecord
         {
@@ -482,22 +460,12 @@ public sealed class DictationController : IDisposable
 
         try
         {
-            // Pre-uploaded when the session opened and the upload landed; inline otherwise. The
-            // fallback is silent by design: a flaky network should cost latency, never words.
-            InputPart? audioPart = null;
-            if (_uploader is not null)
-            {
-                try { audioPart = await _uploader.PlanAsync(wav).ConfigureAwait(false); }
-                catch (ProviderException) { audioPart = null; }
-                _uploader = null;
-            }
-
             var requestStart = Stopwatch.GetTimestamp();
             // Long recordings split across concurrent requests; short ones -- every ordinary
             // dictation -- take the single-request path unchanged.
             // Hedged when a fallback backend is configured: the primary gets the whole delay to
             // itself, and only a stalled one is ever raced. See FallbackTranscriber.
-            var outcome = await BuildTranscriber(service, wav, context, audioPart)
+            var outcome = await BuildTranscriber(service, wav, context)
                 .TranscribeAsync()
                 .ConfigureAwait(false);
             var result = outcome.Result;

@@ -100,10 +100,8 @@ public struct TranscriptionService: Sendable {
     /// grounded.
     public var grounding: GroundingSupport { provider.grounding(forModel: model) }
 
-    /// - Parameter audioPart: overrides how the recording is carried, so a caller that
-    ///   pre-uploaded it can pass a URI reference instead of the bytes. Defaults to inline.
     public func transcribe(
-        audio: AudioFile, context: ScreenContext?, audioPart: InputPart? = nil
+        audio: AudioFile, context: ScreenContext?
     ) async throws -> TranscriptionResult {
         var parts: [InputPart] = []
         var keyterms: [String] = []
@@ -125,8 +123,9 @@ public struct TranscriptionService: Sendable {
             break
         }
 
-        // Compressed unless the caller already resolved the audio to a pre-uploaded reference.
-        let payload = audioPart ?? audio.compressedForUpload().part
+        // Compressed here rather than at the call site, so every backend gets it: measured at
+        // 960 kB down to 60 kB for thirty seconds of speech.
+        let payload = audio.compressedForUpload().part
         parts.append(payload)
 
         // The routing decision, recorded before the request rather than inferred from the result.
@@ -167,24 +166,18 @@ public struct TranscriptionService: Sendable {
     }
 
     /// Retries with exponential backoff, giving up early on errors that will not change.
-    ///
-    /// A pre-uploaded reference is used for the first attempt only. If that fails the retries fall
-    /// back to inline bytes, because a URI that failed once may be the thing that is broken —
-    /// an expired file, a half-finalised upload — and re-sending it would fail identically.
     public func transcribeWithRetry(
         audio: AudioFile,
         context: ScreenContext?,
-        audioPart: InputPart? = nil,
         attempts: Int = 3,
         initialDelay: Duration = .milliseconds(600)
     ) async throws -> TranscriptionResult {
         var delay = initialDelay
         var lastError: any Error = ProviderError.emptyOutput
-        var part = audioPart
 
         for attempt in 1...max(1, attempts) {
             do {
-                return try await transcribe(audio: audio, context: context, audioPart: part)
+                return try await transcribe(audio: audio, context: context)
             } catch {
                 lastError = error
                 guard attempt < attempts, Self.isTransient(error) else {
@@ -205,7 +198,6 @@ public struct TranscriptionService: Sendable {
                         "attempt": "\(attempt)", "of": "\(attempts)",
                         "backoff": "\(delay)", "error": error.localizedDescription,
                     ])
-                part = nil  // fall back to inline for every subsequent attempt
                 try? await Task.sleep(for: delay)
                 delay = delay * 2
             }
@@ -237,7 +229,6 @@ public struct TranscriptionService: Sendable {
     public func transcribeLong(
         audio: AudioFile,
         context: ScreenContext?,
-        audioPart: InputPart? = nil,
         attempts: Int = 3,
         maxConcurrent: Int = 3,
         onProgress: (@Sendable (Int, Int) -> Void)? = nil
@@ -245,7 +236,7 @@ public struct TranscriptionService: Sendable {
         let chunks = AudioChunker.split(wav: audio.data)
         guard chunks.count > 1 else {
             return try await transcribeWithRetry(
-                audio: audio, context: context, audioPart: audioPart, attempts: attempts)
+                audio: audio, context: context, attempts: attempts)
         }
 
         Self.log.info(

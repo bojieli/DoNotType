@@ -107,7 +107,7 @@ struct ContextInspectorView: View {
                 }
             }
 
-        case .audio, .remoteAudio:
+        case .audio:
             EmptyView()  // the recording is described separately below
         }
     }

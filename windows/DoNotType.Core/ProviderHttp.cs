@@ -72,7 +72,7 @@ public static class ProviderHttp
     /// Strips credentials out of a URL before it is logged.
     /// </summary>
     /// <remarks>
-    /// Not hypothetical: the Files API takes the key as <c>?key=</c>, and <see cref="Redaction"/>
+    /// Not hypothetical: several APIs take the key as <c>?key=</c>, and <see cref="Redaction"/>
     /// would only catch it by shape. Removing the value outright catches the rest.
     /// </remarks>
     public static string RedactUrl(string url)

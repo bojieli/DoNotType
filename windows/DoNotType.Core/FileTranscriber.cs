@@ -150,7 +150,7 @@ public sealed class FileTranscriber(
 
         var transcribeStart = DateTimeOffset.Now;
         var result = await service.TranscribeLongAsync(
-                wav, context, null, attempts, maxConcurrent,
+                wav, context, attempts, maxConcurrent,
                 (done, of) => onProgress?.Invoke(new Progress.Transcribing(done, of)),
                 cancellationToken)
             .ConfigureAwait(false);

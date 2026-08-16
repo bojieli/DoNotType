@@ -73,7 +73,7 @@ data class DictationRecord(
      * Wall clock from the end of speech to text delivered -- what the user actually waits.
      *
      * Measured from key release rather than from the request, because everything in between
-     * (reading the screen, a failed pre-upload, a retry) is time spent staring at the overlay.
+     * (reading the screen, a retry) is time spent staring at the overlay.
      * A figure that excluded it would flatter the app.
      */
     var latencyMillis: Long? = null,

@@ -48,7 +48,7 @@ public sealed class DictationRecord
     /// </summary>
     /// <remarks>
     /// Measured from key release rather than from the request, because everything in between
-    /// (reading the screen, a failed pre-upload, a retry) is time spent watching the overlay. A
+    /// (reading the screen, a retry) is time spent watching the overlay. A
     /// figure that excluded it would flatter the app. Null means not measured, which must never
     /// render as zero.
     /// </remarks>

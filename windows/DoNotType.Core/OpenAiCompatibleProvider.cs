@@ -9,7 +9,7 @@ namespace DoNotType.Core;
 ///
 /// The second implementation exists mainly to keep <see cref="ITranscriptionProvider"/> honest. It
 /// differs from Gemini in ways the interface has to accommodate rather than paper over: a
-/// different request shape, a different usage field for audio tokens, and no pre-upload at all.
+/// different request shape and a different usage field for audio tokens.
 /// </summary>
 public sealed class OpenAiCompatibleProvider(
     string name,
@@ -26,12 +26,6 @@ public sealed class OpenAiCompatibleProvider(
     public string Name => name;
 
     public string Model => model;
-
-    /// <summary>
-    /// The Files API is Google-specific. A gateway has no way to resolve such a URI, so this
-    /// provider must never be handed one — hence the capability flag rather than a silent failure.
-    /// </summary>
-    public bool SupportsPreUpload => false;
 
     /// <remarks>See <see cref="GeminiProvider"/>: fidelity travels in the system instruction here.</remarks>
     public async Task<TranscriptionResult> TranscribeAsync(
@@ -71,10 +65,6 @@ public sealed class OpenAiCompatibleProvider(
                         },
                     });
                     break;
-                case InputPart.RemoteAudio:
-                    // Unreachable when callers honour SupportsPreUpload; skipped rather than
-                    // thrown so a mistake degrades instead of losing a dictation.
-                    continue;
             }
         }
 

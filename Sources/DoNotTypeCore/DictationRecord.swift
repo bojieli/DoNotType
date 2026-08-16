@@ -70,7 +70,7 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
     ///
     /// Deliberately measured from key release rather than from the request, because everything
     /// between those two points (waiting on the screen-context read, falling back from a failed
-    /// pre-upload, a retry) is time the user spends staring at the overlay. A latency figure that
+    /// a retry) is time the user spends staring at the overlay. A latency figure that
     /// excluded it would be flattering and useless.
     public var latencySeconds: Double?
     /// Time inside the transcription request alone, for separating a slow model from a slow app.

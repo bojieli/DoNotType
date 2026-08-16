@@ -147,10 +147,6 @@ public struct OpenAICompatibleProvider: TranscriptionProvider {
                         "format": Self.audioFormat(for: mimeType),
                     ],
                 ])
-            case .remoteAudio:
-                // The Files API is Google-specific; an OpenAI-compatible gateway has no way to
-                // resolve the URI, so pre-upload is simply not offered on this path.
-                continue
             }
         }
 

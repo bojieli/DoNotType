@@ -29,8 +29,6 @@ final class DictationController {
     private let overlay = RecordingOverlay()
     private let insertions = InsertionTracker()
 
-    /// Opened at hotkey-down so the upload handshake happens while the user is still speaking.
-    private var uploader: AudioUploader?
     private var levelTimer: Timer?
     /// The in-flight dictation's id, from the key press to the insertion.
     private var pendingID = UUID()
@@ -145,19 +143,6 @@ final class DictationController {
             // still speaking, so grounding costs no perceived latency.
             grounding.beginCapture()
 
-            // Same trick for the network. Opening the resumable upload session now means the
-            // handshake is paid for during the recording rather than after it.
-            if let key = Settings.shared.resolvedAPIKey(), Settings.shared.provider == .google {
-                let uploader = AudioUploader(apiKey: key)
-                self.uploader = uploader
-                // Declared as Ogg because that is what will actually be sent; the session's
-                // content type is fixed when it opens, not when the bytes arrive.
-                Task {
-                    await uploader.prepare(
-                        mimeType: OpusEncoder.isAvailable ? "audio/ogg" : "audio/wav")
-                }
-            }
-
             overlay.show(phase: .recording, hint: Settings.shared.hotkeyMode.overlayHint)
             startLevelUpdates()
         } catch {
@@ -177,8 +162,6 @@ final class DictationController {
         log.info("recording cancelled", ["dictation": Self.short(pendingID)])
         recorder.cancel()
         grounding.cancel()
-        Task { [uploader] in await uploader?.cancel() }
-        uploader = nil
         stopLevelUpdates()
         overlay.hide()
         state = .idle
@@ -215,8 +198,6 @@ final class DictationController {
             // this is the most common innocent explanation for it.
             log.info("recording too short to send", ["dictation": Self.short(pendingID)])
             grounding.cancel()
-            Task { [uploader] in await uploader?.cancel() }
-            uploader = nil
             overlay.hide()
             state = .idle
             return
@@ -238,8 +219,6 @@ final class DictationController {
                 "nothing was said, so nothing was sent",
                 ["dictation": Self.short(pendingID), "audio": activity.summary])
             grounding.cancel()
-            Task { [uploader] in await uploader?.cancel() }
-            uploader = nil
             overlay.hide()
             state = .idle
             return
@@ -319,16 +298,13 @@ final class DictationController {
             ])
 
         do {
-            // Pre-uploaded if the session opened and the upload landed; inline otherwise. The
-            // fallback is silent by design — a flaky network should cost latency, never words.
-            let audioPart = await resolveAudioPart(audio)
             let requestStart = Date()
             // Long recordings are split across concurrent requests; short ones — every ordinary
             // dictation — take the single-request path unchanged.
             // Hedged when a fallback backend is configured: the primary gets the whole delay to
             // itself, and only a stalled one is ever raced. See FallbackTranscriber.
             let outcome = try await makeTranscriber(primary: coordinator.service).transcribe(
-                audio: audio, context: context, audioPart: audioPart
+                audio: audio, context: context
             ) { [weak self] done, total in
                 Task { @MainActor in
                     self?.overlay.update(phase: .transcribingChunk(done: done, of: total))
@@ -495,24 +471,6 @@ final class DictationController {
         return try? PromptStore(directory: HistoryStore.defaultDirectory())
             .builder(bundled: promptURL)
             .rewriteInstruction(style: style)
-    }
-
-    /// Chooses the upload route, degrading to inline rather than failing.
-    private func resolveAudioPart(_ audio: AudioFile) async -> InputPart? {
-        guard let uploader else { return nil }
-        self.uploader = nil
-        do {
-            let plan = try await uploader.plan(for: audio)
-            if case .preUploaded = plan.route {
-                log.info("audio pre-uploaded; request carries a URI instead of base64")
-            }
-            return plan.part
-        } catch {
-            // Only happens when the recording is too big to inline AND the upload service is
-            // unreachable. Surfacing it lets the caller store the audio for a later retry.
-            log.warning("no upload route available: \(error.localizedDescription)")
-            return nil
-        }
     }
 
     /// Wraps the configured primary with a fallback, when one is set.

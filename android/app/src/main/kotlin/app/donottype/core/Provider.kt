@@ -28,7 +28,7 @@ sealed class GroundingSupport {
 /**
  * A backend that turns audio, and possibly context, into a transcript.
  *
- * Deliberately narrower than the macOS protocol: Android has no pre-upload path, so nothing here
+ * Deliberately narrow: audio and context in, transcript out, so nothing here
  * needs to describe one.
  */
 interface TranscriptionProvider {

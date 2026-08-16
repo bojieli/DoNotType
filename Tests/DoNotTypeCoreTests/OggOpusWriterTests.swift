@@ -216,9 +216,8 @@ final class OpusEncoderTests: XCTestCase {
     }
 }
 
-/// The pre-upload route is the one the app actually takes, so it is the one that has to be
-/// compressed. Shipping compression on the inline path alone was a real defect: every measurement
-/// improved and no user saw any of it.
+/// Compression is not optional decoration: it is the difference between a request that carries
+/// 960 kB of base64 for thirty seconds of speech and one that carries 60 kB.
 final class UploadCompressionTests: XCTestCase {
     private func speechWav(seconds: Double) -> Data {
         var pcm = Data()
@@ -232,26 +231,26 @@ final class UploadCompressionTests: XCTestCase {
         return AudioChunker.wrapInWavContainer(pcm, format: AudioChunker.Format())
     }
 
-    /// With no upload session open, `plan` falls back to inline — and that payload must already be
-    /// the compressed one.
-    func testInlineFallbackCarriesCompressedAudio() async throws {
+    /// Whatever a recording is carried by, it is carried compressed.
+    ///
+    /// Compression used to live on one of two upload routes, and putting it on the wrong one was a
+    /// real bug: the measured saving reached the eval harness and nobody else. There is one route
+    /// now, so this asserts the property directly on the part that gets sent.
+    func testTheSentPartIsAlwaysCompressed() throws {
         try XCTSkipUnless(OpusEncoder.isAvailable, "no Opus encoder on this system")
 
         let wav = speechWav(seconds: 3)
-        let uploader = AudioUploader(apiKey: "test-key")
-        let plan = try await uploader.plan(for: AudioFile(data: wav, mimeType: "audio/wav"))
+        let part = AudioFile(data: wav, mimeType: "audio/wav").compressedForUpload().part
 
-        guard case .audio(let data, let mimeType) = plan.part else {
-            return XCTFail("expected inline audio, got \(plan.part)")
+        guard case .audio(let data, let mimeType) = part else {
+            return XCTFail("expected inline audio, got \(part)")
         }
         XCTAssertEqual(mimeType, "audio/ogg")
         XCTAssertLessThan(data.count, wav.count / 4)
         XCTAssertEqual(data.prefix(4), Data("OggS".utf8))
     }
 
-    /// The session cannot declare a byte count, because the recording has not happened when it
-    /// opens and compression happens after it. Declaring one made every pre-upload fail at
-    /// finalise with a size mismatch, silently falling back to inline.
+    /// The saving has to be worth the encode time, or the compression step is pure latency.
     func testCompressionShrinksTheUploadEnoughToMatter() throws {
         try XCTSkipUnless(OpusEncoder.isAvailable, "no Opus encoder on this system")
 
