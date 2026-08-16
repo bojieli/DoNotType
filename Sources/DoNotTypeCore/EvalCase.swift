@@ -198,7 +198,12 @@ public struct EvalRunner: Sendable {
     private var service: TranscriptionService {
         TranscriptionService(
             provider: provider, model: model, systemInstruction: systemInstruction,
-            encoder: encoder, fidelity: fidelity, keytermBiasing: keytermBiasing)
+            encoder: encoder, fidelity: fidelity, keytermBiasing: keytermBiasing,
+            // The one place the stall hedge is unwanted. A suite is hundreds of requests against a
+            // backend that may be having a slow hour, and quietly doubling that spend is a harness
+            // defect. Nothing here measures latency either — the numbers in `docs/EVALUATION.md`
+            // come from the dictation benchmark, which runs the product path hedge and all.
+            hedgeStalledRequests: false)
     }
 
     /// Transcribes once. `context` of `nil` produces the no-context baseline.

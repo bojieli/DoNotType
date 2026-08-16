@@ -78,6 +78,13 @@ public struct TranscriptionService: Sendable {
     /// emit anything containing a digit for that reason, but the residual risk on names is real.
     /// Measured in `docs/EVALUATION.md`.
     public var keytermBiasing: Bool
+    /// Whether a request that has stalled is joined by a second identical one, the faster of the
+    /// two winning. See `StallHedge` for what counts as stalled and why this is not a timeout.
+    ///
+    /// On by default, because the tail it exists for is the single worst thing about dictating
+    /// through a network. Off for measurement: a benchmark that reports the better of two draws is
+    /// not reporting the backend's latency.
+    public var hedgeStalledRequests: Bool
 
     public init(
         provider: any TranscriptionProvider,
@@ -85,7 +92,8 @@ public struct TranscriptionService: Sendable {
         systemInstruction: String,
         encoder: ContextEncoder = ContextEncoder(),
         fidelity: Fidelity = .default,
-        keytermBiasing: Bool = false
+        keytermBiasing: Bool = false,
+        hedgeStalledRequests: Bool = true
     ) {
         self.provider = provider
         self.model = model
@@ -93,6 +101,7 @@ public struct TranscriptionService: Sendable {
         self.encoder = encoder
         self.fidelity = fidelity
         self.keytermBiasing = keytermBiasing
+        self.hedgeStalledRequests = hedgeStalledRequests
     }
 
     /// What this service's backend can actually do with the screen, for callers that need to say
@@ -189,6 +198,41 @@ public struct TranscriptionService: Sendable {
         }
     }
 
+    /// One request, joined by a second identical one if it stalls — see `StallHedge`.
+    ///
+    /// Wrapped here rather than around `transcribe` itself so that the retry ladder below sees a
+    /// single attempt: a stall and a failure are different problems with different remedies, and a
+    /// request that stalled three times should still get its three tries at *failing*.
+    ///
+    /// The duration comes from the audio this call was handed, which for a split recording is one
+    /// chunk rather than the whole dictation. That is the right denominator — a chunk is what the
+    /// request is being asked to transcribe.
+    private func hedgedAttempt(
+        audio: AudioFile, context: ScreenContext?
+    ) async throws -> TranscriptionResult {
+        guard hedgeStalledRequests else {
+            return try await transcribe(audio: audio, context: context)
+        }
+
+        let deadline = StallHedge.deadlineSeconds(audioSeconds: audio.durationSeconds)
+        let providerName = provider.name
+        let modelName = model
+        return try await StallHedge.race(
+            deadlineSeconds: deadline,
+            onHedge: {
+                // Info, not debug: this is the app spending a second request on the user's behalf.
+                // A hedge that fires on every dictation is a backend having a bad day rather than a
+                // working feature, and that should be visible without turning anything on.
+                Self.log.info(
+                    "request stalled; sending a second one",
+                    [
+                        "provider": providerName, "model": modelName,
+                        "after": String(format: "%.1fs", deadline),
+                    ])
+            },
+            attempt: { try await transcribe(audio: audio, context: context) })
+    }
+
     /// Retries with exponential backoff, giving up early on errors that will not change.
     public func transcribeWithRetry(
         audio: AudioFile,
@@ -201,7 +245,7 @@ public struct TranscriptionService: Sendable {
 
         for attempt in 1...max(1, attempts) {
             do {
-                return try await transcribe(audio: audio, context: context)
+                return try await hedgedAttempt(audio: audio, context: context)
             } catch {
                 lastError = error
                 guard attempt < attempts, Self.isTransient(error) else {
