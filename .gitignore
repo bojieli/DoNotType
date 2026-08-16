@@ -5,6 +5,10 @@
 xcuserdata/
 DerivedData/
 
+# Screenshots from the launch checks, which CI uploads as a build artifact rather than committing
+# — see the macos-screenshots step. One run of scripts/macos-launch-check.sh leaves 7 MB here.
+shots/
+
 # Eval artifacts: audio and results are local, case definitions are committed.
 eval/results/*
 !eval/results/local-real-audio-2026-08-10.json
