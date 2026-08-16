@@ -60,30 +60,33 @@ public sealed class Arguments : CommandLine
     }
 
     /// <summary>
-    /// Finds PROMPT.md: an explicit path, then up from the working directory, then beside this
+    /// Finds prompt/: an explicit path, then up from the working directory, then beside this
     /// executable -- which is where an installed copy sits, next to the app that ships it.
     /// </summary>
     public string ResolvePromptPath()
     {
         if (Option("prompt") is { } explicitPath)
         {
-            if (!File.Exists(explicitPath)) throw new UsageException($"no such file: {explicitPath}");
+            if (!Directory.Exists(explicitPath))
+            {
+                throw new UsageException($"no such directory: {explicitPath}");
+            }
             return explicitPath;
         }
-        return PromptBuilder.FindPromptFile(Directory.GetCurrentDirectory())
-            ?? PromptBuilder.FindPromptFile(AppContext.BaseDirectory)
+        return PromptBuilder.FindPromptDirectory(Directory.GetCurrentDirectory())
+            ?? PromptBuilder.FindPromptDirectory(AppContext.BaseDirectory)
             ?? throw new UsageException(
-                "could not find PROMPT.md. Run this from a checkout, pass --prompt, or install the "
-                + "app -- the CLI looks beside its own executable too.");
+                "could not find the prompt/ directory. Run this from a checkout, pass --prompt, or "
+                + "install the app -- the CLI looks beside its own executable too.");
     }
 
     public PromptBuilder ResolvePrompt()
     {
-        // The user's edited copy when they have one, exactly as the app would use it. A CLI that
+        // The user's edited parts when they have any, exactly as the app would use them. A CLI that
         // silently sent the shipped prompt while the app sent an edited one would make the two
-        // disagree about the only file that matters.
+        // disagree about the only files that matter.
         var store = new PromptStore(Preferences.Directory);
-        return new PromptBuilder(store.ActiveTemplate(ResolvePromptPath()));
+        return store.Builder(ResolvePromptPath());
     }
 
     /// <summary>Builds a service, and says where the key came from.</summary>

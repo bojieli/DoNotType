@@ -30,8 +30,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The same contract file macOS, Android and iOS ship. Copied, never duplicated. -->
-    <None Include="..\..\PROMPT.md" Link="PROMPT.md" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The same contract macOS, Android and iOS ship. Copied, never duplicated. The link keeps
+         the directory layout, because a part is found by its path under prompt/. -->
+    <None Include="..\..\prompt\**\*.md" Link="prompt\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

@@ -36,6 +36,8 @@ internal sealed class TrayApplication : ApplicationContext
         // Before anything else can log, and before the first request can carry a key.
         _settings.StartLogging();
 
+        MigrateLegacyPrompt();
+
         _controller = new DictationController(_settings);
         _controller.StateChanged += OnStateChanged;
         // Only when there is more than one part. A single-chunk dictation is the ordinary case, and
@@ -73,6 +75,38 @@ internal sealed class TrayApplication : ApplicationContext
         _levelTimer.Tick += (_, _) => _overlay.UpdateLevel(_controller.Level);
 
         StartUp();
+    }
+
+    /// <summary>
+    /// Splits a pre-split PROMPT.md override into part files, once, before the first dictation.
+    /// </summary>
+    /// <remarks>
+    /// Logged rather than shown: nothing here is worth a modal at launch, and the parts it wrote
+    /// are visible in the Prompt tab anyway. A failure means the user gets the shipped contract,
+    /// which is what would have happened before.
+    /// </remarks>
+    private static void MigrateLegacyPrompt()
+    {
+        var bundled = PromptBuilder.FindPromptDirectory();
+        if (bundled is null) return;
+
+        try
+        {
+            var store = new PromptStore(HistoryStore.DefaultDirectory());
+            if (store.MigrateLegacyPrompt(bundled) is not { } migration) return;
+
+            new Log("prompt").Info(() => "split the single-file prompt", new Dictionary<string, string>
+            {
+                ["parts"] = migration.Migrated.Count == 0
+                    ? "none — the copy matched the shipped contract"
+                    : string.Join(", ", migration.Migrated.Select(p => p.RelativePath)),
+                ["archived"] = migration.ArchivedAt,
+            });
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            new Log("prompt").Warn(() => $"could not split the old prompt: {error.Message}");
+        }
     }
 
     private void StartUp()

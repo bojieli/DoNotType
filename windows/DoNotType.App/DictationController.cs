@@ -39,6 +39,17 @@ public sealed class DictationController : IDisposable
     /// <summary>Everything a dictation does, under one category so `dnt logs --grep` finds it.</summary>
     private static readonly Log DictationLog = new("dictate");
 
+    /// <summary>
+    /// The prompt in force: the user's edited parts over the shipped ones.
+    /// </summary>
+    /// <remarks>
+    /// Every path that builds a request goes through here -- primary, fallback, second stage and
+    /// retry alike. Reading the shipped directory directly in any one of them would mean an edited
+    /// prompt applied to some requests and not others, and which you got would depend on timing.
+    /// </remarks>
+    private static PromptBuilder Prompt(string bundled) =>
+        new PromptStore(HistoryStore.DefaultDirectory()).Builder(bundled);
+
     /// <summary>The in-flight dictation's id, from the key press to the insertion.</summary>
     private Guid _pendingId = Guid.NewGuid();
 
@@ -354,7 +365,10 @@ public sealed class DictationController : IDisposable
             ? null
             : _settings.KeyFor(kind.Value)
                 ?? Environment.GetEnvironmentVariable(kind.Value.ApiKeyEnvVar());
-        var promptPath = PromptBuilder.FindPromptFile();
+        // Through the store, not the shipped directory: a fallback that sent the shipped contract
+        // while the primary sent an edited one would make the two disagree about the only files
+        // that matter, and which one you got would depend on whether the first request timed out.
+        var promptPath = PromptBuilder.FindPromptDirectory();
 
         if (kind is null || string.IsNullOrEmpty(key) || promptPath is null)
         {
@@ -364,7 +378,7 @@ public sealed class DictationController : IDisposable
 
         var secondary = new TranscriptionService(
             ProviderFactory.Create(kind.Value, key, _settings.ModelFor(kind.Value)),
-            PromptBuilder.FromFile(promptPath).SystemInstruction(_settings.Fidelity))
+            Prompt(promptPath).SystemInstruction(_settings.Fidelity))
         {
             Fidelity = _settings.Fidelity,
             KeytermBiasing = _settings.KeytermBiasing,
@@ -427,15 +441,15 @@ public sealed class DictationController : IDisposable
         }
 
         var provider = ProviderFactory.Create(_settings.Provider, key, _settings.Model);
-        var promptPath = PromptBuilder.FindPromptFile();
+        var promptPath = PromptBuilder.FindPromptDirectory();
         if (promptPath is null)
         {
-            Fail("PROMPT.md is missing next to the executable.");
+            Fail("The prompt/ directory is missing next to the executable.");
             return;
         }
 
         var service = new TranscriptionService(
-            provider, PromptBuilder.FromFile(promptPath).SystemInstruction(_settings.Fidelity))
+            provider, Prompt(promptPath).SystemInstruction(_settings.Fidelity))
         {
             // Carried separately as well as baked into the prompt, because a recognition backend
             // has no system instruction to read it out of.
@@ -532,7 +546,7 @@ public sealed class DictationController : IDisposable
             if (style.IsRewrite())
             {
                 var mode = TranscriptMode.Rewrite(style);
-                var instruction = PromptBuilder.FromFile(promptPath).SecondStageInstruction(mode);
+                var instruction = Prompt(promptPath).SecondStageInstruction(mode);
                 if (instruction is not null)
                 {
                     SetState(State.Deriving);
@@ -676,7 +690,7 @@ public sealed class DictationController : IDisposable
     public async Task<bool> RetryAsync(DictationRecord record)
     {
         var key = _settings.ResolvedApiKey();
-        var promptPath = PromptBuilder.FindPromptFile();
+        var promptPath = PromptBuilder.FindPromptDirectory();
         if (string.IsNullOrEmpty(key) || promptPath is null) return false;
 
         var wav = _history.AudioFor(record);
@@ -690,7 +704,7 @@ public sealed class DictationController : IDisposable
         record.RetryCount++;
         var service = new TranscriptionService(
             ProviderFactory.Create(_settings.Provider, key, _settings.Model),
-            PromptBuilder.FromFile(promptPath).SystemInstruction(record.Fidelity));
+            Prompt(promptPath).SystemInstruction(record.Fidelity));
 
 
         try

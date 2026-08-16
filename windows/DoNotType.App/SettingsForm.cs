@@ -365,13 +365,24 @@ public sealed class SettingsForm : Form
     // ---- Prompt ------------------------------------------------------------------------------
 
     /// <summary>
-    /// The contract, editable in place. Exposed because this is open-source software whose entire
-    /// behaviour is a prompt; the warning is not boilerplate, since the measured numbers describe
-    /// the shipped text and stop applying the moment it is edited.
+    /// The contract, editable one part at a time.
     /// </summary>
+    /// <remarks>
+    /// Exposed because this is open-source software whose entire behaviour is a prompt. One box per
+    /// file rather than one box for everything, because the contract is twelve separate
+    /// instructions -- and a single buffer holding all of them is how the shipped text and the
+    /// documentation about it came to live in the same place, with a marker convention as the only
+    /// thing telling them apart.
+    ///
+    /// The warning is not boilerplate: the measured numbers describe the shipped text and stop
+    /// applying to whichever part is edited.
+    /// </remarks>
     private TabPage BuildPromptTab()
     {
         var page = new TabPage("Prompt");
+        var store = new PromptStore(HistoryStore.DefaultDirectory());
+        var bundled = PromptBuilder.FindPromptDirectory();
+
         var editor = new TextBox
         {
             Multiline = true,
@@ -381,45 +392,95 @@ public sealed class SettingsForm : Form
             WordWrap = false,
         };
         var status = new Label { Dock = DockStyle.Bottom, AutoSize = false, Height = 40 };
+        var parts = new ListBox { Dock = DockStyle.Left, Width = 190, IntegralHeight = false };
 
-        var store = new PromptStore(HistoryStore.DefaultDirectory());
-        var defaultPath = PromptBuilder.FindPromptFile();
+        if (bundled is null)
+        {
+            status.Text = "Could not locate the bundled prompt/ directory next to the executable.";
+            page.Controls.Add(editor);
+            page.Controls.Add(status);
+            return page;
+        }
 
-        if (defaultPath is null)
+        var source = store.Source(bundled);
+        PromptPart Selected() => PromptPart.All[Math.Max(parts.SelectedIndex, 0)];
+
+        void RefreshList()
         {
-            status.Text = "Could not locate the bundled PROMPT.md next to the executable.";
+            var keep = parts.SelectedIndex;
+            parts.BeginUpdate();
+            parts.Items.Clear();
+            foreach (var part in PromptPart.All)
+            {
+                parts.Items.Add(
+                    (store.IsCustom(part) ? "• " : "   ") + $"{part.Group[..1]}  {part.Label}");
+            }
+            parts.SelectedIndex = keep < 0 ? 0 : Math.Min(keep, parts.Items.Count - 1);
+            parts.EndUpdate();
         }
-        else
+
+        void Load()
         {
-            editor.Text = store.ActiveTemplate(defaultPath);
+            var part = Selected();
+            try
+            {
+                editor.Text = source.EditableTextFor(part).Replace("\n", "\r\n");
+                status.Text = $"{part.RelativePath} — {part.SummaryLine} "
+                    + "Sent in full: everything in this box reaches the model.";
+            }
+            catch (Exception error)
+            {
+                editor.Text = string.Empty;
+                status.Text = error.Message;
+            }
         }
+
+        parts.SelectedIndexChanged += (_, _) => Load();
+        RefreshList();
+        Load();
 
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40 };
         var save = new Button { Text = "Save", Width = 100 };
         save.Click += (_, _) =>
         {
+            var part = Selected();
             try
             {
-                store.Save(editor.Text);
-                status.Text = "Saved. The measured numbers in the changelog no longer apply to "
-                    + "this prompt — re-measure with `dnt-eval suite --prompt`.";
+                store.Save(editor.Text, part);
+                RefreshList();
+                status.Text = $"Saved {part.RelativePath}. The measured numbers in the changelog no "
+                    + "longer describe this part — re-measure with `dnt-eval suite --prompt`.";
             }
             catch (Exception error)
             {
                 status.Text = error.Message;
             }
         };
+        // Restores the selected part only. The others keep whatever they are, which is the point of
+        // per-part overrides: editing one clause should not pin the whole contract.
         var restore = new Button { Text = "Restore default", Width = 130 };
         restore.Click += (_, _) =>
         {
-            store.RestoreDefault();
-            if (defaultPath is not null) editor.Text = store.ActiveTemplate(defaultPath);
-            status.Text = "Restored the shipped prompt.";
+            var part = Selected();
+            store.Restore(part);
+            RefreshList();
+            Load();
+            status.Text = $"Restored the shipped {part.RelativePath}.";
+        };
+        var restoreAll = new Button { Text = "Restore all", Width = 100 };
+        restoreAll.Click += (_, _) =>
+        {
+            store.RestoreAll();
+            RefreshList();
+            Load();
+            status.Text = "Restored every part to the shipped contract.";
         };
         toolbar.Controls.Add(save);
         toolbar.Controls.Add(restore);
+        toolbar.Controls.Add(restoreAll);
 
         page.Controls.Add(editor);
+        page.Controls.Add(parts);
         page.Controls.Add(toolbar);
         page.Controls.Add(status);
         return page;

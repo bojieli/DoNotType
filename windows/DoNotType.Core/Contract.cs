@@ -207,68 +207,176 @@ public sealed class ContextEncoder(
 }
 
 /// <summary>
-/// Assembles the system instruction from PROMPT.md — the same file the other platforms ship.
+/// One file in prompt/ -- the same layout every platform ships.
 /// </summary>
-public sealed class PromptBuilder(string template)
+/// <remarks>
+/// The contract used to be a single markdown file with the live text fenced off by
+/// <c>&lt;!-- BEGIN SYSTEM --&gt;</c> markers, which meant a loader had to tell payload from prose by
+/// convention -- and it got that wrong for as long as the markers existed, because the file
+/// documented its own markers and a first-match search found the documentation. A part is a whole
+/// file now. Everything in it is sent, so there is nothing to skip and nothing to mis-match.
+/// </remarks>
+public sealed record PromptPart(string Id, string RelativePath, string? Placeholder, string Group, string Label)
 {
-    private const string Begin = "<!-- BEGIN SYSTEM -->";
-    private const string End = "<!-- END SYSTEM -->";
-    private const string Placeholder = "{{FIDELITY_RULE}}";
-    private const string RewriteBegin = "<!-- BEGIN REWRITE -->";
-    private const string RewriteEnd = "<!-- END REWRITE -->";
-    private const string StylePlaceholder = "{{STYLE_RULE}}";
-    private const string SummaryBegin = "<!-- BEGIN SUMMARY -->";
-    private const string SummaryEnd = "<!-- END SUMMARY -->";
-    private const string SummaryPlaceholder = "{{SUMMARY_RULE}}";
+    public static readonly PromptPart System =
+        new("system", "system.md", "{{FIDELITY_RULE}}", "Blocks", "Transcription");
+    public static readonly PromptPart Rewrite =
+        new("rewrite", "rewrite.md", "{{STYLE_RULE}}", "Blocks", "Rewrite");
+    public static readonly PromptPart Summary =
+        new("summary", "summary.md", "{{SUMMARY_RULE}}", "Blocks", "Summary");
 
-    public static PromptBuilder FromFile(string path) => new(File.ReadAllText(path));
+    public static PromptPart Of(Fidelity fidelity) =>
+        new($"fidelity:{fidelity.Id()}", $"fidelity/{fidelity.Id()}.md", null, "Fidelity", fidelity.Id());
+
+    public static PromptPart Of(RewriteStyle style) =>
+        new($"style:{style.Id()}", $"style/{style.Id()}.md", null, "Rewrite styles", style.Id());
+
+    public static PromptPart Of(SummaryStyle style) =>
+        new($"summary-style:{style.Id()}", $"summary-style/{style.Id()}.md", null, "Summary styles", style.Id());
+
+    /// <summary>Every part that has a file, in the order a settings list should show them.</summary>
+    public static IReadOnlyList<PromptPart> All { get; } = BuildAll();
+
+    private static PromptPart[] BuildAll()
+    {
+        var parts = new List<PromptPart> { System, Rewrite, Summary };
+        parts.AddRange(Enum.GetValues<Fidelity>().Select(Of));
+        parts.AddRange(Enum.GetValues<RewriteStyle>().Where(s => s != RewriteStyle.Verbatim).Select(Of));
+        parts.AddRange(Enum.GetValues<SummaryStyle>().Select(Of));
+        return [.. parts];
+    }
+
+    public static PromptPart? Parse(string id) =>
+        All.FirstOrDefault(p => string.Equals(p.Id, id.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Whether this part is substituted into a numbered list item in another part.
+    /// </summary>
+    /// <remarks>
+    /// The one transform in the whole loader: a clause is written as a wrapped paragraph and joined
+    /// into a single line on load, because it lands inside `5. {{FIDELITY_RULE}}` and a hard newline
+    /// there would break the list it lands in.
+    /// </remarks>
+    public bool IsClause => Placeholder is null;
+
+    /// <summary>One line on what this part does, for the editor that has room to say so.</summary>
+    public string SummaryLine => Id switch
+    {
+        "system" => "Sent on every request. Must contain {{FIDELITY_RULE}}.",
+        "rewrite" => "Sent only when a rewrite style is chosen.",
+        "summary" => "Sent only when a summary style is chosen.",
+        _ when Group == "Fidelity" => "Substituted into the transcription block.",
+        _ when Group == "Rewrite styles" => "Substituted into the rewrite block.",
+        _ => "Substituted into the summary block.",
+    };
+}
+
+/// <summary>
+/// Where a part's text comes from: the shipped prompt/ directory, or the user's copy of one file
+/// in it.
+/// </summary>
+/// <remarks>
+/// The override is per part rather than all-or-nothing, which is the point of the split. Someone
+/// who tuned fidelity/light.md keeps getting shipped updates to system.md, and a part they never
+/// touched cannot be stale. The old single-file override froze the whole contract at whatever it
+/// looked like on the day it was edited.
+/// </remarks>
+public sealed class PromptSource(string bundled, string? overrides = null)
+{
+    public string Bundled { get; } = bundled;
+    public string? Overrides { get; } = overrides;
 
     /// <summary>Walks up from a starting directory, so the app works from a build output folder.</summary>
-    public static string? FindPromptFile(string? start = null)
+    public static string? FindPromptDirectory(string? start = null)
     {
         var directory = new DirectoryInfo(start ?? AppContext.BaseDirectory);
         for (var i = 0; i < 8 && directory is not null; i++)
         {
-            var candidate = Path.Combine(directory.FullName, "PROMPT.md");
-            if (File.Exists(candidate)) return candidate;
+            var candidate = Path.Combine(directory.FullName, "prompt");
+            // Matches on a file inside the directory rather than the directory itself, so an
+            // unrelated prompt/ folder in a parent tree cannot shadow the real one.
+            if (File.Exists(Path.Combine(candidate, PromptPart.System.RelativePath))) return candidate;
             directory = directory.Parent;
         }
         return null;
     }
 
-    public string SystemInstruction(Fidelity fidelity)
-    {
-        var begin = template.IndexOf(Begin, StringComparison.Ordinal);
-        var end = template.IndexOf(End, StringComparison.Ordinal);
-        if (begin < 0 || end <= begin)
-        {
-            throw new InvalidOperationException("PROMPT.md is missing its system markers.");
-        }
+    public string? OverridePath(PromptPart part) =>
+        Overrides is null ? null : Path.Combine(Overrides, part.RelativePath);
 
-        var body = template[(begin + Begin.Length)..end].Trim();
-        if (!body.Contains(Placeholder))
+    public bool IsOverridden(PromptPart part) =>
+        OverridePath(part) is { } path && File.Exists(path);
+
+    public IReadOnlyList<PromptPart> OverriddenParts =>
+        [.. PromptPart.All.Where(IsOverridden)];
+
+    /// <summary>The file actually in force for a part.</summary>
+    public string PathFor(PromptPart part) =>
+        IsOverridden(part) ? OverridePath(part)! : Path.Combine(Bundled, part.RelativePath);
+
+    /// <summary>The part's text, exactly as it will be sent.</summary>
+    public string TextFor(PromptPart part)
+    {
+        var text = EditableTextFor(part);
+        if (text.Length == 0)
         {
-            throw new InvalidOperationException($"PROMPT.md has no {Placeholder}.");
+            throw new InvalidOperationException(
+                $"{PathFor(part)} is empty. A part file is sent in full, so an empty one would "
+                + $"send nothing for {part.Id}.");
         }
-        return body.Replace(Placeholder, Clause(fidelity));
+        return part.IsClause
+            ? text.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ")
+            : text;
     }
+
+    /// <summary>The text as it sits on disk, unjoined -- what an editor should show and save.</summary>
+    public string EditableTextFor(PromptPart part)
+    {
+        var path = PathFor(part);
+        if (!File.Exists(path))
+        {
+            throw new InvalidOperationException(
+                $"The prompt is missing {part.RelativePath} — nothing to send for {part.Id}. "
+                + $"Looked in {path}.");
+        }
+        return File.ReadAllText(path).Trim();
+    }
+}
+
+/// <summary>
+/// Assembles an instruction out of the parts in a PromptSource -- the same files the other
+/// platforms ship.
+/// </summary>
+public sealed class PromptBuilder(PromptSource source)
+{
+    public PromptBuilder(string directory) : this(new PromptSource(directory)) { }
+
+    public PromptSource Source { get; } = source;
+
+    public static PromptBuilder FromDirectory(string path) => new(path);
+
+    public static string? FindPromptDirectory(string? start = null) =>
+        PromptSource.FindPromptDirectory(start);
+
+    public string TextFor(PromptPart part) => Source.TextFor(part);
+
+    public string SystemInstruction(Fidelity fidelity) =>
+        Assemble(PromptPart.System, PromptPart.Of(fidelity));
 
     /// <summary>
     /// The instruction for whichever second stage a mode asks for, or null when it asks for none.
     /// </summary>
     /// <remarks>
-    /// One entry point, so a caller cannot route a summary through the rewrite block by picking the
-    /// wrong method -- which is the mistake the two-block split in PROMPT.md exists to make
-    /// impossible. A rewrite may never drop a fact; a summary exists to.
+    /// One entry point, so a caller cannot route a summary through the rewrite part by picking the
+    /// wrong method -- which is the mistake the two-part split exists to make impossible. A rewrite
+    /// may never drop a fact; a summary exists to.
     /// </remarks>
     public string? SecondStageInstruction(TranscriptMode mode) => mode switch
     {
         TranscriptMode.RewriteMode rewrite =>
-            Block(RewriteBegin, RewriteEnd, "rewrite")
-                .Replace(StylePlaceholder, Clause($"style: {rewrite.Style.Id()}")),
+            Assemble(PromptPart.Rewrite, PromptPart.Of(rewrite.Style)),
         TranscriptMode.SummaryMode summary =>
-            Block(SummaryBegin, SummaryEnd, "summary")
-                .Replace(SummaryPlaceholder, Clause($"summary: {summary.Style.Id()}")),
+            Assemble(PromptPart.Summary, PromptPart.Of(summary.Style)),
         _ => null,
     };
 
@@ -286,32 +394,19 @@ public sealed class PromptBuilder(string template)
         }
     }
 
-    private string Block(string begin, string end, string name)
+    /// <summary>
+    /// Checks that every part resolves and every placeholder is fillable, so a broken prompt is
+    /// found at startup rather than mid-dictation.
+    /// </summary>
+    public void Validate()
     {
-        var start = template.IndexOf(begin, StringComparison.Ordinal);
-        var finish = template.IndexOf(end, StringComparison.Ordinal);
-        if (start < 0 || finish <= start)
-        {
-            throw new InvalidOperationException(
-                $"This prompt has no {name} block. A prompt edited before summaries existed will "
-                + "not have one — restore the shipped prompt, or copy that block across from it.");
-        }
-        return template[(start + begin.Length)..finish].Trim();
+        foreach (var part in PromptPart.All) _ = Source.TextFor(part);
+        foreach (var fidelity in Enum.GetValues<Fidelity>()) _ = SystemInstruction(fidelity);
     }
 
-    private string Clause(Fidelity fidelity) => Clause(fidelity.Id());
-
-    /// <summary>The fenced clause under any `### name` heading -- a fidelity, a style, a summary.</summary>
-    private string Clause(string name)
+    private string Assemble(PromptPart host, PromptPart clause)
     {
-        var heading = $"### {name}";
-        var start = template.IndexOf(heading, StringComparison.Ordinal);
-        if (start < 0) throw new InvalidOperationException($"PROMPT.md has no section {heading}.");
-
-        var open = template.IndexOf("```", start, StringComparison.Ordinal);
-        var close = open < 0 ? -1 : template.IndexOf("```", open + 3, StringComparison.Ordinal);
-        if (open < 0 || close < 0) throw new InvalidOperationException($"No fenced clause under {heading}.");
-
-        return template[(open + 3)..close].Trim().Replace("\n", " ").Replace("\r", string.Empty);
+        var body = Source.TextFor(host);
+        return host.Placeholder is null ? body : body.Replace(host.Placeholder, Source.TextFor(clause));
     }
 }

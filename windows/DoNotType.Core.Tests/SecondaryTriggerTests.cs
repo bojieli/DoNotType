@@ -53,10 +53,9 @@ public sealed class SecondaryTriggerTests
     [InlineData(RewriteStyle.Bullets)]
     public void EveryOfferedStyleHasAnInstruction(RewriteStyle style)
     {
-        var instruction = PromptBuilder
-            .FromFile(
-                PromptBuilder.FindPromptFile()
-                ?? throw new InvalidOperationException("PROMPT.md not found from the test run"))
+        var instruction = new PromptBuilder(
+                PromptBuilder.FindPromptDirectory()
+                ?? throw new InvalidOperationException("prompt/ not found from the test run"))
             .SecondStageInstruction(TranscriptMode.Rewrite(style));
 
         Assert.NotNull(instruction);

@@ -90,71 +90,286 @@ public class ContextEncoderTests
     }
 }
 
+/// <summary>
+/// These run against the shipped prompt/, not a fixture.
+/// </summary>
+/// <remarks>
+/// The previous version of this class parsed a synthetic template, and that is exactly why it
+/// passed for as long as the contract was one file: the fixture mentioned each marker once, so a
+/// first-match search could not go wrong in it. The real file documented its own markers and every
+/// request carried eight lines of that documentation. A test that cannot see the shipped bytes
+/// cannot catch what happens to them.
+/// </remarks>
 public class PromptBuilderTests
 {
-    private const string Template = """
-        # PROMPT.md
-        Preamble that must not be sent.
+    private static PromptBuilder? Shipped() =>
+        PromptBuilder.FindPromptDirectory() is { } path ? new PromptBuilder(path) : null;
 
-        <!-- BEGIN SYSTEM -->
-        You are a transcription engine.
-        5. {{FIDELITY_RULE}}
-        <!-- END SYSTEM -->
-
-        ### raw
-        ```
-        Fidelity is RAW.
-        ```
-
-        ### light
-        ```
-        Fidelity is LIGHT.
-        ```
-
-        ### tidy
-        ```
-        Fidelity is TIDY.
-        ```
-        """;
-
+    /// <summary>
+    /// Every test below returns early when the tree is not there, which is right for a packaged
+    /// run and useless if it silently becomes the normal case. This one fails instead, so a broken
+    /// discovery path cannot turn the whole class into a no-op that still reports green.
+    /// </summary>
     [Fact]
-    public void SystemInstructionExcludesEverythingOutsideTheMarkers()
+    public void TheShippedPromptIsFoundFromTheTestRun()
     {
-        var instruction = new PromptBuilder(Template).SystemInstruction(Fidelity.Raw);
-
-        Assert.StartsWith("You are a transcription engine.", instruction);
-        Assert.DoesNotContain("Preamble", instruction);
+        var path = PromptBuilder.FindPromptDirectory();
+        Assert.NotNull(path);
+        Assert.True(File.Exists(Path.Combine(path, PromptPart.System.RelativePath)));
     }
 
     [Fact]
-    public void ExactlyOneFidelityClauseIsSubstituted()
+    public void ShippedPromptBuildsForEveryFidelity()
     {
-        var light = new PromptBuilder(Template).SystemInstruction(Fidelity.Light);
+        if (Shipped() is not { } builder) return; // not running from the repo tree
 
-        Assert.Contains("Fidelity is LIGHT.", light);
-        Assert.DoesNotContain("RAW", light);
-        Assert.DoesNotContain("{{FIDELITY_RULE}}", light);
-    }
-
-    [Fact]
-    public void MissingMarkersThrowRatherThanProducingAnEmptyPrompt() =>
-        Assert.Throws<InvalidOperationException>(
-            () => new PromptBuilder("no markers here").SystemInstruction(Fidelity.Light));
-
-    /// <summary>The real file has to build, or the app ships with a broken contract.</summary>
-    [Fact]
-    public void ShippedPromptFileBuildsForEveryFidelity()
-    {
-        var path = PromptBuilder.FindPromptFile();
-        if (path is null) return; // not running from the repo tree
-
-        var builder = PromptBuilder.FromFile(path);
         foreach (var fidelity in Enum.GetValues<Fidelity>())
         {
             var instruction = builder.SystemInstruction(fidelity);
+            Assert.StartsWith("You are a transcription engine.", instruction);
             Assert.Contains("Context corrects SPELLING, never CONTENT", instruction);
             Assert.DoesNotContain("{{", instruction);
         }
+    }
+
+    /// <summary>
+    /// The regression test for the bug the split ended: the assembled instruction must be the
+    /// contract and nothing else.
+    /// </summary>
+    [Fact]
+    public void NothingButTheContractIsSent()
+    {
+        if (Shipped() is not { } builder) return;
+
+        var instruction = builder.SystemInstruction(Fidelity.Light);
+        foreach (var leak in new[] { "BEGIN SYSTEM", "END SYSTEM", "PromptBuilder", "dnt-eval", "changelog" })
+        {
+            Assert.DoesNotContain(leak, instruction);
+        }
+    }
+
+    /// <summary>
+    /// Substituting a clause must place it once. The fidelity rule appearing twice is measurable
+    /// harm, not cosmetic -- see the 2026-08-09 entry in PROMPT.md, where restating it moved
+    /// substitution from 11/19 to 15/18.
+    /// </summary>
+    [Fact]
+    public void TheFidelityClauseAppearsExactlyOnce()
+    {
+        if (Shipped() is not { } builder) return;
+
+        var clause = builder.TextFor(PromptPart.Of(Fidelity.Light));
+        var instruction = builder.SystemInstruction(Fidelity.Light);
+
+        Assert.Equal(1, instruction.Split(clause).Length - 1);
+        Assert.DoesNotContain("Fidelity is RAW", instruction);
+        Assert.DoesNotContain("Fidelity is TIDY", instruction);
+    }
+
+    /// <summary>A part file is sent in full, so annotation in one is a mistake.</summary>
+    [Fact]
+    public void NoPartContainsMarkupThatWasMeantToBeStripped()
+    {
+        if (Shipped() is not { } builder) return;
+
+        foreach (var part in PromptPart.All)
+        {
+            var text = builder.TextFor(part);
+            Assert.DoesNotContain("<!--", text);
+            Assert.DoesNotContain("```", text);
+            if (part.IsClause) Assert.DoesNotContain("\n", text);
+        }
+    }
+
+    /// <summary>Every part a picker can reach must exist, or choosing it fails at request time.</summary>
+    [Fact]
+    public void EveryPartResolves()
+    {
+        if (Shipped() is not { } builder) return;
+
+        builder.Validate();
+        foreach (var mode in TranscriptMode.All.Where(m => m.NeedsSecondPass))
+        {
+            var instruction = builder.SecondStageInstruction(mode);
+            Assert.NotNull(instruction);
+            Assert.DoesNotContain("{{", instruction);
+        }
+    }
+
+    [Fact]
+    public void AMissingPartNamesTheFileAndThePart()
+    {
+        var builder = new PromptBuilder(Path.Combine(Path.GetTempPath(), "nonexistent-prompt-dir"));
+        var error = Assert.Throws<InvalidOperationException>(
+            () => builder.SystemInstruction(Fidelity.Light));
+
+        Assert.Contains("system.md", error.Message);
+        Assert.Contains("nonexistent-prompt-dir", error.Message);
+    }
+}
+
+/// <summary>Per-part overrides, and the one-time split of the single-file format they replaced.</summary>
+public class PromptStoreTests : IDisposable
+{
+    private readonly string _directory = Path.Combine(
+        Path.GetTempPath(), "prompt-store-" + Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>The reason for splitting, as a test: editing one part must not freeze the others.</summary>
+    [Fact]
+    public void EditingOnePartLeavesTheRestShipped()
+    {
+        if (PromptBuilder.FindPromptDirectory() is not { } bundled) return;
+
+        var store = new PromptStore(_directory);
+        store.Save("Fidelity is MINE.", PromptPart.Of(Fidelity.Light));
+
+        Assert.Equal([PromptPart.Of(Fidelity.Light)], store.CustomParts);
+
+        var instruction = store.Builder(bundled).SystemInstruction(Fidelity.Light);
+        Assert.Contains("Fidelity is MINE.", instruction);
+        Assert.StartsWith("You are a transcription engine.", instruction);
+
+        var raw = store.Builder(bundled).SystemInstruction(Fidelity.Raw);
+        Assert.Contains("Fidelity is RAW", raw);
+    }
+
+    [Fact]
+    public void APartThatWouldDropItsClauseIsRejectedAndNotWritten()
+    {
+        var store = new PromptStore(_directory);
+        var error = Assert.Throws<InvalidOperationException>(
+            () => store.Save("No placeholder in here.", PromptPart.System));
+
+        Assert.Contains("{{FIDELITY_RULE}}", error.Message);
+        Assert.False(store.IsCustom(PromptPart.System));
+        Assert.Throws<InvalidOperationException>(() => store.Save("   ", PromptPart.Rewrite));
+    }
+
+    [Fact]
+    public void RestoringOnePartLeavesTheOthersEdited()
+    {
+        var store = new PromptStore(_directory);
+        store.Save("MINE. {{FIDELITY_RULE}}", PromptPart.System);
+        store.Save("Fidelity is MINE.", PromptPart.Of(Fidelity.Tidy));
+
+        store.Restore(PromptPart.System);
+        Assert.Equal([PromptPart.Of(Fidelity.Tidy)], store.CustomParts);
+
+        store.RestoreAll();
+        Assert.Empty(store.CustomParts);
+    }
+
+    /// <summary>
+    /// Migrating a copy of the shipped file must produce no overrides at all -- not twelve pinned
+    /// to whatever the contract said the day it was copied.
+    /// </summary>
+    [Fact]
+    public void MigratingAnUnchangedCopyProducesNoOverrides()
+    {
+        if (PromptBuilder.FindPromptDirectory() is not { } bundled) return;
+
+        var store = new PromptStore(_directory);
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(store.LegacyPath, LegacyFile(bundled));
+
+        var migration = store.MigrateLegacyPrompt(bundled);
+        Assert.NotNull(migration);
+        Assert.Empty(migration.Migrated);
+        Assert.False(File.Exists(store.LegacyPath));
+        Assert.True(File.Exists(migration.ArchivedAt));
+    }
+
+    [Fact]
+    public void MigrationKeepsOnlyTheEditedParts()
+    {
+        if (PromptBuilder.FindPromptDirectory() is not { } bundled) return;
+
+        var store = new PromptStore(_directory);
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(
+            store.LegacyPath,
+            LegacyFile(bundled).Replace("Fidelity is TIDY.", "Fidelity is CUSTOM."));
+
+        var migration = store.MigrateLegacyPrompt(bundled);
+        Assert.NotNull(migration);
+        Assert.Equal([PromptPart.Of(Fidelity.Tidy)], migration.Migrated);
+        Assert.Contains(
+            "Fidelity is CUSTOM.", store.Builder(bundled).SystemInstruction(Fidelity.Tidy));
+    }
+
+    /// <summary>
+    /// The migrator must not repeat the bug it is migrating away from: a user's custom prompt was
+    /// usually a copy of the shipped file, which quoted the marker in a sentence above the real one.
+    /// </summary>
+    [Fact]
+    public void MigrationIgnoresAMarkerQuotedInProse()
+    {
+        if (PromptBuilder.FindPromptDirectory() is not { } bundled) return;
+
+        var store = new PromptStore(_directory);
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(store.LegacyPath, """
+            # PROMPT.md
+
+            `PromptBuilder` reads everything below the `<!-- BEGIN SYSTEM -->` marker, substitutes
+            `{{FIDELITY_RULE}}` with the active fidelity clause.
+
+            <!-- BEGIN SYSTEM -->
+            You are a transcription engine.
+            5. {{FIDELITY_RULE}}
+            <!-- END SYSTEM -->
+
+            ### light
+            ```
+            Fidelity is LIGHT.
+            ```
+            """);
+
+        store.MigrateLegacyPrompt(bundled);
+
+        var system = File.ReadAllText(store.PathFor(PromptPart.System));
+        Assert.StartsWith("You are a transcription engine.", system);
+        Assert.DoesNotContain("PromptBuilder", system);
+        Assert.DoesNotContain("BEGIN SYSTEM", system);
+    }
+
+    [Fact]
+    public void NothingToMigrateIsNotAnError()
+    {
+        if (PromptBuilder.FindPromptDirectory() is not { } bundled) return;
+        Assert.Null(new PromptStore(_directory).MigrateLegacyPrompt(bundled));
+    }
+
+    /// <summary>Rebuilds the old single-file format out of the shipped parts.</summary>
+    private static string LegacyFile(string bundled)
+    {
+        var source = new PromptSource(bundled);
+        string Fenced(string heading, PromptPart part) =>
+            $"### {heading}\n```\n{source.EditableTextFor(part)}\n```\n\n";
+
+        var text = "# PROMPT.md\n\nPreamble.\n\n";
+        text += $"<!-- BEGIN SYSTEM -->\n{source.EditableTextFor(PromptPart.System)}\n<!-- END SYSTEM -->\n\n";
+        text += $"<!-- BEGIN REWRITE -->\n{source.EditableTextFor(PromptPart.Rewrite)}\n<!-- END REWRITE -->\n\n";
+        text += $"<!-- BEGIN SUMMARY -->\n{source.EditableTextFor(PromptPart.Summary)}\n<!-- END SUMMARY -->\n\n";
+        foreach (var fidelity in Enum.GetValues<Fidelity>())
+        {
+            text += Fenced(fidelity.Id(), PromptPart.Of(fidelity));
+        }
+        foreach (var style in Enum.GetValues<RewriteStyle>().Where(s => s != RewriteStyle.Verbatim))
+        {
+            text += Fenced($"style: {style.Id()}", PromptPart.Of(style));
+        }
+        foreach (var style in Enum.GetValues<SummaryStyle>())
+        {
+            text += Fenced($"summary: {style.Id()}", PromptPart.Of(style));
+        }
+        return text;
     }
 }
 

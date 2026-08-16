@@ -149,10 +149,10 @@ internal sealed class FileTranscriptionTab
             return;
         }
 
-        var promptPath = PromptBuilder.FindPromptFile();
+        var promptPath = PromptBuilder.FindPromptDirectory();
         if (promptPath is null)
         {
-            _status.Text = "Could not find PROMPT.md beside the app.";
+            _status.Text = "Could not find the prompt/ directory beside the app.";
             return;
         }
 

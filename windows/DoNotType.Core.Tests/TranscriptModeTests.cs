@@ -8,9 +8,8 @@ namespace DoNotType.Core.Tests;
 public sealed class TranscriptModeTests
 {
     private static PromptBuilder Prompt() =>
-        PromptBuilder.FromFile(
-            PromptBuilder.FindPromptFile()
-            ?? throw new InvalidOperationException("PROMPT.md not found from the test run"));
+        new(PromptBuilder.FindPromptDirectory()
+            ?? throw new InvalidOperationException("prompt/ not found from the test run"));
 
     [Fact]
     public void EveryOfferedSpellingParsesAndRoundTrips()
@@ -96,21 +95,46 @@ public sealed class TranscriptModeTests
         Assert.Null(Prompt().SecondStageInstruction(TranscriptMode.Verbatim));
 
     /// <summary>
-    /// A prompt edited before summaries existed is still a valid prompt for dictation. It must fail
-    /// on summaries with a message that says what to do, not with a generic parse error.
+    /// A user who edited the contract before summaries existed used to break the summary stage
+    /// outright: their override was the whole file, so it had no summary block and nothing could
+    /// fall back. Per-part overrides make that unreachable -- an edited system.md says nothing
+    /// about summary.md, which is still the shipped one.
     /// </summary>
     [Fact]
-    public void APromptWithoutASummaryBlockFailsHelpfully()
+    public void EditingOnePartCannotBreakAStageItSaysNothingAbout()
     {
-        var template = File.ReadAllText(PromptBuilder.FindPromptFile()!);
-        var builder = new PromptBuilder(template.Replace("<!-- BEGIN SUMMARY -->", string.Empty));
+        if (PromptBuilder.FindPromptDirectory() is not { } bundled) return;
 
-        builder.SystemInstruction(Fidelity.Light); // dictation still works
-        Assert.False(builder.SupportsSecondStage(TranscriptMode.Summary(SummaryStyle.Brief)));
+        var directory = Path.Combine(Path.GetTempPath(), "dnt-mode-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new PromptStore(directory);
+            store.Save("MY ENGINE. {{FIDELITY_RULE}}", PromptPart.System);
+            var builder = store.Builder(bundled);
 
-        var error = Assert.Throws<InvalidOperationException>(
-            () => builder.SecondStageInstruction(TranscriptMode.Summary(SummaryStyle.Brief)));
-        Assert.Contains("restore the shipped prompt", error.Message);
+            Assert.StartsWith("MY ENGINE.", builder.SystemInstruction(Fidelity.Light));
+            foreach (var mode in TranscriptMode.All.Where(m => m.NeedsSecondPass))
+            {
+                Assert.True(builder.SupportsSecondStage(mode));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// PromptStore.Validate gates saving an edited part, and each part is judged on its own terms
+    /// -- a clause has no placeholder to require.
+    /// </summary>
+    [Fact]
+    public void ValidationJudgesEachPartOnItsOwnTerms()
+    {
+        PromptStore.Validate("Fidelity is MINE.", PromptPart.Of(Fidelity.Light));
+        PromptStore.Validate("Summarise. {{SUMMARY_RULE}}", PromptPart.Summary);
+        Assert.Throws<InvalidOperationException>(
+            () => PromptStore.Validate("Summarise.", PromptPart.Summary));
     }
 
     // ---- History -------------------------------------------------------------------------------

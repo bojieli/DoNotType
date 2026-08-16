@@ -99,7 +99,11 @@ public static class DoctorCommand
             Bad("prompt", e.Message);
         }
         var store = new PromptStore(Preferences.Directory);
-        Row("custom copy", store.HasCustomPrompt ? $"yes — {store.CustomPath}" : "no");
+        Row(
+            "edited parts",
+            store.HasCustomPrompt
+                ? $"{string.Join(", ", store.CustomParts.Select(p => p.Id))} — in {store.PromptDirectory}"
+                : "none — all shipped");
 
         Out.Line("\nHistory");
         var history = new HistoryStore(Preferences.Directory);
@@ -506,35 +510,73 @@ public static class PromptCommand
     private static int ShowPath(Arguments arguments)
     {
         var store = new PromptStore(Preferences.Directory);
-        if (store.HasCustomPrompt)
+        var source = store.Source(arguments.ResolvePromptPath());
+
+        if (arguments.Option("part") is { } requested)
         {
-            Out.Line(store.CustomPath);
-            Out.Note("edited copy — the measured numbers in PROMPT.md's changelog do not apply");
+            var part = PromptPart.Parse(requested)
+                ?? throw new UsageException(
+                    $"unknown part '{requested}'. Options: "
+                    + string.Join(", ", PromptPart.All.Select(p => p.Id)));
+            Out.Line(source.PathFor(part));
+            return 0;
         }
-        else
+
+        foreach (var part in PromptPart.All)
         {
-            Out.Line(arguments.ResolvePromptPath());
-            Out.Note("the shipped contract");
+            var state = source.IsOverridden(part) ? "edited " : "shipped";
+            Out.Line($"{ProvidersCommand.Pad(part.Id, 22)}{state}  {source.PathFor(part)}");
+        }
+        if (source.OverriddenParts.Count > 0)
+        {
+            Out.Note(
+                $"{source.OverriddenParts.Count} part(s) edited — the measured numbers in "
+                + "PROMPT.md's changelog do not apply to them");
         }
         return 0;
     }
 
     private static int Validate(Arguments arguments)
     {
-        var template = arguments.Positional.Skip(1).FirstOrDefault() is { } path
-            ? File.ReadAllText(path)
-            : new PromptStore(Preferences.Directory).ActiveTemplate(arguments.ResolvePromptPath());
+        var builder = arguments.Positional.Skip(1).FirstOrDefault() is { } path
+            ? new PromptBuilder(path)
+            : arguments.ResolvePrompt();
 
-        // PromptStore.Validate covers what a dictation needs. The optional stages are reported
-        // rather than thrown: a prompt without a summary block is still a working prompt for
-        // everything except summaries, and failing validation over it would be wrong.
-        PromptStore.Validate(template);
-        Out.Line("system block      ok (every fidelity resolves)");
-
-        var builder = new PromptBuilder(template);
-        foreach (var mode in TranscriptMode.All.Where(m => m.NeedsSecondPass))
+        // Reported rather than thrown, part by part. A prompt whose summary part is unreadable is
+        // still a working prompt for everything except summaries, and failing the whole check over
+        // it would say less than naming the one that is broken.
+        var failures = 0;
+        foreach (var part in PromptPart.All)
         {
-            Out.Line(ProvidersCommand.Pad(mode.Id, 18) + (builder.SupportsSecondStage(mode) ? "ok" : "MISSING"));
+            try
+            {
+                _ = builder.TextFor(part);
+                Out.Line(ProvidersCommand.Pad(part.Id, 22) + "ok");
+            }
+            catch (InvalidOperationException e)
+            {
+                failures++;
+                Out.Line(ProvidersCommand.Pad(part.Id, 22) + e.Message);
+            }
+        }
+        foreach (var fidelity in Enum.GetValues<Fidelity>())
+        {
+            var ok = true;
+            try
+            {
+                _ = builder.SystemInstruction(fidelity);
+            }
+            catch (InvalidOperationException)
+            {
+                ok = false;
+                failures++;
+            }
+            Out.Line($"assembles: {ProvidersCommand.Pad(fidelity.Id(), 11)}{(ok ? "ok" : "FAILED")}");
+        }
+
+        if (failures > 0)
+        {
+            throw new UsageException($"{failures} part(s) would fail at request time.");
         }
         return 0;
     }
