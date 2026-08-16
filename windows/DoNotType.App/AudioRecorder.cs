@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using DoNotType.Core;
 
 namespace DoNotType.App;
 
@@ -15,8 +16,18 @@ public sealed class AudioRecorder : IDisposable
     /// <summary>Below this it was a stray key press rather than speech.</summary>
     public static readonly TimeSpan MinimumDuration = TimeSpan.FromMilliseconds(500);
 
-    private const int BufferCount = 4;
-    private const int BufferBytes = SampleRate; // ~0.5 s of 16-bit mono
+    /// <summary>
+    /// Eight buffers of 100 ms, rather than four of half a second.
+    /// </summary>
+    /// <remarks>
+    /// The total held in flight is roughly what it was — 800 ms against 2 s, still far more than a
+    /// callback that copies a buffer and requeues it can fall behind by — but a buffer is now the
+    /// unit in which the level meter learns anything. At half a second the meter could not be more
+    /// current than half a second whatever the UI did, and it arrived in jumps of eight bars twice
+    /// a second: a waveform delivered by parcel post. At 100 ms it keeps up with the voice.
+    /// </remarks>
+    private const int BufferCount = 8;
+    private const int BufferBytes = SampleRate / 5; // 3200 bytes: 1600 samples, 100 ms
 
     private readonly Lock _gate = new();
     private readonly List<byte> _pcm = [];
@@ -29,8 +40,32 @@ public sealed class AudioRecorder : IDisposable
 
     public bool IsRecording { get; private set; }
 
-    /// <summary>Recent peak amplitude, 0..1, so the overlay can show the mic is live.</summary>
-    public float Level { get; private set; }
+    private AudioLevelMeter _meter = new(SampleRate);
+    /// <summary>Bars the overlay has not drawn yet. See <see cref="DrainLevels"/>.</summary>
+    private readonly List<AudioLevelMeter.Bar> _pendingBars = [];
+
+    /// <summary>About seven seconds of bars.</summary>
+    private const int MaximumPendingBars = 120;
+
+    /// <summary>
+    /// Hands the overlay the bars captured since it last asked, oldest first.
+    /// </summary>
+    /// <remarks>
+    /// Drained rather than sampled. The old meter read a single "current level" thirty times a
+    /// second from a capture buffer that only changed twice a second, so twenty-nine readings in
+    /// thirty were a number it had already drawn. The levels are measured where the audio is, in
+    /// 20 ms frames on the capture thread, and the UI collects them at whatever rate it redraws.
+    /// </remarks>
+    public IReadOnlyList<AudioLevelMeter.Bar> DrainLevels()
+    {
+        lock (_gate)
+        {
+            if (_pendingBars.Count == 0) return [];
+            var bars = _pendingBars.ToArray();
+            _pendingBars.Clear();
+            return bars;
+        }
+    }
 
     public AudioRecorder() => _callback = OnWaveIn;
 
@@ -54,7 +89,8 @@ public sealed class AudioRecorder : IDisposable
         {
             if (IsRecording) return;
             _pcm.Clear();
-            Level = 0;
+            _meter = new AudioLevelMeter(SampleRate);
+            _pendingBars.Clear();
 
             var format = new Interop.WAVEFORMATEX
             {
@@ -143,7 +179,6 @@ public sealed class AudioRecorder : IDisposable
     {
         if (!IsRecording) return;
         IsRecording = false;
-        Level = 0;
 
         Interop.waveInStop(_handle);
         Interop.waveInReset(_handle);
@@ -175,22 +210,18 @@ public sealed class AudioRecorder : IDisposable
                 var chunk = new byte[recorded];
                 Marshal.Copy(header.lpData, chunk, 0, recorded);
                 _pcm.AddRange(chunk);
-                Level = Peak(chunk);
+
+                _pendingBars.AddRange(_meter.Append(chunk));
+                // A UI that has stopped collecting is a UI that is not drawing them either; keeping
+                // more than a few seconds of undrawn bars would only be a leak with a nice name.
+                if (_pendingBars.Count > MaximumPendingBars)
+                {
+                    _pendingBars.RemoveRange(0, _pendingBars.Count - MaximumPendingBars);
+                }
             }
             // Requeue so capture continues; the driver hands the buffer back each time it fills.
             Interop.waveInAddBuffer(hwi, ref header, Marshal.SizeOf<Interop.WAVEHDR>());
         }
-    }
-
-    private static float Peak(byte[] buffer)
-    {
-        var peak = 0;
-        for (var i = 0; i + 1 < buffer.Length; i += 2)
-        {
-            var sample = Math.Abs((short)(buffer[i] | (buffer[i + 1] << 8)));
-            if (sample > peak) peak = sample;
-        }
-        return peak / 32768f;
     }
 
     /// <summary>Length of a recording this class produced, from its own 44-byte header.</summary>

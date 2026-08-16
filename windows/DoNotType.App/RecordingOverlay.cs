@@ -1,6 +1,7 @@
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using DoNotType.Core;
 
 namespace DoNotType.App;
 
@@ -35,11 +36,27 @@ public sealed class RecordingOverlay : Form
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_TRANSPARENT = 0x00000020;
 
-    private static readonly string[] BarWeights = ["0.45", "0.75", "1.0", "0.7", "0.5"];
+    /// <summary>
+    /// How much of the recording the meter shows: 24 bars of 60 ms, so a second and a half. Long
+    /// enough that the sentence being spoken is on screen, short enough for the bars to stay
+    /// readable.
+    /// </summary>
+    private const int VisibleBars = 24;
+    private const int MeterBarWidth = 3;
+    private const int MeterBarGap = 2;
+    /// <summary>Sized from the bar count, so the pill's width follows from one number.</summary>
+    private const int MeterWidth = (VisibleBars * MeterBarWidth) + ((VisibleBars - 1) * MeterBarGap);
+
+    /// <summary>
+    /// The visible history, oldest first. Always full: the meter starts flat rather than growing in
+    /// from the left, because an empty meter and a silent one should not look different.
+    /// </summary>
+    private readonly AudioLevelMeter.Bar[] _bars =
+        [.. Enumerable.Repeat(AudioLevelMeter.Bar.Silent, VisibleBars)];
 
     private readonly System.Windows.Forms.Timer _animation = new() { Interval = 33 };
-    /// <summary>Room for a waveform and a few words. Everything but a failure fits.</summary>
-    private const int CompactWidth = 240;
+    /// <summary>Room for the meter and a few words. Everything but a failure fits.</summary>
+    private const int CompactWidth = 320;
     private const int CompactHeight = 52;
 
     /// <summary>
@@ -52,8 +69,6 @@ public sealed class RecordingOverlay : Form
     /// </remarks>
     private const int FailureWidth = 420;
 
-    private double _level;
-    private double _phaseOffset;
     private Phase _phase = Phase.Recording;
     private string _hint = string.Empty;
 
@@ -68,11 +83,9 @@ public sealed class RecordingOverlay : Form
         // Rounded pill: the region is cheaper and crisper than an alpha-blended layered window.
         DoubleBuffered = true;
 
-        _animation.Tick += (_, _) =>
-        {
-            _phaseOffset += 0.12;
-            Invalidate();
-        };
+        // Repaints the thinking dots, which are drawn from the clock. The meter does not need it:
+        // it repaints when audio arrives, which is the only time it has anything new to say.
+        _animation.Tick += (_, _) => Invalidate();
     }
 
     protected override bool ShowWithoutActivation => true;
@@ -87,12 +100,27 @@ public sealed class RecordingOverlay : Form
         }
     }
 
-    public void UpdateLevel(float level) => _level = Math.Clamp(level * 6.0, 0, 1);
+    /// <summary>Adds however many bars the microphone has produced since the last redraw.</summary>
+    public void AppendLevels(IReadOnlyList<AudioLevelMeter.Bar> bars)
+    {
+        if (bars.Count == 0) return;
+
+        var incoming = Math.Min(bars.Count, VisibleBars);
+        Array.Copy(_bars, incoming, _bars, 0, VisibleBars - incoming);
+        for (var index = 0; index < incoming; index++)
+        {
+            _bars[VisibleBars - incoming + index] = bars[bars.Count - incoming + index];
+        }
+        Invalidate();
+    }
+
+    private void ClearLevels() => Array.Fill(_bars, AudioLevelMeter.Bar.Silent);
 
     public void Show(Phase phase, string hint)
     {
         _phase = phase;
         _hint = hint;
+        ClearLevels();
         ResizeForPhase();
         PositionAtBottomOfActiveScreen();
         if (!Visible) base.Show();
@@ -162,7 +190,7 @@ public sealed class RecordingOverlay : Form
         switch (_phase)
         {
             case Phase.Recording:
-                DrawWaveform(g, new Rectangle(20, Height / 2 - 11, 76, 22));
+                DrawMeter(g, new Rectangle(20, Height / 2 - 11, MeterWidth, 22));
                 g.DrawString(_hint, font, textBrush, TextLeft, Height / 2 - 8);
                 break;
 
@@ -172,13 +200,13 @@ public sealed class RecordingOverlay : Form
                 // pressing the key again mid-request. Deliberately unlike the recording waveform:
                 // there is no input left to reflect, so anything level-driven would be decoration
                 // pretending to be a signal.
-                DrawThinkingDots(g, new Rectangle(20, Height / 2 - 4, 76, 8));
+                DrawThinkingDots(g, new Rectangle(20, Height / 2 - 4, MeterWidth, 8));
                 var label = _hint.Length == 0 ? "Transcribing…" : $"Transcribing… {_hint}";
                 g.DrawString(label, font, textBrush, TextLeft, Height / 2 - 8);
                 break;
 
             case Phase.Deriving:
-                DrawThinkingDots(g, new Rectangle(20, Height / 2 - 4, 76, 8));
+                DrawThinkingDots(g, new Rectangle(20, Height / 2 - 4, MeterWidth, 8));
                 g.DrawString(
                     _hint.Length == 0 ? "Rewriting…" : _hint, font, textBrush,
                     TextLeft, Height / 2 - 8);
@@ -206,8 +234,8 @@ public sealed class RecordingOverlay : Form
     private static Font MessageFont() =>
         new(SystemFonts.MessageBoxFont!.FontFamily, 9f, FontStyle.Regular);
 
-    /// <summary>Where the label starts, clear of the waveform or the dots.</summary>
-    private const int TextLeft = 108;
+    /// <summary>Where the label starts, clear of the meter or the dots.</summary>
+    private const int TextLeft = 20 + MeterWidth + 12;
 
     /// <summary>A tick, drawn rather than shipped as an icon so it inherits the pill's colours.</summary>
     private static void DrawTick(Graphics g, Rectangle bounds)
@@ -224,10 +252,6 @@ public sealed class RecordingOverlay : Form
         ]);
     }
 
-    /// <summary>
-    /// Level-driven bars. Deliberately not a spectrum — this is a liveness indicator, and what
-    /// people need from it is "the mic is hearing me", which amplitude answers.
-    /// </summary>
     /// <summary>Three dots travelling in one direction, so the group reads as motion rather than
     /// as three things blinking independently.</summary>
     private void DrawThinkingDots(Graphics g, Rectangle bounds)
@@ -250,24 +274,44 @@ public sealed class RecordingOverlay : Form
         }
     }
 
-    private void DrawWaveform(Graphics g, Rectangle bounds)
+    /// <summary>
+    /// The last second and a half of the microphone, walking leftwards.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What it replaced is worth saying, because it looked like this. The old meter was five bars
+    /// driven by a single current level and animated by a travelling sine wave, and neither half
+    /// reported anything: the level was <c>peak * 6</c> clamped, which a normally-recorded voice
+    /// sat pinned at the top of — see <see cref="AudioLevelMeter"/> for the measurement — and the
+    /// movement was invented, so the bars swayed identically whether the microphone was hearing a
+    /// sentence or nothing at all.
+    /// </para>
+    /// <para>
+    /// Here every bar is 60 ms of audio that actually happened, and the meter moves because the
+    /// audio does. Silence is a flat row of dots that keeps scrolling: the microphone is live and
+    /// hearing nothing.
+    /// </para>
+    /// </remarks>
+    private void DrawMeter(Graphics g, Rectangle bounds)
     {
         using var brush = new SolidBrush(Color.FromArgb(230, 245, 245, 245));
-        var barWidth = 4;
-        var gap = 5;
+        // Amber is not decoration: the input is loud enough to be clipped on the way in, and a
+        // recording distorted before it is sent is worth one colour. The same amber as a failure,
+        // because it is the same kind of news.
+        using var clipped = new SolidBrush(Color.FromArgb(230, 240, 160, 90));
 
-        for (var i = 0; i < BarWeights.Length; i++)
+        for (var index = 0; index < _bars.Length; index++)
         {
-            var weight = double.Parse(BarWeights[i]);
-            // A slow travelling wave keeps it alive during pauses without implying signal.
-            var travel = (Math.Sin(_phaseOffset * 4 + i * 0.9) * 0.5) + 0.5;
-            var amplitude = Math.Max(0.12, _level) * weight;
-            var height = (int)(4 + (bounds.Height - 4) * Math.Min(1, amplitude * (0.65 + 0.35 * travel)));
-
-            var x = bounds.Left + i * (barWidth + gap);
+            var bar = _bars[index];
+            // Silence is a row of dots rather than nothing at all: a meter that disappears when the
+            // room is quiet cannot be told apart from one that has stopped.
+            var height = Math.Max(MeterBarWidth, (int)(bounds.Height * bar.Level));
+            var x = bounds.Left + index * (MeterBarWidth + MeterBarGap);
             var y = bounds.Top + (bounds.Height - height) / 2;
-            using var bar = RoundedRect(new Rectangle(x, y, barWidth, height), barWidth / 2);
-            g.FillPath(brush, bar);
+
+            using var shape = RoundedRect(
+                new Rectangle(x, y, MeterBarWidth, height), MeterBarWidth / 2);
+            g.FillPath(bar.IsClipping ? clipped : brush, shape);
         }
     }
 

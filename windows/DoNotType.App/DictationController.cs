@@ -101,7 +101,7 @@ public sealed class DictationController : IDisposable
     public event Action? HistoryChanged;
 
     public HistoryStore History => _history;
-    public float Level => _recorder.Level;
+    public IReadOnlyList<AudioLevelMeter.Bar> DrainLevels() => _recorder.DrainLevels();
 
     public DictationController(AppSettings settings)
     {

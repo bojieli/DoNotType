@@ -72,7 +72,7 @@ internal sealed class TrayApplication : ApplicationContext
         _tray.DoubleClick += (_, _) => OpenSettings();
         RebuildMenu();
 
-        _levelTimer.Tick += (_, _) => _overlay.UpdateLevel(_controller.Level);
+        _levelTimer.Tick += (_, _) => _overlay.AppendLevels(_controller.DrainLevels());
 
         StartUp();
     }

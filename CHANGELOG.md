@@ -262,6 +262,12 @@ deliberate:
   made. The scale lives in `AudioLevelMeter` in Core, where the table above is asserted against the
   fixtures rather than chosen by eye.
 
+  Windows had the same five bars with a *peak* rather than an RMS feeding them, so it pinned harder
+  still, and its capture buffer is half a second — the meter could not have been more current than
+  that whatever the UI did. Both clients now run the same scale over the same fixtures, and the
+  Windows capture buffer is 100 ms so there is something to draw. Android and iOS have no level
+  meter to change.
+
 - **The contract moved from `PROMPT.md` into `prompt/`, one part per file — and doing it fixed a bug
   that had been in every request since the contract was written.** `PROMPT.md` was two documents
   under one filename: about 95 lines that ship to the model, and 250 of argument, ablation tables and
