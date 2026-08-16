@@ -698,6 +698,24 @@ uploaded exact fixture now shows that Qwen3-Omni, Voxtral Small, and Gemma 4 all
 can currently replace that hosted path on this workload. OpenRouter remains a working fallback and
 useful for models Google does not serve directly.
 
+### What the settings window recommends
+
+Two entries, labelled and listed first, because a picker offering six equally weighted backends
+asks the user to have read this document before they can answer it. The two are the ends of one
+axis — one reads the screen, the other cannot — which is the only reason the choice reduces to a
+single question:
+
+| pick | for | measured |
+|---|---|---|
+| **Google** (`gemini-3.6-flash`) | accuracy | 44 / 48 on the near-miss suite; 5–60 s, bimodal |
+| **xAI** (`grok-stt`) | latency | 15 / 48 (25 with keyterms); ~1 s a clip, no tail |
+
+The other four stay in the list unlabelled, each for the narrower question it answers: OpenRouter
+for a model Google does not serve, `local` for a server you run yourself, Deepgram for English
+keyterm biasing, Voxtral for mid-sentence code-switching. The wording is duplicated by hand in four
+clients and pinned by a `ProviderRecommendation` test in each language, so a number that moves here
+moves in four places.
+
 The open-weight path remains worth watching, but the exact-fixture result is a negative one rather
 than a transport-only caveat. Voxtral Transcribe 2's context biasing is the same idea this project
 implements by prompt, done inside the decoder where a prior can be weighted rather than merely

@@ -73,8 +73,8 @@ struct SettingsView: View {
     private var providerSection: some View {
         Section {
             Picker("Service", selection: $model.provider) {
-                ForEach(ProviderKind.allCases, id: \.self) { kind in
-                    Text(kind.displayName).tag(kind)
+                ForEach(ProviderKind.pickerOrder, id: \.self) { kind in
+                    Text(kind.pickerLabel).tag(kind)
                 }
             }
             .accessibilityIdentifier("provider")
@@ -102,7 +102,7 @@ struct SettingsView: View {
             Picker("Fallback", selection: $model.fallbackProvider) {
                 Text("None").tag(ProviderKind?.none)
                 ForEach(model.fallbackChoices, id: \.self) { kind in
-                    Text(kind.displayName).tag(ProviderKind?.some(kind))
+                    Text(kind.pickerLabel).tag(ProviderKind?.some(kind))
                 }
             }
             .accessibilityIdentifier("fallback-provider")

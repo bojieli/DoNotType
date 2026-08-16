@@ -146,6 +146,55 @@ public static class ProviderFactory
         _ => kind.ToString(),
     };
 
+    /// <summary>
+    /// The two backends recommended to someone who has not read docs/EVALUATION.md, in the order
+    /// every picker lists them.
+    ///
+    /// Narrowed from five to two deliberately: the rest each answer a question these two cannot,
+    /// and none of them is a better answer to the question a new user is actually asking. A
+    /// recommendation is only possible because these two are the two ends of one axis — Gemini
+    /// reads the screen and xAI cannot — so the choice is one question rather than five.
+    /// </summary>
+    public static readonly IReadOnlyList<ProviderKind> Recommended =
+        [ProviderKind.Gemini, ProviderKind.XAI];
+
+    public static bool IsRecommended(this ProviderKind kind) => Recommended.Contains(kind);
+
+    /// <summary>
+    /// Every backend with the recommended ones first: the order every picker in this app uses.
+    /// Order is the recommendation that survives a dropdown too short to show five rows.
+    /// </summary>
+    public static readonly IReadOnlyList<ProviderKind> PickerOrder =
+        [.. Recommended, .. Enum.GetValues<ProviderKind>().Where(k => !Recommended.Contains(k))];
+
+    /// <summary>
+    /// The row label in a settings picker — never in history, a log line or an error, which say
+    /// what ran rather than what we advise.
+    /// </summary>
+    public static string PickerLabel(this ProviderKind kind) =>
+        kind.IsRecommended() ? $"{kind.DisplayName()} — recommended" : kind.DisplayName();
+
+    /// <summary>
+    /// One line under the picker: what this backend is recommended for, and the measurement behind
+    /// the claim. Empty for the rest — a picker that recommends everything recommends nothing.
+    ///
+    /// Word for word the same as the Swift and Kotlin copies, which is checked by the tests in
+    /// each language rather than by anything that can see all three at once.
+    /// </summary>
+    public static string RecommendationNote(this ProviderKind kind) => kind switch
+    {
+        ProviderKind.Gemini =>
+            "Recommended for accuracy. It reads the screen, so it spells the names and versions "
+            + "already in front of you: 44 of 48 on the near-miss suite against xAI's 15. You pay "
+            + "in latency, and unevenly — one three-second clip took 5 s and the next 61 s.",
+        ProviderKind.XAI =>
+            "Recommended for speed. About 1 s for a short clip, 2.8 s for two minutes of speech, "
+            + "and no tail. It cannot see the screen, so an unfamiliar name or a version number "
+            + "is transcribed by ear alone: 15 of 48 on the same suite, 25 with keyterm biasing "
+            + "turned on.",
+        _ => string.Empty,
+    };
+
     public static ITranscriptionProvider Create(ProviderKind kind, string apiKey, string? model = null) =>
         kind switch
         {

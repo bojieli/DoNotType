@@ -103,6 +103,10 @@ final class DictationModel {
     /// A recogniser cannot rewrite, and on iOS it cannot be grounded either, so the only thing to
     /// say about one is what it is good at.
     var providerNote: String? {
+        // The recommended two answer the question first: which of these should I pick. The
+        // ungrounded wording is the one that is true here — see `ungroundedRecommendationNote`.
+        if let recommendation = provider.ungroundedRecommendationNote { return recommendation }
+
         // The gateway forwards audio correctly; it is a measured quality difference, not a
         // capability one, and the picker is where two identical-looking entries are chosen between.
         if provider == .openrouter {
@@ -154,7 +158,7 @@ final class DictationModel {
         }
     }
 
-    var fallbackChoices: [ProviderKind] { ProviderKind.allCases.filter { $0 != provider } }
+    var fallbackChoices: [ProviderKind] { ProviderKind.pickerOrder.filter { $0 != provider } }
 
     var fallbackSummary: String? {
         guard let kind = fallbackProvider else { return nil }

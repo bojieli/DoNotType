@@ -92,7 +92,58 @@ enum class ProviderKind(
     XAI("xai", "xAI (transcription only)", "grok-stt", true),
     ;
 
+    /**
+     * The row label in a settings picker — never in a history row, a log line or an error, which
+     * say what ran rather than what we advise.
+     */
+    val pickerLabel: String
+        get() = if (isRecommended) "$displayName — recommended" else displayName
+
+    /**
+     * One line under the picker: what this backend is recommended *for*, and the measurement
+     * behind the claim. Empty for the rest — a picker that recommends everything recommends
+     * nothing.
+     *
+     * Word for word the same as the Swift and C# copies, which is checked by the tests in each
+     * language rather than by anything that can see all three at once.
+     */
+    val recommendationNote: String
+        get() = when (this) {
+            GEMINI ->
+                "Recommended for accuracy. It reads the screen, so it spells the names and " +
+                    "versions already in front of you: 44 of 48 on the near-miss suite against " +
+                    "xAI's 15. You pay in latency, and unevenly — one three-second clip took 5 s " +
+                    "and the next 61 s."
+            XAI ->
+                "Recommended for speed. About 1 s for a short clip, 2.8 s for two minutes of " +
+                    "speech, and no tail. It cannot see the screen, so an unfamiliar name or a " +
+                    "version number is transcribed by ear alone: 15 of 48 on the same suite, 25 " +
+                    "with keyterm biasing turned on."
+            else -> ""
+        }
+
+    val isRecommended: Boolean
+        get() = this in RECOMMENDED
+
     companion object {
+        /**
+         * The two backends recommended to someone who has not read docs/EVALUATION.md, in the
+         * order every picker lists them.
+         *
+         * Narrowed from five to two deliberately: the rest each answer a question these two
+         * cannot, and none of them is a better answer to the question a new user is actually
+         * asking. A recommendation is possible at all because these two are the two ends of one
+         * axis — Gemini reads the screen and xAI cannot — so the choice is one question rather
+         * than five.
+         */
+        val RECOMMENDED = listOf(GEMINI, XAI)
+
+        /**
+         * Every backend with the recommended ones first: the order every picker in this app uses.
+         * Order is the recommendation that survives a Spinner showing three rows at a time.
+         */
+        val PICKER_ORDER = RECOMMENDED + entries.filter { it !in RECOMMENDED }
+
         /**
          * What a fresh install uses.
          *

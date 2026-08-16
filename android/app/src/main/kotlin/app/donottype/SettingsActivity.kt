@@ -58,6 +58,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private lateinit var apiKeyField: EditText
     private lateinit var modelField: EditText
+    private lateinit var recommendationNote: TextView
     private lateinit var groundingNote: TextView
     private lateinit var fallbackKeyField: EditText
     private lateinit var fallbackDelayField: EditText
@@ -137,6 +138,11 @@ class SettingsActivity : AppCompatActivity() {
             body("Calls go straight to the provider with your key. Nothing routes through a server of ours.")
         )
         column.addView(buildProviderPicker())
+
+        // What the choice buys, for the two there is a recommendation for. Above the note below
+        // it, because someone who has just been told two entries are recommended is asking which.
+        recommendationNote = body("")
+        column.addView(recommendationNote)
 
         // Stated rather than left to be discovered: a recognition service silently disables screen
         // grounding and the rewrite path, and neither control would otherwise say so.
@@ -437,12 +443,14 @@ class SettingsActivity : AppCompatActivity() {
      * Carrying one provider's key into another's field would look like it had been saved.
      */
     private fun buildProviderPicker(): Spinner {
-        val kinds = ProviderKind.entries
+        // Recommended order rather than declaration order, and every index below is a lookup into
+        // this same list rather than an ordinal, so the two cannot drift apart.
+        val kinds = ProviderKind.PICKER_ORDER
         return Spinner(this).apply {
             adapter = ArrayAdapter(
                 this@SettingsActivity,
                 android.R.layout.simple_spinner_dropdown_item,
-                kinds.map { it.displayName },
+                kinds.map { it.pickerLabel },
             )
             setSelection(kinds.indexOf(Settings.provider).coerceAtLeast(0))
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -466,12 +474,13 @@ class SettingsActivity : AppCompatActivity() {
      * Anything but the primary. A fallback identical to it would double the cost to no purpose.
      */
     private fun buildFallbackPicker(): Spinner {
-        val choices = listOf<ProviderKind?>(null) + ProviderKind.entries.filter { it != Settings.provider }
+        val choices =
+            listOf<ProviderKind?>(null) + ProviderKind.PICKER_ORDER.filter { it != Settings.provider }
         return Spinner(this).apply {
             adapter = ArrayAdapter(
                 this@SettingsActivity,
                 android.R.layout.simple_spinner_dropdown_item,
-                choices.map { it?.displayName ?: "None" },
+                choices.map { it?.pickerLabel ?: "None" },
             )
             setSelection(choices.indexOf(Settings.fallbackProvider).coerceAtLeast(0))
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -493,6 +502,10 @@ class SettingsActivity : AppCompatActivity() {
     /** Says what the selected backend gives up, and hides controls it cannot honour. */
     private fun refreshProviderNotes() {
         val kind = Settings.provider
+
+        recommendationNote.text = kind.recommendationNote
+        recommendationNote.visibility =
+            if (recommendationNote.text.isNullOrEmpty()) View.GONE else View.VISIBLE
 
         groundingNote.text = when (kind) {
             // The gateway forwards audio correctly; this is a measured quality difference, and

@@ -19,6 +19,12 @@ public sealed class SettingsForm : Form
     private readonly TextBox _model = new();
     private readonly TextBox _apiKey = new() { UseSystemPasswordChar = true };
 
+    /// <summary>
+    /// What the selected backend is recommended for. Empty and hidden for the ones there is no
+    /// recommendation for, which is most of them.
+    /// </summary>
+    private readonly Label _recommendationNote = new() { AutoSize = true, MaximumSize = new Size(430, 0) };
+
     /// <summary>What the selected backend gives up. Empty and hidden for a model provider.</summary>
     private readonly Label _providerNote = new() { AutoSize = true, MaximumSize = new Size(430, 0) };
 
@@ -99,6 +105,7 @@ public sealed class SettingsForm : Form
 
         layout.Controls.Add(Heading("Provider"));
         layout.Controls.Add(Labelled("Service", _provider));
+        layout.Controls.Add(_recommendationNote);
         layout.Controls.Add(_providerNote);
         layout.Controls.Add(Labelled("Model", _model));
         layout.Controls.Add(Labelled("API key", _apiKey));
@@ -484,11 +491,30 @@ public sealed class SettingsForm : Form
         return page;
     }
 
-    /// <summary>The fallback choices are every backend except the primary.</summary>
+    /// <summary>
+    /// The backend the provider dropdown is pointing at.
+    ///
+    /// A lookup rather than a cast. The rows used to be in <c>Enum.GetValues</c> order, so
+    /// <c>(ProviderKind)SelectedIndex</c> was accidentally correct; putting the recommended two
+    /// first breaks that identity, and the failure would have been silent — the wrong backend
+    /// described in the note, and the wrong one saved.
+    /// </summary>
+    private ProviderKind SelectedProvider()
+    {
+        var index = Math.Max(_provider.SelectedIndex, 0);
+        return index < ProviderFactory.PickerOrder.Count
+            ? ProviderFactory.PickerOrder[index]
+            : ProviderFactory.DefaultForNewInstalls;
+    }
+
+    /// <summary>The fallback choices are every backend except the primary, recommended first.</summary>
+    private static List<ProviderKind> FallbackChoices(ProviderKind primary) =>
+        ProviderFactory.PickerOrder.Where(k => k != primary).ToList();
+
     private ProviderKind? SelectedFallback()
     {
         if (_fallback.SelectedIndex <= 0) return null;
-        var choices = Enum.GetValues<ProviderKind>().Where(k => k != _settings.Provider).ToList();
+        var choices = FallbackChoices(_settings.Provider);
         var index = _fallback.SelectedIndex - 1;
         return index >= 0 && index < choices.Count ? choices[index] : null;
     }
@@ -496,8 +522,7 @@ public sealed class SettingsForm : Form
     private int FallbackIndex(ProviderKind? kind)
     {
         if (kind is null) return 0;
-        var choices = Enum.GetValues<ProviderKind>().Where(k => k != _settings.Provider).ToList();
-        var index = choices.IndexOf(kind.Value);
+        var index = FallbackChoices(_settings.Provider).IndexOf(kind.Value);
         return index < 0 ? 0 : index + 1;
     }
 
@@ -519,17 +544,21 @@ public sealed class SettingsForm : Form
         // Said here, where the choice is made, rather than found out by holding the key and
         // getting your own words back. A recogniser has no text endpoint at all, so this is not a
         // setting that would work slightly worse — it is one that cannot work.
+        var kind = SelectedProvider();
         var second = _secondTrigger.SelectedIndex > 0;
         _secondKeyNote.Text = !second
             ? string.Empty
-            : ((ProviderKind)Math.Max(_provider.SelectedIndex, 0)).IsSpeechRecognition()
-                ? $"{(ProviderKind)_provider.SelectedIndex} only transcribes audio and cannot "
+            : kind.IsSpeechRecognition()
+                ? $"{kind} only transcribes audio and cannot "
                     + "rewrite text, so the second key will deliver the verbatim transcript "
                     + "unchanged. Choose a model backend above to use it."
                 : string.Empty;
         _secondKeyNote.Visible = _secondKeyNote.Text.Length > 0;
 
-        var kind = (ProviderKind)Math.Max(_provider.SelectedIndex, 0);
+        // What the choice buys, for the two there is a recommendation for, before what it costs.
+        _recommendationNote.Text = kind.RecommendationNote();
+        _recommendationNote.Visible = _recommendationNote.Text.Length > 0;
+
         _providerNote.Text = kind switch
         {
             // Not a capability difference — the gateway forwards audio correctly — but a measured
@@ -589,20 +618,22 @@ public sealed class SettingsForm : Form
 
     private void LoadValues()
     {
-        // Display names rather than enum names, so the dropdown says what each backend gives up
-        // instead of leaving it to be discovered.
-        foreach (var kind in Enum.GetValues<ProviderKind>())
+        // Picker labels rather than enum names, so the dropdown says what each backend gives up
+        // and which two are recommended, instead of leaving both to be discovered. Recommended
+        // order, not declaration order — hence the IndexOf below rather than a cast.
+        foreach (var kind in ProviderFactory.PickerOrder)
         {
-            _provider.Items.Add(kind.DisplayName());
+            _provider.Items.Add(kind.PickerLabel());
         }
-        _provider.SelectedIndex = (int)_settings.Provider;
+        // ToList first: PickerOrder is an IReadOnlyList, which has no IndexOf of its own.
+        _provider.SelectedIndex = Math.Max(ProviderFactory.PickerOrder.ToList().IndexOf(_settings.Provider), 0);
         _model.Text = _settings.ModelFor(_settings.Provider);
         _apiKey.Text = _settings.KeyFor(_settings.Provider) ?? string.Empty;
 
         _fallback.Items.Add("None");
-        foreach (var kind in Enum.GetValues<ProviderKind>())
+        foreach (var kind in FallbackChoices(_settings.Provider))
         {
-            if (kind != _settings.Provider) _fallback.Items.Add(kind.DisplayName());
+            _fallback.Items.Add(kind.PickerLabel());
         }
         _fallback.SelectedIndex = FallbackIndex(_settings.ResolvedFallbackProvider());
         _fallbackKey.Text = _settings.ResolvedFallbackProvider() is { } current
@@ -625,7 +656,7 @@ public sealed class SettingsForm : Form
         // field would look like it had been saved.
         _provider.SelectedIndexChanged += (_, _) =>
         {
-            var chosen = (ProviderKind)_provider.SelectedIndex;
+            var chosen = SelectedProvider();
             _model.Text = _settings.ModelFor(chosen);
             _apiKey.Text = _settings.KeyFor(chosen) ?? string.Empty;
             RefreshProviderNotes();
@@ -699,7 +730,7 @@ public sealed class SettingsForm : Form
 
     private void SaveValues()
     {
-        _settings.Provider = (ProviderKind)_provider.SelectedIndex;
+        _settings.Provider = SelectedProvider();
         _settings.SetModelFor(_settings.Provider, _model.Text);
         _settings.SetKeyFor(_settings.Provider, _apiKey.Text.Trim());
         _settings.FallbackProvider = SelectedFallback();
