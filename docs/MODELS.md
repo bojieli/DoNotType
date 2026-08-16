@@ -750,8 +750,44 @@ in run 2 (4.50 s against 3.83 s). Do not read a ranking off adjacent rows.
 the 3 preview never exceeded 2.73 s — the distributions are almost flat. 3.6 returned a
 three-second phrase in 39 s once, and its p90 on that same short clip is 10.6 s. The tail is also
 the least reproducible thing measured: 3.6's short-clip maximum was 39.06 s in one run and 9.06 s
-in the other, which is the load-dependence recorded in the
-[2026-08-14 corrections](EVALUATION.md) showing up again rather than a property of the model.
+in the other.
+
+### The tail is waiting, not thinking — and it is per request
+
+The obvious reading of that spread is "those two models were busy". Measured directly, with all
+four sampling one shared 180-second window on a matched 6-second cadence
+(`eval/latency-variance.py`), it is not that:
+
+- **Output tokens are pinned at 30 on every trial of every model.** A 3.6 request that took
+  15.81 s emitted exactly the same 30 tokens as one that took 3.26 s. Thought tokens bill as
+  output, so a thinking model would show it here. The slow requests are not doing more work.
+- **The spikes do not coincide.** Every pairwise correlation across models is ≈ 0 (|r| ≤ 0.28).
+  At the slot where 3.7 took 46.44 s, 3.5 turned in 2.23 s — its *fastest* trial of the run — and
+  the preview 3.52 s. Account-level throttling, network, or a loaded region would move all four
+  together.
+- **3.6 and 3.7 do not even spike together** (r = +0.01), so it is not "the newer pool is busy"
+  either.
+
+So the latency is unpredictable in the strict sense: the wait is server-side scheduling on each
+model's own serving pool, independent per request, and nothing observable from the client predicts
+which request draws a long one. A longer timeout does not help and neither does backing off,
+because there is no persistent state to wait out — which is precisely the case the
+`FallbackTranscriber` hedge is the right shape for. At its 8 s default, on a three-second phrase:
+
+| model | trials over 8 s |
+|---|---|
+| `gemini-3.6-flash` | 5 / 31 (**16%**) |
+| `gemini-3.7-flash` | 3 / 31 (10%) |
+| `gemini-3.5-flash` | 0 / 31 |
+| `gemini-3-flash-preview` | 0 / 31 |
+
+Roughly one short dictation in six on the default model crosses the hedge and is answered by the
+screen-blind fallback. That is the accuracy cost of the tail, and it is a better argument for
+tuning `fallbackAfterSeconds` than any number in the median column.
+
+This harness spends one process per trial, so a TLS handshake falls inside the timed region and
+its absolute figures run ~1 s above the table above. That offset is constant across models and
+does not touch the variance result.
 
 The p90 column is the one to quote for the default, because the short clip is the common case: a
 user dictating a phrase waits about 4 s typically and about 11 s in the worst tenth of attempts.

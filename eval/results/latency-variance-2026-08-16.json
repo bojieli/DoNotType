@@ -1,0 +1,878 @@
+{
+  "gemini-3.6-flash": [
+    {
+      "offset": 0.0,
+      "seconds": 3.5765819549560547,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 6.0,
+      "seconds": 3.660537004470825,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 12.01,
+      "seconds": 3.304671049118042,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 18.0,
+      "seconds": 5.255350112915039,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 24.01,
+      "seconds": 3.464048981666565,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 30.01,
+      "seconds": 9.971811056137085,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 40.0,
+      "seconds": 15.812358021736145,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 55.84,
+      "seconds": 3.8901480436325073,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 59.75,
+      "seconds": 4.91144597530365,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 64.69,
+      "seconds": 3.8657270669937134,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 68.58,
+      "seconds": 8.910423040390015,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 77.51,
+      "seconds": 6.224333047866821,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 83.75,
+      "seconds": 3.8763530254364014,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 87.64,
+      "seconds": 4.308754086494446,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 91.97,
+      "seconds": 11.48052990436554,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 103.47,
+      "seconds": 7.860525965690613,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 111.35,
+      "seconds": 3.5319581031799316,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 45
+    },
+    {
+      "offset": 114.91,
+      "seconds": 4.504264950752258,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 119.44,
+      "seconds": 10.501688003540039,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 129.96,
+      "seconds": 5.052965998649597,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 135.04,
+      "seconds": 7.512601971626282,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 142.58,
+      "seconds": 4.186161994934082,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 146.79,
+      "seconds": 5.190127968788147,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 152.0,
+      "seconds": 3.592599034309387,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 155.62,
+      "seconds": 4.6491910219192505,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 160.28,
+      "seconds": 3.7585560083389282,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 164.07,
+      "seconds": 3.806401014328003,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 167.9,
+      "seconds": 4.226161003112793,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 172.15,
+      "seconds": 6.56337308883667,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 178.73,
+      "seconds": 4.30862295627594,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 183.07,
+      "seconds": 3.2604609727859497,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    }
+  ],
+  "gemini-3.7-flash": [
+    {
+      "offset": 0.0,
+      "seconds": 3.524886965751648,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 6.01,
+      "seconds": 3.7238069772720337,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 12.0,
+      "seconds": 3.5009859800338745,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 18.01,
+      "seconds": 5.497774004936218,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 24.01,
+      "seconds": 4.008839011192322,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 30.0,
+      "seconds": 3.751291036605835,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 36.01,
+      "seconds": 4.611415982246399,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 42.0,
+      "seconds": 4.24272096157074,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 48.0,
+      "seconds": 46.439963936805725,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 94.46,
+      "seconds": 5.394367933273315,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 99.89,
+      "seconds": 7.723134994506836,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 107.63,
+      "seconds": 7.334497928619385,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 114.99,
+      "seconds": 3.8172450065612793,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 118.82,
+      "seconds": 4.236053943634033,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 123.08,
+      "seconds": 9.692054033279419,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 132.79,
+      "seconds": 3.8705849647521973,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 136.68,
+      "seconds": 4.6596440076828,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 141.36,
+      "seconds": 4.459203004837036,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 145.85,
+      "seconds": 3.3538960218429565,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 149.22,
+      "seconds": 3.6150749921798706,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 152.85,
+      "seconds": 4.565878987312317,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 157.43,
+      "seconds": 3.6831530332565308,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 161.14,
+      "seconds": 3.385213017463684,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 164.55,
+      "seconds": 4.403793096542358,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 168.98,
+      "seconds": 3.4705730676651,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 172.48,
+      "seconds": 3.6168220043182373,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 176.11,
+      "seconds": 4.336843013763428,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 180.47,
+      "seconds": 13.590083956718445,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 194.08,
+      "seconds": 3.7071529626846313,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 197.81,
+      "seconds": 3.2942110300064087,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 201.13,
+      "seconds": 3.682608962059021,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    }
+  ],
+  "gemini-3.5-flash": [
+    {
+      "offset": 0.0,
+      "seconds": 2.4288100004196167,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 6.01,
+      "seconds": 2.72789990901947,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 12.0,
+      "seconds": 2.404644012451172,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 18.0,
+      "seconds": 2.312135934829712,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 24.0,
+      "seconds": 2.3921619653701782,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 30.0,
+      "seconds": 2.375791907310486,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 36.0,
+      "seconds": 2.481613039970398,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 42.0,
+      "seconds": 2.5253260135650635,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 48.01,
+      "seconds": 2.2273260354995728,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 54.01,
+      "seconds": 2.4937610626220703,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 60.0,
+      "seconds": 2.292685031890869,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 66.0,
+      "seconds": 2.65349805355072,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 72.0,
+      "seconds": 2.3423690795898438,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 78.0,
+      "seconds": 2.4706850051879883,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 84.0,
+      "seconds": 2.363460063934326,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 90.0,
+      "seconds": 2.6574920415878296,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 96.01,
+      "seconds": 2.3622589111328125,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 102.0,
+      "seconds": 2.9120529890060425,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 108.0,
+      "seconds": 2.887292981147766,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 114.0,
+      "seconds": 2.996667981147766,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 120.0,
+      "seconds": 2.3952680826187134,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 126.01,
+      "seconds": 2.300945997238159,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 132.0,
+      "seconds": 2.410783052444458,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 138.0,
+      "seconds": 2.5680969953536987,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 144.0,
+      "seconds": 2.467118978500366,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 150.0,
+      "seconds": 2.6376839876174927,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 156.01,
+      "seconds": 3.2478619813919067,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 162.01,
+      "seconds": 2.346851944923401,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 168.0,
+      "seconds": 2.2500600814819336,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 174.0,
+      "seconds": 2.630136013031006,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 180.0,
+      "seconds": 2.368685007095337,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    }
+  ],
+  "gemini-3-flash-preview": [
+    {
+      "offset": 0.0,
+      "seconds": 3.2778890132904053,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 45
+    },
+    {
+      "offset": 6.01,
+      "seconds": 3.1475119590759277,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 12.01,
+      "seconds": 3.2650619745254517,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 18.0,
+      "seconds": 3.9192609786987305,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 24.0,
+      "seconds": 3.7285460233688354,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 30.01,
+      "seconds": 4.799018979072571,
+      "outputTokens": 28,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 36.0,
+      "seconds": 3.4798280000686646,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 45
+    },
+    {
+      "offset": 42.01,
+      "seconds": 3.364780068397522,
+      "outputTokens": 28,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 48.0,
+      "seconds": 3.5171279907226562,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 54.0,
+      "seconds": 3.033402919769287,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 60.01,
+      "seconds": 2.9893100261688232,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 45
+    },
+    {
+      "offset": 66.0,
+      "seconds": 3.2753549814224243,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 72.0,
+      "seconds": 3.1232110261917114,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 78.0,
+      "seconds": 4.89969801902771,
+      "outputTokens": 28,
+      "promptTokens": 598,
+      "chars": 45
+    },
+    {
+      "offset": 84.0,
+      "seconds": 3.1298590898513794,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 45
+    },
+    {
+      "offset": 90.0,
+      "seconds": 2.951735019683838,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 96.0,
+      "seconds": 3.0007129907608032,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 102.01,
+      "seconds": 3.5150599479675293,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 108.0,
+      "seconds": 3.0537859201431274,
+      "outputTokens": 28,
+      "promptTokens": 598,
+      "chars": 45
+    },
+    {
+      "offset": 114.0,
+      "seconds": 3.028501033782959,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 120.01,
+      "seconds": 3.3582839965820312,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 126.01,
+      "seconds": 3.442275047302246,
+      "outputTokens": 28,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 132.0,
+      "seconds": 3.360224962234497,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 138.0,
+      "seconds": 3.401587963104248,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 45
+    },
+    {
+      "offset": 144.0,
+      "seconds": 3.5899521112442017,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 150.01,
+      "seconds": 2.9113309383392334,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 156.0,
+      "seconds": 2.931489944458008,
+      "outputTokens": 28,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 162.01,
+      "seconds": 2.92959201335907,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 168.0,
+      "seconds": 2.7715240716934204,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 174.0,
+      "seconds": 3.1150540113449097,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    },
+    {
+      "offset": 180.0,
+      "seconds": 3.6509130001068115,
+      "outputTokens": 30,
+      "promptTokens": 598,
+      "chars": 46
+    }
+  ]
+}
