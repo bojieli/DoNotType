@@ -229,6 +229,83 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     /// and "cannot rewrite what you said" now have different answers, and a UI that asks the
     /// first when it means the second takes away a hotkey the key pays for.
     public var supportsTextGeneration: Bool { !isSpeechRecognition || defaultTextModel != nil }
+
+    /// The two backends recommended to someone who has not read `docs/EVALUATION.md`, in the order
+    /// every picker lists them.
+    ///
+    /// Narrowed from six to two deliberately. The other four each answer a question these two
+    /// cannot — a model Google does not serve, a server you run yourself, English keyterm biasing,
+    /// a transcript with no vendor at all — and none of them is a better answer to the question a
+    /// new user is actually asking. Six equally weighted entries made the picker a research
+    /// project, and the research is already written down.
+    ///
+    /// A recommendation is only possible because these two differ on **one** axis and are the
+    /// extremes of it: `.google` reads the screen and `.xai` does not. Every number in
+    /// `recommendationNote` follows from that single difference, which is why the choice can be
+    /// put to a user as one question — accuracy or latency — rather than as six.
+    public static let recommended: [ProviderKind] = [.google, .xai]
+
+    public var isRecommended: Bool { Self.recommended.contains(self) }
+
+    /// Every backend with the recommended ones first: the order all four clients' pickers use.
+    ///
+    /// Order is the recommendation that survives translation, a fixed-height dropdown and a
+    /// Spinner that shows three rows at a time. The label and the note below it can be missed;
+    /// being first cannot.
+    public static var pickerOrder: [ProviderKind] {
+        recommended + allCases.filter { !$0.isRecommended }
+    }
+
+    /// The row label in a settings picker — never in history, a log line or an error, which say
+    /// what ran rather than what we advise.
+    public var pickerLabel: String {
+        isRecommended ? "\(displayName) — recommended" : displayName
+    }
+
+    /// One line under the picker: what this backend is recommended *for*, and the measurement
+    /// behind the claim.
+    ///
+    /// Nil for the other four. A picker that recommends everything recommends nothing, and the
+    /// trade-off notes those four already carry say what they give up — which is a different
+    /// sentence from what they are best at.
+    public var recommendationNote: String? {
+        switch self {
+        case .google:
+            "Recommended for accuracy. It reads the screen, so it spells the names and versions "
+                + "already in front of you: 44 of 48 on the near-miss suite against xAI's 15. You "
+                + "pay in latency, and unevenly — one three-second clip took 5 s and the next 61 s."
+        case .xai:
+            "Recommended for speed. About 1 s for a short clip, 2.8 s for two minutes of speech, "
+                + "and no tail. It cannot see the screen, so an unfamiliar name or a version "
+                + "number is transcribed by ear alone: 15 of 48 on the same suite, 25 with "
+                + "keyterm biasing turned on."
+        default: nil
+        }
+    }
+
+    /// The same recommendation for a client that has no screen grounding to offer — iOS, where
+    /// the sandbox forbids reading another app's screen at all. See `docs/PARITY.md`.
+    ///
+    /// It lives here, next to the note it replaces, because the two must be argued from the same
+    /// measurements and the failure mode of putting it in the iOS target is that only one of them
+    /// gets updated when a number moves. The claim genuinely differs: `.google`'s advantage on the
+    /// other three clients is stated as reading the screen, which on iOS would be a promise the
+    /// platform cannot keep. What survives is that the model is better at unfamiliar words with no
+    /// screen at all — 41 to 42 of 48 ungrounded — which is the honest reason to pay for it here.
+    public var ungroundedRecommendationNote: String? {
+        switch self {
+        case .google:
+            "Recommended for accuracy. No app on iOS can read another's screen, so this one is "
+                + "working from the audio alone — and still spells unfamiliar names and versions "
+                + "far better for it: 41 of 48 on the near-miss suite against xAI's 15. You pay "
+                + "in latency, and unevenly — one three-second clip took 5 s and the next 61 s."
+        case .xai:
+            "Recommended for speed. About 1 s for a short clip, 2.8 s for two minutes of speech, "
+                + "and no tail. An unfamiliar name or a version number is transcribed by ear "
+                + "alone: 15 of 48 on the same suite."
+        default: nil
+        }
+    }
 }
 
 public enum ProviderFactory {

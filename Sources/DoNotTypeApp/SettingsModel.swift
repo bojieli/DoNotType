@@ -79,9 +79,14 @@ final class SettingsModel {
         didSet { Settings.shared.fallbackAfterSeconds = fallbackAfterSeconds }
     }
 
-    /// Backends that can serve as a fallback: anything except the current primary.
+    /// Backends that can serve as a fallback: anything except the current primary, recommended
+    /// ones first.
+    ///
+    /// The natural pairing is the two recommended backends against each other — the whole reason
+    /// to hedge is that one is accurate and slow and the other is fast and screen-blind — so
+    /// whichever of them is not the primary should be the first entry here.
     var fallbackChoices: [ProviderKind] {
-        ProviderKind.allCases.filter { $0 != provider }
+        ProviderKind.pickerOrder.filter { $0 != provider }
     }
 
     /// What the pairing will actually do, in one line, using the numbers behind it.
@@ -111,6 +116,12 @@ final class SettingsModel {
         guard provider.defaultTextModel != nil, !textModel.trimmed.isEmpty else { return base }
         return "\(base) · rewrites on \(textModel)"
     }
+
+    /// What the selected backend is recommended for, or nil for the four that are not.
+    ///
+    /// Shown above `groundingSummary` rather than instead of it: this line says what the choice
+    /// buys, that one says what it costs, and xAI is the case where both are worth reading.
+    var recommendationNote: String? { provider.recommendationNote }
 
     /// One line under the provider picker explaining what selecting it gives up.
     var groundingSummary: String? {

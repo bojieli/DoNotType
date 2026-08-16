@@ -49,9 +49,13 @@ private struct GeneralTab: View {
             // who serves the request, the model is what runs it, and one provider serves many
             // models. "In use" states the combination, which is the thing neither field says.
             Section("Provider and model") {
+                // Recommended entries first and labelled as such. Six equally weighted backends
+                // asked the user to have read the evaluation before they could pick one; two of
+                // them differ on a single axis a user can actually answer for themselves, and the
+                // other four are still here for the narrower questions they answer.
                 Picker("Provider", selection: $model.provider) {
-                    ForEach(ProviderKind.allCases, id: \.self) { kind in
-                        Text(kind.displayName).tag(kind)
+                    ForEach(ProviderKind.pickerOrder, id: \.self) { kind in
+                        Text(kind.pickerLabel).tag(kind)
                     }
                 }
                 TextField("Model", text: $model.model)
@@ -76,6 +80,16 @@ private struct GeneralTab: View {
                 // exactly like the app losing it.
                 if let explanation = model.missingKeyExplanation {
                     Label(explanation, systemImage: "key.slash")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // What the choice buys, for the two entries there is a recommendation for. Shown
+                // before the cost below it, because a user reading this has just been told two
+                // options are recommended and the next question is which.
+                if let recommendation = model.recommendationNote {
+                    Label(recommendation, systemImage: "star")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -118,7 +132,7 @@ private struct GeneralTab: View {
                 Picker("Second provider", selection: $model.fallbackProvider) {
                     Text("None").tag(ProviderKind?.none)
                     ForEach(model.fallbackChoices, id: \.self) { kind in
-                        Text(kind.displayName).tag(ProviderKind?.some(kind))
+                        Text(kind.pickerLabel).tag(ProviderKind?.some(kind))
                     }
                 }
 
