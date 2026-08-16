@@ -263,10 +263,9 @@ for masking before the first request, and anything else key-shaped is caught by 
 - **Hotkey** — which key, whether a tap toggles or a hold talks, and an optional **second key
   bound to a rewrite** (formal, concise, bullets) for when you want an email rather than a
   transcript. Your main key always stays verbatim.
-- **Shortcuts** — undo the last insertion, revert a rewrite to what you actually said, or paste
-  the last transcript again: `⌘⇧Z` / `⌘⌥Z` / `⌘⌃V` on macOS, `Ctrl+Shift+Z` / `Ctrl+Alt+Z` /
-  `Ctrl+Alt+V` on Windows. All three are cheap only because the verbatim transcript is always
-  kept. Not `Ctrl+Z`, which belongs to whatever you are typing into.
+- **Shortcuts** — undo the last insertion, or revert a rewrite to what you actually said: `⌘⇧Z` /
+  `⌘⌥Z` on macOS, `Ctrl+Shift+Z` / `Ctrl+Alt+Z` on Windows. Both are cheap only because the
+  verbatim transcript is always kept. Not `Ctrl+Z`, which belongs to whatever you are typing into.
 - **Audio** — pin a microphone rather than following the system default; start/stop tones are on
   by default and can be disabled.
 - **Fidelity** — `raw`, `light` (default), `tidy`. Even `tidy` only changes typography, never words.

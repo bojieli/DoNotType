@@ -235,6 +235,15 @@ deliberate:
   every Opus recording. Every one of them was a wrong number rather than a failure — audio that
   decodes to something plausible and shorter, which nothing downstream can detect.
 
+### Removed
+
+- **Paste last transcript** (`⌘⌃V` on macOS, `Ctrl+Alt+V` on Windows), along with its menu bar item
+  and its line in the Shortcuts list. It re-inserted the newest completed transcript, which is the
+  one you are least likely to have lost — you just watched it land. Anything older, which is the
+  case that actually comes up, it could not reach at all. History does that job for any entry on
+  any of the four clients, so the shortcut was a second, worse way to do a subset of it, holding a
+  chord on two platforms and a row in the parity table on all four.
+
 ### Fixed
 
 - **The API key field on macOS could be typed into but not pasted into.** Cut, Copy, Paste, Select

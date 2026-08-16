@@ -18,7 +18,7 @@ reachable by a user of that client, not merely present in its core library.
 | Second key or chip that rewrites | ✅ second hotkey | ✅ second hotkey | ✅ style chips | ✅ style picker |
 | Undo the last insertion | ✅ ⌘⇧Z | ✅ Ctrl+Shift+Z | — ² | — ² |
 | Revert a rewrite to verbatim | ✅ ⌘⌥Z | ✅ Ctrl+Alt+Z | — ² | — ² |
-| Paste the last transcript again | ✅ ⌘⌃V | ✅ Ctrl+Alt+V | ✅ ³ | ✅ ³ |
+| Put a past transcript in again | ✅ ³ | ✅ ³ | ✅ ³ | ✅ ³ |
 | Start/stop tones | ✅ | ✅ | — ⁴ | — ⁴ |
 | Pin a microphone | ✅ | ✅ | — ⁵ | — ⁵ |
 
@@ -30,8 +30,10 @@ control.
 that. A keyboard deleting characters it did not necessarily insert is a worse bet than the system's.
 The verbatim text is in History on every platform, which is what makes the desktop version cheap.
 
-³ Not a shortcut but a list: every transcript is in History and tapping one inserts it. That is the
-same job — "put that in again" — with the input a touchscreen has.
+³ A list rather than a shortcut, on all four: every transcript is in History, and selecting one puts
+it in again. A dedicated re-paste key existed on the desktops and was removed — it did the same job
+as picking the entry you actually meant, but only ever for the newest one, which is rarely the one
+you are missing.
 
 ⁴ A keyboard already makes its own sounds, and an app in the foreground is being looked at. The
 desktop tone exists because the overlay is at the bottom of the screen while you look elsewhere.

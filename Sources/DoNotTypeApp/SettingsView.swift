@@ -295,7 +295,6 @@ private struct GeneralTab: View {
             Section("Shortcuts") {
                 LabeledContent("Undo last insertion") { Text("⌘⇧Z").monospaced() }
                 LabeledContent("Revert a rewrite to what you said") { Text("⌘⌥Z").monospaced() }
-                LabeledContent("Paste last transcript again") { Text("⌘⌃V").monospaced() }
                 Text(
                     "Undo works for a minute after inserting, then expires — deleting characters "
                         + "from a field you have since moved away from would destroy unrelated text."

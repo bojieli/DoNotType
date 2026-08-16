@@ -75,11 +75,6 @@ final class DictationController {
             (keyCode: 6, flags: [.maskCommand, .maskAlternate], action: { [weak self] in
                 Task { await self?.undoLastInsertion(revertToVerbatim: true) }
             }),
-            // ⌘⌃V re-pastes the last transcript, for when the first insertion landed in the
-            // wrong window.
-            (keyCode: 9, flags: [.maskCommand, .maskControl], action: { [weak self] in
-                Task { await self?.pasteLastTranscript() }
-            }),
         ]
         return hotkey.start()
     }
@@ -494,18 +489,6 @@ final class DictationController {
             hint: revertToVerbatim ? "Reverted to what you said" : "Removed")
         overlay.update(phase: .failed(revertToVerbatim ? "Reverted to verbatim" : "Insertion removed"))
         overlay.hide(after: .milliseconds(1_200))
-    }
-
-    /// Re-inserts the most recent transcript, for when the first one landed in the wrong window.
-    func pasteLastTranscript() async {
-        let recent = await store.all().first { $0.status == .completed }
-        guard let recent else { return }
-
-        let text = recent.deliveredText
-        await TextInjector.insert(text)
-        insertions.record(recordID: recent.id, delivered: text, verbatim: recent.text)
-        overlay.show(phase: .inserted(text.count, rewriteFailed: false), hint: "")
-        overlay.hide(after: .milliseconds(900))
     }
 
     private func rewriteInstruction(for style: RewriteStyle) -> String? {

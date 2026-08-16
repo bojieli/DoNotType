@@ -107,7 +107,6 @@ public sealed class DictationController : IDisposable
         // Both are cheap only because the verbatim transcript is always kept.
         _hotkey.UndoRequested += () => _ = UndoLastInsertionAsync(revertToVerbatim: false);
         _hotkey.RevertToVerbatimRequested += () => _ = UndoLastInsertionAsync(revertToVerbatim: true);
-        _hotkey.RepasteRequested += () => _ = PasteLastTranscriptAsync();
     }
 
     private readonly InsertionTracker _insertions = new();
@@ -129,20 +128,6 @@ public sealed class DictationController : IDisposable
             ["reverted"] = revertToVerbatim ? "to verbatim" : "removed",
         });
         Undone?.Invoke(revertToVerbatim ? "Reverted to what you said" : "Insertion removed");
-    }
-
-    /// <summary>
-    /// Re-inserts the most recent transcript, for when the first one landed in the wrong window.
-    /// </summary>
-    public async Task PasteLastTranscriptAsync()
-    {
-        var recent = _history.All().FirstOrDefault(r => r.Status == DictationStatus.Completed);
-        if (recent is null) return;
-
-        var text = recent.DeliveredText;
-        await TextInjector.InsertAsync(text, Short(_pendingId)).ConfigureAwait(false);
-        _insertions.Record(recent.Id, text, recent.Text);
-        Inserted?.Invoke(new Insertion(text.Length, RewriteFailed: false));
     }
 
     /// <summary>An insertion was taken back, with what to say about it.</summary>

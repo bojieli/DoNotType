@@ -65,9 +65,6 @@ public sealed class HotkeyMonitor : IDisposable
     /// <summary>Ctrl+Alt+Z — swap a rewrite for the words that were actually said.</summary>
     public event Action? RevertToVerbatimRequested;
 
-    /// <summary>Ctrl+Alt+V — put the last transcript in again, for when it landed in the wrong window.</summary>
-    public event Action? RepasteRequested;
-
     /// <summary>Set by the owner so tap-toggle knows whether a tap should start or stop.</summary>
     public Func<bool> IsRecording { get; set; } = () => false;
 
@@ -166,10 +163,6 @@ public sealed class HotkeyMonitor : IDisposable
                 // into and would be stolen from every text field on the system.
                 if (shift) { UndoRequested?.Invoke(); }
                 else if (alt) { RevertToVerbatimRequested?.Invoke(); }
-            }
-            else if (ctrl && alt && info.vkCode == Interop.VK_V)
-            {
-                RepasteRequested?.Invoke();
             }
         }
 

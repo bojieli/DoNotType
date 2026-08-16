@@ -231,12 +231,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 title: "Copy last transcript", action: #selector(copyLast), keyEquivalent: "c")
             copy.target = self
             menu.addItem(copy)
-
-            let paste = NSMenuItem(
-                title: "Paste last transcript", action: #selector(pasteLast), keyEquivalent: "v")
-            paste.keyEquivalentModifierMask = [.command, .control]
-            paste.target = self
-            menu.addItem(paste)
         }
 
         menu.addItem(.separator())
@@ -332,10 +326,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func revertToVerbatim() {
         Task { await dictation.undoLastInsertion(revertToVerbatim: true); rebuildMenu() }
-    }
-
-    @objc private func pasteLast() {
-        Task { await dictation.pasteLastTranscript(); rebuildMenu() }
     }
 
     @objc private func copyLast() {
