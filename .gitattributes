@@ -1,0 +1,23 @@
+# The contract is bytes, not text.
+#
+# Every platform must send the same prompt or the measurements in PROMPT.md's changelog describe
+# none of them. Git's default `autocrlf` on Windows rewrites these files to CRLF on checkout, so a
+# Windows build shipped a different contract than a macOS one — the loaders normalise line endings
+# on read for that reason, and this keeps the working copy honest as well, so a diff of the shipped
+# text is a diff of the shipped text.
+prompt/**/*.md text eol=lf
+
+# Read by the same loaders during the one-time split of the old single-file format.
+PROMPT.md text eol=lf
+
+# The fixtures the four ports assert byte-for-byte against each other. Named individually rather
+# than by directory: the same directory holds a reference Ogg stream and two WAVs, and eol
+# normalisation would corrupt them.
+eval/conformance/*.json text eol=lf
+eval/conformance/*.bin binary
+eval/conformance/*.wav binary
+eval/audio/**/*.wav binary
+eval/audio/**/*.opus binary
+eval/audio/**/*.m4a binary
+eval/audio/**/*.mp3 binary
+eval/audio/**/*.flac binary

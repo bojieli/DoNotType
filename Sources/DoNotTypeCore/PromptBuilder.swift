@@ -65,22 +65,29 @@ public struct PromptSource: Sendable {
     /// transform applied to any part, and it exists because a clause lands inside a numbered list
     /// item in another part.
     public func text(for part: PromptPart) throws -> String {
-        let url = url(for: part)
-        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
-            throw Error.partMissing(part, url)
-        }
-        let trimmed = raw.trimmed
-        guard !trimmed.isEmpty else { throw Error.partEmpty(part, url) }
+        let trimmed = try editableText(for: part)
+        guard !trimmed.isEmpty else { throw Error.partEmpty(part, url(for: part)) }
         return part.isClause ? trimmed.replacingOccurrences(of: "\n", with: " ") : trimmed
     }
 
     /// The text as it sits on disk, unjoined — what an editor should show and save.
+    ///
+    /// Line endings are normalised to LF. Git checks these files out with CRLF on Windows under the
+    /// default `autocrlf`, and the four platforms have to send the same bytes for the same contract
+    /// or the measurements describe none of them. Cheap here, and it means a part edited on Windows
+    /// and one edited on a Mac are the same part.
     public func editableText(for part: PromptPart) throws -> String {
         let url = url(for: part)
         guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
             throw Error.partMissing(part, url)
         }
-        return raw.trimmed
+        return Self.normalisingLineEndings(raw)
+    }
+
+    static func normalisingLineEndings(_ text: String) -> String {
+        text.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .trimmed
     }
 
     /// Walks up from a starting path looking for `prompt/system.md`.

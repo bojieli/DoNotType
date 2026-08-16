@@ -196,6 +196,49 @@ public class PromptBuilderTests
         }
     }
 
+    /// <summary>
+    /// A checkout with CRLF must send the same bytes as one with LF.
+    /// </summary>
+    /// <remarks>
+    /// Git rewrites these files on Windows under the default autocrlf, so without normalisation the
+    /// Windows app shipped a different contract than macOS did -- four platforms sending four
+    /// prompts, which is the drift the shared file exists to prevent, and it shows up in nothing a
+    /// person reads. This is the test that caught it, on the Windows runner.
+    /// </remarks>
+    [Fact]
+    public void LineEndingsInTheCheckoutDoNotChangeWhatIsSent()
+    {
+        if (PromptBuilder.FindPromptDirectory() is not { } shipped) return;
+
+        var directory = Path.Combine(Path.GetTempPath(), "prompt-crlf-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            foreach (var part in PromptPart.All)
+            {
+                var destination = Path.Combine(directory, part.RelativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                var text = File.ReadAllText(Path.Combine(shipped, part.RelativePath))
+                    .Replace("\r\n", "\n").Replace("\n", "\r\n");
+                File.WriteAllText(destination, text);
+            }
+
+            var lf = new PromptBuilder(shipped);
+            var crlf = new PromptBuilder(directory);
+            foreach (var fidelity in Enum.GetValues<Fidelity>())
+            {
+                Assert.Equal(lf.SystemInstruction(fidelity), crlf.SystemInstruction(fidelity));
+            }
+            foreach (var part in PromptPart.All)
+            {
+                Assert.Equal(lf.TextFor(part), crlf.TextFor(part));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Fact]
     public void AMissingPartNamesTheFileAndThePart()
     {

@@ -80,6 +80,43 @@ final class PromptBuilderTests: XCTestCase {
         }
     }
 
+    /// A checkout with CRLF must send the same bytes as one with LF.
+    ///
+    /// Git rewrites these files on Windows under the default `autocrlf`, so without normalisation
+    /// the Windows app shipped a different contract than macOS did — four platforms sending four
+    /// prompts, which is the drift the shared file exists to prevent, and it would not show up in
+    /// any output a person reads.
+    func testLineEndingsInTheCheckoutDoNotChangeWhatIsSent() throws {
+        guard let shipped = PromptBuilder.findPromptDirectory() else {
+            throw XCTSkip("prompt/ not found from the test working directory")
+        }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("prompt-crlf-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        for part in PromptPart.allCases {
+            let destination = directory.appendingPathComponent(part.relativePath)
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let text = try String(
+                contentsOf: shipped.appendingPathComponent(part.relativePath), encoding: .utf8)
+            try text.replacingOccurrences(of: "\n", with: "\r\n")
+                .write(to: destination, atomically: true, encoding: .utf8)
+        }
+
+        let lf = PromptBuilder(directory: shipped)
+        let crlf = PromptBuilder(directory: directory)
+        for fidelity in Fidelity.allCases {
+            XCTAssertEqual(
+                try crlf.systemInstruction(fidelity: fidelity),
+                try lf.systemInstruction(fidelity: fidelity),
+                "a CRLF checkout sends a different \(fidelity.rawValue) contract")
+        }
+        for part in PromptPart.allCases {
+            XCTAssertEqual(try crlf.text(for: part), try lf.text(for: part), part.id)
+        }
+    }
+
     func testAMissingPartNamesTheFileAndThePart() throws {
         let empty = PromptBuilder(directory: URL(fileURLWithPath: "/nonexistent-prompt-dir"))
         XCTAssertThrowsError(try empty.systemInstruction()) { error in

@@ -125,9 +125,22 @@ object PromptAssets {
 
     fun hasCustomPrompt(context: Context): Boolean = customParts(context).isNotEmpty()
 
+    /**
+     * Line endings are normalised to LF everywhere a part is read.
+     *
+     * Git checks these files out with CRLF on Windows under the default autocrlf, and the Gradle
+     * build copies whatever the checkout produced straight into the APK. Without this an APK built
+     * on Windows would send different bytes for the same contract than one built on a Mac — which
+     * is exactly the drift a shared file is supposed to prevent.
+     */
+    private fun normaliseLineEndings(text: String): String =
+        text.replace("\r\n", "\n").replace("\r", "\n").trim()
+
     fun bundledText(context: Context, part: PromptPart): String =
-        context.assets.open("$ASSET_DIRECTORY/${part.relativePath}")
-            .bufferedReader().use { it.readText() }.trim()
+        normaliseLineEndings(
+            context.assets.open("$ASSET_DIRECTORY/${part.relativePath}")
+                .bufferedReader().use { it.readText() }
+        )
 
     /** The text as it sits on disk, unjoined — what an editor should show and save. */
     fun editableText(context: Context, part: PromptPart): String {
@@ -135,7 +148,7 @@ object PromptAssets {
         val custom = overrideFile(context, part)
         if (custom.exists()) {
             val text = runCatching { custom.readText() }.getOrNull()
-            if (!text.isNullOrBlank()) return text.trim()
+            if (!text.isNullOrBlank()) return normaliseLineEndings(text)
         }
         return bundledText(context, part)
     }

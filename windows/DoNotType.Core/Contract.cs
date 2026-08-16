@@ -322,12 +322,17 @@ public sealed class PromptSource(string bundled, string? overrides = null)
                 $"{PathFor(part)} is empty. A part file is sent in full, so an empty one would "
                 + $"send nothing for {part.Id}.");
         }
-        return part.IsClause
-            ? text.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ")
-            : text;
+        // Already LF-normalised by EditableTextFor, so one replacement covers every checkout.
+        return part.IsClause ? text.Replace("\n", " ") : text;
     }
 
     /// <summary>The text as it sits on disk, unjoined -- what an editor should show and save.</summary>
+    /// <remarks>
+    /// Line endings are normalised to LF. Git checks these files out with CRLF on Windows under the
+    /// default autocrlf, and without this the Windows app would send different bytes for the same
+    /// contract than macOS does -- which is exactly the drift a shared file is supposed to prevent.
+    /// The four platforms have to send the same prompt or the measurements describe none of them.
+    /// </remarks>
     public string EditableTextFor(PromptPart part)
     {
         var path = PathFor(part);
@@ -337,7 +342,7 @@ public sealed class PromptSource(string bundled, string? overrides = null)
                 $"The prompt is missing {part.RelativePath} — nothing to send for {part.Id}. "
                 + $"Looked in {path}.");
         }
-        return File.ReadAllText(path).Trim();
+        return File.ReadAllText(path).Replace("\r\n", "\n").Replace("\r", "\n").Trim();
     }
 }
 
