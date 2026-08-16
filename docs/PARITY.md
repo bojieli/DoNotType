@@ -80,6 +80,7 @@ dictate into, so the fallback has not been needed; it is a gap rather than an im
 | WAV, MP3, M4A, Opus | ✅ | ✅ | ✅ | ✅ |
 | Verbatim, rewrite, summary modes | ✅ | ✅ | ✅ | ✅ |
 | Split long recordings on silence | ✅ | ✅ | ✅ | ✅ |
+| Re-send a stalled request to the same backend | ✅ | ✅ | ✅ | ✅ |
 | Fallback backend when the primary stalls | ✅ | ✅ | ✅ | ✅ |
 | Compress the upload with Opus | ✅ | ✅ | ✅ | ✅ |
 

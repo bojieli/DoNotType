@@ -10,6 +10,27 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **A stalled transcription is re-sent instead of waited out.** Latency here is bimodal rather
+  than slow: six sequential requests for one three-second clip took 4.9, 61.6, 50.5, 5.8, 5.9 and
+  30.2 seconds, with zero thought tokens throughout, so the sixty-second draws are queueing rather
+  than model work. A tool that usually answers in five seconds and sometimes in sixty is worse
+  than one that always takes six.
+
+  A request is now called stalled once it has run for at least eight seconds *and* at least a
+  quarter of the audio's own length, and a second identical request goes out beside it. Both terms
+  matter: the floor stops a two-second dictation being duplicated over a response that was merely
+  unremarkable, and the share-of-audio term stops every long recording being called stalled at
+  eight seconds, which is a good pace for four minutes of speech. On a split recording it is the
+  chunk that stalled that gets re-sent, not the dictation.
+
+  It is not a timeout — the first request is never abandoned, and if it answers first it wins.
+  Cancelling it would throw away a request that has already paid its queueing cost and might be a
+  second from returning, so the same two requests would cost the same and take longer. It is not
+  the fallback backend either: that reaches for a *different* provider and is off unless one is
+  configured, whereas this re-asks the backend you chose, so the transcript comes from your model
+  either way. All four clients; off in the eval harness, where doubling a suite's spend would be a
+  harness defect.
+
 - **A provider is no longer named after its model.** The picker offered "Gemini" beside
   "Openrouter" — a model beside a gateway — under a field labelled Service, with the model in a
   second field below it. So a configuration that is *gemini-3.6-flash through OpenRouter* read as
