@@ -231,12 +231,13 @@ struct Transcribe: AsyncParsableCommand {
                 "Unknown --text-provider '\(textProvider)'. Options: "
                     + ProviderKind.allCases.map(\.rawValue).joined(separator: ", "))
         }
-        guard !kind.isSpeechRecognition else {
+        // xAI passes this: it is a recogniser whose key also reaches Grok chat models, so the
+        // question is whether the backend has a text side, not whether it transcribes.
+        guard let (service, _) = try backend.makeTextService(kind, model: textModel) else {
             throw ValidationError(
-                "--text-provider \(kind.rawValue) is a speech recognition endpoint and has no text "
-                    + "input. Choose gemini, openrouter or local.")
+                "--text-provider \(kind.rawValue) is a speech recognition endpoint with no text "
+                    + "input. Choose gemini, openrouter, local or xai.")
         }
-        let (service, _) = try backend.makeService(kind, model: textModel ?? kind.defaultModel)
         return (service, "\(kind.rawValue)/\(service.model)")
     }
 

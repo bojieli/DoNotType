@@ -82,12 +82,12 @@ final class FileTranscriptionModel {
         let settings = Settings.shared
         guard settings.provider.isSpeechRecognition else { return nil }
 
-        let model = ProviderKind.allCases.first {
-            !$0.isSpeechRecognition && (settings.resolvedAPIKey(for: $0)?.isEmpty == false)
-        }
-        if let model {
-            return "\(settings.provider.rawValue) only transcribes, so the \(noun) will be produced "
-                + "by \(model.rawValue) in a second request."
+        if let stage = TextStage.provider() {
+            // Naming the model rather than only the backend: with xAI they are the same account
+            // and different products, so "xai will do it" would not answer the question.
+            let model = TextStage.model(for: stage)
+            return "\(settings.provider.rawValue) only transcribes, so the \(noun) will be "
+                + "produced by \(model) in a second request."
         }
         return "\(settings.provider.rawValue) is a speech recognition service and cannot \(verb). "
             + "Add a key for a model backend in Settings, or choose Verbatim."
@@ -259,27 +259,7 @@ final class FileTranscriptionModel {
 
         return FileTranscriber(
             service: service, prompt: builder, fidelity: settings.fidelity,
-            secondStage: makeSecondStage(instruction: instruction))
-    }
-
-    /// A model backend for the second stage, when the chosen one cannot do text.
-    ///
-    /// Picks the first configured model backend rather than asking, because the alternative is a
-    /// second provider picker in a window that should be four controls. The status line says which
-    /// one actually ran, so the choice is visible after the fact.
-    private func makeSecondStage(instruction: String) -> TranscriptionService? {
-        let settings = Settings.shared
-        guard settings.provider.isSpeechRecognition else { return nil }
-
-        for kind in ProviderKind.allCases where !kind.isSpeechRecognition {
-            guard let key = settings.resolvedAPIKey(for: kind), !key.isEmpty,
-                let provider = try? ProviderFactory.make(kind, apiKey: key)
-            else { continue }
-            return TranscriptionService(
-                provider: provider, model: settings.model(for: kind),
-                systemInstruction: instruction, fidelity: settings.fidelity)
-        }
-        return nil
+            secondStage: TextStage.service(instruction: instruction))
     }
 
     // MARK: - Results

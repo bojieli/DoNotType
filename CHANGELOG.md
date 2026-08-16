@@ -10,6 +10,23 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **The xAI key rewrites as well as transcribes.** Selecting a recognition backend disabled the
+  rewrite hotkey, the summary mode and `--text-provider` alike, on the reasoning that a
+  speech-to-text endpoint has no text input. True of the endpoint, wrong about the account: the
+  same `XAI_API_KEY` reaches Grok chat models on `/v1/chat/completions`, so the limitation was
+  ours rather than xAI's, and a key that can rewrite was being told it could not.
+
+  "Cannot read your screen" and "cannot rewrite what you said" are now separate questions with
+  separate answers. xAI answers the first yes and the second no; Deepgram and Voxtral still answer
+  both, and the UI still says so rather than offering a rewrite that could only fail. The second
+  stage prefers the selected provider's own text model — same key, same account, nothing extra to
+  configure — and only borrows another configured backend when there is genuinely nothing else,
+  which is the behaviour file transcription already had. The model is editable in Settings, on
+  `--text-provider xai`, and via `DNT_XAI_TEXT_MODEL`.
+
+  Screen grounding stays off for xAI regardless: the audio never passes through a chat model, so
+  there is nowhere for the context to go.
+
 - **Nothing without speech in it is ever sent.** A model handed three seconds of room tone does not
   reliably return nothing — it returns a plausible sentence, and a dictation tool that types that
   into your document has invented words you never said. `PROMPT.md` rule 7 asks for an empty

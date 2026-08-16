@@ -16,6 +16,7 @@ final class SettingsModel {
             Settings.shared.provider = provider
             apiKey = Settings.shared.apiKey ?? ""
             model = Settings.shared.model
+            textModel = Settings.shared.textModel ?? ""
             scheduleKeyCheck()
         }
     }
@@ -33,6 +34,15 @@ final class SettingsModel {
         didSet {
             Settings.shared.model = model
             scheduleKeyCheck()
+        }
+    }
+
+    /// Only shown for a backend that rewrites on a different model than it transcribes with —
+    /// xAI, so far. Empty everywhere else, where one model does both.
+    var textModel: String {
+        didSet {
+            let trimmed = textModel.trimmed
+            Settings.shared.textModel = trimmed.isEmpty ? nil : trimmed
         }
     }
 
@@ -103,8 +113,12 @@ final class SettingsModel {
         }
         guard provider.isSpeechRecognition else { return nil }
 
-        let shared = "Transcription only — this service cannot read your screen, and rewriting is "
-            + "unavailable."
+        let shared =
+            provider.supportsTextGeneration
+            ? "Transcription only — this service cannot read your screen. Rewrites run on "
+                + "\(textModel), a chat model reached with the same key, in a second request."
+            : "Transcription only — this service cannot read your screen, and rewriting is "
+                + "unavailable."
         switch provider {
         case .mistral:
             return shared + " It has no spelling-hint channel either, and it is the one that "
@@ -267,6 +281,7 @@ final class SettingsModel {
         provider = settings.provider
         apiKey = settings.apiKey ?? ""
         model = settings.model
+        textModel = settings.textModel ?? ""
         fidelity = settings.fidelity
         keytermBiasing = settings.keytermBiasing
         fallbackProvider = settings.fallbackProvider

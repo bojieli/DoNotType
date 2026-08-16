@@ -104,6 +104,22 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         }
     }
 
+    /// The model this backend runs the second stage on — rewriting and summarising — when that
+    /// is not the model that transcribes.
+    ///
+    /// `nil` means two different things, told apart by `isSpeechRecognition`: for a language model
+    /// the transcription model does both jobs and a second entry would only be a way for them to
+    /// disagree; for a recogniser there is no text stage at all.
+    ///
+    /// xAI is why this exists. `/v1/stt` takes audio and nothing else, but the same key reaches
+    /// Grok chat models on `/v1/chat/completions` — the limitation is the endpoint, not the
+    /// account, and a key that can rewrite should be allowed to.
+    public var defaultTextModel: String? {
+        guard self == .xai else { return nil }
+        return ProcessInfo.processInfo.environment["DNT_XAI_TEXT_MODEL"]?.trimmed.nilIfEmpty
+            ?? "grok-4-fast-non-reasoning"
+    }
+
     public var apiKeyEnvVar: String {
         switch self {
         case .openrouter: "OPENROUTER_API_KEY"
@@ -144,6 +160,14 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         case .gemini, .openrouter, .local: false
         }
     }
+
+    /// Whether this backend can turn text into text — the rewrite and summary pass.
+    ///
+    /// Deliberately not the negation of `isSpeechRecognition`. The two were the same question
+    /// until xAI arrived: it is a recogniser that also sells chat, so "cannot read your screen"
+    /// and "cannot rewrite what you said" now have different answers, and a UI that asks the
+    /// first when it means the second takes away a hotkey the key pays for.
+    public var supportsTextGeneration: Bool { !isSpeechRecognition || defaultTextModel != nil }
 }
 
 public enum ProviderFactory {
@@ -169,6 +193,36 @@ public enum ProviderFactory {
         for name in kind.apiKeyEnvVars { merged[name] = nil }
         merged[kind.apiKeyEnvVar] = apiKey
         return try make(kind, environment: merged)
+    }
+
+    /// A backend for the second stage — rewriting, summarising — or nil when there is none.
+    ///
+    /// For a language model this is the same backend that transcribes, so the answer is the
+    /// ordinary provider. For xAI it is a different endpoint reached with the same key:
+    /// `/v1/chat/completions` and a Grok chat model, rather than `/v1/stt` and `grok-stt`.
+    /// Deepgram and Mistral sell recognition alone and return nil, which is what stops the UI
+    /// offering a rewrite that could only fail.
+    public static func makeTextProvider(
+        _ kind: ProviderKind,
+        apiKey: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) throws -> (any TranscriptionProvider)? {
+        guard kind.supportsTextGeneration else { return nil }
+        guard kind.isSpeechRecognition else {
+            return try make(kind, apiKey: apiKey, environment: environment)
+        }
+        switch kind {
+        case .xai:
+            return OpenAICompatibleProvider(
+                name: kind.rawValue,
+                baseURL: URL(string: "https://api.x.ai/v1/chat/completions")!,
+                apiKey: apiKey,
+                // Grok's non-reasoning models reject an unknown `reasoning` field outright, and
+                // restyling a sentence has nothing to reason about anyway.
+                reasoningEffort: nil)
+        default:
+            return nil
+        }
     }
 
     /// Builds a provider, reading the key from the environment.

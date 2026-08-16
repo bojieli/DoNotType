@@ -50,6 +50,11 @@ private struct GeneralTab: View {
                     }
                 }
                 TextField("Model", text: $model.model)
+                // Shown only where transcription and rewriting are genuinely different models,
+                // rather than as a second field that repeats the first one everywhere else.
+                if model.provider.defaultTextModel != nil {
+                    TextField("Rewrite model", text: $model.textModel)
+                }
                 // No `.textContentType(.password)`: it makes macOS offer saved website logins in
                 // a panel that lands directly on top of the explanation below — which is the one
                 // thing worth reading at the moment the field is empty. A provider key is not a

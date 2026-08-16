@@ -394,8 +394,11 @@ final class DictationController {
                         "chars": "\(text.count)",
                     ])
                 do {
-                    let styled = try await coordinator.service.rewrite(
-                        text, instruction: instruction)
+                    // The selected backend when it is a model; xAI's chat endpoint, or a borrowed
+                    // model backend, when it is a recogniser that cannot rewrite on its own.
+                    let rewriter = TextStage.service(instruction: instruction)
+                        ?? coordinator.service
+                    let styled = try await rewriter.rewrite(text, instruction: instruction)
                     record.styledText = styled
                     record.style = style
                     delivered = styled

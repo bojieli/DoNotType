@@ -204,6 +204,35 @@ struct BackendOptions: ParsableArguments {
             keytermBiasing: keyterms)
         return (service, resolved.source)
     }
+
+    /// The same, for the stage that rewrites rather than transcribes.
+    ///
+    /// Its own function because a backend can serve the two from different endpoints with the
+    /// same key — xAI transcribes on `/v1/stt` and rewrites on `/v1/chat/completions` — so the
+    /// provider object and the model both differ from the transcription ones. Nil when this
+    /// backend has no text side at all.
+    func makeTextService(
+        _ kind: ProviderKind, model overrideModel: String? = nil
+    ) throws -> (service: TranscriptionService, source: String)? {
+        guard let resolved = APIKeyResolver.resolve(kind, allowsKeychain: keychain) else {
+            throw ValidationError(
+                """
+                No API key for \(kind.rawValue). Set \(kind.apiKeyEnvVar), or add it in the app's \
+                Settings — the CLI reads the same Keychain entry unless you pass --no-keychain.
+                """)
+        }
+        LogRouter.shared.redact(secret: resolved.key)
+
+        guard let provider = try ProviderFactory.makeTextProvider(kind, apiKey: resolved.key)
+        else { return nil }
+        let service = TranscriptionService(
+            provider: provider,
+            model: overrideModel ?? kind.defaultTextModel ?? resolveModel(for: kind),
+            systemInstruction: try promptBuilder().systemInstruction(
+                fidelity: try resolveFidelity()),
+            fidelity: try resolveFidelity())
+        return (service, resolved.source)
+    }
 }
 
 // MARK: - The app's settings

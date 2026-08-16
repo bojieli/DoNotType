@@ -31,6 +31,7 @@ final class Settings {
         static let interactionSounds = "interactionSounds"
         static let keytermBiasing = "keytermBiasing"
         static let fallbackProvider = "fallbackProvider"
+        static let textModel = "textModel"
         static let fallbackAfterSeconds = "fallbackAfterSeconds"
         static let logLevel = "logLevel"
         static let logContent = "logContent"
@@ -220,6 +221,27 @@ final class Settings {
     }
 
     private func modelKey(for kind: ProviderKind) -> String { "\(Key.model)-\(kind.rawValue)" }
+
+    /// The model the second stage runs on, when the provider serves text from a different model
+    /// than it transcribes with. Nil for every backend where one model does both, so the two
+    /// cannot drift apart in the one case where a single field would have been enough.
+    var textModel: String? {
+        get { textModel(for: provider) }
+        set { defaults.set(newValue ?? "", forKey: textModelKey(for: provider)) }
+    }
+
+    /// See `model(for:)` — the same lookup, for the stage that rewrites rather than transcribes.
+    func textModel(for kind: ProviderKind) -> String? {
+        guard let fallback = kind.defaultTextModel else { return nil }
+        if let stored = defaults.string(forKey: textModelKey(for: kind)), !stored.isEmpty {
+            return stored
+        }
+        return fallback
+    }
+
+    private func textModelKey(for kind: ProviderKind) -> String {
+        "\(Key.textModel)-\(kind.rawValue)"
+    }
 
     /// Backend to start alongside the primary when it has not answered in time. Nil disables it.
     ///

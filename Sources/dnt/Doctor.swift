@@ -4,9 +4,9 @@ import Foundation
 
 /// Lists the backends and what each one can actually do here.
 ///
-/// The capability column is the point. Two of these six are not language models, which decides
-/// whether screen grounding, the fidelity ladder, rewriting and summarising work at all — and that
-/// difference is invisible from the provider name.
+/// The capability column is the point. Three of these six are not language models, which decides
+/// whether screen grounding and the fidelity ladder work at all — and one of those three still
+/// rewrites, on a second endpoint behind the same key. None of that is visible from the name.
 struct Providers: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "providers",
@@ -31,8 +31,7 @@ struct Providers: ParsableCommand {
                 model: AppPreferences.model(for: kind),
                 envVar: kind.apiKeyEnvVar,
                 keySource: resolution?.source,
-                capability: kind.isSpeechRecognition
-                    ? "transcription only" : "model — grounding, rewrite, summary")
+                capability: Self.capability(of: kind))
         }
 
         if json {
@@ -53,7 +52,19 @@ struct Providers: ParsableCommand {
             AppPreferences.isAvailable
                 ? "→ marks the backend the app is set to. Override with --provider."
                 : "No stored preferences found, so → is the fresh-install default.")
-        Out.stdout("Recognition backends cannot rewrite or summarise; pair one with --text-provider.")
+        Out.stdout(
+            "A recognition backend cannot rewrite or summarise on its own; pair one with "
+                + "--text-provider, unless its own key reaches a chat model.")
+    }
+
+    /// Three answers, not two: a backend can be unable to read the screen and still able to
+    /// rewrite, which is what xAI is — recognition on one endpoint, Grok chat on another.
+    private static func capability(of kind: ProviderKind) -> String {
+        switch (kind.isSpeechRecognition, kind.supportsTextGeneration) {
+        case (false, _): "model — grounding, rewrite, summary"
+        case (true, true): "transcription, rewrite, summary — no grounding"
+        case (true, false): "transcription only"
+        }
     }
 
     struct Row: Encodable {
