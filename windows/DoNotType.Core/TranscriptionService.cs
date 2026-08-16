@@ -103,10 +103,32 @@ public sealed class TranscriptionService(
         // compression optimisation must never be able to cost someone their words.
         parts.Add(CompressedPart(wav));
 
-        return await Provider.TranscribeAsync(
+        var result = await Provider.TranscribeAsync(
                 systemInstruction, parts, cancellationToken: cancellationToken,
                 fidelity: Fidelity, keyterms: keyterms)
             .ConfigureAwait(false);
+
+        // Here rather than at the call site, because every backend and every caller — dictation,
+        // file transcription, retry — comes through this one method, and a guard some of them skip
+        // is a guard that will be skipped by the one that matters. The duration comes from the WAV
+        // rather than the compressed payload, whose length is not readable without decoding it.
+        var (checkedTranscript, verdict) = HallucinationGuard.Inspect(
+            result.Transcript, AudioChunker.DurationSeconds(wav));
+        if (verdict.Reason == HallucinationGuard.Reason.Kept)
+        {
+            return result;
+        }
+
+        // Warning, not debug: text the user never said was about to be typed into whatever they had
+        // focused, and the whole measurement goes in the line so the threshold can be argued with
+        // from the log alone.
+        Log.Warn(() => "transcript discarded — the audio cannot contain it",
+            new Dictionary<string, string>
+            {
+                ["provider"] = Provider.Name,
+                ["reason"] = verdict.Summary,
+            });
+        return result with { Transcript = checkedTranscript };
     }
 
     /// <summary>

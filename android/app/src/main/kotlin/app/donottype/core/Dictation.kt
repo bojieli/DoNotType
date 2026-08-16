@@ -215,7 +215,30 @@ class DictationService(private val context: Context) {
             // Recorded as the backend that answered, not the one that was asked.
             record.model = outcome.attribution.model
 
-            val text = outcome.result.transcript.transcript
+            // The second gate, after the fallback has chosen a winner so it covers whichever
+            // backend answered. SpeechActivity above refuses to send silence; this refuses to
+            // commit words the audio cannot contain, for the recordings that get past it.
+            val (guarded, verdict) = HallucinationGuard.inspect(
+                outcome.result.transcript,
+                record.durationSeconds,
+            )
+            if (verdict != HallucinationGuard.Verdict.Kept) {
+                // Warning, not info: text the user never said was about to be committed to whatever
+                // they had focused, and the whole measurement goes in the line so the threshold can
+                // be argued with from the log alone.
+                log.warn(
+                    mapOf(
+                        "dictation" to id,
+                        "model" to outcome.attribution.model,
+                        "reason" to verdict.summary,
+                    ),
+                ) { "transcript discarded — the audio cannot contain it" }
+                log.content("discarded transcript", LogLevel.TRACE) {
+                    outcome.result.transcript.transcript
+                }
+            }
+
+            val text = guarded.transcript
             log.info(
                 mapOf(
                     "dictation" to id,
