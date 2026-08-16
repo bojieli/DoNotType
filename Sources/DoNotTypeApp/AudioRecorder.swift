@@ -31,7 +31,11 @@ final class AudioRecorder: @unchecked Sendable {
 
     static let sampleRate = 16_000.0
     /// Below this, it was a stray key press rather than speech. Matches Typeless's own cutoff.
-    static let minimumDuration = 0.5
+    ///
+    /// Shared with the gesture rather than restated, because a hold threshold below this one is a
+    /// window in which the key ends a recording that is then thrown away. See
+    /// `PressGesture.holdThreshold`.
+    static let minimumDuration = PressGesture.minimumRecordingSeconds
 
     private let log = Log("audio")
     private let engine = AVAudioEngine()

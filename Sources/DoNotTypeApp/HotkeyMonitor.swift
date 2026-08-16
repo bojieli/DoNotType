@@ -43,40 +43,12 @@ final class HotkeyMonitor {
         }
     }
 
-    /// How holding the key relates to recording.
-    ///
-    /// `automatic` is the default because it needs no decision from the user: a quick tap starts a
-    /// hands-free recording that a second tap ends, and anything held past the threshold behaves
-    /// as push-to-talk. Short utterances suit the hold; long ones suit not having to hold.
-    enum Mode: String, CaseIterable, Sendable {
-        /// Record while held, stop on release.
-        case pushToTalk
-        /// Tap once to start, tap again to stop.
-        case handsFree
-        /// Tap toggles; holding past `holdThreshold` becomes push-to-talk.
-        case automatic
+    /// How holding the key relates to recording. Shared with the other clients, and tested there:
+    /// see `PressGesture`.
+    typealias Mode = PressGesture.Mode
 
-        var label: String {
-            switch self {
-            case .pushToTalk: "Hold to talk"
-            case .handsFree: "Tap to start, tap to stop"
-            case .automatic: "Tap to toggle, hold to talk"
-            }
-        }
-
-        /// Shown in the recording overlay, so it always says how to stop.
-        var overlayHint: String {
-            switch self {
-            case .pushToTalk: "Release to send"
-            case .handsFree: "Tap again to send"
-            case .automatic: "Release or tap to send"
-            }
-        }
-    }
-
-    /// A press shorter than this counts as a tap. 250 ms is comfortably longer than an intentional
-    /// tap and comfortably shorter than the shortest useful dictation.
-    static let holdThreshold: TimeInterval = 0.25
+    /// A press shorter than this counts as a tap. See `PressGesture.holdThreshold`.
+    static let holdThreshold = PressGesture.holdThreshold
 
     var trigger: Trigger = .rightCommand
     var mode: Mode = .automatic
@@ -218,73 +190,30 @@ final class HotkeyMonitor {
     private func handlePress(at stamp: CGEventTimestamp) {
         pressedAt = stamp
         onPressStyled?(usedSecondary)
-        switch mode {
-        case .pushToTalk:
-            onPress?()
-        case .handsFree:
-            isRecording() ? onRelease?() : onPress?()
-        case .automatic:
-            // Start immediately either way: waiting to see whether this becomes a hold would
-            // clip the first word off every push-to-talk dictation.
-            if isRecording() {
-                startedByTap = false
-            } else {
-                startedByTap = true
-                onPress?()
-            }
+
+        let recording = isRecording()
+        // Whether the release that follows is ending the recording this press started, or is
+        // merely the tail of the second tap of a hands-free session.
+        startedByTap = !recording
+        switch PressGesture.press(mode: mode, isRecording: recording) {
+        case .start: onPress?()
+        case .stop: onRelease?()
+        case .nothing: break
         }
     }
 
     private func handleRelease(at stamp: CGEventTimestamp) {
-        let held = pressedAt.map { Self.seconds(from: $0, to: stamp) } ?? 0
+        // `CGEventTimestamp` is nanoseconds since startup, stamped by the window server when the
+        // key physically moved — so this is the gesture's own duration rather than a measure of
+        // how busy the main thread was while it happened.
+        let held = pressedAt.map { PressGesture.seconds(fromNanoseconds: $0, to: stamp) } ?? 0
         pressedAt = nil
 
-        switch mode {
-        case .pushToTalk:
-            onRelease?()
-        case .handsFree:
-            break  // toggling already happened on press
-        case .automatic:
-            if !startedByTap {
-                // The press that landed while recording was the second tap of a hands-free
-                // session; it stopped on press and there is nothing to do here.
-                onRelease?()
-            } else if held >= Self.holdThreshold {
-                onRelease?()  // it was a hold, so release ends it
-            }
-            // Otherwise it was a tap: recording continues until the next press.
+        switch PressGesture.release(mode: mode, held: held, startedByTap: startedByTap) {
+        case .stop: onRelease?()
+        case .start, .nothing: break
         }
     }
-
-    /// How long the key was actually held, from the events' own clock rather than from when this
-    /// code got round to them.
-    ///
-    /// It has to be the event clock, because `handlePress` calls straight into `beginRecording`
-    /// and the first dictation of a launch pays the audio stack's cold start there — measured at
-    /// ~250 ms of `AVAudioEngine` setup, plus the overlay's one-off panel and the first
-    /// accessibility read, ~300 ms in total. All of it runs inside this tap callback, so the
-    /// release event waits in the queue until it returns. Timed with `Date()` at handling time, a
-    /// 40 ms tap measured as a 300 ms hold, crossed `holdThreshold`, and stopped the recording it
-    /// had just started: the first press of a launch died after ~57 ms of audio, silently, because
-    /// that is below `AudioRecorder.minimumDuration`, and only the second press ever worked. The
-    /// timestamps below are stamped by the window server when the key physically moved, so they
-    /// describe the gesture rather than how busy the main thread was.
-    ///
-    /// `warmUpAudio` removes most of that delay, but only this makes the reading independent of it.
-    private static func seconds(from start: CGEventTimestamp, to end: CGEventTimestamp) -> TimeInterval {
-        // A synthesised event can carry a zero timestamp. Reading a non-positive delta as a tap
-        // leaves the recording running, which costs a second key press; reading it as a hold would
-        // cut the recording off, which costs the dictation.
-        guard end > start else { return 0 }
-        return Double(end - start) * machTickSeconds
-    }
-
-    /// Mach ticks are not nanoseconds, and the ratio is fixed for the life of the process.
-    private static let machTickSeconds: Double = {
-        var timebase = mach_timebase_info_data_t()
-        mach_timebase_info(&timebase)
-        return Double(timebase.numer) / Double(timebase.denom) / 1_000_000_000
-    }()
 
     private func reviveIfDisabled() {
         guard let tap, !CGEvent.tapIsEnabled(tap: tap) else { return }
