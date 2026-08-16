@@ -223,10 +223,19 @@ private struct LogRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             // When it happened, which is half of what anyone opens a log for — the other half
             // being what happened, and neither answers on its own.
+            //
+            // `minWidth` with `fixedSize`, not a fixed width: `12:04:31.512` is twelve characters
+            // and 84pt did not fit them at every text size, so the column that says *when* was the
+            // one being cut. The minimum keeps the columns lined up in the ordinary case; the
+            // fixed size means a larger font widens the column instead of losing the milliseconds.
+            // A truncated timestamp is a wrong timestamp — 12:04:31.5 and 12:04:31.512 are not the
+            // same fact, and the log is read to order events.
             Text(LogClock.timeOfDay(event.timestamp))
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
-                .frame(width: 84, alignment: .leading)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: 96, alignment: .leading)
                 .help(LogClock.day(event.timestamp))
             Text(event.level.name.uppercased())
                 .foregroundStyle(tint)
