@@ -75,6 +75,17 @@ public sealed class TranscriptionService(
     /// </summary>
     public bool KeytermBiasing { get; init; }
 
+    /// <summary>
+    /// Whether a request that has stalled is joined by a second identical one, the faster of the
+    /// two winning. See <see cref="StallHedge"/> for what counts as stalled and why it is not a
+    /// timeout.
+    ///
+    /// <para>On by default, because the tail it exists for is the single worst thing about
+    /// dictating through a network. Off for measurement: a benchmark that reports the better of two
+    /// draws is not reporting the backend's latency.</para>
+    /// </summary>
+    public bool HedgeStalledRequests { get; init; } = true;
+
     public async Task<TranscriptionResult> TranscribeAsync(
         byte[] wav,
         ScreenContext? context,
@@ -132,6 +143,44 @@ public sealed class TranscriptionService(
     }
 
     /// <summary>
+    /// One request, joined by a second identical one if it stalls. See <see cref="StallHedge"/>.
+    /// </summary>
+    /// <remarks>
+    /// Wrapped here rather than around <see cref="TranscribeAsync"/> itself so the retry ladder
+    /// below sees a single attempt: a stall and a failure are different problems with different
+    /// remedies, and a request that stalled three times should still get its three tries at
+    /// <em>failing</em>.
+    ///
+    /// <para>The duration comes from the audio this call was handed, which for a split recording is
+    /// one chunk rather than the whole dictation. That is the right denominator — a chunk is what
+    /// the request is being asked to transcribe.</para>
+    /// </remarks>
+    private async Task<TranscriptionResult> HedgedAttemptAsync(
+        byte[] wav, ScreenContext? context, CancellationToken cancellationToken)
+    {
+        if (!HedgeStalledRequests)
+        {
+            return await TranscribeAsync(wav, context, cancellationToken).ConfigureAwait(false);
+        }
+
+        var deadline = StallHedge.DeadlineFor(AudioChunker.DurationSeconds(wav));
+        return await StallHedge.RaceAsync(
+                deadline,
+                token => TranscribeAsync(wav, context, token),
+                // Info, not debug: this is the app spending a second request on the user's behalf.
+                // A hedge that fires on every dictation is a backend having a bad day rather than a
+                // working feature, and that should be visible without turning anything on.
+                () => Log.Info(() => "request stalled; sending a second one",
+                    new Dictionary<string, string>
+                    {
+                        ["provider"] = Provider.Name,
+                        ["after"] = $"{deadline.TotalSeconds:0.0}s",
+                    }),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Retries with exponential backoff, giving up early on errors that will not change.
     /// </summary>
     public async Task<TranscriptionResult> TranscribeWithRetryAsync(
@@ -147,7 +196,8 @@ public sealed class TranscriptionService(
         {
             try
             {
-                return await TranscribeAsync(wav, context, cancellationToken).ConfigureAwait(false);
+                return await HedgedAttemptAsync(wav, context, cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (Exception error) when (error is ProviderException or HttpRequestException or TaskCanceledException)
             {
