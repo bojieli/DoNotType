@@ -38,6 +38,8 @@ android/.gradle/
 android/build/
 android/app/build/
 android/local.properties
+# The Kotlin plugin's own session directory, written on every Gradle build.
+android/.kotlin/
 
 # iOS — project.yml is the source of truth; run `xcodegen generate`
 ios/DoNotType.xcodeproj/
