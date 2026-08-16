@@ -31,8 +31,8 @@ swift run dnt-eval ablate                      # compare designs on fidelity and
 ./eval/extract-real-audio.sh ~/Movies          # build a corpus from real recordings
 ```
 
-`dnt-eval` reads `PROMPT.md`, so `--prompt path/to/custom.md` measures an edited prompt. If you
-change the prompt in the app, the numbers below stop applying to you — re-measure.
+`dnt-eval` reads `prompt/`, so `--prompt path/to/custom-prompt-dir` measures an edited prompt. If
+you change any part in the app, the numbers below stop applying to you — re-measure.
 
 ## How the suite scores
 
@@ -252,7 +252,7 @@ sentence. A model asked for words tends to produce words, and the documented cas
 
 Two things made this worth attacking rather than assuming:
 
-1. **`PROMPT.md` rule 7 was never tested.** It says silent, empty or unintelligible audio returns
+1. **`prompt/system.md` rule 7 was never tested.** It says silent, empty or unintelligible audio returns
    an empty transcript. Nothing measured whether any model obeys it.
 2. **Recognisers never receive the rule.** Deepgram, xAI and Mistral Voxtral have no system
    instruction, so rule 7 is not sent to them at all — and Whisper-family recognisers are the ones

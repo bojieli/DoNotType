@@ -31,8 +31,11 @@ targets:
     sources:
       - path: App
       - path: Shared
-      - path: ../PROMPT.md
+      # The whole directory, as a folder reference: a part is found by its path
+      # under prompt/, so a flattened copy would not resolve.
+      - path: ../prompt
         buildPhase: resources
+        type: folder
       # Translations, if any exist. SwiftUI looks a literal up by its English text, so adding a
       # .lproj here is the whole mechanism — see docs/LOCALIZATION.md.
       - path: ../Resources/Localizations

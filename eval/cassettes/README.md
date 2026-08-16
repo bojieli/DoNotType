@@ -47,7 +47,7 @@ half means shipping clips that are somebody's actual speech, which is a trade th
 far declined.
 
 **It cannot answer for a prompt that did not produce it.** The system instruction is part of the
-request key, so editing `PROMPT.md` misses every take and the run fails with a message saying to
+request key, so editing any part in `prompt/` misses every take and the run fails with a message saying to
 re-record. That is the one way a cache like this could actively mislead, and it is closed.
 
 ## Reading the file

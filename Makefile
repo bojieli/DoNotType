@@ -41,7 +41,7 @@ cli:
 
 # Symlinked rather than copied, so a rebuild does not leave a stale binary on the PATH claiming to
 # be the current one. Points at the bundle when the app is installed, since that copy is signed and
-# ships PROMPT.md beside it.
+# ships prompt/ beside it.
 install-cli: install
 	@mkdir -p /usr/local/bin
 	@ln -sf "/Applications/$(APP).app/Contents/MacOS/dnt" /usr/local/bin/dnt
@@ -52,11 +52,12 @@ app: build
 	@mkdir -p "$(CONTENTS)/MacOS" "$(CONTENTS)/Resources"
 	@cp "$(BUILD_DIR)/$(PRODUCT)" "$(CONTENTS)/MacOS/$(APP)"
 	@# The CLI ships inside the bundle so a release carries it, and so an installed `dnt` finds
-	@# PROMPT.md one directory up in Resources without needing a checkout.
+	@# prompt/ one directory up in Resources without needing a checkout.
 	@cp "$(BUILD_DIR)/dnt" "$(CONTENTS)/MacOS/dnt"
 	@cp Resources/Info.plist "$(CONTENTS)/Info.plist"
-	@# The contract ships inside the bundle so the app does not depend on the source tree.
-	@cp PROMPT.md "$(CONTENTS)/Resources/PROMPT.md"
+	@# The contract ships inside the bundle so the app does not depend on the source tree. The
+	@# directory layout is preserved, because a part is found by its path under prompt/.
+	@cp -R prompt "$(CONTENTS)/Resources/prompt"
 	@# Both rendered from Resources/Icon/DoNotType.svg; see Resources/Icon/make-icons.sh.
 	@cp Resources/AppIcon.icns "$(CONTENTS)/Resources/AppIcon.icns"
 	@cp Resources/MenuBar/*.png "$(CONTENTS)/Resources/"

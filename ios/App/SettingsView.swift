@@ -213,8 +213,10 @@ struct SettingsView: View {
                 PromptEditorView(model: model)
             } label: {
                 LabeledContent("Transcription prompt") {
-                    Text(model.isPromptCustom ? "edited" : "default")
-                        .foregroundStyle(model.isPromptCustom ? .orange : .secondary)
+                    Text(
+                        model.customParts.isEmpty
+                            ? "default" : "\(model.customParts.count) edited")
+                        .foregroundStyle(model.customParts.isEmpty ? Color.secondary : Color.orange)
                 }
             }
             .accessibilityIdentifier("open-prompt")
@@ -470,27 +472,43 @@ private struct HistoryRow: View {
 }
 
 
-/// Full-screen prompt editor. Validation happens on save, so a broken prompt is caught here rather
-/// than in the middle of a dictation.
+/// Full-screen prompt editor, one part at a time. Validation happens on save, so a broken part is
+/// caught here rather than in the middle of a dictation.
+///
+/// A picker rather than one buffer for everything, for the same reason as the other platforms: the
+/// contract is twelve separate instructions, and holding them in a single scrolling box is how the
+/// shipped text and the documentation about it ended up together with a marker convention as the
+/// only thing telling them apart.
 struct PromptEditorView: View {
     @Bindable var model: DictationModel
 
     var body: some View {
         VStack(spacing: 0) {
+            Picker("Part", selection: $model.selectedPart) {
+                ForEach(PromptPart.allCases, id: \.self) { part in
+                    Text("\(part.group) · \(part.label)").tag(part)
+                }
+            }
+            .accessibilityIdentifier("prompt-part")
+            .padding(.horizontal, 10)
+
+            Divider()
+
             TextEditor(text: $model.promptText)
                 .accessibilityIdentifier("prompt-editor")
                 .font(.system(.caption, design: .monospaced))
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
 
-            if let status = model.promptStatus {
-                Divider()
-                Text(status)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-            }
+            Divider()
+            Text(
+                model.promptStatus
+                    ?? "\(model.selectedPart.relativePath) — sent in full: everything here reaches "
+                    + "the model.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
         }
         .navigationTitle("Prompt")
         .navigationBarTitleDisplayMode(.inline)
@@ -498,6 +516,8 @@ struct PromptEditorView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") { model.savePrompt() }
             }
+            // Restores the selected part alone. The others keep whatever they are, which is the
+            // point of per-part overrides.
             ToolbarItem(placement: .topBarLeading) {
                 Button("Default") { model.restoreDefaultPrompt() }
                     .disabled(!model.isPromptCustom)

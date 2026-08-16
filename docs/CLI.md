@@ -12,7 +12,7 @@ Two command-line tools ship on the desktop, and they have different jobs.
 | | for | when |
 |---|---|---|
 | **`dnt`** | using the product | transcribe a file, read the log, inspect history, check a key |
-| **`dnt-eval`** | measuring the prompt | you changed `PROMPT.md` and owe the changelog a number |
+| **`dnt-eval`** | measuring the prompt | you changed a file in `prompt/` and owe the changelog a number |
 
 `dnt-eval` is documented in [EVALUATION.md](EVALUATION.md). This file covers `dnt` and the logging
 it exists to make readable.
@@ -24,7 +24,7 @@ swift run dnt doctor           # from a checkout, without installing anything
 ```
 
 The CLI is also inside the app bundle at `DoNotType.app/Contents/MacOS/dnt`, so a release carries
-it and an installed copy finds the shipped `PROMPT.md` beside itself without a checkout anywhere.
+it and an installed copy finds the shipped `prompt/` beside itself without a checkout anywhere.
 
 ## Two rules
 
@@ -54,8 +54,9 @@ entry is the standing configuration. `GEMINI_API_KEY=other-key dnt transcribe â€
 it obviously should. `--no-keychain` skips the Keychain entirely, which is what you want in CI or
 when you would rather not authorise a prompt.
 
-Your edited `PROMPT.md` is used if you have one, exactly as the app would use it. `dnt prompt path`
-says which file is in force.
+Your edited parts are used where you have them, exactly as the app would use them. `dnt prompt
+path` lists all twelve and says which file is in force for each; `dnt prompt validate` checks that
+every one of them still resolves.
 
 ## `dnt transcribe` â€” recordings that already exist
 

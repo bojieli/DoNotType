@@ -3,7 +3,7 @@
 # Renders every platform's app icon from Resources/Icon/DoNotType.svg.
 #
 # The mark is drawn once, in one file, and every incarnation of the app is a render of it -- the
-# same arrangement PROMPT.md has, and for the same reason: four platforms that each own a copy of
+# same arrangement prompt/ has, and for the same reason: four platforms that each own a copy of
 # the artwork are four platforms that will quietly disagree about what the app looks like.
 #
 # Outputs are committed, so building the app needs none of the tools below. Run this only after

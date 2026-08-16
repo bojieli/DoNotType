@@ -6,7 +6,7 @@ arbitrary here is the residue of something that was measured and came out the ot
 ## The shape
 
 ```
-                    PROMPT.md          CONTEXT_FORMAT.md
+                     prompt/           CONTEXT_FORMAT.md
                 (the contract)        (how context is framed)
                         │                      │
                         └──────────┬───────────┘
@@ -87,7 +87,8 @@ The guard lives on the provider protocol, not in an allowlist, because any backe
 | `HistoryQuery` | search and filter | In the core so the rules are testable without a UI. |
 | `Reachability` | online/offline | Decides *before* a request is spent, so offline queues instead of timing out. |
 | `FailureAdvice` | error → guidance | Every message answers "what do I do now?". |
-| `PromptStore` | user's prompt override | Validated before writing; every fidelity must resolve. |
+| `PromptSource` | which file is in force per part | An edited part shadows the shipped one; everything else still comes from `prompt/`. |
+| `PromptStore` | user's per-part overrides | Validated before writing. Per part, so editing the contract cannot freeze the clauses with it. |
 | `TranscriptDiff` | classify what grounding changed | Digits compare exactly; vowels fold rather than drop, so a false "spelling-fixed" cannot hide a substitution. |
 | `AudioChunker` | split long recordings on silence | Cuts land in the middle of the quietest span, and every chunk carries identical context so a name is spelled the same on both sides of a seam. |
 | `PerformanceStats` | what the app actually cost | Median and p95, never a mean; absence stays absent, because 0/0 is not a 0% success rate. |
@@ -103,7 +104,8 @@ deliberately not the same mechanism. The rewrite instruction's first rule is *ne
 a summary is defined by removing facts. Sharing a block would leave one style in that list quietly
 exempt from the block's first rule, and the exemption would be invisible at the call site.
 
-So `PROMPT.md` carries two blocks, `PromptBuilder` exposes two methods with one router
+So the contract carries two separate parts — `prompt/rewrite.md` and `prompt/summary.md`, with
+their styles in separate directories — `PromptBuilder` exposes two methods with one router
 (`secondStageInstruction(for:)`) so nothing can reach the wrong one by accident, and `SummaryStyle`
 is a separate type from `RewriteStyle`. `DictationRecord.style` still records only a `RewriteStyle`,
 which is why `mode` exists beside it: a history row must not claim a summary was a rewrite, because

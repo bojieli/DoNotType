@@ -149,7 +149,8 @@ jobs:
           # opus.dll sits beside the executable, which is where the import resolver looks first.
           # Without it the app still dictates — it just uploads WAV and is slower.
           Copy-Item native/opus.dll publish/opus.dll
-          Copy-Item PROMPT.md publish/PROMPT.md
+          # The directory layout is preserved: a part is found by its path under prompt/.
+          Copy-Item -Recurse prompt publish/prompt
           # opus.dll is also what lets the CLI read a .opus recording, not only write one.
           Copy-Item publish-cli/dnt.exe publish/dnt.exe
           New-Item -ItemType Directory -Force -Path dist | Out-Null
@@ -208,11 +209,20 @@ jobs:
             echo "APK=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
           fi
 
+      # Every part, not just the entry point: a part missing from the APK is invisible until
+      # somebody picks that fidelity or style, and then it fails mid-dictation.
       - name: The shared contract must be inside the APK
         working-directory: android
         run: |
-          unzip -p "$APK" assets/PROMPT.md \
+          unzip -p "$APK" assets/prompt/system.md \
             | grep -q "Context corrects SPELLING, never CONTENT"
+          for PART in system rewrite summary \
+            fidelity/raw fidelity/light fidelity/tidy \
+            style/formal style/concise style/bullets \
+            summary-style/brief summary-style/bullets summary-style/actions; do
+            unzip -p "$APK" "assets/prompt/$PART.md" | grep -q . \
+              || { echo "assets/prompt/$PART.md is missing or empty"; exit 1; }
+          done
 
       - name: Package
         run: |

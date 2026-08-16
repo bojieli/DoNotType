@@ -123,7 +123,7 @@ final class DoNotTypeUITests: XCTestCase {
         let text = (editor.value as? String) ?? ""
         XCTAssertTrue(
             text.contains("SPELLING"),
-            "the editor should be showing the shipped PROMPT.md, not an empty box")
+            "the editor should open on the shipped prompt/system.md, not an empty box")
     }
 
     /// The offline half of the product. Nothing here can be exercised without a real recording and

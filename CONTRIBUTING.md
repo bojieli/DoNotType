@@ -5,7 +5,7 @@ short version before opening a PR.
 
 ## The one unusual rule
 
-**Changes to `PROMPT.md` or `CONTEXT_FORMAT.md` need a measurement, not an argument.**
+**Changes to `prompt/` or `CONTEXT_FORMAT.md` need a measurement, not an argument.**
 
 Those two files are the product. Everything else is plumbing that delivers them. Three times in
 this project's short history a change was justified by a plausible mechanism and then measured to

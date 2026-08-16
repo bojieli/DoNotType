@@ -32,6 +32,6 @@ body:
       label: If this touches transcription quality
       options:
         - label: >
-            I understand that a change to `PROMPT.md`, the context format, the budgets or the
+            I understand that a change to `prompt/`, the context format, the budgets or the
             ordering needs before/after numbers from `dnt-eval`, and that a PR with clear
             reasoning and no numbers will be asked for numbers.

@@ -15,7 +15,7 @@ right *length* of silence, so a silent fixture cannot tell a working decoder fro
 nothing at all. These carry a signal, and the tests assert the decoded audio is audible — a peak
 well above zero — as well as the right length.
 
-Shared by all four platforms' tests rather than copied into each, for the same reason `PROMPT.md`
+Shared by all four platforms' tests rather than copied into each, for the same reason `prompt/`
 is: four copies are four chances for one of them to drift.
 
 Lengths differ slightly by design. MP3 and AAC are block codecs and pad the tail; Opus declares a

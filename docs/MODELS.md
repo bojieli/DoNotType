@@ -104,7 +104,7 @@ worth preferring, not proven". Native is the default anyway, because it is first
 **`openai/gpt-audio` does not reliably transcribe.** Given audio and a transcription instruction it
 sometimes returns a *conversational reply* instead: "It sounds like you're describing an interesting
 interaction between how language models process information…". That is failure mode #2 in
-`PROMPT.md` — answering rather than transcribing — and it makes the model unsuitable here regardless
+`prompt/system.md` — answering rather than transcribing — and it makes the model unsuitable here regardless
 of audio quality.
 
 **`response_format` breaks some models.** `openai/gpt-audio` and `gpt-audio-mini` return a provider

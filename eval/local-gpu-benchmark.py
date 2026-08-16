@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Drive a local OpenAI-compatible audio model when Swift is unavailable.
 
-This mirrors the request shape used by OpenAICompatibleProvider: the same PROMPT.md system
+This mirrors the request shape used by OpenAICompatibleProvider: the same prompt/ system
 instruction, context blocks before the audio, and the same structured-output schema. It is a
 portable fallback for GPU boxes, not a replacement for dnt-eval's diff reporting.
 """
@@ -36,15 +36,18 @@ even when the text above shows a different value for the same thing.
 The audio that follows is the ONLY thing to transcribe."""
 
 
-def fenced_clause(prompt: str, heading: str) -> str:
-    tail = prompt.split(f"### {heading}", 1)[1]
-    return tail.split("```", 2)[1].strip().replace("\n", " ")
+def part(relative_path: str) -> str:
+    """One file under prompt/, sent in full. Nothing is stripped and nothing is skipped."""
+    return (ROOT / "prompt" / relative_path).read_text().strip()
+
+
+def clause(relative_path: str) -> str:
+    """A clause lands inside a numbered list item, so its hard wraps are joined."""
+    return part(relative_path).replace("\n", " ")
 
 
 def system_prompt(fidelity: str = "light") -> str:
-    prompt = (ROOT / "PROMPT.md").read_text()
-    body = prompt.split("<!-- BEGIN SYSTEM -->", 1)[1].split("<!-- END SYSTEM -->", 1)[0]
-    return body.strip().replace("{{FIDELITY_RULE}}", fenced_clause(prompt, fidelity))
+    return part("system.md").replace("{{FIDELITY_RULE}}", clause(f"fidelity/{fidelity}.md"))
 
 
 def context_parts(context: dict) -> list[dict]:
@@ -225,7 +228,7 @@ def run_ablate(client: Client, audio: Path, trials: int, allow_synthetic: bool):
     single_system = prompt + (
         "\n\nAfter transcribing, rewrite the transcript in this style, keeping every number, "
         "name and identifier exactly as transcribed:\n"
-        + fenced_clause((ROOT / "PROMPT.md").read_text(), "style: formal")
+        + clause("style/formal.md")
     )
     rewrite_system = (
         "You rewrite a transcript of spoken words into clear written prose. Preserve meaning "

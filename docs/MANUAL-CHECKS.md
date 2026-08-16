@@ -73,7 +73,7 @@ Two of these have hardware in them, so they are here rather than in the automate
 ## 4. Silence, which must produce nothing
 
 The one failure that needs no interpretation. Run it against whichever backend the release
-recommends, and against a recogniser, because those never receive `PROMPT.md` at all:
+recommends, and against a recogniser, because those never receive `prompt/system.md` at all:
 
 ```bash
 dnt-eval silence --provider gemini

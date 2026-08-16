@@ -9,7 +9,7 @@ of room tone it will often produce a plausible sentence — the well-documented 
 phrase like "Thank you." or a subtitle credit — and a dictation tool that types that into somebody's
 document has invented words they never said.
 
-`PROMPT.md` rule 7 asks for an empty transcript in exactly this case, and that rule is not enough on
+`prompt/system.md` rule 7 asks for an empty transcript in exactly this case, and that rule is not enough on
 its own for two reasons:
 
 1. **It only reaches model providers.** Deepgram, xAI and Mistral Voxtral are speech recognition
@@ -70,5 +70,5 @@ the audio reaching the model, and the eval measures what the model would have do
 
 ```bash
 dnt-eval silence --provider gemini
-dnt-eval silence --provider deepgram   # the interesting one: it never sees PROMPT.md
+dnt-eval silence --provider deepgram   # the interesting one: it never sees the contract
 ```

@@ -207,10 +207,20 @@ final class DictationModel {
         }
     }
 
-    /// The prompt in force. Editable, for the same reason as on macOS.
+    /// Which part the editor is showing. One file at a time, for the same reason as on macOS: the
+    /// contract is twelve separate instructions, and a single scrolling buffer is how the shipped
+    /// text and the documentation about it ended up in the same box.
+    var selectedPart: PromptPart = .system {
+        didSet { if selectedPart != oldValue { loadPrompt() } }
+    }
+
+    /// The selected part's text. Editable, for the same reason as on macOS.
     var promptText: String = ""
     private(set) var promptStatus: String?
-    private(set) var isPromptCustom = false
+    private(set) var customParts: Set<PromptPart> = []
+
+    /// Whether the *selected* part is the user's rather than the shipped one.
+    var isPromptCustom: Bool { customParts.contains(selectedPart) }
 
     private let transcriptStore = TranscriptStore()
     private let prompts: PromptStore
@@ -260,9 +270,11 @@ final class DictationModel {
     func makeFileTranscriber(secondStage: ProviderKind? = nil) -> FileTranscriber? {
         guard !apiKey.isEmpty,
             let promptURL = Self.bundledPromptURL,
-            let builder = try? prompts.builder(default: promptURL),
-            let instruction = try? builder.systemInstruction(fidelity: fidelity),
             let backend = try? ProviderFactory.make(provider, apiKey: apiKey)
+        else { return nil }
+
+        let builder = prompts.builder(bundled: promptURL)
+        guard let instruction = try? builder.systemInstruction(fidelity: fidelity)
         else { return nil }
 
         let service = TranscriptionService(
@@ -294,34 +306,47 @@ final class DictationModel {
     // MARK: - Prompt editing
 
     private static var bundledPromptURL: URL? {
-        Bundle.main.url(forResource: "PROMPT", withExtension: "md")
+        Bundle.main.url(forResource: "prompt", withExtension: nil)
     }
 
     func loadPrompt() {
-        guard let defaultURL = Self.bundledPromptURL else {
-            promptStatus = "PROMPT.md is missing from the app bundle."
+        guard let bundled = Self.bundledPromptURL else {
+            promptStatus = "The prompt/ directory is missing from the app bundle."
             return
         }
-        promptText = (try? prompts.activeTemplate(default: defaultURL)) ?? ""
-        isPromptCustom = prompts.hasCustomPrompt
-        promptStatus = nil
+        customParts = Set(prompts.customParts)
+        do {
+            promptText = try prompts.source(bundled: bundled).editableText(for: selectedPart)
+            promptStatus = nil
+        } catch {
+            promptText = ""
+            promptStatus = error.localizedDescription
+        }
     }
 
     func savePrompt() {
         do {
-            try prompts.save(promptText)
-            isPromptCustom = true
-            promptStatus = "Saved. The published measurements describe the shipped prompt and no "
-                + "longer apply to this one."
+            try prompts.save(promptText, for: selectedPart)
+            customParts.insert(selectedPart)
+            promptStatus = "Saved \(selectedPart.relativePath). The published measurements "
+                + "describe the shipped part and no longer apply to this one."
         } catch {
             promptStatus = error.localizedDescription
         }
     }
 
+    /// Restores the selected part only. The others keep whatever they are, which is the point of
+    /// per-part overrides: editing one clause should not pin the whole contract.
     func restoreDefaultPrompt() {
-        try? prompts.restoreDefault()
+        try? prompts.restore(selectedPart)
         loadPrompt()
-        promptStatus = "Restored the shipped prompt."
+        promptStatus = "Restored the shipped \(selectedPart.relativePath)."
+    }
+
+    func restoreAllPrompts() {
+        try? prompts.restoreAll()
+        loadPrompt()
+        promptStatus = "Restored every part to the shipped contract."
     }
 
     var hasAppGroup: Bool { TranscriptStore.containerURL != nil }
@@ -466,7 +491,7 @@ final class DictationModel {
         // Nothing without speech in it is ever sent. A model handed room tone does not reliably
         // return silence — it returns a plausible sentence, and a dictation tool that hands that
         // to somebody as their words has done the one thing this project exists to prevent.
-        // PROMPT.md rule 7 asks for an empty transcript, but it only reaches model providers: a
+        // system.md rule 7 asks for an empty transcript, but it only reaches model providers: a
         // speech recogniser has no system instruction, so for Deepgram, xAI and Voxtral the rule
         // is never sent at all. Not transmitting the audio is the only defence for every backend.
         if let recorded = try? Data(contentsOf: url) {
@@ -534,10 +559,10 @@ final class DictationModel {
     /// Read the same way `makeCoordinator` reads the system instruction: from the bundle, through
     /// `PromptStore`. There is no filesystem to walk up on a phone, and an app that used the
     /// shipped prompt here while sending an edited one for the transcript would make the two
-    /// disagree about the only file that matters.
+    /// disagree about the only files that matter.
     private func rewriteInstruction(for style: RewriteStyle) -> String? {
         guard let promptURL = Self.bundledPromptURL else { return nil }
-        return try? prompts.builder(default: promptURL).rewriteInstruction(style: style)
+        return try? prompts.builder(bundled: promptURL).rewriteInstruction(style: style)
     }
 
     private func requestMicrophone() async -> Bool {
@@ -774,7 +799,7 @@ final class DictationModel {
             let key = KeychainStore.read(account: kind.rawValue), !key.isEmpty,
             let backend = try? ProviderFactory.make(kind, apiKey: key),
             let promptURL = Self.bundledPromptURL,
-            let instruction = try? prompts.builder(default: promptURL)
+            let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(fidelity: fidelity)
         else { return FallbackTranscriber(primary: primary) }
 
@@ -789,7 +814,7 @@ final class DictationModel {
     private func makeCoordinator() -> RetryCoordinator? {
         guard !apiKey.isEmpty,
             let promptURL = Self.bundledPromptURL,
-            let instruction = try? prompts.builder(default: promptURL)
+            let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(fidelity: fidelity)
         else { return nil }
 

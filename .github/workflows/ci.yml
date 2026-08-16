@@ -20,6 +20,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prompt builds for every fidelity
         run: swift test --filter PromptBuilderTests
+      # Per-part overrides and the split of the old single-file format, which is the path an
+      # existing install takes exactly once and never again.
+      - name: Prompt overrides and migration
+        run: swift test --filter PromptStoreTests
 
   swift:
     name: Swift core and macOS app
@@ -58,7 +62,7 @@ jobs:
         run: swift build -c release --product dnt
 
       # Building a command-line tool proves it compiles, not that it runs. This one exercises the
-      # path most likely to break silently: finding PROMPT.md, parsing every block in it, and
+      # path most likely to break silently: finding prompt/, reading every part in it, and
       # writing to stdout rather than stderr. No key and no network.
       - name: Run the CLI
         run: |
@@ -212,11 +216,21 @@ jobs:
         working-directory: android
         run: gradle assembleDebug --no-daemon
 
+      # Every part, not just the entry point: a part missing from the APK is invisible until
+      # somebody picks that fidelity or style, and then it fails mid-dictation.
       - name: The shared contract must be inside the APK
         working-directory: android
         run: |
-          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/PROMPT.md \
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          unzip -p "$APK" assets/prompt/system.md \
             | grep -q "Context corrects SPELLING, never CONTENT"
+          for PART in system rewrite summary \
+            fidelity/raw fidelity/light fidelity/tidy \
+            style/formal style/concise style/bullets \
+            summary-style/brief summary-style/bullets summary-style/actions; do
+            unzip -p "$APK" "assets/prompt/$PART.md" | grep -q . \
+              || { echo "assets/prompt/$PART.md is missing or empty"; exit 1; }
+          done
 
       # Window insets only exist once there is a window on a screen, so this class of bug is
       # invisible to every test above. On API 35 the settings screen was drawing underneath the

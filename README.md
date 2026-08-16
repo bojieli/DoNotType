@@ -33,9 +33,10 @@ version, what you actually said was never saved.
 beats clear audio: say "Gemini 3.5 Flash" and get "Gemini 3 Flash", because that string is the one
 the system already knows. Worse, a correction-fed dictionary makes it self-reinforcing.
 
-DoNotType inverts both. The prompt is a versioned file you can read, edit and measure
-([`PROMPT.md`](PROMPT.md)). Screen context is sent **raw** — no term extraction, no dictionary, no
-prior transcripts — and its authority is scoped to spelling, never content.
+DoNotType inverts both. The prompt is a directory of versioned files you can read, edit and measure
+([`prompt/`](prompt/), one part per file, argued for in [`PROMPT.md`](PROMPT.md)). Screen context is
+sent **raw** — no term extraction, no dictionary, no prior transcripts — and its authority is scoped
+to spelling, never content.
 
 ## Status, honestly
 
@@ -100,7 +101,7 @@ Feature by feature, with the reason for every gap: [docs/PARITY.md](docs/PARITY.
 capability difference is screen grounding on iOS, which the sandbox forbids rather than nobody
 having built it.
 
-All four send the **same** `PROMPT.md`, copied into each bundle at build time rather than
+All four send the **same** `prompt/`, copied into each bundle at build time rather than
 duplicated, so no platform can quietly drift from what the evaluation measures. All four also
 transcribe recordings you already have, in all three modes, and write a readable log — see
 [docs/CLI.md](docs/CLI.md) for what differs and why.
@@ -187,9 +188,9 @@ is the only way to check what was dropped. The GUI shows it behind a toggle; `--
 `name.verbatim.txt` beside the result; `--json` carries both.
 
 Summarising is the one stage in this codebase allowed to discard content, so it is not a rewrite
-style — it has its own block in `PROMPT.md`, its own type, and no path to it from a rewrite. Rule 1
-of the rewrite block is *never remove a fact*, and a summary style sitting in that list would be one
-entry quietly exempt from it.
+style — it has its own part (`prompt/summary.md`), its own directory of styles, its own type, and no
+path to it from a rewrite. Rule 1 of `prompt/rewrite.md` is *never remove a fact*, and a summary
+style sitting in `prompt/style/` would be one entry quietly exempt from it.
 
 Rewriting and summarising need a language model. With a recogniser selected the CLI says so before
 uploading anything, and can split the work — audio to the fast recogniser, text to a model:
@@ -339,7 +340,7 @@ history, no sync, and no "recover my transcripts" — the price of the same deci
 **Log your words.** Transcripts and screen contents stay out of the log file unless you switch them
 on, and the app says out loud when you have.
 
-**Ship a quality claim without a number.** Changes to `PROMPT.md`, the context format, the budgets or
+**Ship a quality claim without a number.** Changes to `prompt/`, the context format, the budgets or
 the default backend need before/after measurements. This has already reversed three plausible
 mechanisms, and one of the reversals removed a feature.
 
@@ -352,7 +353,7 @@ hatch. It is listed as ❌ above and will stay that way.
 
 ## Contributing
 
-Changes to `PROMPT.md` or the context format need **a measurement, not an argument**. Three
+Changes to `prompt/` or the context format need **a measurement, not an argument**. Three
 plausible-sounding changes in this project's history were measured and did the opposite of what was
 predicted. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -360,7 +361,8 @@ predicted. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 | | |
 |---|---|
-| [PROMPT.md](PROMPT.md) | the transcription contract, and its measured changelog |
+| [prompt/](prompt/) | the transcription contract itself, one part per file — what is sent |
+| [PROMPT.md](PROMPT.md) | why the contract is worded that way, and its measured changelog |
 | [CONTEXT_FORMAT.md](CONTEXT_FORMAT.md) | part order, delimiters, caps, truncation direction |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the pieces fit, and which decisions were measured |
 | [docs/LOCALIZATION.md](docs/LOCALIZATION.md) | translating the interface, and why the prompt is never translated |

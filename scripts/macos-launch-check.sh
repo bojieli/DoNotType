@@ -55,13 +55,25 @@ done
 EXECUTABLE=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$PLIST")
 [ -x "$APP/Contents/MacOS/$EXECUTABLE" ] || fail "CFBundleExecutable names a file that is not there"
 
-# The contract ships inside the bundle so the app does not depend on the source tree. If this is
+# The contract ships inside the bundle so the app does not depend on the source tree. If a part is
 # missing the app starts and then cannot transcribe anything, which is a worse failure than not
-# starting at all.
-[ -f "$APP/Contents/Resources/PROMPT.md" ] || fail "PROMPT.md is not in the bundle"
-grep -q "BEGIN SYSTEM" "$APP/Contents/Resources/PROMPT.md" || fail "the bundled PROMPT.md is not the contract"
+# starting at all — and a part missing from one directory is invisible until somebody picks that
+# fidelity or style, so every one of them is checked rather than just the entry point.
+PROMPT_DIR="$APP/Contents/Resources/prompt"
+[ -d "$PROMPT_DIR" ] || fail "the prompt/ directory is not in the bundle"
+for PART in system.md rewrite.md summary.md \
+  fidelity/raw.md fidelity/light.md fidelity/tidy.md \
+  style/formal.md style/concise.md style/bullets.md \
+  summary-style/brief.md summary-style/bullets.md summary-style/actions.md; do
+  [ -s "$PROMPT_DIR/$PART" ] || fail "prompt/$PART is missing from the bundle or empty"
+done
+grep -q "You are a transcription engine" "$PROMPT_DIR/system.md" \
+  || fail "the bundled prompt/system.md is not the contract"
+# A part file is sent in full, so anything that looks like the old marker format is a packaging bug.
+grep -rq "BEGIN SYSTEM" "$PROMPT_DIR" \
+  && fail "a bundled part still carries the old <!-- BEGIN SYSTEM --> markers"
 
-# The CLI rides along in the bundle, and an installed copy resolves PROMPT.md relative to itself.
+# The CLI rides along in the bundle, and an installed copy resolves prompt/ relative to itself.
 if [ -x "$APP/Contents/MacOS/dnt" ]; then
   "$APP/Contents/MacOS/dnt" prompt validate >/dev/null || fail "the bundled CLI cannot read the bundled prompt"
   echo "  bundled CLI validates the bundled prompt"

@@ -10,7 +10,7 @@ Amber is the voice; steel is the caret holding it; the ink ground is the screen 
 
 Everything is rendered from [`DoNotType.svg`](DoNotType.svg). The mark's geometry appears once, in
 that file's `<defs>`, and each platform asset is a named group rendered out of it — the same
-arrangement `PROMPT.md` has, for the same reason. Four platforms that each own a copy of the
+arrangement `prompt/` has, for the same reason. Four platforms that each own a copy of the
 artwork are four platforms that will quietly disagree about what the app looks like.
 
 Rendered outputs are committed, so building any of the apps needs none of the tools below.

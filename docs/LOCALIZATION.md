@@ -79,7 +79,7 @@ with the operator's locale is one that cannot be searched for. The same reasonin
 
 The interface strings are the small part. The parts that would actually need care:
 
-- **`PROMPT.md` is not translated and must not be.** It is the contract sent to the model, its
+- **`prompt/` is not translated and must not be.** It is the contract sent to the model, its
   wording is measured, and the changelog's numbers describe that exact text. A translated prompt is
   a different prompt with no measurements behind it.
 - **The explanatory paragraphs carry the argument.** "Even Tidy only changes typography" and "screen

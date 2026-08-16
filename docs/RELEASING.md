@@ -25,7 +25,7 @@ release.
 | artifact | contents |
 |---|---|
 | `DoNotType-macOS.zip` | the `.app` bundle |
-| `DoNotType-Windows-x64.zip` | self-contained `.exe`, `opus.dll`, `PROMPT.md` |
+| `DoNotType-Windows-x64.zip` | self-contained `.exe`, `opus.dll`, `prompt/` |
 | `DoNotType-Android.apk` | installable APK |
 | `*.sha256` | one per artifact |
 

@@ -15,5 +15,5 @@ extraction step and no key list to keep in sync:
 ```
 
 Read [docs/LOCALIZATION.md](../../docs/LOCALIZATION.md) first — particularly the part about which
-strings carry the argument and must not be softened, and the one about `PROMPT.md`, which is a
+strings carry the argument and must not be softened, and the one about `prompt/`, which is a
 contract sent to a model and must never be translated.
