@@ -246,6 +246,18 @@ deliberate:
 
 ### Fixed
 
+- **The Context Inspector could not be opened on macOS.** The eye button on every history row set
+  the state that selects a record and nothing presented it — no `.sheet`, no `.popover`, no window,
+  anywhere in the app target. `ContextInspectorView` was complete, with a working `dismiss` and a
+  Done button, and had no call site: clicking the button did nothing at all, silently.
+
+  The parity table has claimed macOS ✅ for "inspect what was sent" throughout, and the feature was
+  described as shipping on macOS first and being ported outward. Windows and Android are wired
+  correctly and always were; the platform that supposedly had it was the one that did not. This is
+  the second time this feature has been documented without existing — the changelog already records
+  it once. Now presented as a sheet from the row it belongs to, verified end to end on the running
+  app: the button opens it, the encoded context and token count are real, and Done closes it.
+
 - **Every tab in macOS Settings was invisible, including History and Logs.** The window opened on
   an unlabelled `»` chevron and nothing else, so the six panels behind it — General, Grounding,
   History, Stats, Prompt, Logs — could not be found at all without knowing to click it.

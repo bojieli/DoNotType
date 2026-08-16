@@ -447,6 +447,12 @@ private struct HistoryTab: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        // The row's eye button sets `inspecting` and this is what reads it. Without this modifier
+        // the button was inert: state changed, nothing appeared, and the one feature that proves
+        // what this app sends to a server could not be opened on the platform it shipped on first.
+        .sheet(item: $inspecting) { record in
+            ContextInspectorView(record: record)
+        }
     }
 
     /// Searching is the point of keeping history at all — a log you cannot search is disk usage.
