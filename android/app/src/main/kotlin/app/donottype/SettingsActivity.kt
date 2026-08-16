@@ -11,6 +11,7 @@ import app.donottype.core.PerformanceStats
 import app.donottype.core.ProviderFactory
 import app.donottype.core.ProviderKind
 import app.donottype.core.RetentionPolicy
+import app.donottype.core.RewriteAvailability
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -60,6 +61,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var modelField: EditText
     private lateinit var recommendationNote: TextView
     private lateinit var groundingNote: TextView
+    private lateinit var rewriteNote: TextView
     private lateinit var fallbackKeyField: EditText
     private lateinit var fallbackDelayField: EditText
     private lateinit var fallbackNote: TextView
@@ -221,6 +223,15 @@ class SettingsActivity : AppCompatActivity() {
         column.addView(
             body("Even Tidy only changes typography. None of these reword you.")
         )
+
+        // ---- Rewrite ----
+        // Named here even though the choice is made on the keyboard, because this screen is where
+        // somebody looks for a feature and the chips are not visible until the keyboard is open.
+        // The desktops had the same problem in reverse: a row called "Second key" that never said
+        // what it produced.
+        column.addView(sectionTitle("Rewrite"))
+        rewriteNote = body("")
+        column.addView(rewriteNote)
 
         // ---- Grounding ----
         column.addView(sectionTitle("Screen grounding"))
@@ -502,6 +513,16 @@ class SettingsActivity : AppCompatActivity() {
     /** Says what the selected backend gives up, and hides controls it cannot honour. */
     private fun refreshProviderNotes() {
         val kind = Settings.provider
+
+        // From the shared rule, so a phone and a laptop answer "can this rewrite" the same way.
+        // Stated whether or not it can: a note that appears only on failure leaves the feature
+        // undiscoverable in the ordinary case, which is how it came to look absent entirely.
+        val availability = RewriteAvailability.resolve(kind) { !Settings.keyFor(it).isNullOrBlank() }
+        rewriteNote.text = availability.reason
+            ?: "Available. Open the DoNotType keyboard and pick Formal, Concise or Bullets above " +
+                "the talk button — before you speak, so there is no mode to leave switched on. " +
+                "The verbatim transcript is kept either way. Summaries are not offered live; use " +
+                "Transcribe a recording for those."
 
         recommendationNote.text = kind.recommendationNote
         recommendationNote.visibility =

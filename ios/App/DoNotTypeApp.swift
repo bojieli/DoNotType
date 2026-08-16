@@ -89,16 +89,33 @@ struct ContentView: View {
     ///
     /// Hidden when no configured backend can rewrite text at all — a recogniser has no text
     /// endpoint, so this is not a control that would work less well, it is one that cannot work.
+    /// Shown even when a rewrite cannot run, greyed out with the reason underneath.
+    ///
+    /// It used to be hidden, on the reasoning that a control which cannot work is worse than one
+    /// that is not there. It is not: a missing control cannot explain itself, and the feature ended
+    /// up looking absent rather than unavailable — the question "where is the rewrite" has no
+    /// answer on screen, while "why is this greyed out" does.
     @ViewBuilder private var styleChips: some View {
-        if model.canRewrite {
-            Picker("Style", selection: $model.liveStyle) {
-                ForEach(RewriteStyle.allCases, id: \.self) { style in
-                    Text(Self.chipLabel(style)).tag(style)
-                }
+        let availability = model.rewriteAvailability
+
+        Picker("Style", selection: $model.liveStyle) {
+            ForEach(RewriteStyle.allCases, id: \.self) { style in
+                Text(Self.chipLabel(style)).tag(style)
             }
-            .pickerStyle(.segmented)
-            .disabled(model.state == .recording || model.state == .transcribing)
-            .accessibilityIdentifier("style-picker")
+        }
+        .pickerStyle(.segmented)
+        .disabled(
+            !availability.isAvailable || model.state == .recording
+                || model.state == .transcribing)
+        .accessibilityIdentifier("style-picker")
+
+        if let reason = availability.reason {
+            Text(reason)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("style-unavailable")
         }
     }
 

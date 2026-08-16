@@ -15,7 +15,9 @@ reachable by a user of that client, not merely present in its core library.
 | Tap to toggle, hold to talk | ✅ | ✅ | ✅ | ✅ |
 | Cancel mid-recording | ✅ Escape | ✅ Escape | ✅ drag off the button | ✅ |
 | Push-to-talk / hands-free as a *setting* | ✅ | ✅ | — ¹ | — ¹ |
-| Second key or chip that rewrites | ✅ second hotkey | ✅ second hotkey | ✅ style chips | ✅ style picker |
+| Rewrite a dictation | ✅ second hotkey | ✅ second hotkey | ✅ style chips | ✅ style picker |
+| Says why a rewrite is unavailable | ✅ | ✅ | ✅ | ✅ |
+| Summarise a dictation live | — ⁶ | — ⁶ | — ⁶ | — ⁶ |
 | Undo the last insertion | ✅ ⌘⇧Z | ✅ Ctrl+Shift+Z | — ² | — ² |
 | Revert a rewrite to verbatim | ✅ ⌘⌥Z | ✅ Ctrl+Alt+Z | — ² | — ² |
 | Put a past transcript in again | ✅ ³ | ✅ ³ | ✅ ³ | ✅ ³ |
@@ -42,25 +44,31 @@ desktop tone exists because the overlay is at the bottom of the screen while you
 expect on a phone. The desktop problem — the default silently following whatever was plugged in
 last — does not arise the same way.
 
+⁶ Deliberate, and the same on all four. Live dictation puts words where your cursor is, and a
+summary of ten seconds of speech is not that. Summaries are offered where a recording is long
+enough for one to mean something: the file transcription screen and `dnt transcribe --mode
+summary:brief`. The wall is in the type system rather than in a convention — the live path is typed
+`RewriteStyle`, which has no summary case, so no client can reach one by accident.
+
 ## Screen grounding
 
 | | macOS | Windows | Android | iOS |
 |---|---|---|---|---|
-| Read the focused field and window | ✅ accessibility tree | ✅ UI Automation | ✅ `AccessibilityService` | ❌ ⁶ |
-| Screenshot fallback | ✅ | — ⁷ | — ⁷ | ❌ ⁶ |
-| Turn grounding off | ✅ | ✅ | ✅ | ❌ ⁶ |
-| Never read these apps | ✅ | ✅ | ✅ | ❌ ⁶ |
-| Number check (second, screen-blind request) | ✅ | ✅ | ✅ | ❌ ⁶ |
-| Keyterm biasing for recognisers | ✅ | ✅ | ✅ | ❌ ⁶ |
-| Inspect what was sent | ✅ | ✅ | ✅ | ❌ ⁶ |
+| Read the focused field and window | ✅ accessibility tree | ✅ UI Automation | ✅ `AccessibilityService` | ❌ ⁷ |
+| Screenshot fallback | ✅ | — ⁸ | — ⁸ | ❌ ⁷ |
+| Turn grounding off | ✅ | ✅ | ✅ | ❌ ⁷ |
+| Never read these apps | ✅ | ✅ | ✅ | ❌ ⁷ |
+| Number check (second, screen-blind request) | ✅ | ✅ | ✅ | ❌ ⁷ |
+| Keyterm biasing for recognisers | ✅ | ✅ | ✅ | ❌ ⁷ |
+| Inspect what was sent | ✅ | ✅ | ✅ | ❌ ⁷ |
 
-⁶ **Not possible.** An iOS app cannot read another app's screen; the sandbox has no equivalent of
+⁷ **Not possible.** An iOS app cannot read another app's screen; the sandbox has no equivalent of
 the accessibility APIs the other three use, and no screenshot of anything it does not own. This is
 the one real capability difference between the clients, and it is the platform's decision rather
 than ours. Everything downstream of grounding — the blocklist, keyterms — is
 therefore absent too, because there is nothing for them to act on.
 
-⁷ macOS falls back to a screenshot when an app exposes no readable text — Figma, a GPU-rendered
+⁸ macOS falls back to a screenshot when an app exposes no readable text — Figma, a GPU-rendered
 terminal, a PDF. UI Automation and `AccessibilityService` return text for most of what people
 dictate into, so the fallback has not been needed; it is a gap rather than an impossibility.
 
@@ -81,7 +89,7 @@ dictate into, so the fallback has not been needed; it is a gap rather than an im
 |---|---|---|---|---|
 | History with search and filters | ✅ | ✅ | ✅ | ✅ |
 | Retry a failed dictation | ✅ | ✅ | ✅ | ✅ |
-| …with the context it originally had | ✅ | ✅ | ✅ | n/a ⁶ |
+| …with the context it originally had | ✅ | ✅ | ✅ | n/a ⁷ |
 | Retention policy and keep-audio | ✅ | ✅ | ✅ | ✅ |
 | Edit the prompt | ✅ | ✅ | ✅ | ✅ |
 | Log viewer, level, content toggle | ✅ | ✅ | ✅ | ✅ |

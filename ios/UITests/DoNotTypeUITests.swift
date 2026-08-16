@@ -50,16 +50,27 @@ final class DoNotTypeUITests: XCTestCase {
     /// The style picker, which is how a phone makes the choice the desktop makes with a second
     /// hotkey — before speaking, not from a menu afterwards.
     ///
-    /// A fresh install has no API key, so no backend can rewrite and the picker is deliberately
-    /// absent: a control that cannot work is worse than one that is not there. What this asserts is
-    /// that its absence is *that* rule and not a layout accident — the record button, which does
-    /// not depend on a key, is still there beside it.
-    func testTheStylePickerIsHiddenUntilSomethingCanRewrite() {
+    /// A fresh install has no API key, so nothing can rewrite. The picker is still shown, disabled,
+    /// with a line saying why: hiding it is what made the feature look absent rather than
+    /// unavailable, and "where is the rewrite" is a question the screen cannot answer while "why is
+    /// this greyed out" is one it can.
+    ///
+    /// The previous version of this test asserted the opposite and passed for the wrong reason — it
+    /// only held while the default backend was a recogniser, and broke the moment the default
+    /// became a model, because the rule it tested never checked for a key at all.
+    func testTheStylePickerIsShownButDisabledUntilSomethingCanRewrite() {
         let app = launch()
         XCTAssertTrue(app.buttons["record"].waitForExistence(timeout: 10))
-        XCTAssertFalse(
-            app.segmentedControls["style-picker"].exists,
-            "with no key configured, nothing can rewrite and the picker should not be offered")
+
+        let picker = app.segmentedControls["style-picker"]
+        XCTAssertTrue(picker.exists, "the picker should be visible so the feature is discoverable")
+        XCTAssertFalse(picker.isEnabled, "with no key configured, nothing can rewrite")
+
+        let reason = app.staticTexts["style-unavailable"]
+        XCTAssertTrue(reason.exists, "a disabled control has to say why it is disabled")
+        XCTAssertTrue(
+            (reason.label).contains("API key"),
+            "the reason should name what is missing, got: \(reason.label)")
     }
 
     /// Asserts on the controls rather than on the section headers above them.

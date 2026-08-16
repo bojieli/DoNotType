@@ -194,6 +194,16 @@ final class SettingsModel {
         didSet { Settings.shared.secondaryStyle = secondaryStyle }
     }
 
+    /// Whether a rewrite can run at all, and what to say when it cannot.
+    ///
+    /// Read from the same rule every client uses, rather than asked locally — this window used to
+    /// not ask at all, and offered the binding whatever was configured.
+    var rewriteAvailability: RewriteAvailability {
+        RewriteAvailability.resolve(provider: provider) { kind in
+            !(Settings.shared.resolvedAPIKey(for: kind) ?? "").isEmpty
+        }
+    }
+
     var microphoneUID: String? {
         didSet { Settings.shared.microphoneUID = microphoneUID }
     }

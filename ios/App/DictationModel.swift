@@ -87,16 +87,26 @@ final class DictationModel {
         didSet { UserDefaults.standard.set(liveStyle.rawValue, forKey: "liveStyle") }
     }
 
-    /// Whether any configured backend can rewrite text at all.
+    /// Whether the rewrite stage can run at all, and what to say when it cannot.
     ///
-    /// A recogniser has no text endpoint, so when one is selected and no model backend has a key,
-    /// the picker is not offered rather than offered and silently ignored.
-    var canRewrite: Bool { !provider.isSpeechRecognition || secondStageBackend != nil }
+    /// From the shared rule rather than asked here. The local version asked
+    /// `!provider.isSpeechRecognition || secondStageBackend != nil` — a question about the *kind*
+    /// of backend, which never checked that a key existed. It gave the right answer only while the
+    /// default backend was a recogniser: the moment the default became a model, the first clause
+    /// went true on a fresh install and the picker appeared on a phone that could not transcribe at
+    /// all, let alone rewrite.
+    var rewriteAvailability: RewriteAvailability {
+        RewriteAvailability.resolve(provider: provider) { kind in
+            !(KeychainStore.read(account: kind.rawValue) ?? "").isEmpty
+        }
+    }
+
+    var canRewrite: Bool { rewriteAvailability.isAvailable }
 
     /// The first configured model backend, for the second stage a recogniser cannot run.
     var secondStageBackend: ProviderKind? {
         ProviderKind.allCases.first {
-            !$0.isSpeechRecognition && !(KeychainStore.read(account: $0.rawValue) ?? "").isEmpty
+            $0.supportsTextGeneration && !(KeychainStore.read(account: $0.rawValue) ?? "").isEmpty
         }
     }
 
@@ -391,10 +401,10 @@ final class DictationModel {
 
     /// How long a press must last before releasing it ends the recording.
     ///
-    /// 350 ms: long enough that a deliberate tap never trips it, short enough that someone who
-    /// meant to hold does not get a surprise toggle. Matches the desktop hotkey and the Android
-    /// keyboard, so the gesture means the same thing everywhere.
-    private static let holdThreshold: TimeInterval = 0.35
+    /// The desktop hotkey's own constant rather than a copy of its value, so the gesture means the
+    /// same thing everywhere by construction. The comment here used to claim that match while
+    /// holding a different number, which is how it survived the desktop side changing.
+    private static let holdThreshold = PressGesture.holdThreshold
     private var pressStartedAt: Date?
 
     /// Touch-down. Recording starts immediately rather than waiting to classify the gesture --

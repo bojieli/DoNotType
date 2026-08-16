@@ -135,6 +135,35 @@ public static class ProviderFactory
     public static bool IsSpeechRecognition(this ProviderKind kind) =>
         kind is ProviderKind.Deepgram or ProviderKind.Mistral or ProviderKind.XAI;
 
+    /// <summary>
+    /// Whether this backend can turn text into text -- the rewrite pass.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately its own question rather than the negation of <see cref="IsSpeechRecognition"/>,
+    /// because on macOS and iOS they already have different answers: xAI is a recogniser that also
+    /// sells chat on the same key. Windows has no text-provider plumbing yet, so here the two still
+    /// agree -- when that port lands, this is the single place that changes.
+    /// </remarks>
+    public static bool SupportsTextGeneration(this ProviderKind kind) => !kind.IsSpeechRecognition();
+
+    /// <summary>
+    /// The backend's name with nothing appended, for a sentence that is already about what it
+    /// cannot do.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="DisplayName"/> carries "(transcription only)" for the picker, which reads as a
+    /// stutter inside a sentence that goes on to say exactly that.
+    /// </remarks>
+    public static string PlainName(this ProviderKind kind) => kind switch
+    {
+        ProviderKind.Gemini => "Gemini",
+        ProviderKind.OpenRouter => "OpenRouter",
+        ProviderKind.Deepgram => "Deepgram",
+        ProviderKind.Mistral => "Mistral",
+        ProviderKind.XAI => "xAI",
+        _ => kind.ToString(),
+    };
+
     /// <summary>Name for the settings dropdown, honest about what each one gives up.</summary>
     public static string DisplayName(this ProviderKind kind) => kind switch
     {

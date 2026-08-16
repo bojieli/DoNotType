@@ -136,13 +136,21 @@ public sealed class SettingsForm : Form
             + "records only while held. Escape cancels. Even Tidy only changes typography — none "
             + "of the fidelity settings reword you."));
 
+        // Its own heading, not two more rows under Dictation. "Second key" names the mechanism and
+        // never the feature, so somebody looking for rewriting had no reason to read it — and on a
+        // fresh install nothing is bound, so the word appeared nowhere in the window at all.
+        layout.Controls.Add(Heading("Rewrite"));
         layout.Controls.Add(Labelled("Second key", _secondTrigger));
         layout.Controls.Add(Labelled("It produces", _secondStyle));
         layout.Controls.Add(_secondKeyNote);
         layout.Controls.Add(Caption(
             "Optional. A second key that dictates and then rewrites, so the choice is made before "
-            + "you speak rather than from a menu afterwards. The verbatim transcript is kept "
-            + "either way and stays in History, so a rewrite never loses what you actually said."));
+            + "you speak rather than from a menu afterwards — there is no mode to leave switched "
+            + "on. The verbatim transcript is kept either way and stays in History, so a rewrite "
+            + "never loses what you actually said."));
+        layout.Controls.Add(Caption(
+            "Summaries are not offered here — see the Files tab, which transcribes a recording you "
+            + "already have and can summarise it."));
 
         layout.Controls.Add(Heading("Audio"));
         layout.Controls.Add(Labelled("Microphone", _microphone));
@@ -507,6 +515,21 @@ public sealed class SettingsForm : Form
             : ProviderFactory.DefaultForNewInstalls;
     }
 
+    /// <summary>
+    /// Whether a backend has a usable key, for the shared rewrite rule.
+    /// </summary>
+    /// <remarks>
+    /// Reads the field for the selected backend rather than the saved setting, so the note and the
+    /// controls answer for what is typed in front of the user rather than for what was last saved.
+    /// Everything else comes from storage, which is where an unselected backend's key lives.
+    /// </remarks>
+    private bool HasKeyFor(ProviderKind kind) =>
+        kind == SelectedProvider()
+            ? !string.IsNullOrWhiteSpace(_apiKey.Text)
+            : !string.IsNullOrWhiteSpace(_settings.KeyFor(kind))
+                || !string.IsNullOrWhiteSpace(
+                    Environment.GetEnvironmentVariable(kind.ApiKeyEnvVar()));
+
     /// <summary>The fallback choices are every backend except the primary, recommended first.</summary>
     private static List<ProviderKind> FallbackChoices(ProviderKind primary) =>
         ProviderFactory.PickerOrder.Where(k => k != primary).ToList();
@@ -541,19 +564,23 @@ public sealed class SettingsForm : Form
               + $"{fallback} starts alongside it and whichever finishes first is used. History "
               + "records which one served each dictation.";
 
-        // Said here, where the choice is made, rather than found out by holding the key and
-        // getting your own words back. A recogniser has no text endpoint at all, so this is not a
-        // setting that would work slightly worse — it is one that cannot work.
+        // Said here, where the choice is made, rather than found out by holding the key and getting
+        // your own words back. Shown whether or not a key is bound: this used to appear only after
+        // binding one, which meant the answer to "why can I not rewrite" arrived after the step it
+        // was about.
+        //
+        // From the shared rule rather than asked locally. Windows warned but left the control
+        // enabled, macOS never asked, and the mobiles asked a question about the kind of backend
+        // rather than about whether one was usable.
         var kind = SelectedProvider();
-        var second = _secondTrigger.SelectedIndex > 0;
-        _secondKeyNote.Text = !second
-            ? string.Empty
-            : kind.IsSpeechRecognition()
-                ? $"{kind} only transcribes audio and cannot "
-                    + "rewrite text, so the second key will deliver the verbatim transcript "
-                    + "unchanged. Choose a model backend above to use it."
-                : string.Empty;
+        var availability = RewriteAvailability.Resolve(kind, HasKeyFor);
+        _secondKeyNote.Text = availability.Reason;
         _secondKeyNote.Visible = _secondKeyNote.Text.Length > 0;
+
+        // Disabled rather than hidden. A control that vanishes takes the explanation with it, and
+        // "where is it" is a harder question than "why is it off".
+        _secondTrigger.Enabled = availability.IsAvailable;
+        _secondStyle.Enabled = availability.IsAvailable && _secondTrigger.SelectedIndex > 0;
 
         // What the choice buys, for the two there is a recommendation for, before what it costs.
         _recommendationNote.Text = kind.RecommendationNote();
@@ -662,6 +689,11 @@ public sealed class SettingsForm : Form
             RefreshProviderNotes();
         };
 
+        // Whether a rewrite can run depends on there being a key, so the section has to unlock as
+        // one is typed. Without this it would stay greyed out, explaining that a key is missing,
+        // while the user looks at the key they just entered.
+        _apiKey.TextChanged += (_, _) => RefreshProviderNotes();
+
         foreach (var trigger in Enum.GetValues<HotkeyMonitor.Trigger>())
         {
             _trigger.Items.Add(HotkeyMonitor.Label(trigger));
@@ -683,12 +715,9 @@ public sealed class SettingsForm : Form
             _secondStyle.Items.Add(style.Label());
         }
         _secondStyle.SelectedIndex = Math.Max(0, (int)_settings.SecondaryStyle - 1);
-        _secondStyle.Enabled = _secondTrigger.SelectedIndex > 0;
-        _secondTrigger.SelectedIndexChanged += (_, _) =>
-        {
-            _secondStyle.Enabled = _secondTrigger.SelectedIndex > 0;
-            RefreshProviderNotes();
-        };
+        // Enablement is decided in one place, so a key change and a binding change cannot leave the
+        // two controls disagreeing about whether a rewrite is possible.
+        _secondTrigger.SelectedIndexChanged += (_, _) => RefreshProviderNotes();
 
         _mode.Items.AddRange(["Tap to toggle, hold to talk", "Hold to talk", "Tap to start, tap to stop"]);
         _mode.SelectedIndex = _settings.HotkeyMode switch

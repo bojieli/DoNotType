@@ -100,6 +100,32 @@ enum class ProviderKind(
         get() = if (isRecommended) "$displayName — recommended" else displayName
 
     /**
+     * Whether this backend can turn text into text — the rewrite pass.
+     *
+     * Deliberately its own question rather than the negation of [isSpeechRecognition], because on
+     * macOS and iOS they already have different answers: xAI is a recogniser that also sells chat
+     * on the same key. Android has no text-provider plumbing yet, so here the two still agree —
+     * when that port lands, this is the single place that changes.
+     */
+    val supportsTextGeneration: Boolean get() = !isSpeechRecognition
+
+    /**
+     * The backend's name with nothing appended, for a sentence that is already about what it
+     * cannot do.
+     *
+     * [displayName] carries "(transcription only)" for the picker, which reads as a stutter inside
+     * a sentence that goes on to say exactly that.
+     */
+    val plainName: String
+        get() = when (this) {
+            GEMINI -> "Gemini"
+            OPENROUTER -> "OpenRouter"
+            DEEPGRAM -> "Deepgram"
+            MISTRAL -> "Mistral"
+            XAI -> "xAI"
+        }
+
+    /**
      * One line under the picker: what this backend is recommended *for*, and the measurement
      * behind the claim. Empty for the rest — a picker that recommends everything recommends
      * nothing.

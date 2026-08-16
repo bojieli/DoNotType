@@ -9,6 +9,7 @@ import app.donottype.core.DictationService
 import app.donottype.core.FailureAdvice
 import app.donottype.core.NoSpeechException
 import app.donottype.core.Log as DntLog
+import app.donottype.core.RewriteAvailability
 import app.donottype.core.RewriteStyle
 import app.donottype.core.ProviderKind
 import app.donottype.core.ScreenContext
@@ -206,6 +207,17 @@ class DoNotTypeIME : InputMethodService() {
                 minimumWidth = 0
                 setPadding(24, 8, 24, 8)
                 setOnClickListener {
+                    // Kept clickable while unavailable rather than disabled: a disabled Button
+                    // swallows the tap, and the tap is the only way a keyboard can ask "why is
+                    // this greyed out". The answer goes to the status line.
+                    val availability = RewriteAvailability.resolve(Settings.provider) {
+                        !Settings.keyFor(it).isNullOrBlank()
+                    }
+                    if (style.isRewrite && !availability.isAvailable) {
+                        availability.reason?.let { statusLabel.text = it }
+                        log.info(mapOf("style" to style.id)) { "rewrite chip unavailable" }
+                        return@setOnClickListener
+                    }
                     Settings.liveStyle = style
                     log.info(mapOf("style" to style.id)) { "live style chosen" }
                     refreshStyleRow()
@@ -234,17 +246,33 @@ class DoNotTypeIME : InputMethodService() {
     private fun refreshStyleRow() {
         if (!::styleRow.isInitialized) return
 
-        // A recogniser has no text endpoint, so there is nothing a rewrite chip could do. Rather
-        // than offering one that silently returns the verbatim transcript, the row goes away.
-        val canRewrite = !Settings.provider.isSpeechRecognition ||
-            ProviderKind.entries.any { !it.isSpeechRecognition && !Settings.keyFor(it).isNullOrBlank() }
-        styleRow.visibility = if (canRewrite) View.VISIBLE else View.GONE
-        if (!canRewrite) return
+        // Shown even when a rewrite cannot run, with the rewrite chips dimmed and unclickable.
+        //
+        // The row used to disappear, on the reasoning that a control which cannot work is worse
+        // than one that is not there. It is not: a missing control cannot explain itself, and the
+        // feature ended up looking absent rather than unavailable. A keyboard has no room for a
+        // sentence, so tapping a dimmed chip puts the reason in the status line, which is the one
+        // place on this surface that already carries explanations.
+        val availability = RewriteAvailability.resolve(Settings.provider) {
+            !Settings.keyFor(it).isNullOrBlank()
+        }
+        styleRow.visibility = View.VISIBLE
 
-        val selected = Settings.liveStyle
+        // Verbatim is always reachable — it is what the main button does anyway, and leaving it
+        // live means the row still reads as a choice rather than as a dead strip.
+        val selected = if (availability.isAvailable) Settings.liveStyle else RewriteStyle.VERBATIM
         styleButtons.forEach { (style, chip) ->
+            val usable = availability.isAvailable || !style.isRewrite
             val active = style == selected
-            chip.setTextColor(Color.parseColor(if (active) "#0B0F14" else "#8A9BA8"))
+            chip.setTextColor(
+                Color.parseColor(
+                    when {
+                        !usable -> "#4A5560"
+                        active -> "#0B0F14"
+                        else -> "#8A9BA8"
+                    }
+                )
+            )
             chip.setBackgroundColor(Color.parseColor(if (active) "#7FB2FF" else "#1B2430"))
         }
     }
@@ -518,9 +546,16 @@ class DoNotTypeIME : InputMethodService() {
         /**
          * How long a press has to last before releasing it ends the recording.
          *
-         * 350 ms: long enough that a deliberate tap never trips it, short enough that someone who
-         * meant to hold does not get a surprise toggle. Matches the desktop hotkey.
+         * It is [WavRecorder.MIN_DURATION_MS] exactly, and the two are the same number on purpose:
+         * a release may only end a recording the recorder would accept. While this was the shorter
+         * 350 ms it read as the more comfortable choice, but it opened a 150 ms window where a
+         * press was long enough to be called a hold and too short to survive
+         * [WavRecorder.MIN_DURATION_MS]. A press landing in it stopped the recording and then threw
+         * it away, so the gesture that felt most like a tap was the one guaranteed to produce
+         * nothing. Nobody says anything in under half a second, so every press that used to send
+         * still sends; what changes is that a press between the two lengths now leaves the
+         * recording running, with the button still showing it, instead of discarding it in silence.
          */
-        const val HOLD_THRESHOLD_MS = 350L
+        const val HOLD_THRESHOLD_MS = WavRecorder.MIN_DURATION_MS
     }
 }

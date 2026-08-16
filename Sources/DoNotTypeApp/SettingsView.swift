@@ -271,30 +271,6 @@ private struct GeneralTab: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-                Picker("Second key", selection: $model.secondaryTrigger) {
-                    Text("None").tag(HotkeyMonitor.Trigger?.none)
-                    ForEach(HotkeyMonitor.Trigger.allCases, id: \.self) { trigger in
-                        Text(trigger.label).tag(HotkeyMonitor.Trigger?.some(trigger))
-                    }
-                }
-                if model.secondaryTrigger != nil {
-                    Picker("Second key writes", selection: $model.secondaryStyle) {
-                        ForEach(RewriteStyle.allCases.filter(\.isRewrite), id: \.self) { style in
-                            Text(style.label).tag(style)
-                        }
-                    }
-                }
-                Text(
-                    model.secondaryTrigger == nil
-                        ? "Optionally bind a second key to a rewrite, for when you want an email "
-                            + "rather than a transcript. Your main key always stays verbatim."
-                        : "\(model.trigger.label) transcribes verbatim; "
-                            + "\(model.secondaryTrigger!.label) rewrites. The verbatim transcript "
-                            + "is stored either way, so you can always see what you actually said."
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
                 Picker("Fidelity", selection: $model.fidelity) {
                     Text("Raw — every um and false start").tag(Fidelity.raw)
                     Text("Light — drop fillers, keep your words").tag(Fidelity.light)
@@ -307,6 +283,8 @@ private struct GeneralTab: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             }
+
+            RewriteSection(model: model)
 
             Section("Shortcuts") {
                 LabeledContent("Undo last insertion") { Text("⌘⇧Z").monospaced() }
@@ -659,6 +637,73 @@ private struct HistoryRow: View {
     }
 }
 
+
+// MARK: - Rewrite
+
+/// The rewrite, as its own named section.
+///
+/// It used to be two unlabelled rows — "Second key" and "Second key writes" — inside Dictation,
+/// which named the mechanism and never the feature. Somebody looking for rewriting had no reason
+/// to read a row about keys, and on a fresh install nothing is bound, so the word "rewrite"
+/// appeared nowhere in the window at all. A heading is the cheapest fix there is.
+///
+/// Shown even when it cannot run, greyed out with the reason. Hiding it is what made the feature
+/// look absent rather than unavailable, and "why is this off" is answerable while "where is it"
+/// is not.
+private struct RewriteSection: View {
+    @Bindable var model: SettingsModel
+
+    var body: some View {
+        let availability = model.rewriteAvailability
+
+        Section("Rewrite") {
+            Picker("Second key", selection: $model.secondaryTrigger) {
+                Text("None — always verbatim").tag(HotkeyMonitor.Trigger?.none)
+                ForEach(HotkeyMonitor.Trigger.allCases, id: \.self) { trigger in
+                    Text(trigger.label).tag(HotkeyMonitor.Trigger?.some(trigger))
+                }
+            }
+            .disabled(!availability.isAvailable)
+
+            Picker("It produces", selection: $model.secondaryStyle) {
+                ForEach(RewriteStyle.allCases.filter(\.isRewrite), id: \.self) { style in
+                    Text(style.label).tag(style)
+                }
+            }
+            .disabled(!availability.isAvailable || model.secondaryTrigger == nil)
+
+            if let reason = availability.reason {
+                Label(reason, systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if model.secondaryTrigger == nil {
+                Text(
+                    "Optional. Bind a second key and holding it dictates and then rewrites — for "
+                        + "when you want an email rather than a transcript. Your main key always "
+                        + "stays verbatim."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            } else {
+                Text(
+                    "\(model.trigger.label) transcribes verbatim; "
+                        + "\(model.secondaryTrigger!.label) rewrites. Which key you hold decides, "
+                        + "before you speak — there is no mode to leave switched on. The verbatim "
+                        + "transcript is stored either way, so you can always see what you "
+                        + "actually said."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
+            Text("Summaries are not offered here — see the Files tab, which transcribes a "
+                + "recording you already have and can summarise it.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
 
 // MARK: - Prompt
 
