@@ -194,3 +194,50 @@ final class TokenUsageArithmeticTests: XCTestCase {
         XCTAssertEqual(total.audioTokens, 100)
     }
 }
+
+/// The header layout `AVAudioFile` actually writes, which is not the one a canonical-header reader
+/// assumes.
+final class WavHeaderVariantTests: XCTestCase {
+
+    /// A 28-byte `JUNK` alignment chunk ahead of `fmt `, exactly as AVFoundation writes it. Legal
+    /// WAV, and the reason every stored dictation recorded a duration of 0 seconds: the fields
+    /// were read from the canonical offsets, which land inside this padding.
+    private func wavWithJunkChunk(seconds: Double) -> Data {
+        let format = AudioChunker.Format(sampleRate: 16_000, channels: 1, bitsPerSample: 16)
+        let samples = Data(count: Int(seconds * Double(format.bytesPerSecond)))
+        let canonical = AudioChunker.wrapInWavContainer(samples, format: format)
+
+        var junk = Data("JUNK".utf8)
+        withUnsafeBytes(of: UInt32(28).littleEndian) { junk.append(contentsOf: $0) }
+        junk.append(Data(count: 28))
+
+        // RIFF, size, WAVE, then JUNK, then everything the canonical writer produced.
+        var spliced = canonical.prefix(12) + junk + canonical.dropFirst(12)
+        let newSize = UInt32(spliced.count - 8).littleEndian
+        withUnsafeBytes(of: newSize) { bytes in
+            for (offset, byte) in bytes.enumerated() { spliced[4 + offset] = byte }
+        }
+        return Data(spliced)
+    }
+
+    func testFormatIsFoundAfterAJunkChunk() throws {
+        let format = try XCTUnwrap(AudioChunker.format(of: wavWithJunkChunk(seconds: 1)))
+        XCTAssertEqual(format.sampleRate, 16_000)
+        XCTAssertEqual(format.channels, 1)
+        XCTAssertEqual(format.bitsPerSample, 16)
+    }
+
+    func testDurationSurvivesAJunkChunk() throws {
+        let file = AudioFile(data: wavWithJunkChunk(seconds: 2.5), mimeType: "audio/wav")
+        let duration = try XCTUnwrap(file.durationSeconds)
+        XCTAssertEqual(duration, 2.5, accuracy: 0.01)
+    }
+
+    func testCanonicalHeaderStillReadsTheSame() throws {
+        let format = AudioChunker.Format(sampleRate: 16_000, channels: 1, bitsPerSample: 16)
+        let samples = Data(count: format.bytesPerSecond * 3)
+        let file = AudioFile(
+            data: AudioChunker.wrapInWavContainer(samples, format: format), mimeType: "audio/wav")
+        XCTAssertEqual(try XCTUnwrap(file.durationSeconds), 3, accuracy: 0.01)
+    }
+}

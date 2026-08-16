@@ -168,6 +168,45 @@ public enum AudioChunker {
         return nil
     }
 
+    /// Reads the `fmt ` chunk, for the same reason `pcmBody` walks to `data`: nothing guarantees
+    /// either sits at a fixed offset.
+    ///
+    /// `AVAudioFile` writes a 28-byte `JUNK` alignment chunk ahead of `fmt `, which is legal and
+    /// common — it lets the header be rewritten in place without moving the samples. Reading the
+    /// fields from the canonical offsets landed inside that padding instead, and because the
+    /// padding is zeroes it produced a zero rate rather than an obviously wrong one, so every
+    /// dictation the app stored recorded a length of 0 seconds and nothing failed loudly enough
+    /// to notice.
+    static func format(of wav: Data) -> Format? {
+        guard wav.count > 44, wav.prefix(4) == Data("RIFF".utf8) else { return nil }
+
+        var cursor = 12
+        while cursor + 8 <= wav.count {
+            let id = wav.subdata(in: cursor..<(cursor + 4))
+            let size = Int(
+                UInt32(wav[cursor + 4]) | (UInt32(wav[cursor + 5]) << 8)
+                    | (UInt32(wav[cursor + 6]) << 16) | (UInt32(wav[cursor + 7]) << 24))
+
+            // 16 bytes is the smallest legal `fmt `; the extensible variants only add fields
+            // after the ones read here.
+            if id == Data("fmt ".utf8), cursor + 8 + 16 <= wav.count {
+                let body = cursor + 8
+                func u16(_ offset: Int) -> Int {
+                    Int(UInt16(wav[body + offset]) | (UInt16(wav[body + offset + 1]) << 8))
+                }
+                func u32(_ offset: Int) -> Int {
+                    Int(
+                        UInt32(wav[body + offset]) | (UInt32(wav[body + offset + 1]) << 8)
+                            | (UInt32(wav[body + offset + 2]) << 16)
+                            | (UInt32(wav[body + offset + 3]) << 24))
+                }
+                return Format(sampleRate: u32(4), channels: u16(2), bitsPerSample: u16(14))
+            }
+            cursor += 8 + size + (size % 2)  // chunks are word-aligned
+        }
+        return nil
+    }
+
     static func wrapInWavContainer(_ pcm: Data, format: Format) -> Data {
         var header = Data()
         func append<T: FixedWidthInteger>(_ value: T) {
