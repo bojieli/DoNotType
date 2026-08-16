@@ -105,11 +105,12 @@ on the others. The pickers and the drop handlers are the parts no test reaches.
 
 ## 6. The level meter, which has to be your voice
 
-Thirty seconds, on macOS and Windows — the two clients that draw one. The scale itself is asserted
-against the fixtures in `AudioLevelMeter`; what no runner can check is whether the bars on screen
-are *yours*.
+Thirty seconds per client, and all four draw one: the pill on macOS and Windows, the strip above the
+keyboard on Android, the row under the record button on iOS. The scale itself is asserted against
+the fixtures in `AudioLevelMeter`, in Swift, C# and Kotlin; what no runner can check is whether the
+bars on screen are *yours*.
 
-Hold the key and watch the pill rather than the screen:
+Hold the key — or the button — and watch the meter rather than the screen:
 
 - **Talk normally.** The bars should follow the syllables and walk leftwards, tall where you were
   loud. A voice at a comfortable level should use roughly the top third of the meter and keep
@@ -142,7 +143,7 @@ Manual checks for vX.Y.Z
   failure modes   macOS ✓
   silence         gemini ✓   deepgram ✓
   file transcription  macOS ✓   Windows ✓
-  level meter     macOS ✓   Windows ✓
+  level meter     macOS ✓   Windows ✓   Android ✓   iOS ✓
   not checked     Android permissions — no device this cycle
 ```
 
