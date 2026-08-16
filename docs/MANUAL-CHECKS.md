@@ -1,6 +1,6 @@
 # The checks a machine cannot do
 
-Almost everything in this project is tested automatically. Five things are not, and the first four
+Almost everything in this project is tested automatically. Six things are not, and the first four
 are what a user meets first.
 
 The gap is not laziness. **Microphone capture** needs a microphone and a person making a noise into
@@ -103,6 +103,31 @@ reachable — `--output` writes it to `.verbatim.txt`.
 Do the same through the GUI on one platform, by dropping a file on the macOS window or picking one
 on the others. The pickers and the drop handlers are the parts no test reaches.
 
+## 6. The level meter, which has to be your voice
+
+Thirty seconds, on macOS and Windows — the two clients that draw one. The scale itself is asserted
+against the fixtures in `AudioLevelMeter`; what no runner can check is whether the bars on screen
+are *yours*.
+
+Hold the key and watch the pill rather than the screen:
+
+- **Talk normally.** The bars should follow the syllables and walk leftwards, tall where you were
+  loud. A voice at a comfortable level should use roughly the top third of the meter and keep
+  moving inside it — not sit flat against the ceiling, which is what the old meter did and the whole
+  reason this check exists.
+- **Stop talking, keep holding.** The meter should go flat and *keep scrolling*. Frozen means the
+  levels stopped arriving; still waving means something is animating that is not the microphone.
+- **Say one word loudly, close to the mic.** Bars should reach the top and turn amber.
+
+**Passes if** all three do what they say, and the meter tracks your voice closely enough that the
+bar for a word is drawn while you are still saying the next one.
+
+**Watch for** a meter that advances in blocks rather than one bar at a time (capture buffers too
+long — this is what half-second buffers looked like on Windows), amber at a normal speaking voice
+(input gain set too high, which is a real finding, not a bug — say so in the notes), and no amber
+however loudly you shout into it (the clipping threshold is not being reached, which means the
+input is quieter than the scale assumes).
+
 ---
 
 ## Recording the result
@@ -116,6 +141,7 @@ Manual checks for vX.Y.Z
   failure modes   macOS ✓
   silence         gemini ✓   deepgram ✓
   file transcription  macOS ✓   Windows ✓
+  level meter     macOS ✓   Windows ✓
   not checked     Android permissions — no device this cycle
 ```
 
