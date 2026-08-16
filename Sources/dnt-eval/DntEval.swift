@@ -12,7 +12,8 @@ struct DntEval: AsyncParsableCommand {
         abstract: "Measure what screen context does to a transcript.",
         subcommands: [
             Probe.self, Once.self, Suite.self, Ablate.self, Rewrite.self, Conformance.self,
-            Encode.self, OggGolden.self, KeytermsCommand.self, Dictation.self, Silence.self,
+            Encode.self, OggGolden.self, ToneGolden.self, KeytermsCommand.self, Dictation.self,
+            Silence.self,
         ],
         defaultSubcommand: Suite.self
     )

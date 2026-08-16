@@ -52,3 +52,27 @@ struct OggGolden: AsyncParsableCommand {
         print("\(data.count) bytes")
     }
 }
+
+/// Writes the two start/stop cues, for the cross-platform check.
+///
+/// Swift is the reference implementation here as it is for the encoder, so these are the bytes the
+/// Windows port has to match. A listener would not notice a port that had drifted a few cents, and
+/// neither would anything else in the project — the desktops would simply stop sounding alike.
+struct ToneGolden: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "tone-golden",
+        abstract: "Write the reference start/stop cues the Windows port is checked against.")
+
+    @Argument(help: "The directory to write tone-start.wav and tone-stop.wav into.")
+    var directory: String
+
+    mutating func run() async throws {
+        let base = URL(fileURLWithPath: directory)
+        for (name, wav) in [("tone-start.wav", Tone.start()), ("tone-stop.wav", Tone.stop())] {
+            let url = base.appendingPathComponent(name)
+            try wav.write(to: url)
+            print("\(name): \(wav.count) bytes")
+        }
+        print("Windows must now match these. Run its suite before committing.")
+    }
+}

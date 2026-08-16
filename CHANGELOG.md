@@ -390,8 +390,18 @@ deliberate:
   down to D4, each a struck-bar voice that decays inside 0.44 seconds. The ear reads the direction
   of an interval before it identifies a timbre, so up and down separate without being learned.
   They are synthesised in memory from an envelope and three partials rather than shipped as .wav
-  files, which keeps a reviewable diff in place of two binary assets. Windows and Android still
-  use their own system sounds.
+  files, which keeps a reviewable diff in place of two binary assets.
+
+  Windows plays the same pair, in place of Asterisk and Beep — two unrelated single events, one of
+  which is also what Windows says when it refuses a click. System sounds had a real argument in
+  their favour, that they respect a scheme the user chose including a silent one, and the setting
+  that turns these off is what now carries it.
+
+  The cue is one implementation in the core, ported by hand like `ContextEncoder`, so both desktops
+  are checked against the same reference: `dnt-eval tone-golden` writes it, and the Swift and C#
+  suites each measure their own output back to 392 → 523 and 392 → 294 with a Goertzel filter
+  rather than comparing hashes. Android and iOS still have no tones, for the reason in
+  [docs/PARITY.md](docs/PARITY.md).
 
 - **Nothing cuts a failure any more.** Response bodies were truncated at 400 characters in six
   places before anybody could see them — in the exception message, so the CLI printed a fragment,

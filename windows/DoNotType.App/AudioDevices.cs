@@ -72,17 +72,74 @@ public static class InteractionSounds
     public static bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// System sounds rather than shipped audio files: they respect the user's sound scheme,
-    /// including a silent one, and they are already familiar as "something began" and "something
-    /// finished" rather than being two more noises to learn.
+    /// The cue is <see cref="Tone"/>, in the core, because macOS plays the same one. All that
+    /// belongs here is handing its bytes to Windows.
     /// </summary>
+    /// <remarks>
+    /// This used to be Asterisk and Beep. System sounds have a real argument in their favour --
+    /// they respect the user's scheme, including a silent one -- but Asterisk and Beep are two
+    /// unrelated single events, so which of them just played is a question of memory rather than
+    /// hearing, and on a default install Beep is the sound Windows also makes when it refuses a
+    /// click. The scheme is still respected where it counts: the toggle in Settings turns this off
+    /// entirely.
+    ///
+    /// <c>SoundPlayer</c> reads the stream when told to, not when constructed, so both are loaded
+    /// once up front rather than decoding a WAV on the hotkey path. It plays on a worker thread and
+    /// so does not hold up the recording it is announcing.
+    /// </remarks>
+    private static readonly System.Media.SoundPlayer? StartPlayer = Load(Tone.Start());
+    private static readonly System.Media.SoundPlayer? StopPlayer = Load(Tone.Stop());
+
+    /// <summary>
+    /// Nullable, and caught here rather than at the call: these are static fields, so anything
+    /// thrown while preparing them becomes a <c>TypeInitializationException</c> on first use --
+    /// which is the hotkey path. A machine with no audio device would then fail to dictate rather
+    /// than fail to beep.
+    /// </summary>
+    private static System.Media.SoundPlayer? Load(byte[] wav)
+    {
+        try
+        {
+            var player = new System.Media.SoundPlayer(new MemoryStream(wav));
+            player.Load();
+            return player;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
     public static void PlayStart()
     {
-        if (Enabled) System.Media.SystemSounds.Asterisk.Play();
+        if (Enabled) Play(StartPlayer);
     }
 
     public static void PlayStop()
     {
-        if (Enabled) System.Media.SystemSounds.Beep.Play();
+        if (Enabled) Play(StopPlayer);
+    }
+
+    /// <summary>
+    /// A cue that cannot play is not worth taking a dictation down with it: an audio device that
+    /// disappears mid-session throws here, and the recording it was announcing is the part the user
+    /// actually asked for.
+    /// </summary>
+    private static void Play(System.Media.SoundPlayer? player)
+    {
+        if (player is null)
+        {
+            return;
+        }
+
+        try
+        {
+            player.Stop();
+            player.Play();
+        }
+        catch (Exception)
+        {
+            // Nothing to say and nowhere useful to say it; silence is the failure mode already.
+        }
     }
 }
