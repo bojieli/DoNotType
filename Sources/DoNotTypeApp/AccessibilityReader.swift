@@ -66,7 +66,13 @@ struct AccessibilityReader: Sendable {
             }
             let first = await group.next() ?? nil
             group.cancelAll()
-            if first == nil { log.warning("accessibility walk hit its \(limits.deadline) deadline") }
+            // Only when the sleep genuinely won the race. A cancelled walk — the dictation was
+            // abandoned, or it was too short to send — also lands here with a nil result, and
+            // reporting that as a deadline sent anyone reading the log after a failed dictation
+            // looking at accessibility, which was working the whole time.
+            if first == nil, !Task.isCancelled {
+                log.warning("accessibility walk hit its \(limits.deadline) deadline")
+            }
             return first ?? captureIdentity()
         }
     }
