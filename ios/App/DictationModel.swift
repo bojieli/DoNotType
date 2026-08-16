@@ -399,9 +399,11 @@ final class DictationModel {
 
     /// Touch-down. Recording starts immediately rather than waiting to classify the gesture --
     /// waiting would clip the first word, which is the one people say fastest.
-    func pressBegan() {
+    /// - Parameter time: the touch's own timestamp. Defaulted for the VoiceOver action, which has
+    ///   no event behind it and toggles by calling this and `pressEnded` back to back.
+    func pressBegan(at time: Date = Date()) {
         guard pressStartedAt == nil else { return }  // DragGesture.onChanged repeats
-        pressStartedAt = Date()
+        pressStartedAt = time
 
         switch state {
         case .recording: finishRecording()  // second tap ends it
@@ -411,10 +413,12 @@ final class DictationModel {
     }
 
     /// Touch-up. A hold ends here; a tap leaves recording running until the next tap.
-    func pressEnded() {
+    func pressEnded(at time: Date = Date()) {
         defer { pressStartedAt = nil }
         guard let startedAt = pressStartedAt else { return }
-        guard Date().timeIntervalSince(startedAt) >= Self.holdThreshold else { return }
+        // Both ends come from the gesture's own timestamps, so work done on the main actor between
+        // touch-down and touch-up cannot inflate a tap into a hold and end the recording early.
+        guard time.timeIntervalSince(startedAt) >= Self.holdThreshold else { return }
         if state == .recording { finishRecording() }
     }
 

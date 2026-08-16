@@ -142,8 +142,8 @@ struct ContentView: View {
         .contentShape(Circle())
         .gesture(
             DragGesture(minimumDistance: 0)
-                .onChanged { _ in model.pressBegan() }
-                .onEnded { _ in model.pressEnded() }
+                .onChanged { model.pressBegan(at: $0.time) }
+                .onEnded { model.pressEnded(at: $0.time) }
         )
         .disabled(model.state == .transcribing)
         // A raw gesture is invisible to VoiceOver, which had left the one control this app exists

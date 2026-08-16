@@ -71,7 +71,8 @@ public sealed class HotkeyMonitor : IDisposable
     private readonly Interop.LowLevelKeyboardProc _callback;
     private IntPtr _hook;
     private bool _isHeld;
-    private DateTime _pressedAt;
+    /// <summary>The press's own event time, not the moment the hook got to it. See HandleRelease.</summary>
+    private uint _pressedAt;
     private bool _startedByTap;
 
     public HotkeyMonitor()
@@ -134,12 +135,12 @@ public sealed class HotkeyMonitor : IDisposable
                 // Read once, at the press. Releasing a different key than the one held would
                 // otherwise change what the finished recording becomes.
                 UsedSecondary = isSecondary;
-                HandlePress();
+                HandlePress(info.time);
             }
             else if (isUp && _isHeld)
             {
                 _isHeld = false;
-                HandleRelease();
+                HandleRelease(info.time);
             }
         }
         else if (isDown && info.vkCode == 0x1B && IsRecording())
@@ -170,9 +171,9 @@ public sealed class HotkeyMonitor : IDisposable
         return Interop.CallNextHookEx(_hook, nCode, wParam, lParam);
     }
 
-    private void HandlePress()
+    private void HandlePress(uint stamp)
     {
-        _pressedAt = DateTime.UtcNow;
+        _pressedAt = stamp;
         switch (RecordingMode)
         {
             case Mode.PushToTalk:
@@ -197,9 +198,23 @@ public sealed class HotkeyMonitor : IDisposable
         }
     }
 
-    private void HandleRelease()
+    /// <summary>
+    /// Ends the gesture, timed by the events' own clock rather than by when this hook got to them.
+    /// </summary>
+    /// <remarks>
+    /// HandlePress calls straight into the recorder, and the first dictation of a run pays the
+    /// audio stack's cold start there. That happens inside the hook, so the release message waits
+    /// behind it. Timed with the wall clock at handling time, a 40 ms tap measured as a 300 ms hold
+    /// and stopped the recording it had just started, which is how the macOS build lost the first
+    /// press of every launch to a recording too short to send. KBDLLHOOKSTRUCT.time is stamped when
+    /// the key physically moved, so it describes the gesture rather than how busy the hook was.
+    /// Blocking here is worse than on macOS: Windows drops a hook that overruns LowLevelHooksTimeout.
+    /// </remarks>
+    private void HandleRelease(uint stamp)
     {
-        var held = DateTime.UtcNow - _pressedAt;
+        // Unchecked because the tick count wraps roughly every 49 days, and the wrapped difference
+        // is still the right one.
+        var held = TimeSpan.FromMilliseconds(unchecked(stamp - _pressedAt));
         switch (RecordingMode)
         {
             case Mode.PushToTalk:

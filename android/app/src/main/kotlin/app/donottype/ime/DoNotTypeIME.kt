@@ -148,11 +148,14 @@ class DoNotTypeIME : InputMethodService() {
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
                         view.performClick()
-                        onPressDown()
+                        onPressDown(event.eventTime)
                         true
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        onPressUp(cancelled = event.action == MotionEvent.ACTION_CANCEL)
+                        onPressUp(
+                            cancelled = event.action == MotionEvent.ACTION_CANCEL,
+                            eventTime = event.eventTime,
+                        )
                         true
                     }
                     else -> false
@@ -252,7 +255,14 @@ class DoNotTypeIME : InputMethodService() {
      * A press starts recording immediately either way -- waiting to find out whether it is a tap
      * or a hold would clip the first word, which is the one people say fastest.
      */
-    private fun onPressDown() {
+    /**
+     * Touch-down. [eventTime] is the touch's own timestamp, not the moment this ran: [beginRecording]
+     * blocks the UI thread while the audio stack is built, and the release that arrives during that
+     * work would otherwise measure as a hold and end a recording the user had only tapped to start.
+     * Both ends of the measurement are on [MotionEvent.getEventTime]'s uptime clock, which is also
+     * the one [handler] schedules on.
+     */
+    private fun onPressDown(eventTime: Long) {
         if (state == State.TRANSCRIBING) return
 
         // A second tap while already recording ends it. This is the toggle half of the gesture.
@@ -262,7 +272,7 @@ class DoNotTypeIME : InputMethodService() {
         }
 
         pressBecameHold = false
-        pressStartedAt = System.currentTimeMillis()
+        pressStartedAt = eventTime
         beginRecording()
 
         holdRunnable = Runnable { pressBecameHold = true }.also {
@@ -270,7 +280,7 @@ class DoNotTypeIME : InputMethodService() {
         }
     }
 
-    private fun onPressUp(cancelled: Boolean) {
+    private fun onPressUp(cancelled: Boolean, eventTime: Long) {
         holdRunnable?.let { handler.removeCallbacks(it) }
         holdRunnable = null
 
@@ -286,7 +296,7 @@ class DoNotTypeIME : InputMethodService() {
             return
         }
 
-        val heldFor = System.currentTimeMillis() - pressStartedAt
+        val heldFor = eventTime - pressStartedAt
         if (heldFor >= HOLD_THRESHOLD_MS) {
             // It was a hold: releasing ends it, exactly as before.
             pressBecameHold = false
