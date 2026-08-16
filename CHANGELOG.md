@@ -357,6 +357,18 @@ deliberate:
 
 ### Changed
 
+- **The start and stop tones are a pair, not two unrelated system sounds.** macOS played Tink to
+  open and Pop to close — two single events borrowed from the system, with nothing relating one to
+  the other, so which one you had just heard was a question of memory rather than hearing. Pop
+  also runs for 1.6 seconds, well past the moment it is reporting.
+
+  Both cues are now anchored on G4: starting resolves a fourth up to C5, stopping the same fourth
+  down to D4, each a struck-bar voice that decays inside 0.44 seconds. The ear reads the direction
+  of an interval before it identifies a timbre, so up and down separate without being learned.
+  They are synthesised in memory from an envelope and three partials rather than shipped as .wav
+  files, which keeps a reviewable diff in place of two binary assets. Windows and Android still
+  use their own system sounds.
+
 - **Nothing cuts a failure any more.** Response bodies were truncated at 400 characters in six
   places before anybody could see them — in the exception message, so the CLI printed a fragment,
   and in the history row, so the "copy the full error" button copied a fragment too. What gets
