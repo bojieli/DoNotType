@@ -467,8 +467,11 @@ final class SettingsModel {
     /// heading, which made it read as testing the fallback — so a user with a broken second key
     /// could press it, see a tick, and still lose every dictation the fallback served. There is a
     /// button per backend now, and each says which one it checked.
-    var connectionStatus: String? { keyStatus.summary(provider: provider) }
+    var connectionStatus: String? {
+        keyStatus.summary(provider: provider, latency: connectionLatency)
+    }
     var isCheckingConnection: Bool { keyStatus == .checking }
+    private var connectionLatency: Duration?
 
     /// The fallback's own check, which nothing was previously able to run.
     private(set) var fallbackConnectionStatus: String?
@@ -502,14 +505,18 @@ final class SettingsModel {
         }
 
         let model = Settings.shared.model(for: kind)
+        let clock = ContinuousClock()
+        let started = clock.now
+        let outcome = await ProviderProbe.check(client, model: model)
+        let latency = started.duration(to: clock.now)
         let status: APIKeyStatus
-        switch await ProviderProbe.check(client, model: model) {
+        switch outcome {
         case .accepted: status = .valid
         case .rejected(let message): status = .rejected(message)
         case .inconclusive(let message): status = .unverified(message)
         }
         guard !Task.isCancelled else { return }
-        fallbackConnectionStatus = status.summary(provider: kind)
+        fallbackConnectionStatus = status.summary(provider: kind, latency: latency)
     }
 
     let store: HistoryStore
@@ -690,6 +697,7 @@ final class SettingsModel {
 
     private func performKeyCheck() async {
         keyStatus = .checking
+        connectionLatency = nil
         onKeyStatusChange?()
 
         guard let key = Settings.shared.resolvedAPIKey(), !key.isEmpty else {
@@ -701,18 +709,23 @@ final class SettingsModel {
             return settle(.rejected("Could not configure \(provider.displayName)."))
         }
 
-        switch await ProviderProbe.check(client, model: model) {
-        case .accepted: settle(.valid)
-        case .rejected(let message): settle(.rejected(message))
-        case .inconclusive(let message): settle(.unverified(message))
+        let clock = ContinuousClock()
+        let started = clock.now
+        let outcome = await ProviderProbe.check(client, model: model)
+        let latency = started.duration(to: clock.now)
+        switch outcome {
+        case .accepted: settle(.valid, latency: latency)
+        case .rejected(let message): settle(.rejected(message), latency: latency)
+        case .inconclusive(let message): settle(.unverified(message), latency: latency)
         }
     }
 
     /// Drops the result of a check that a newer one has already superseded — otherwise a slow
     /// probe of the old key lands after the new key has been checked and overwrites the truth.
-    private func settle(_ status: APIKeyStatus) {
+    private func settle(_ status: APIKeyStatus, latency: Duration? = nil) {
         guard !Task.isCancelled else { return }
         keyStatus = status
+        connectionLatency = latency
         onKeyStatusChange?()
     }
 

@@ -32,14 +32,31 @@ enum APIKeyStatus: Equatable {
     }
 
     /// The one-line form, in the shape the settings window already renders: a leading ✓ or ✗.
-    func summary(provider: ProviderKind) -> String? {
+    ///
+    /// `latency` is the wall time of the complete provider probe, not model-reported inference
+    /// time: it includes the network, authentication and response parsing a real dictation pays.
+    func summary(provider: ProviderKind, latency: Duration? = nil) -> String? {
+        let message: String?
         switch self {
-        case .unchecked, .checking: nil
-        case .valid: "✓ \(provider.displayName) reachable, key accepted"
-        case .missing: "✗ No API key set."
-        case .rejected(let message): "✗ \(message)"
-        case .unverified(let message): "✗ Could not check: \(message)"
+        case .unchecked, .checking: message = nil
+        case .valid: message = "✓ \(provider.displayName) reachable, key accepted"
+        case .missing: message = "✗ No API key set."
+        case .rejected(let detail): message = "✗ \(detail)"
+        case .unverified(let detail): message = "✗ Could not check: \(detail)"
         }
+        guard let message, let latency else { return message }
+        return "\(message) · \(Self.latencyLabel(latency))"
+    }
+
+    private static func latencyLabel(_ duration: Duration) -> String {
+        let components = duration.components
+        let seconds = max(
+            0,
+            Double(components.seconds) + Double(components.attoseconds) / 1_000_000_000_000_000_000)
+        if seconds < 1 {
+            return "\(Int((seconds * 1_000).rounded())) ms"
+        }
+        return String(format: "%.2f s", seconds)
     }
 
     /// The menu-bar line, for a failure that would otherwise only be visible in a window nobody

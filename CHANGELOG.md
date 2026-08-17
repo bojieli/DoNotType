@@ -286,6 +286,11 @@ deliberate:
   older golden near-miss campaign still favours 3.6. Fresh installs and unset Google/OpenRouter
   model fields now use `gemini-3.5-flash`; an explicitly stored 3.6 selection is preserved.
 
+- **Provider connection tests show their round-trip latency.** A successful “Test Google” or
+  “Test xAI” result now ends in milliseconds or seconds, measured around the complete request so
+  it includes the network, authentication and response parsing. Rejected and inconclusive tests
+  show the same elapsed time, and fallback-provider tests use the identical measurement.
+
 - **The recording pill shows how loud you are, rather than that sound exists.** The meter was five
   bars driven by `min(1, rms * 6)` and animated by a travelling sine wave. Measured across every
   speech fixture in `eval/audio/`, that scale spent 4–77% of the frames somebody was actually

@@ -45,6 +45,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /**
  * Setup, settings and history.
@@ -630,20 +631,34 @@ class SettingsActivity : AppCompatActivity() {
                 listOf(InputPart.Audio(silentProbeWav(), "audio/wav"))
             }
 
-            connectionLabel.text = runCatching {
+            val started = android.os.SystemClock.elapsedRealtimeNanos()
+            val result = runCatching {
                 client.transcribe("You are a transcription engine.", parts)
-            }.fold(
-                onSuccess = { "✓ Reachable, key accepted" },
+            }
+            val latency = connectionLatencyLabel(
+                android.os.SystemClock.elapsedRealtimeNanos() - started,
+            )
+            connectionLabel.text = result.fold(
+                onSuccess = { "✓ Reachable, key accepted · $latency" },
                 onFailure = { error ->
                     // Silence transcribes to nothing, and on a recogniser that is the correct
                     // answer — it proves the round trip worked.
                     if (error.message?.contains("no output", ignoreCase = true) == true) {
-                        "✓ Reachable, key accepted"
+                        "✓ Reachable, key accepted · $latency"
                     } else {
-                        "✗ ${error.message}"
+                        "✗ ${error.message} · $latency"
                     }
                 },
             )
+        }
+    }
+
+    private fun connectionLatencyLabel(nanoseconds: Long): String {
+        val milliseconds = nanoseconds.coerceAtLeast(0) / 1_000_000.0
+        return if (milliseconds < 1_000) {
+            "${milliseconds.roundToInt()} ms"
+        } else {
+            String.format(java.util.Locale.ROOT, "%.2f s", milliseconds / 1_000)
         }
     }
 
