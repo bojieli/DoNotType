@@ -12,10 +12,20 @@ When you dictate, it may send to your chosen model provider:
 - the text either side of your cursor (1,000 characters each way),
 - the app name, window title, and browser URL,
 - a screenshot of the focused window, **only** when the accessibility tree returns too little text
-  to be useful.
+  to be useful,
+- personal-dictionary entries, when you have added or learned any, as a spelling-only reference.
 
 It does **not** send: anything from unfocused windows, anything while you are not dictating,
 anything from an app or URL on the blocklist, or any stored history.
+
+If correction learning is enabled, the app also reads the exact editable target where it just
+inserted text for up to one minute. This is local observation, not another provider request.
+Password/secure fields are excluded and moving to a different field ends observation. On macOS,
+Windows and Android, the text before and after the insertion remains in memory only for that
+one-minute comparison; it is never persisted or sent and is discarded when observation ends. Only
+classifier-approved spelling or capitalisation fixes are stored. On iOS the keyboard can check
+this only while it is active, so it persists just 32 characters on each side across a keyboard
+switch rather than storing the surrounding document.
 
 ## What it never does
 

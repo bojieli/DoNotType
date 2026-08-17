@@ -10,25 +10,29 @@ release yet, so everything below is unreleased.
 
 ### Added
 
-- **A local personal dictionary, including optional learning from corrections (macOS).** Typeless's
+- **A local personal dictionary, including optional learning from corrections on all four apps.** Typeless's
   useful incentive is real: people correct a misspelling while it is in front of them and rarely
   stop work to populate a settings list in advance. DoNotType now accepts direct entries and a
   Typeless-compatible one-column CSV, with search, edit and delete in a dedicated Dictionary tab.
   The list is local, capped visibly at 100 entries, and has no account or sync service behind it.
 
   Correction learning is opt-in. For 60 seconds after an insertion, the app reads the still-focused
-  field to isolate the span it inserted, immediately discards the surrounding snapshot, waits for
-  the edit to be stable twice, and runs the before/after span through the existing transcript-diff
-  classifier. Changing fields stops observation. Spelling and capitalisation fixes are learned;
+  field to isolate the span it inserted, keeps the two surrounding boundaries in memory for no
+  longer than that minute, waits for the edit to be stable twice, and runs the before/after span
+  through the existing transcript-diff classifier. Changing fields stops observation. Spelling and
+  capitalisation fixes are learned;
   insertions, deletions, ordinary rewording and number changes are not. Learned entries carry their
-  source in the UI, trigger a visible notice, and the newest batch has an Undo item in the menu.
+  source in the UI, trigger a visible notice, and the newest batch can be undone from the desktop
+  tray/menu or the mobile keyboard notice. Windows observes its exact UI Automation element;
+  Android checks the same active `InputConnection`. iOS persists a one-minute document anchor
+  across keyboard switches and checks it when the DoNotType keyboard becomes active again. That
+  last loop is best-effort because iOS suspends an inactive keyboard extension.
 
   Model backends receive a delimited spelling-only reference that says an entry is not evidence it
   was spoken. Recognition backends receive safe entries through their keyterm channel even when
   screen-derived biasing is off; entries containing digits are withheld because those endpoints
   have nowhere to attach the audio-wins rule. Manual and learned entries are both opt-in state, so
-  the default empty dictionary leaves the measured request byte-for-byte unchanged. The remaining
-  clients are recorded as parity gaps rather than marked complete.
+  the default empty dictionary leaves the measured request byte-for-byte unchanged.
 
 - **A stalled transcription is re-sent instead of waited out.** Latency here is bimodal rather
   than slow: six sequential requests for one three-second clip took 4.9, 61.6, 50.5, 5.8, 5.9 and
@@ -1015,5 +1019,7 @@ Recorded because the reasoning was plausible and someone will otherwise re-deriv
   and single-pass was the slower of the two (15.7 s versus 7.5 s).
 - **Chunked upload during recording.** Impossible with WAV: a streaming-convention header
   (`0xFFFFFFFF`) uploads successfully and is then rejected with `invalid argument`.
-- **A user dictionary of corrected terms.** Rejected by design — a stored term list is a prior that
-  overrules clear audio, which is the mechanism behind the bug this project exists to fix.
+- **An opaque, automatic dictionary of every correction.** Rejected in that form: an invisible
+  stored-term list can overrule clear audio and reinforce its own mistakes. The shipped alternative
+  is opt-in, bounded, visible, undoable, spelling-only, and withholds number-bearing entries from
+  bare recogniser hint channels.

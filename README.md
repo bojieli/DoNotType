@@ -77,8 +77,8 @@ installed anywhere at all.
 The iOS keyboard extension is covered where it can be. Its interface cannot be reached by a UI
 test — a custom keyboard runs in its own process and its views never enter the host app's
 accessibility tree — so the tests cover what it actually does instead: the shared container the app
-writes transcripts into and the keyboard reads them out of, which is the part that can silently
-stop working.
+writes transcripts and dictionary state into and the keyboard reads back, including correction
+anchors that survive switching keyboards.
 
 The dictation pipeline is now covered offline against a stub backend — a transcript is stored with
 the backend that produced it, silence writes no row, a failure keeps its audio and retry recovers
@@ -97,13 +97,13 @@ hour's work rather than a project.
 | | Dictation | Screen grounding | Personal dictionary | WAV·MP3·M4A·Opus | CLI | Build |
 |---|---|---|---|---|---|---|
 | **macOS** | menu-bar app, hold Right ⌘ | ✅ accessibility tree + screenshot fallback | ✅ manual, CSV, optional learning | ✅ | `dnt` | `make app` |
-| **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | — | ✅ | `dnt.exe` | `cd windows && dotnet build` |
-| **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | — | ✅ | — | `cd android && gradle assembleDebug` |
-| **iOS** | containing app; keyboard inserts | ❌ not possible in the sandbox | — | ✅ | — | `cd ios && xcodegen generate` |
+| **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | ✅ manual, CSV, optional learning | ✅ | `dnt.exe` | `cd windows && dotnet build` |
+| **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | ✅ manual, CSV, optional learning | ✅ | — | `cd android && gradle assembleDebug` |
+| **iOS** | containing app; keyboard inserts | ❌ not possible in the sandbox | ✅ manual, CSV, best-effort learning | ✅ | — | `cd ios && xcodegen generate` |
 
 Feature by feature, with the reason for every gap: [docs/PARITY.md](docs/PARITY.md). The only
-platform-imposed gap is screen grounding on iOS; the dictionary rows are marked honestly as work
-that has not yet been ported.
+platform-imposed gap is screen grounding on iOS; its correction learner also has to wait until the
+DoNotType keyboard is active again because iOS reveals document context only to the active keyboard.
 
 All four send the **same** `prompt/`, copied into each bundle at build time rather than
 duplicated, so no platform can quietly drift from what the evaluation measures. All four also
@@ -331,13 +331,14 @@ building the thing and measuring it.
 first, and recoverable — under a rewrite, under a summary, on every platform. A mode that transcribed
 and polished in one request would have no verbatim output to keep, so there isn't one.
 
-**Silently turn every edit into vocabulary.** The optional learner tracks the text DoNotType just
-inserted inside the still-focused field, discards each surrounding field snapshot, waits for the
-edit to stabilise, and accepts only changes the same regression classifier calls a spelling fix.
-Moving to another field stops it. Added or deleted words, rewording and number changes are ignored.
-Learned entries are visibly labelled and the latest batch can be undone from the menu. The broader
-screen-derived keyterm feature was implemented, measured, found to regress three cases per run, and
-remains out of the settings.
+**Silently turn every edit into vocabulary.** The optional learner isolates the text DoNotType just
+inserted, waits for the edit to stabilise, and accepts only changes the same regression classifier
+calls a spelling fix. Moving to another field stops it. On iOS the anchor survives a keyboard
+switch, but must be checked when the DoNotType keyboard becomes active again. Added or deleted
+words, rewording and number changes are ignored. Learned entries are visibly labelled and the
+latest batch can be undone from the tray or keyboard notice. The broader screen-derived keyterm
+feature was implemented, measured, found to regress three cases per run, and remains out of the
+settings.
 
 **Put a server in the middle.** No account, no sign-in, no subscription, no telemetry, no analytics,
 no crash reporting. Your key, your machine, the provider's API. That also means no server-side

@@ -100,8 +100,8 @@ dictate into, so the fallback has not been needed; it is a gap rather than an im
 | Log viewer, level, content toggle | ✅ | ✅ | ✅ | ✅ |
 | Performance statistics | ✅ | ✅ | ✅ | ✅ |
 | Copy a diagnostic report | ✅ | ✅ | ✅ | ✅ |
-| Personal dictionary (manual + CSV) | ✅ | — ¹³ | — ¹³ | — ¹³ |
-| Opt-in learning from spelling corrections | ✅ | — ¹³ | — ¹³ | — ¹³ |
+| Personal dictionary (manual + CSV) | ✅ | ✅ | ✅ | ✅ |
+| Opt-in learning from spelling corrections | ✅ | ✅ | ✅ | ✅ ¹³ |
 | Guided permissions | ✅ | ✅ ⁹ | ✅ | ✅ |
 | Command line | ✅ `dnt` | ✅ `dnt.exe` | — ¹⁰ | — ¹⁰ |
 | Stop trusting an idle connection | ✅ | ✅ | ✅ | ✅ |
@@ -122,10 +122,11 @@ connection. The gap is real and the row says so rather than being marked met.
 ¹² The iOS keyboard reads transcripts out of the shared container the app writes them into; there is
 no cross-app focus to lose in between, so there is nothing here to get wrong.
 
-¹³ A current parity gap, not a platform limitation. The shared Swift core already owns the entry
-validation, CSV format, prompt framing and keyterm routing, but only the macOS client exposes and
-persists the dictionary so far. Correction observation needs a platform-specific focused-field
-implementation on the other three clients.
+¹³ iOS is best-effort. A keyboard extension sees only the active document's limited text context,
+and it stops running while another keyboard is active. DoNotType persists a one-minute correction
+anchor and checks the same document when its keyboard returns; if the user never switches back,
+iOS provides no process that can observe the edit. Windows uses UI Automation and Android uses the
+active `InputConnection`, so both can watch the exact insertion target continuously.
 
 The four connection rows exist because the tail they fix was worth 24% of dictations taking between
 20 and 69 seconds while the model was answering in 2.1. Measured on macOS and described in

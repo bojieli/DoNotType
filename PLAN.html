@@ -766,7 +766,7 @@ You are a transcription engine. Output only what the speaker said.
 
   <!-- ============ FEATURE 3 ============ -->
   <section>
-    <h2>Feature 3 — grounding must never become a prior</h2>
+    <h2>Feature 3 — grounding must never become an opaque prior</h2>
     <p>
       There are two ways context can corrupt a transcript, and they are not equally obvious. The
       first is <strong>insertion</strong>: the model writes a word that appears on screen but was
@@ -779,21 +779,22 @@ You are a transcription engine. Output only what the speaker said.
       Substitution is the dangerous one, because the output looks <em>right</em>. An inserted word
       reads as a glitch and you catch it. A substituted version number reads as a correctly
       transcribed technical term and it ships. Every mechanism that hands the model a list of
-      "correct" strings makes this worse, and a user dictionary is the strongest such mechanism
-      there is.
+      "correct" strings makes this worse when the list is opaque, unbounded, or allowed to carry
+      numbers into a channel where the audio-wins rule cannot be stated.
     </p>
 
     <div class="finding warn">
-      <div class="tag">Why there is no dictionary in this design</div>
+      <div class="tag">Why the dictionary is visible, bounded and optional</div>
       <p>
-        A dictionary is a prior that competes with the audio, and it wins exactly when the audio is
-        least ambiguous — a distinctive term you pronounced clearly, that happens to sit near a
-        stored string. Worse, Typeless's auto-add loop makes it <em>self-reinforcing</em>: you
-        correct a term, the term is stored, the stored term snaps harder next time, and the errors
-        it causes look like successes. The mechanism designed to learn from you ends up entrenching
-        a fixed vocabulary and fighting you when your vocabulary moves — which, for version numbers
-        and model names, is constantly. DoNotType ships no dictionary, no vocabulary list, no
-        stored-term injection of any kind.
+        The original design rejected the feedback loop entirely. That was too broad: people have a
+        strong incentive to correct a misspelling already in front of them and little incentive to
+        stop work to populate a list in advance. The dangerous part is silent, indiscriminate
+        learning. DoNotType therefore makes learning opt-in, observes only the span it just inserted,
+        accepts only stable spelling or capitalisation fixes, labels learned entries, and offers
+        undo. Insertions, deletions, rewording and number changes are discarded. The list is local
+        and capped at 100. Model providers receive it inside a spelling-only delimiter; recognisers
+        never receive entries containing digits because their bare hint channel cannot carry the
+        audio-wins rule.
       </p>
     </div>
 
@@ -843,10 +844,11 @@ You are a transcription engine. Output only what the speaker said.
       Seed the set deliberately with near-miss cases, because they are the ones that fail: say a
       version that differs by one digit from what is on screen, a name that rhymes with a heading, a
       command one character off from what is in the terminal buffer. Your own "Gemini 3.5 Flash"
-      case is the first test to write. Corrections you make in normal use are worth capturing for
-      this set — but they belong in <code>eval/</code>, as labelled test data, and never in a
-      request at inference time. That is the difference between learning from your edits and being
-      overruled by them.
+      case is the first test to write. Corrections you make in normal use are also useful feedback,
+      but only after the same classifier has shown that they are spelling fixes rather than content
+      changes. Near-misses still belong in <code>eval/</code>; validated spellings may enter the
+      visible personal dictionary. That boundary is the difference between learning from your edits
+      and being overruled by them.
     </p>
   </section>
 
@@ -1277,8 +1279,8 @@ You are a transcription engine. Output only what the speaker said.
           </tr>
           <tr>
             <td>Correction-driven dictionary — small edits become terms automatically</td>
-            <td><span class="pill warn">leave</span></td>
-            <td>The mechanism behind "Gemini 3.5 Flash" → "Gemini 3 Flash". A stored-term list is a prior that overrules clear audio, and auto-add makes it self-reinforcing. Capture corrections as eval data instead; never send them at inference.</td>
+            <td><span class="pill">take with limits</span></td>
+            <td>Make it opt-in, local, visible, capped and undoable. Learn only classifier-approved spelling fixes; reject numbers and content edits. Give models a reference-only block and never put number-bearing entries into a recogniser's bare hint channel.</td>
           </tr>
           <tr>
             <td>Tail-keeping token truncation with a CJK heuristic</td>
@@ -1345,7 +1347,7 @@ You are a transcription engine. Output only what the speaker said.
           <tr>
             <td>Context <em>substitutes</em> for what you said</td>
             <td><span class="pill warn">highest</span> "Gemini 3.5 Flash" → "Gemini 3 Flash". Invisible, because the output looks correct</td>
-            <td>Spelling-not-content rule; numbers from audio alone; no dictionary, no transcript history; with-vs-without diff eval seeded with near-miss cases</td>
+            <td>Spelling-not-content rule; numbers from audio alone; bounded visible dictionary with no numeric recogniser hints; no transcript-history prior; with-vs-without diff eval seeded with near-miss cases</td>
           </tr>
           <tr>
             <td>Screen text bleeds into transcripts</td>
