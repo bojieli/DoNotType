@@ -823,7 +823,7 @@ public class AudioChunkerTests
     [Fact]
     public void NoAudioIsLostOrDuplicated()
     {
-        var original = Seconds(300);
+        var original = Speech(Enumerable.Repeat((55.0, 4.0), 6).ToArray());
         var chunks = AudioChunker.Split(original);
 
         var rejoined = chunks.SelectMany(chunk => AudioChunker.PcmBody(chunk.Data)!).ToArray();
@@ -833,7 +833,7 @@ public class AudioChunkerTests
     [Fact]
     public void ChunkOffsetsAreContiguous()
     {
-        var chunks = AudioChunker.Split(Seconds(300));
+        var chunks = AudioChunker.Split(Speech(Enumerable.Repeat((55.0, 4.0), 6).ToArray()));
         Assert.True(chunks.Count > 1);
         for (var i = 1; i < chunks.Count; i++)
         {
@@ -868,14 +868,35 @@ public class AudioChunkerTests
     [Fact]
     public void FinalChunkIsNotAStub()
     {
-        var chunks = AudioChunker.Split(Seconds(185));
+        var chunks = AudioChunker.Split(Speech((55, 4), (55, 4), (63, 0)));
         Assert.True(chunks[^1].DurationSeconds > 15);
+    }
+
+    [Fact]
+    public void ContinuousSpeechWithoutVadPauseIsNotSplit() =>
+        Assert.Single(AudioChunker.Split(Seconds(300)));
+
+    [Fact]
+    public void ShortDipIsNotAWordBoundary() =>
+        Assert.Single(AudioChunker.Split(Speech((55, 0.2), (65, 0))));
+
+    [Fact]
+    public void StreamingWaitsForThresholdAndEmitsDuringCapture()
+    {
+        var body = AudioChunker.PcmBody(Speech((55, 4), (35, 0)))!;
+        var segmenter = new AudioChunker.StreamingSegmenter();
+        Assert.Empty(segmenter.Append(body[..(90 * 32_000)]));
+        var ready = segmenter.Append(body[(90 * 32_000)..]);
+        Assert.Single(ready);
+        Assert.Equal(57, ready[0].DurationSeconds, 1);
+        Assert.Equal(37, segmenter.Finish()!.Value.DurationSeconds, 1);
     }
 
     [Fact]
     public void GeneratedChunksAreValidWavFiles()
     {
-        foreach (var chunk in AudioChunker.Split(Seconds(300)))
+        foreach (var chunk in AudioChunker.Split(
+            Speech(Enumerable.Repeat((55.0, 4.0), 6).ToArray())))
         {
             Assert.Equal("RIFF"u8.ToArray(), chunk.Data[..4]);
             Assert.Equal("WAVE"u8.ToArray(), chunk.Data[8..12]);

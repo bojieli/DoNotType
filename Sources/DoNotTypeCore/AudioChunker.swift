@@ -15,6 +15,35 @@ public enum AudioChunker {
     /// Below this, one request is faster than the coordination.
     public static let threshold: TimeInterval = 90
 
+    /// Boundary policy shared by finished files and the live recorder.
+    ///
+    /// `horizon` is deliberately not a maximum. It is the end of the preferred search interval;
+    /// when there is no VAD-qualified pause by then, the chunk grows until one appears. A latency
+    /// optimisation is never allowed to manufacture a mid-word cut.
+    public struct BoundaryPolicy: Sendable, Equatable {
+        public var minimum: TimeInterval
+        public var target: TimeInterval
+        public var horizon: TimeInterval
+        public var minimumPause: TimeInterval
+        public var preferredPause: TimeInterval
+
+        public init(
+            minimum: TimeInterval = 45,
+            target: TimeInterval = 60,
+            horizon: TimeInterval = 75,
+            minimumPause: TimeInterval = 0.32,
+            preferredPause: TimeInterval = 0.5
+        ) {
+            self.minimum = minimum
+            self.target = target
+            self.horizon = horizon
+            self.minimumPause = minimumPause
+            self.preferredPause = preferredPause
+        }
+    }
+
+    public static let defaultPolicy = BoundaryPolicy()
+
     public struct Chunk: Sendable, Equatable {
         public let index: Int
         public let data: Data
@@ -38,15 +67,12 @@ public enum AudioChunker {
 
     /// Splits 16-bit PCM WAV data, or returns a single chunk when it is short enough.
     ///
-    /// - Parameters:
-    ///   - target: preferred chunk length. Cuts are placed at the quietest point in a window
-    ///     around it rather than exactly on it.
-    ///   - window: how far either side of the target to search for silence.
+    /// A cut is made only in a VAD-qualified pause. If the recording contains no such pause it is
+    /// returned whole, however long it is.
     public static func split(
         wav: Data,
         format: Format = Format(),
-        target: TimeInterval = 60,
-        window: TimeInterval = 15
+        policy: BoundaryPolicy = defaultPolicy
     ) -> [Chunk] {
         guard let body = pcmBody(of: wav) else {
             return [Chunk(index: 0, data: wav, startSeconds: 0, durationSeconds: 0)]
@@ -62,25 +88,120 @@ public enum AudioChunker {
 
         while start < body.count {
             let remaining = body.count - start
-            let targetBytes = Int(target * Double(format.bytesPerSecond))
 
-            // A final piece shorter than the search window is folded into this one rather than
+            // A final piece shorter than the minimum is folded into this one rather than
             // left as a two-second fragment that transcribes badly on its own.
-            if remaining <= targetBytes + Int(window * Double(format.bytesPerSecond)) {
+            if remaining <= Int(policy.target * Double(format.bytesPerSecond)) {
                 chunks.append(
                     makeChunk(
                         index: chunks.count, body: body, range: start..<body.count, format: format))
                 break
             }
 
-            let cut = quietestCut(
-                in: body, around: start + targetBytes,
-                window: Int(window * Double(format.bytesPerSecond)), format: format)
+            let tail = body.subdata(in: start..<body.count)
+            guard let relativeCut = bestBoundary(in: tail, format: format, policy: policy) else {
+                // No VAD pause means no safe boundary. One large request is slower; a cut through
+                // speech is incorrect.
+                chunks.append(
+                    makeChunk(
+                        index: chunks.count, body: body, range: start..<body.count, format: format))
+                break
+            }
+            let cut = start + relativeCut
+
+            // Offline splitting knows where the recording ends, so it can avoid creating a final
+            // stub. The live segmenter cannot know the future and handles its tail on release.
+            let finalSeconds = Double(body.count - cut) / Double(format.bytesPerSecond)
+            if finalSeconds < policy.minimum {
+                chunks.append(
+                    makeChunk(
+                        index: chunks.count, body: body, range: start..<body.count, format: format))
+                break
+            }
             chunks.append(
                 makeChunk(index: chunks.count, body: body, range: start..<cut, format: format))
             start = cut
         }
         return chunks
+    }
+
+    /// Incremental counterpart to `split`. The recorder feeds it the exact PCM written to its
+    /// recovery WAV; complete chunks come back as soon as a safe boundary can be committed.
+    public struct StreamingSegmenter: Sendable {
+        private var pending = Data()
+        private var totalBytes = 0
+        private var nextIndex = 0
+        private var startBytes = 0
+        private var emittedFirst = false
+        private var bytesAtLastAnalysis = 0
+
+        public let format: Format
+        public let policy: BoundaryPolicy
+
+        public init(format: Format = Format(), policy: BoundaryPolicy = defaultPolicy) {
+            self.format = format
+            self.policy = policy
+        }
+
+        public mutating func append(pcm: Data) -> [Chunk] {
+            guard !pcm.isEmpty else { return [] }
+            pending.append(pcm)
+            totalBytes += pcm.count
+
+            var ready: [Chunk] = []
+            while shouldAnalyse,
+                let cut = AudioChunker.bestBoundary(
+                    in: pending, format: format, policy: policy)
+            {
+                let samples = pending.subdata(in: 0..<cut)
+                ready.append(makeStreamingChunk(samples))
+                pending.removeSubrange(0..<cut)
+                startBytes += cut
+                emittedFirst = true
+                bytesAtLastAnalysis = 0
+            }
+            if ready.isEmpty, canConsiderBoundary { bytesAtLastAnalysis = pending.count }
+            return ready
+        }
+
+        /// Returns the unsent tail on release. Nil means every sample was already emitted.
+        public mutating func finish() -> Chunk? {
+            guard !pending.isEmpty else { return nil }
+            let samples = pending
+            pending.removeAll(keepingCapacity: false)
+            let chunk = makeStreamingChunk(samples)
+            startBytes += samples.count
+            return chunk
+        }
+
+        public var pendingDurationSeconds: Double {
+            Double(pending.count) / Double(format.bytesPerSecond)
+        }
+
+        private var canConsiderBoundary: Bool {
+            if !emittedFirst {
+                return Double(totalBytes) / Double(format.bytesPerSecond) > AudioChunker.threshold
+            }
+            return pendingDurationSeconds >= policy.target
+        }
+
+        /// Re-running VAD for every 85 ms microphone tap would repeatedly scan the same minute of
+        /// samples. Two hundred milliseconds is still below the minimum pause and bounds the extra
+        /// latency while keeping capture work negligible.
+        private var shouldAnalyse: Bool {
+            canConsiderBoundary
+                && (bytesAtLastAnalysis == 0
+                    || pending.count - bytesAtLastAnalysis >= format.bytesPerSecond / 5)
+        }
+
+        private mutating func makeStreamingChunk(_ samples: Data) -> Chunk {
+            defer { nextIndex += 1 }
+            return Chunk(
+                index: nextIndex,
+                data: AudioChunker.wrapInWavContainer(samples, format: format),
+                startSeconds: Double(startBytes) / Double(format.bytesPerSecond),
+                durationSeconds: Double(samples.count) / Double(format.bytesPerSecond))
+        }
     }
 
     // MARK: - Private
@@ -96,55 +217,107 @@ public enum AudioChunker {
             durationSeconds: Double(samples.count) / Double(format.bytesPerSecond))
     }
 
-    /// Finds the middle of the quietest 100 ms inside the search window.
-    ///
-    /// Quietest rather than "first below a threshold": an absolute threshold tuned for a quiet
-    /// room finds no silence at all on a train, and would then cut mid-word.
-    ///
-    /// The *middle* rather than the start, so both neighbours keep a little silence. A chunk whose
-    /// audio begins on the first sample of a word tends to lose that word's opening consonant, and
-    /// one that ends flush against speech gives the model no cue that the utterance finished.
-    static func quietestCut(in body: Data, around centre: Int, window: Int, format: Format) -> Int {
-        let bytesPerSample = format.bitsPerSample / 8 * format.channels
-        let probe = max(bytesPerSample, format.bytesPerSecond / 10)  // 100 ms
-
-        let low = max(0, centre - window)
-        let high = min(body.count - probe, centre + window)
-        guard low < high else { return min(centre, body.count) }
-
-        var quietest = centre
-        var quietestEnergy = Double.greatestFiniteMagnitude
-        var position = low
-
-        // Coarse stride: sample energy every 20 ms rather than at every offset. The cut only has
-        // to land somewhere quiet, not at the single quietest byte.
-        let stride = max(bytesPerSample, format.bytesPerSecond / 50)
-        while position < high {
-            let energy = meanEnergy(of: body, at: position, length: probe)
-            if energy < quietestEnergy {
-                quietestEnergy = energy
-                quietest = position
-            }
-            position += stride
-        }
-        // Align to a sample boundary; a cut mid-sample produces a click.
-        let middle = min(quietest + probe / 2, body.count)
-        return middle - (middle % bytesPerSample)
+    private struct PauseCandidate {
+        let cut: Int
+        let seconds: Double
+        let duration: Double
+        let depth: Double
     }
 
-    private static func meanEnergy(of body: Data, at offset: Int, length: Int) -> Double {
-        var total = 0.0
-        var count = 0
-        var index = offset
-        let end = min(offset + length, body.count - 1)
+    /// Returns the best safe boundary, or nil when the audio has no VAD-qualified pause.
+    ///
+    /// VAD uses the recording's own low-percentile floor, so a train and a quiet office are judged
+    /// relative to themselves. The second percentile is intentional: ordinary speech can contain
+    /// less than ten percent pause, while a boundary detector only needs one sustained quiet run.
+    /// A run counts as a boundary only when
+    /// it is surrounded by speech; uniform noise therefore cannot masquerade as one enormous
+    /// pause. The middle leaves acoustic context on both sides without duplicating samples.
+    static func bestBoundary(
+        in body: Data, format: Format = Format(), policy: BoundaryPolicy = defaultPolicy
+    ) -> Int? {
+        let frameMilliseconds = 20
+        let frameBytes = format.bytesPerSecond * frameMilliseconds / 1_000
+        guard frameBytes > 0, body.count >= frameBytes * 3 else { return nil }
 
-        while index < end {
-            let sample = Int16(bitPattern: UInt16(body[index]) | (UInt16(body[index + 1]) << 8))
-            total += Double(sample) * Double(sample)
-            count += 1
-            index += 2
+        var levels: [Double] = []
+        levels.reserveCapacity(body.count / frameBytes)
+        body.withUnsafeBytes { raw in
+            let bytes = raw.bindMemory(to: UInt8.self)
+            var offset = 0
+            while offset + frameBytes <= bytes.count {
+                var energy = 0.0
+                var samples = 0
+                var index = offset
+                let end = offset + frameBytes
+                while index + 1 < end {
+                    let sample = Int16(
+                        bitPattern: UInt16(bytes[index]) | (UInt16(bytes[index + 1]) << 8))
+                    let value = Double(sample)
+                    energy += value * value
+                    samples += 1
+                    index += 2
+                }
+                levels.append(
+                    10 * log10(energy / Double(samples) / (32_768 * 32_768) + 1e-12))
+                offset += frameBytes
+            }
         }
-        return count == 0 ? .greatestFiniteMagnitude : total / Double(count)
+        guard !levels.isEmpty else { return nil }
+
+        let sorted = levels.sorted()
+        let floor = sorted[min(sorted.count - 1, sorted.count / 50)]
+        let speechThreshold = max(-65.0, floor + 8.0)
+        let speaking = levels.map { $0 > speechThreshold }
+        let minimumFrames = max(1, Int(ceil(policy.minimumPause * 1_000 / 20)))
+        let evidenceFrames = 5  // 100 ms of speech on each side defeats isolated transients.
+        let evidenceWindow = 100  // two seconds
+
+        var candidates: [PauseCandidate] = []
+        var frame = 0
+        while frame < speaking.count {
+            guard !speaking[frame] else {
+                frame += 1
+                continue
+            }
+            let runStart = frame
+            while frame < speaking.count, !speaking[frame] { frame += 1 }
+            let runEnd = frame
+            guard runEnd - runStart >= minimumFrames else { continue }
+
+            let beforeStart = max(0, runStart - evidenceWindow)
+            let afterEnd = min(speaking.count, runEnd + evidenceWindow)
+            let before = speaking[beforeStart..<runStart].filter { $0 }.count
+            let after = speaking[runEnd..<afterEnd].filter { $0 }.count
+            guard before >= evidenceFrames, after >= evidenceFrames else { continue }
+
+            let middleFrame = runStart + (runEnd - runStart) / 2
+            let seconds = Double(middleFrame * frameBytes) / Double(format.bytesPerSecond)
+            guard seconds >= policy.minimum else { continue }
+
+            let gapLevel = levels[runStart..<runEnd].reduce(0, +) / Double(runEnd - runStart)
+            candidates.append(
+                PauseCandidate(
+                    cut: middleFrame * frameBytes,
+                    seconds: seconds,
+                    duration: Double(runEnd - runStart) * 0.02,
+                    depth: max(0, speechThreshold - gapLevel)))
+        }
+
+        let preferred = candidates.filter { $0.seconds <= policy.horizon }
+        if !preferred.isEmpty {
+            return preferred.max { boundaryScore($0, policy: policy) < boundaryScore($1, policy: policy) }?.cut
+        }
+
+        // Past the decision horizon, use the first real pause instead of waiting for a prettier
+        // one. Still no pause, still no cut.
+        return candidates.min { $0.seconds < $1.seconds }?.cut
+    }
+
+    private static func boundaryScore(_ candidate: PauseCandidate, policy: BoundaryPolicy) -> Double {
+        let preferredBonus = candidate.duration >= policy.preferredPause ? 3.0 : 0
+        let duration = min(2, candidate.duration) * 4
+        let depth = min(20, candidate.depth) / 10
+        return preferredBonus + duration + depth - abs(candidate.seconds - policy.target)
     }
 
     /// Locates the `data` chunk, so a WAV with extra metadata chunks is handled correctly.

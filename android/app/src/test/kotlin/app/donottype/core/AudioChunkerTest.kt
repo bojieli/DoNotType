@@ -56,7 +56,7 @@ class AudioChunkerTest {
      */
     @Test
     fun `no audio is lost or duplicated`() {
-        val original = seconds(300.0)
+        val original = speech(*Array(6) { 55.0 to 4.0 })
         val chunks = AudioChunker.split(original)
         assertTrue(chunks.size > 1)
 
@@ -70,7 +70,7 @@ class AudioChunkerTest {
 
     @Test
     fun `chunk offsets are contiguous`() {
-        val chunks = AudioChunker.split(seconds(300.0))
+        val chunks = AudioChunker.split(speech(*Array(6) { 55.0 to 4.0 }))
         for (index in 1 until chunks.size) {
             assertEquals(
                 chunks[index - 1].startSeconds + chunks[index - 1].durationSeconds,
@@ -105,13 +105,34 @@ class AudioChunkerTest {
     /** A trailing two-second fragment transcribes badly, so the last cut is skipped. */
     @Test
     fun `final chunk is not a stub`() {
-        val chunks = AudioChunker.split(seconds(185.0))
+        val chunks = AudioChunker.split(speech(55.0 to 4.0, 55.0 to 4.0, 63.0 to 0.0))
         assertTrue(chunks.last().durationSeconds > 15)
     }
 
     @Test
+    fun `continuous speech without VAD pause is not split`() {
+        assertEquals(1, AudioChunker.split(seconds(300.0)).size)
+    }
+
+    @Test
+    fun `short dip is not a word boundary`() {
+        assertEquals(1, AudioChunker.split(speech(55.0 to 0.2, 65.0 to 0.0)).size)
+    }
+
+    @Test
+    fun `streaming waits for threshold and emits during capture`() {
+        val body = AudioChunker.pcmBody(speech(55.0 to 4.0, 35.0 to 0.0))!!
+        val segmenter = AudioChunker.StreamingSegmenter()
+        assertTrue(segmenter.append(body.copyOfRange(0, 90 * 32_000)).isEmpty())
+        val ready = segmenter.append(body.copyOfRange(90 * 32_000, body.size))
+        assertEquals(1, ready.size)
+        assertEquals(57.0, ready[0].durationSeconds, 0.1)
+        assertEquals(37.0, segmenter.finish()!!.durationSeconds, 0.1)
+    }
+
+    @Test
     fun `generated chunks are valid wav files`() {
-        for (chunk in AudioChunker.split(seconds(300.0))) {
+        for (chunk in AudioChunker.split(speech(*Array(6) { 55.0 to 4.0 }))) {
             assertEquals('R'.code.toByte(), chunk.data[0])
             assertEquals('W'.code.toByte(), chunk.data[8])
 

@@ -25,6 +25,16 @@ object AudioChunker {
     private const val BYTES_PER_SAMPLE = 2
     private const val BYTES_PER_SECOND = SAMPLE_RATE * BYTES_PER_SAMPLE
 
+    data class BoundaryPolicy(
+        val minimumSeconds: Double = 45.0,
+        val targetSeconds: Double = 60.0,
+        val horizonSeconds: Double = 75.0,
+        val minimumPauseSeconds: Double = 0.32,
+        val preferredPauseSeconds: Double = 0.5,
+    )
+
+    val defaultPolicy = BoundaryPolicy()
+
     data class Chunk(
         val index: Int,
         val data: ByteArray,
@@ -45,32 +55,89 @@ object AudioChunker {
     /**
      * Splits 16-bit PCM WAV data, or returns a single chunk when it is short enough.
      *
-     * @param targetSeconds preferred chunk length; cuts land at the quietest point near it.
-     * @param windowSeconds how far either side of the target to search for silence.
+     * A cut is made only in a VAD-qualified pause. No pause means no split.
      */
-    fun split(wav: ByteArray, targetSeconds: Double = 60.0, windowSeconds: Double = 15.0): List<Chunk> {
+    fun split(wav: ByteArray, policy: BoundaryPolicy = defaultPolicy): List<Chunk> {
         val body = pcmBody(wav) ?: return listOf(Chunk(0, wav, 0.0, 0.0))
 
         val duration = body.size.toDouble() / BYTES_PER_SECOND
         if (duration <= THRESHOLD_SECONDS) return listOf(Chunk(0, wav, 0.0, duration))
 
         val chunks = mutableListOf<Chunk>()
-        val targetBytes = (targetSeconds * BYTES_PER_SECOND).toInt()
-        val windowBytes = (windowSeconds * BYTES_PER_SECOND).toInt()
         var start = 0
 
         while (start < body.size) {
-            // A final piece shorter than the search window is folded into this one rather than left
-            // as a two-second fragment that transcribes badly on its own.
-            if (body.size - start <= targetBytes + windowBytes) {
+            if (body.size - start <= policy.targetSeconds * BYTES_PER_SECOND) {
                 chunks += makeChunk(chunks.size, body, start, body.size)
                 break
             }
-            val cut = quietestCut(body, start + targetBytes, windowBytes)
+            val relativeCut = bestBoundary(body.copyOfRange(start, body.size), policy)
+            if (relativeCut == null) {
+                chunks += makeChunk(chunks.size, body, start, body.size)
+                break
+            }
+            val cut = start + relativeCut
+            if ((body.size - cut).toDouble() / BYTES_PER_SECOND < policy.minimumSeconds) {
+                chunks += makeChunk(chunks.size, body, start, body.size)
+                break
+            }
             chunks += makeChunk(chunks.size, body, start, cut)
             start = cut
         }
         return chunks
+    }
+
+    /** Incremental VAD segmenter used by live microphone capture. */
+    class StreamingSegmenter(private val policy: BoundaryPolicy = defaultPolicy) {
+        private var pending = ByteArray(0)
+        private var totalBytes = 0L
+        private var startBytes = 0L
+        private var nextIndex = 0
+        private var emittedFirst = false
+        private var bytesAtLastAnalysis = 0
+
+        fun append(pcm: ByteArray): List<Chunk> {
+            if (pcm.isEmpty()) return emptyList()
+            pending += pcm
+            totalBytes += pcm.size
+            val ready = mutableListOf<Chunk>()
+            while (shouldAnalyse()) {
+                val cut = bestBoundary(pending, policy) ?: break
+                val samples = pending.copyOfRange(0, cut)
+                ready += make(samples)
+                pending = pending.copyOfRange(cut, pending.size)
+                startBytes += cut
+                emittedFirst = true
+                bytesAtLastAnalysis = 0
+            }
+            if (ready.isEmpty() && canConsider()) bytesAtLastAnalysis = pending.size
+            return ready
+        }
+
+        fun finish(): Chunk? {
+            if (pending.isEmpty()) return null
+            val samples = pending
+            pending = ByteArray(0)
+            val chunk = make(samples)
+            startBytes += samples.size
+            return chunk
+        }
+
+        private fun canConsider(): Boolean = if (!emittedFirst) {
+            totalBytes.toDouble() / BYTES_PER_SECOND > THRESHOLD_SECONDS
+        } else {
+            pending.size.toDouble() / BYTES_PER_SECOND >= policy.targetSeconds
+        }
+
+        private fun shouldAnalyse(): Boolean = canConsider() &&
+            (bytesAtLastAnalysis == 0 || pending.size - bytesAtLastAnalysis >= BYTES_PER_SECOND / 5)
+
+        private fun make(samples: ByteArray): Chunk = Chunk(
+            index = nextIndex++,
+            data = wrapInWavContainer(samples),
+            startSeconds = startBytes.toDouble() / BYTES_PER_SECOND,
+            durationSeconds = samples.size.toDouble() / BYTES_PER_SECOND,
+        )
     }
 
     private fun makeChunk(index: Int, body: ByteArray, from: Int, to: Int): Chunk {
@@ -83,56 +150,85 @@ object AudioChunker {
         )
     }
 
-    /**
-     * Finds the middle of the quietest 100 ms inside the search window.
-     *
-     * Quietest rather than "first below a threshold": an absolute threshold tuned for a quiet room
-     * finds no silence at all on a bus, and would then cut mid-word. The *middle* rather than the
-     * start, so both neighbours keep a little silence -- audio beginning on the first sample of a
-     * word tends to lose that word's opening consonant.
-     */
-    internal fun quietestCut(body: ByteArray, centre: Int, window: Int): Int {
-        val probe = maxOf(BYTES_PER_SAMPLE, BYTES_PER_SECOND / 10) // 100 ms
-        val low = maxOf(0, centre - window)
-        val high = minOf(body.size - probe, centre + window)
-        if (low >= high) return minOf(centre, body.size)
+    private data class PauseCandidate(
+        val cut: Int,
+        val seconds: Double,
+        val duration: Double,
+        val depth: Double,
+    )
 
-        var quietest = centre
-        var quietestEnergy = Double.MAX_VALUE
-        // Coarse stride: energy every 20 ms. The cut only has to land somewhere quiet, not at the
-        // single quietest byte.
-        val stride = maxOf(BYTES_PER_SAMPLE, BYTES_PER_SECOND / 50)
+    /** Returns the best VAD-qualified pause, or null rather than cutting speech. */
+    internal fun bestBoundary(body: ByteArray, policy: BoundaryPolicy = defaultPolicy): Int? {
+        val frameMilliseconds = 20
+        val frameBytes = BYTES_PER_SECOND * frameMilliseconds / 1_000
+        val frameCount = body.size / frameBytes
+        if (frameCount < 3) return null
 
-        var position = low
-        while (position < high) {
-            val energy = meanEnergy(body, position, probe)
-            if (energy < quietestEnergy) {
-                quietestEnergy = energy
-                quietest = position
+        val levels = DoubleArray(frameCount)
+        repeat(frameCount) { frame ->
+            var energy = 0.0
+            val from = frame * frameBytes
+            var index = from
+            while (index + 1 < from + frameBytes) {
+                val sample = ((body[index].toInt() and 0xFF) or
+                    (body[index + 1].toInt() shl 8)).toShort()
+                energy += sample.toDouble() * sample.toDouble()
+                index += 2
             }
-            position += stride
+            levels[frame] = 10 * kotlin.math.log10(
+                energy / (frameBytes / 2) / (32_768.0 * 32_768.0) + 1e-12,
+            )
         }
 
-        // Align to a sample boundary; a cut mid-sample produces a click.
-        val middle = minOf(quietest + probe / 2, body.size)
-        return middle - (middle % BYTES_PER_SAMPLE)
-    }
+        val sorted = levels.sorted()
+        val floor = sorted[minOf(sorted.lastIndex, sorted.size / 50)]
+        val speechThreshold = maxOf(-65.0, floor + 8.0)
+        val speaking = levels.map { it > speechThreshold }
+        val minimumFrames = maxOf(
+            1,
+            kotlin.math.ceil(policy.minimumPauseSeconds * 1_000 / frameMilliseconds).toInt(),
+        )
+        val evidenceFrames = 5
+        val evidenceWindow = 100
+        val candidates = mutableListOf<PauseCandidate>()
 
-    private fun meanEnergy(body: ByteArray, offset: Int, length: Int): Double {
-        var total = 0.0
-        var count = 0
-        val end = minOf(offset + length, body.size - 1)
+        var frame = 0
+        while (frame < speaking.size) {
+            if (speaking[frame]) {
+                frame++
+                continue
+            }
+            val runStart = frame
+            while (frame < speaking.size && !speaking[frame]) frame++
+            val runEnd = frame
+            if (runEnd - runStart < minimumFrames) continue
 
-        var index = offset
-        while (index < end) {
-            val sample =
-                ((body[index].toInt() and 0xFF) or (body[index + 1].toInt() shl 8)).toShort()
-            total += sample.toDouble() * sample.toDouble()
-            count++
-            index += 2
+            val before = speaking.subList(maxOf(0, runStart - evidenceWindow), runStart).count { it }
+            val after = speaking.subList(runEnd, minOf(speaking.size, runEnd + evidenceWindow)).count { it }
+            if (before < evidenceFrames || after < evidenceFrames) continue
+
+            val middle = runStart + (runEnd - runStart) / 2
+            val seconds = middle.toDouble() * frameBytes / BYTES_PER_SECOND
+            if (seconds < policy.minimumSeconds) continue
+            val gap = levels.copyOfRange(runStart, runEnd).average()
+            candidates += PauseCandidate(
+                middle * frameBytes,
+                seconds,
+                (runEnd - runStart) * 0.02,
+                maxOf(0.0, speechThreshold - gap),
+            )
         }
-        return if (count == 0) Double.MAX_VALUE else total / count
+
+        val preferred = candidates.filter { it.seconds <= policy.horizonSeconds }
+        if (preferred.isNotEmpty()) return preferred.maxBy { boundaryScore(it, policy) }.cut
+        return candidates.minByOrNull { it.seconds }?.cut
     }
+
+    private fun boundaryScore(candidate: PauseCandidate, policy: BoundaryPolicy): Double =
+        (if (candidate.duration >= policy.preferredPauseSeconds) 3.0 else 0.0) +
+            minOf(2.0, candidate.duration) * 4 +
+            minOf(20.0, candidate.depth) / 10 -
+            kotlin.math.abs(candidate.seconds - policy.targetSeconds)
 
     /** Locates the `data` chunk, so a WAV carrying extra metadata still works. */
     internal fun pcmBody(wav: ByteArray): ByteArray? {

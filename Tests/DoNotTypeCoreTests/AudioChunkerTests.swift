@@ -59,7 +59,8 @@ final class AudioChunkerTests: XCTestCase {
     // MARK: - Splitting
 
     func testLongRecordingIsSplit() {
-        let chunks = AudioChunker.split(wav: seconds(300), format: format, target: 60, window: 15)
+        let chunks = AudioChunker.split(
+            wav: speech(segments: Array(repeating: (55, 4), count: 6)), format: format)
         XCTAssertGreaterThan(chunks.count, 1)
         XCTAssertEqual(chunks.map(\.index), Array(0..<chunks.count))
     }
@@ -67,8 +68,8 @@ final class AudioChunkerTests: XCTestCase {
     /// Every sample must appear in exactly one chunk. A splitter that drops a second of audio
     /// loses a word, and nothing downstream would ever notice.
     func testNoAudioIsLostOrDuplicated() {
-        let original = seconds(300)
-        let chunks = AudioChunker.split(wav: original, format: format, target: 60, window: 15)
+        let original = speech(segments: Array(repeating: (55, 4), count: 6))
+        let chunks = AudioChunker.split(wav: original, format: format)
 
         let originalBody = AudioChunker.pcmBody(of: original)!
         let rejoined = chunks.compactMap { AudioChunker.pcmBody(of: $0.data) }
@@ -80,7 +81,8 @@ final class AudioChunkerTests: XCTestCase {
     /// Offsets have to be contiguous, or a later feature that maps a transcript back to a
     /// timestamp would quietly point at the wrong moment.
     func testChunkOffsetsAreContiguous() {
-        let chunks = AudioChunker.split(wav: seconds(300), format: format, target: 60, window: 15)
+        let chunks = AudioChunker.split(
+            wav: speech(segments: Array(repeating: (55, 4), count: 6)), format: format)
         for (previous, next) in zip(chunks, chunks.dropFirst()) {
             XCTAssertEqual(
                 previous.startSeconds + previous.durationSeconds, next.startSeconds, accuracy: 0.01)
@@ -92,7 +94,7 @@ final class AudioChunkerTests: XCTestCase {
         // Speech in 55-second bursts separated by 4 seconds of silence. With a 60-second target
         // and a 15-second window, each cut has a silent gap within reach.
         let wav = speech(segments: Array(repeating: (loudSeconds: 55, silenceSeconds: 4), count: 6))
-        let chunks = AudioChunker.split(wav: wav, format: format, target: 60, window: 15)
+        let chunks = AudioChunker.split(wav: wav, format: format)
         XCTAssertGreaterThan(chunks.count, 1)
 
         for chunk in chunks.dropLast() {
@@ -108,25 +110,52 @@ final class AudioChunkerTests: XCTestCase {
 
     /// A trailing two-second fragment transcribes badly on its own, so the last cut is skipped.
     func testFinalChunkIsNotAStub() {
-        let chunks = AudioChunker.split(wav: seconds(185), format: format, target: 60, window: 15)
+        let chunks = AudioChunker.split(
+            wav: speech(segments: [(55, 4), (55, 4), (63, 0)]), format: format)
         XCTAssertGreaterThan(chunks.last!.durationSeconds, 15)
     }
 
-    /// Uniform noise has no silence to find; the splitter must still cut somewhere legal rather
-    /// than give up and emit one enormous chunk.
-    func testUniformlyLoudAudioStillSplitsAtSampleBoundaries() {
-        let chunks = AudioChunker.split(wav: seconds(300), format: format, target: 60, window: 15)
-        XCTAssertGreaterThan(chunks.count, 1)
-        for chunk in chunks {
-            let body = AudioChunker.pcmBody(of: chunk.data)!
-            XCTAssertEqual(body.count % 2, 0, "a cut mid-sample produces a click")
-        }
+    /// The hard rule: duration alone never authorises a cut through speech.
+    func testUniformlyLoudAudioWithoutAVADPauseIsNotSplit() {
+        XCTAssertEqual(AudioChunker.split(wav: seconds(300), format: format).count, 1)
+    }
+
+    func testShortDipIsNotMistakenForAWordBoundary() {
+        let wav = speech(segments: [(55, 0.2), (65, 0)])
+        XCTAssertEqual(AudioChunker.split(wav: wav, format: format).count, 1)
+    }
+
+    func testPauseMustHaveSpeechOnBothSides() {
+        let wav = speech(segments: [(55, 40)])
+        XCTAssertEqual(AudioChunker.split(wav: wav, format: format).count, 1)
+    }
+
+    func testStreamingWaitsForLongRecordingThresholdThenEmitsDuringCapture() throws {
+        var segmenter = AudioChunker.StreamingSegmenter(format: format)
+        let body = AudioChunker.pcmBody(
+            of: speech(segments: [(55, 4), (35, 0)]))!
+
+        let before = body.prefix(format.bytesPerSecond * 90)
+        XCTAssertTrue(segmenter.append(pcm: Data(before)).isEmpty)
+
+        let ready = segmenter.append(pcm: Data(body.dropFirst(before.count)))
+        XCTAssertEqual(ready.count, 1)
+        XCTAssertEqual(ready[0].durationSeconds, 57, accuracy: 0.1)
+        XCTAssertEqual(try XCTUnwrap(segmenter.finish()).durationSeconds, 37, accuracy: 0.1)
+    }
+
+    func testStreamingNeverEmitsContinuousSpeech() throws {
+        var segmenter = AudioChunker.StreamingSegmenter(format: format)
+        let body = AudioChunker.pcmBody(of: seconds(180))!
+        XCTAssertTrue(segmenter.append(pcm: body).isEmpty)
+        XCTAssertEqual(try XCTUnwrap(segmenter.finish()).durationSeconds, 180, accuracy: 0.1)
     }
 
     // MARK: - Container
 
     func testGeneratedChunksAreValidWavFiles() {
-        let chunks = AudioChunker.split(wav: seconds(300), format: format, target: 60, window: 15)
+        let chunks = AudioChunker.split(
+            wav: speech(segments: Array(repeating: (55, 4), count: 6)), format: format)
         for chunk in chunks {
             XCTAssertEqual(chunk.data.prefix(4), Data("RIFF".utf8))
             XCTAssertEqual(chunk.data.subdata(in: 8..<12), Data("WAVE".utf8))

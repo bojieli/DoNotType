@@ -22,6 +22,15 @@ public static class AudioChunker
     private const int BytesPerSample = 2;
     private const int BytesPerSecond = SampleRate * BytesPerSample;
 
+    public readonly record struct BoundaryPolicy(
+        double MinimumSeconds = 45,
+        double TargetSeconds = 60,
+        double HorizonSeconds = 75,
+        double MinimumPauseSeconds = 0.32,
+        double PreferredPauseSeconds = 0.5);
+
+    public static readonly BoundaryPolicy DefaultPolicy = new();
+
     /// <summary>Length of a decoded 16 kHz mono recording, from its header.</summary>
     public static double DurationSeconds(byte[] wav)
     {
@@ -32,14 +41,10 @@ public static class AudioChunker
     public readonly record struct Chunk(int Index, byte[] Data, double StartSeconds, double DurationSeconds);
 
     /// <summary>Splits 16-bit PCM WAV data, or returns one chunk when it is short enough.</summary>
-    /// <param name="targetSeconds">
-    /// Preferred chunk length. Cuts are placed at the quietest point in a window around it rather
-    /// than exactly on it.
-    /// </param>
-    /// <param name="windowSeconds">How far either side of the target to search for silence.</param>
-    public static IReadOnlyList<Chunk> Split(
-        byte[] wav, double targetSeconds = 60, double windowSeconds = 15)
+    /// <remarks>A cut is made only in a VAD-qualified pause. No pause means no split.</remarks>
+    public static IReadOnlyList<Chunk> Split(byte[] wav, BoundaryPolicy? policy = null)
     {
+        var boundaries = policy ?? DefaultPolicy;
         var body = PcmBody(wav);
         if (body is null)
         {
@@ -53,25 +58,89 @@ public static class AudioChunker
         }
 
         var chunks = new List<Chunk>();
-        var targetBytes = (int)(targetSeconds * BytesPerSecond);
-        var windowBytes = (int)(windowSeconds * BytesPerSecond);
         var start = 0;
 
         while (start < body.Length)
         {
-            // A final piece shorter than the search window is folded into this one rather than left
-            // as a two-second fragment that transcribes badly on its own.
-            if (body.Length - start <= targetBytes + windowBytes)
+            if (body.Length - start <= boundaries.TargetSeconds * BytesPerSecond)
             {
                 chunks.Add(MakeChunk(chunks.Count, body, start, body.Length));
                 break;
             }
 
-            var cut = QuietestCut(body, start + targetBytes, windowBytes);
+            var tail = body[start..];
+            var relativeCut = BestBoundary(tail, boundaries);
+            if (relativeCut is null)
+            {
+                chunks.Add(MakeChunk(chunks.Count, body, start, body.Length));
+                break;
+            }
+            var cut = start + relativeCut.Value;
+            if ((body.Length - cut) / (double)BytesPerSecond < boundaries.MinimumSeconds)
+            {
+                chunks.Add(MakeChunk(chunks.Count, body, start, body.Length));
+                break;
+            }
             chunks.Add(MakeChunk(chunks.Count, body, start, cut));
             start = cut;
         }
         return chunks;
+    }
+
+    /// <summary>Incremental VAD segmenter used by live microphone capture.</summary>
+    public sealed class StreamingSegmenter(BoundaryPolicy? policy = null)
+    {
+        private readonly BoundaryPolicy _policy = policy ?? DefaultPolicy;
+        private readonly List<byte> _pending = [];
+        private long _totalBytes;
+        private long _startBytes;
+        private int _nextIndex;
+        private bool _emittedFirst;
+        private int _bytesAtLastAnalysis;
+
+        public IReadOnlyList<Chunk> Append(byte[] pcm)
+        {
+            if (pcm.Length == 0) return [];
+            _pending.AddRange(pcm);
+            _totalBytes += pcm.Length;
+            var ready = new List<Chunk>();
+
+            while (ShouldAnalyse())
+            {
+                var cut = BestBoundary([.. _pending], _policy);
+                if (cut is null) break;
+                var samples = _pending.GetRange(0, cut.Value).ToArray();
+                ready.Add(Make(samples));
+                _pending.RemoveRange(0, cut.Value);
+                _startBytes += cut.Value;
+                _emittedFirst = true;
+                _bytesAtLastAnalysis = 0;
+            }
+            if (ready.Count == 0 && CanConsider()) _bytesAtLastAnalysis = _pending.Count;
+            return ready;
+        }
+
+        public Chunk? Finish()
+        {
+            if (_pending.Count == 0) return null;
+            var samples = _pending.ToArray();
+            _pending.Clear();
+            var chunk = Make(samples);
+            _startBytes += samples.Length;
+            return chunk;
+        }
+
+        private bool CanConsider() => !_emittedFirst
+            ? _totalBytes / (double)BytesPerSecond > ThresholdSeconds
+            : _pending.Count / (double)BytesPerSecond >= _policy.TargetSeconds;
+
+        private bool ShouldAnalyse() => CanConsider()
+            && (_bytesAtLastAnalysis == 0
+                || _pending.Count - _bytesAtLastAnalysis >= BytesPerSecond / 5);
+
+        private Chunk Make(byte[] samples) => new(
+            _nextIndex++, WrapInWavContainer(samples), _startBytes / (double)BytesPerSecond,
+            samples.Length / (double)BytesPerSecond);
     }
 
     private static Chunk MakeChunk(int index, byte[] body, int from, int to)
@@ -84,58 +153,81 @@ public static class AudioChunker
             samples.Length / (double)BytesPerSecond);
     }
 
-    /// <summary>Finds the middle of the quietest 100 ms inside the search window.</summary>
-    /// <remarks>
-    /// Quietest rather than "first below a threshold": an absolute threshold tuned for a quiet room
-    /// finds no silence at all on a train, and would then cut mid-word. The <em>middle</em> rather
-    /// than the start, so both neighbours keep a little silence -- a chunk whose audio begins on
-    /// the first sample of a word tends to lose that word's opening consonant.
-    /// </remarks>
-    internal static int QuietestCut(byte[] body, int centre, int window)
+    private readonly record struct PauseCandidate(
+        int Cut, double Seconds, double Duration, double Depth);
+
+    /// <summary>Returns the best VAD-qualified pause, or null rather than cutting speech.</summary>
+    internal static int? BestBoundary(byte[] body, BoundaryPolicy? policy = null)
     {
-        var probe = Math.Max(BytesPerSample, BytesPerSecond / 10); // 100 ms
-        var low = Math.Max(0, centre - window);
-        var high = Math.Min(body.Length - probe, centre + window);
-        if (low >= high)
-        {
-            return Math.Min(centre, body.Length);
-        }
+        var boundaries = policy ?? DefaultPolicy;
+        const int frameMilliseconds = 20;
+        const int frameBytes = BytesPerSecond * frameMilliseconds / 1000;
+        var frameCount = body.Length / frameBytes;
+        if (frameCount < 3) return null;
 
-        var quietest = centre;
-        var quietestEnergy = double.MaxValue;
-        // Coarse stride: energy every 20 ms rather than at every offset. The cut only has to land
-        // somewhere quiet, not at the single quietest byte.
-        var stride = Math.Max(BytesPerSample, BytesPerSecond / 50);
-
-        for (var position = low; position < high; position += stride)
+        var levels = new double[frameCount];
+        for (var frame = 0; frame < frameCount; frame++)
         {
-            var energy = MeanEnergy(body, position, probe);
-            if (energy < quietestEnergy)
+            double energy = 0;
+            var from = frame * frameBytes;
+            for (var index = from; index + 1 < from + frameBytes; index += 2)
             {
-                quietestEnergy = energy;
-                quietest = position;
+                var sample = (short)(body[index] | body[index + 1] << 8);
+                energy += (double)sample * sample;
             }
+            levels[frame] = 10 * Math.Log10(
+                energy / (frameBytes / 2) / (32_768d * 32_768d) + 1e-12);
         }
 
-        // Align to a sample boundary; a cut mid-sample produces a click.
-        var middle = Math.Min(quietest + probe / 2, body.Length);
-        return middle - (middle % BytesPerSample);
-    }
+        var sorted = levels.Order().ToArray();
+        var floor = sorted[Math.Min(sorted.Length - 1, sorted.Length / 50)];
+        var threshold = Math.Max(-65, floor + 8);
+        var speaking = levels.Select(level => level > threshold).ToArray();
+        var minimumFrames = Math.Max(
+            1, (int)Math.Ceiling(boundaries.MinimumPauseSeconds * 1000 / frameMilliseconds));
+        const int evidenceFrames = 5;
+        const int evidenceWindow = 100;
+        var candidates = new List<PauseCandidate>();
 
-    private static double MeanEnergy(byte[] body, int offset, int length)
-    {
-        var total = 0.0;
-        var count = 0;
-        var end = Math.Min(offset + length, body.Length - 1);
-
-        for (var index = offset; index < end; index += 2)
+        for (var frame = 0; frame < speaking.Length;)
         {
-            var sample = (short)(body[index] | (body[index + 1] << 8));
-            total += (double)sample * sample;
-            count++;
+            if (speaking[frame])
+            {
+                frame++;
+                continue;
+            }
+            var runStart = frame;
+            while (frame < speaking.Length && !speaking[frame]) frame++;
+            var runEnd = frame;
+            if (runEnd - runStart < minimumFrames) continue;
+
+            var before = speaking[Math.Max(0, runStart - evidenceWindow)..runStart].Count(x => x);
+            var after = speaking[runEnd..Math.Min(speaking.Length, runEnd + evidenceWindow)].Count(x => x);
+            if (before < evidenceFrames || after < evidenceFrames) continue;
+
+            var middle = runStart + (runEnd - runStart) / 2;
+            var seconds = middle * frameBytes / (double)BytesPerSecond;
+            if (seconds < boundaries.MinimumSeconds) continue;
+            var gap = levels[runStart..runEnd].Average();
+            candidates.Add(new PauseCandidate(
+                middle * frameBytes, seconds, (runEnd - runStart) * 0.02,
+                Math.Max(0, threshold - gap)));
         }
-        return count == 0 ? double.MaxValue : total / count;
+
+        var preferred = candidates.Where(candidate => candidate.Seconds <= boundaries.HorizonSeconds)
+            .ToArray();
+        if (preferred.Length > 0)
+        {
+            return preferred.MaxBy(candidate => BoundaryScore(candidate, boundaries)).Cut;
+        }
+        return candidates.Count == 0 ? null : candidates.MinBy(candidate => candidate.Seconds).Cut;
     }
+
+    private static double BoundaryScore(PauseCandidate candidate, BoundaryPolicy policy) =>
+        (candidate.Duration >= policy.PreferredPauseSeconds ? 3 : 0)
+        + Math.Min(2, candidate.Duration) * 4
+        + Math.Min(20, candidate.Depth) / 10
+        - Math.Abs(candidate.Seconds - policy.TargetSeconds);
 
     /// <summary>Locates the <c>data</c> chunk, so a WAV carrying extra metadata still works.</summary>
     internal static byte[]? PcmBody(byte[] wav)
