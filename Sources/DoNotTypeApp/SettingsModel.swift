@@ -280,6 +280,13 @@ final class SettingsModel {
     }
 
     var onHotkeyChange: (() -> Void)?
+    /// Pauses the system-wide monitor while a settings field records a new combination. Returns
+    /// false when a dictation is in flight or another recorder already owns the capture.
+    var onHotkeyCaptureChange: ((Bool) -> Bool)?
+
+    func setHotkeyCaptureActive(_ active: Bool) -> Bool {
+        onHotkeyCaptureChange?(active) ?? true
+    }
 
     // MARK: - Grounding
 

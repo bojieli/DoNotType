@@ -143,8 +143,38 @@ class SettingsActivity : AppCompatActivity() {
             )
         )
 
+        // Transfer is deliberately first. An existing user should be able to configure a new
+        // phone with one scan, without scrolling through every individual setting first.
+        column.addView(sectionTitle("Set up from another device"))
+        column.addView(
+            body(
+                "Scan a settings QR code now, or open the transfer editor to import a QR image or "
+                    + "JSON file. Imported values are shown for review before anything changes."
+            )
+        )
+        column.addView(
+            button("Scan settings QR code") {
+                settingsTransfer.launch(
+                    Intent(this, SettingsTransferActivity::class.java).putExtra(
+                        SettingsTransferActivity.EXTRA_START_SCANNER, true,
+                    ),
+                )
+            }.also { it.contentDescription = "scan-settings-qr" }
+        )
+        column.addView(
+            button("Import, export, or edit settings") {
+                settingsTransfer.launch(Intent(this, SettingsTransferActivity::class.java))
+            }.also { it.contentDescription = "open-settings-transfer" }
+        )
+
         // ---- Setup ----
-        column.addView(sectionTitle("Setup"))
+        column.addView(sectionTitle("First-time setup"))
+        column.addView(
+            body(
+                "Grant the microphone, enable the DoNotType keyboard, then add and save an API "
+                    + "key below. Screen grounding is optional."
+            )
+        )
         statusLabel = body("").apply { setTypeface(Typeface.MONOSPACE) }
         column.addView(statusLabel)
 
@@ -416,20 +446,6 @@ class SettingsActivity : AppCompatActivity() {
             button("Logs") {
                 startActivity(Intent(this, LogsActivity::class.java))
             }.also { it.contentDescription = "open-logs" }
-        )
-
-        // ---- Transfer ----
-        column.addView(sectionTitle("Transfer"))
-        column.addView(
-            body(
-                "Move settings between Android, iOS, macOS and Windows with the same versioned "
-                    + "JSON document, file or QR code."
-            )
-        )
-        column.addView(
-            button("Import or export settings") {
-                settingsTransfer.launch(Intent(this, SettingsTransferActivity::class.java))
-            }.also { it.contentDescription = "open-settings-transfer" }
         )
 
         // ---- Prompt ----

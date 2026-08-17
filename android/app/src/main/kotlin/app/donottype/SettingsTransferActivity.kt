@@ -1,9 +1,11 @@
 package app.donottype
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
@@ -18,10 +20,16 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.zxing.BarcodeFormat
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.DecodeHintType
 import com.google.zxing.EncodeHintType
+import com.google.zxing.MultiFormatReader
+import com.google.zxing.RGBLuminanceSource
+import com.google.zxing.common.HybridBinarizer
 import com.journeyapps.barcodescanner.BarcodeEncoder
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -68,14 +76,67 @@ class SettingsTransferActivity : AppCompatActivity() {
         }.onFailure { showStatus(it.message ?: "Could not open the file.", true) }
     }
 
+    private val openQRImage = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        runCatching {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            require(bounds.outWidth in 1..MAXIMUM_IMAGE_SIDE && bounds.outHeight in 1..MAXIMUM_IMAGE_SIDE) {
+                "Choose a QR image no larger than ${MAXIMUM_IMAGE_SIDE} × ${MAXIMUM_IMAGE_SIDE}."
+            }
+
+            val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                ?: error("Could not read that image.")
+            val width = bitmap.width
+            val height = bitmap.height
+            val pixels = IntArray(width * height)
+            bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+            bitmap.recycle()
+            val source = RGBLuminanceSource(width, height, pixels)
+            val value = MultiFormatReader().decode(
+                BinaryBitmap(HybridBinarizer(source)),
+                mapOf(
+                    DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
+                    DecodeHintType.TRY_HARDER to true,
+                ),
+            ).text
+            SettingsTransfer.parse(SettingsTransfer.decodeQR(value)).root.toString(2)
+        }.onSuccess {
+            editor.setText(it)
+            showStatus("QR image loaded. Review it, then tap Import settings.")
+        }.onFailure { showStatus(it.message ?: "No readable settings QR code was found.", true) }
+    }
+
     private val scanCode = registerForActivityResult(ScanContract()) { result ->
-        val value = result.contents ?: return@registerForActivityResult
-        runCatching { SettingsTransfer.parse(value).root.toString(2) }
+        val value = result.contents
+        if (value == null) {
+            showStatus("Scanning cancelled. No settings were changed.")
+            return@registerForActivityResult
+        }
+        runCatching { SettingsTransfer.parse(SettingsTransfer.decodeQR(value)).root.toString(2) }
             .onSuccess {
                 editor.setText(it)
                 showStatus("QR code scanned. Review it, then tap Import settings.")
             }
             .onFailure { showStatus(it.message ?: "That QR code is not settings JSON.", true) }
+    }
+
+    private val requestCamera = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            openScanner()
+        } else {
+            showStatus(
+                "Camera access is off. Allow it in Android Settings, or import a QR image.", true)
+            AlertDialog.Builder(this)
+                .setTitle("Camera access is off")
+                .setMessage(
+                    "Allow camera access in Android Settings to scan a code, or use Import QR " +
+                        "image instead.")
+                .setPositiveButton("OK", null)
+                .show()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,6 +145,7 @@ class SettingsTransferActivity : AppCompatActivity() {
         title = "Settings transfer"
         setContentView(buildLayout())
         loadCurrent()
+        if (intent.getBooleanExtra(EXTRA_START_SCANNER, false)) launchScanner()
     }
 
     private fun buildLayout(): ScrollView {
@@ -133,15 +195,8 @@ class SettingsTransferActivity : AppCompatActivity() {
         ))
         column.addView(row(
             button("Open JSON…") { openDocument.launch(arrayOf("application/json", "text/plain")) },
-            button("Scan QR…") {
-                scanCode.launch(
-                    ScanOptions()
-                        .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                        .setPrompt("Scan a DoNotType settings QR code")
-                        .setBeepEnabled(false)
-                        .setOrientationLocked(false),
-                )
-            },
+            button("Import QR image…") { openQRImage.launch(arrayOf("image/*")) },
+            button("Scan QR…", ::launchScanner),
         ))
         column.addView(button("Import settings") { importSettings() }.also {
             it.contentDescription = "import-settings"
@@ -186,7 +241,7 @@ class SettingsTransferActivity : AppCompatActivity() {
 
     private fun showQr() {
         runCatching {
-            val compact = SettingsTransfer.parse(editor.text.toString()).root.toString()
+            val compact = SettingsTransfer.encodeQR(editor.text.toString())
             BarcodeEncoder().encodeBitmap(
                 compact,
                 BarcodeFormat.QR_CODE,
@@ -210,6 +265,26 @@ class SettingsTransferActivity : AppCompatActivity() {
             showStatus(
                 "These settings do not fit in one QR code. Save or copy the JSON instead.", true)
         }
+    }
+
+    private fun launchScanner() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            requestCamera.launch(Manifest.permission.CAMERA)
+            return
+        }
+        openScanner()
+    }
+
+    private fun openScanner() {
+        scanCode.launch(
+            ScanOptions()
+                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                .setPrompt("Scan a DoNotType settings QR code")
+                .setBeepEnabled(false)
+                .setOrientationLocked(false),
+        )
     }
 
     private fun showStatus(message: String, error: Boolean = false) {
@@ -236,5 +311,10 @@ class SettingsTransferActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
             )
         }
+    }
+
+    companion object {
+        const val EXTRA_START_SCANNER = "app.donottype.extra.START_SETTINGS_SCANNER"
+        private const val MAXIMUM_IMAGE_SIDE = 4096
     }
 }

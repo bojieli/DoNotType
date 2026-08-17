@@ -191,6 +191,51 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
     }
 }
 
+/// Compact, versioned transport used only inside a QR code.
+///
+/// A full settings document can technically fit below QR's byte limit while producing such a
+/// dense symbol that a phone camera cannot reliably resolve it from a laptop display. Deflate
+/// removes the repeated JSON field names and Base64 keeps the result scanner-safe. Decoding still
+/// accepts the original raw JSON so QR codes made by older releases remain importable.
+public enum SettingsTransferQRCode {
+    public static let prefix = "DNT1:"
+    private static let maximumEnvelopeBytes = 16_384
+
+    public static func encode(_ document: SettingsTransferDocument) throws -> String {
+        let json = try document.encoded(prettyPrinted: false)
+        let compressed = Data(referencing: try (json as NSData).compressed(using: .zlib))
+        let base64URL = compressed.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return prefix + base64URL
+    }
+
+    public static func decode(_ value: String) throws -> SettingsTransferDocument {
+        guard value.hasPrefix(prefix) else {
+            return try SettingsTransferDocument.decode(value)
+        }
+        guard value.utf8.count <= maximumEnvelopeBytes else {
+            throw SettingsTransferError.invalidJSON("The QR payload is too large.")
+        }
+
+        var base64 = String(value.dropFirst(prefix.count))
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
+        guard let compressed = Data(base64Encoded: base64) else {
+            throw SettingsTransferError.invalidJSON("The QR payload is damaged.")
+        }
+        let json: Data
+        do {
+            json = Data(referencing: try (compressed as NSData).decompressed(using: .zlib))
+        } catch {
+            throw SettingsTransferError.invalidJSON("The QR payload is damaged.")
+        }
+        return try SettingsTransferDocument.decode(json)
+    }
+}
+
 public enum SettingsTransferError: Error, LocalizedError, Equatable, Sendable {
     case tooLarge(maximumBytes: Int)
     case invalidUTF8

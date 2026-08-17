@@ -10,6 +10,10 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **MIT licensing now travels with every build.** The canonical repository license is copied into
+  macOS, iOS, Android, and Windows deliverables, Apple and .NET metadata identify the grant, and CI
+  inspects the packaged files so a release cannot silently omit its license notice.
+
 - **A stopped recording always explains what happened.** Recordings that are too short, contain no
   detected speech, or produce a blank transcript now leave a visible, short-lived notice on macOS,
   iOS, Windows, and Android instead of making the recording UI disappear without an answer. The

@@ -10,37 +10,154 @@ import DoNotTypeCore
 /// is a good indication of how routine this is.
 @MainActor
 final class HotkeyMonitor {
-    /// Held-modifier push-to-talk. Right Command by default: it is reachable, rarely bound, and
-    /// unlike Fn+Space it does not collide with other dictation tools.
-    enum Trigger: String, CaseIterable {
-        case rightCommand, rightOption, rightControl, fnKey
+    /// A physical key plus the modifiers that must be held when it is pressed.
+    ///
+    /// The four original values keep their old persisted strings, so existing defaults and
+    /// settings-transfer files remain valid. Recorded combinations use a versioned string with
+    /// the key code, flags and display label. The key code makes the shortcut physical (and thus
+    /// stable if the keyboard layout changes); the label preserves what the user saw while
+    /// recording it.
+    struct Trigger: RawRepresentable, Hashable {
+        let rawValue: String
+        let keyCode: CGKeyCode
+        let modifiers: CGEventFlags
+        private let keyLabel: String
 
-        var keyCode: CGKeyCode {
-            switch self {
-            case .rightCommand: 54
-            case .rightOption: 61
-            case .rightControl: 62
-            case .fnKey: 63
+        static let rightCommand = Trigger(
+            legacy: "rightCommand", keyCode: 54, modifiers: .maskCommand,
+            keyLabel: "Right ⌘")
+        static let rightOption = Trigger(
+            legacy: "rightOption", keyCode: 61, modifiers: .maskAlternate,
+            keyLabel: "Right ⌥")
+        static let rightControl = Trigger(
+            legacy: "rightControl", keyCode: 62, modifiers: .maskControl,
+            keyLabel: "Right ⌃")
+        static let fnKey = Trigger(
+            legacy: "fnKey", keyCode: 63, modifiers: .maskSecondaryFn, keyLabel: "fn")
+
+        private static let persistedPrefix = "shortcut.1"
+        static let modifierMask: CGEventFlags = [
+            .maskCommand, .maskShift, .maskControl, .maskAlternate, .maskSecondaryFn,
+        ]
+
+        init?(rawValue: String) {
+            switch rawValue {
+            case Self.rightCommand.rawValue: self = .rightCommand
+            case Self.rightOption.rawValue: self = .rightOption
+            case Self.rightControl.rawValue: self = .rightControl
+            case Self.fnKey.rawValue: self = .fnKey
+            default:
+                let pieces = rawValue.split(separator: ":", maxSplits: 3)
+                guard pieces.count == 4, pieces[0] == Substring(Self.persistedPrefix),
+                    let keyCode = CGKeyCode(pieces[1]),
+                    let flags = UInt64(pieces[2]),
+                    let labelData = Data(base64Encoded: String(pieces[3])),
+                    let keyLabel = String(data: labelData, encoding: .utf8), !keyLabel.isEmpty
+                else { return nil }
+                self.rawValue = rawValue
+                self.keyCode = keyCode
+                self.modifiers = CGEventFlags(rawValue: flags).intersection(Self.modifierMask)
+                self.keyLabel = keyLabel
             }
         }
 
-        var flag: CGEventFlags {
-            switch self {
-            case .rightCommand: .maskCommand
-            case .rightOption: .maskAlternate
-            case .rightControl: .maskControl
-            case .fnKey: .maskSecondaryFn
-            }
+        init(keyCode: CGKeyCode, modifiers: CGEventFlags, keyLabel: String) {
+            let normalized = modifiers.intersection(Self.modifierMask)
+            let encodedLabel = Data(keyLabel.utf8).base64EncodedString()
+            rawValue = "\(Self.persistedPrefix):\(keyCode):\(normalized.rawValue):\(encodedLabel)"
+            self.keyCode = keyCode
+            self.modifiers = normalized
+            self.keyLabel = keyLabel
+        }
+
+        private init(
+            legacy: String, keyCode: CGKeyCode, modifiers: CGEventFlags, keyLabel: String
+        ) {
+            rawValue = legacy
+            self.keyCode = keyCode
+            self.modifiers = modifiers
+            self.keyLabel = keyLabel
+        }
+
+        static func == (lhs: Trigger, rhs: Trigger) -> Bool {
+            lhs.keyCode == rhs.keyCode && lhs.modifiers == rhs.modifiers
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(keyCode)
+            hasher.combine(modifiers.rawValue)
         }
 
         var label: String {
-            switch self {
-            case .rightCommand: "Right ⌘"
-            case .rightOption: "Right ⌥"
-            case .rightControl: "Right ⌃"
-            case .fnKey: "fn"
+            guard !isModifierKey else {
+                let otherModifiers = modifiers.subtracting(modifierFlag ?? [])
+                let symbols = Self.modifierSymbols(otherModifiers)
+                return symbols.isEmpty ? keyLabel : "\(symbols) \(keyLabel)"
+            }
+            return Self.modifierSymbols(modifiers) + keyLabel
+        }
+
+        var isModifierKey: Bool { Self.modifierFlag(for: keyCode) != nil }
+        private var modifierFlag: CGEventFlags? { Self.modifierFlag(for: keyCode) }
+
+        /// Plain letters, digits and punctuation cannot safely be global triggers: binding one
+        /// would steal normal typing in every application. Modifier keys and function keys are
+        /// useful by themselves; ordinary keys need Command, Option or Control.
+        var isSafeForGlobalUse: Bool {
+            if isModifierKey { return true }
+            if !modifiers.intersection([.maskCommand, .maskAlternate, .maskControl]).isEmpty {
+                return true
+            }
+            return Self.functionKeyCodes.contains(keyCode)
+        }
+
+        /// Return and Escape already have recording-only meanings configured elsewhere.
+        var isReserved: Bool { keyCode == 36 || keyCode == 76 || keyCode == 53 }
+
+        static func modifierFlag(for keyCode: CGKeyCode) -> CGEventFlags? {
+            switch keyCode {
+            case 54, 55: .maskCommand
+            case 56, 60: .maskShift
+            case 58, 61: .maskAlternate
+            case 59, 62: .maskControl
+            case 63: .maskSecondaryFn
+            default: nil
             }
         }
+
+        static func modifierLabel(for keyCode: CGKeyCode) -> String? {
+            switch keyCode {
+            case 54: "Right ⌘"
+            case 55: "Left ⌘"
+            case 56: "Left ⇧"
+            case 60: "Right ⇧"
+            case 58: "Left ⌥"
+            case 61: "Right ⌥"
+            case 59: "Left ⌃"
+            case 62: "Right ⌃"
+            case 63: "fn"
+            default: nil
+            }
+        }
+
+        static func normalizedModifiers(_ flags: CGEventFlags) -> CGEventFlags {
+            flags.intersection(modifierMask)
+        }
+
+        private static func modifierSymbols(_ flags: CGEventFlags) -> String {
+            var result = ""
+            if flags.contains(.maskControl) { result += "⌃" }
+            if flags.contains(.maskAlternate) { result += "⌥" }
+            if flags.contains(.maskShift) { result += "⇧" }
+            if flags.contains(.maskCommand) { result += "⌘" }
+            if flags.contains(.maskSecondaryFn) { result += "fn " }
+            return result
+        }
+
+        private static let functionKeyCodes: Set<CGKeyCode> = [
+            122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111, 105, 107, 113, 106, 64,
+            79, 80, 90,
+        ]
     }
 
     /// How holding the key relates to recording. Shared with the other clients, and tested there:
@@ -96,6 +213,13 @@ final class HotkeyMonitor {
     private var startedByTap = false
     /// Which key began the in-flight recording, so release routes to the same style.
     private var usedSecondary = false
+    /// The full trigger that began the current gesture. Required for chord releases, which may
+    /// arrive after their modifier flags have changed.
+    private var activeTrigger: Trigger?
+    /// Ordinary trigger key-downs are swallowed so they do not type or run another app command.
+    /// Their matching key-up must be swallowed too, including when a required modifier was
+    /// released first and already ended the gesture.
+    private var consumedTriggerKeyCode: CGKeyCode?
     /// Keeps the key-up swallowed after key-down cancellation has already returned the app idle.
     private var isCancellingWithEscape = false
     /// Keeps Return's key-up swallowed after its key-down has moved recording to transcription.
@@ -114,6 +238,9 @@ final class HotkeyMonitor {
     func stop() {
         watchdog?.invalidate()
         watchdog = nil
+        isHeld = false
+        activeTrigger = nil
+        consumedTriggerKeyCode = nil
         if let runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
@@ -169,20 +296,31 @@ final class HotkeyMonitor {
 
         case .flagsChanged:
             let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-            let isSecondary = secondaryTrigger.map { $0.keyCode == keyCode } ?? false
-            guard keyCode == trigger.keyCode || isSecondary else { return false }
+            let flags = Trigger.normalizedModifiers(event.flags)
 
-            let active = isSecondary ? secondaryTrigger! : trigger
-            let down = event.flags.contains(active.flag)
-            guard down != isHeld else { return false }
-            isHeld = down
-            onHoldChange?(down)
-            if down {
-                usedSecondary = isSecondary
-                handlePress(at: event.timestamp)
-            } else {
+            // Any required modifier being released ends a modifier-only combination. This also
+            // covers combinations such as Right Command + Right Option when Option is released
+            // before the final Command key.
+            if isHeld, let activeTrigger, activeTrigger.isModifierKey,
+                !flags.isSuperset(of: activeTrigger.modifiers)
+            {
+                isHeld = false
+                self.activeTrigger = nil
+                onHoldChange?(false)
                 handleRelease(at: event.timestamp)
+                return false
             }
+
+            guard !isHeld,
+                let match = matchingTrigger(keyCode: keyCode, modifiers: flags),
+                match.trigger.isModifierKey
+            else { return false }
+
+            isHeld = true
+            activeTrigger = match.trigger
+            usedSecondary = match.isSecondary
+            onHoldChange?(true)
+            handlePress(at: event.timestamp)
 
         case .keyDown, .keyUp:
             // Synthetic paste/submit events from this process are output, never controls. Without
@@ -193,6 +331,17 @@ final class HotkeyMonitor {
                 return false
             }
             let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+
+            if type == .keyUp, consumedTriggerKeyCode == keyCode {
+                consumedTriggerKeyCode = nil
+                if isHeld, activeTrigger?.keyCode == keyCode {
+                    isHeld = false
+                    activeTrigger = nil
+                    onHoldChange?(false)
+                    handleRelease(at: event.timestamp)
+                }
+                return true
+            }
 
             if keyCode == 36 || keyCode == 76 {  // kVK_Return or kVK_ANSI_KeypadEnter
                 if type == .keyUp, isFinishingWithReturn {
@@ -228,8 +377,25 @@ final class HotkeyMonitor {
                 }
             }
 
-            guard type == .keyDown else { return false }
             let flags = event.flags.intersection([.maskCommand, .maskShift, .maskControl, .maskAlternate])
+            if type == .keyDown,
+                let match = matchingTrigger(
+                    keyCode: keyCode, modifiers: Trigger.normalizedModifiers(event.flags)),
+                !match.trigger.isModifierKey
+            {
+                // Repeats remain swallowed without starting the same gesture twice.
+                consumedTriggerKeyCode = keyCode
+                if !isHeld {
+                    isHeld = true
+                    activeTrigger = match.trigger
+                    usedSecondary = match.isSecondary
+                    onHoldChange?(true)
+                    handlePress(at: event.timestamp)
+                }
+                return true
+            }
+
+            guard type == .keyDown else { return false }
             for chord in chords where chord.keyCode == keyCode && flags == chord.flags {
                 chord.action()
                 return false
@@ -239,6 +405,21 @@ final class HotkeyMonitor {
             break
         }
         return false
+    }
+
+    private func matchingTrigger(
+        keyCode: CGKeyCode, modifiers: CGEventFlags
+    ) -> (trigger: Trigger, isSecondary: Bool)? {
+        // The main shortcut wins if an imported or hand-edited settings file contains a duplicate.
+        if trigger.keyCode == keyCode, trigger.modifiers == modifiers {
+            return (trigger, false)
+        }
+        if let secondaryTrigger, secondaryTrigger.keyCode == keyCode,
+            secondaryTrigger.modifiers == modifiers
+        {
+            return (secondaryTrigger, true)
+        }
+        return nil
     }
 
     // MARK: - Press semantics

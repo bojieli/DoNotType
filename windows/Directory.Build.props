@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <Authors>Bojie Li</Authors>
+    <Copyright>Copyright © 2026 Bojie Li</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/bojieli/DoNotType</RepositoryUrl>
+  </PropertyGroup>
+</Project>

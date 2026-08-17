@@ -16,7 +16,7 @@ final class DoNotTypeUITests: XCTestCase {
     private func launch(arguments: [String] = []) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments += ["-ui-testing"] + arguments
+        app.launchArguments += ["-ui-testing", "-ui-testing-configured"] + arguments
         app.launch()
         return app
     }
@@ -100,7 +100,7 @@ final class DoNotTypeUITests: XCTestCase {
     /// only held while the default backend was a recogniser, and broke the moment the default
     /// became a model, because the rule it tested never checked for a key at all.
     func testTheStylePickerIsShownButDisabledUntilSomethingCanRewrite() {
-        let app = launch()
+        let app = launch(arguments: ["-ui-testing-no-api-key"])
         XCTAssertTrue(app.buttons["record"].waitForExistence(timeout: 10))
 
         let picker = app.segmentedControls["style-picker"]
@@ -144,6 +144,9 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(reveal(transfer, in: app), "the transfer row should be reachable")
         transfer.tap()
         XCTAssertTrue(app.navigationBars["Settings transfer"].waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            reveal(app.buttons["Import QR image…"], in: app),
+            "a saved QR image should be importable without opening the camera")
 
         let editor = app.descendants(matching: .any)["settings-transfer-json"].firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
@@ -169,7 +172,7 @@ final class DoNotTypeUITests: XCTestCase {
     /// Typing a key and leaving the screen has to persist it. This is the setting without which
     /// the app cannot do anything at all, so "it looked like it saved" is not good enough.
     func testAPIKeySurvivesLeavingSettings() {
-        let app = launch()
+        let app = launch(arguments: ["-ui-testing-no-api-key"])
         app.buttons["open-settings"].tap()
 
         let field = app.secureTextFields["api-key"]
@@ -184,6 +187,37 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         XCTAssertEqual(field.value as? String, "••••••••••••••",
                        "the key should still be there after leaving and coming back")
+    }
+
+    func testMissingAPIKeyDisablesDictationBeforeRecording() {
+        let app = launch(arguments: ["-ui-testing-no-api-key"])
+        let record = app.buttons["record"]
+
+        XCTAssertTrue(record.waitForExistence(timeout: 10))
+        XCTAssertFalse(record.isEnabled)
+        XCTAssertTrue(app.buttons["configure-api-key"].exists)
+    }
+
+    func testFirstLaunchGuidesProviderMicrophoneAndKeyboardSetup() {
+        let app = launch(arguments: ["-ui-testing-no-api-key", "-ui-testing-onboarding"])
+
+        XCTAssertTrue(app.navigationBars["Set up DoNotType"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["setup-scan-settings-qr"].exists)
+        XCTAssertTrue(app.buttons["setup-import-settings"].exists)
+        XCTAssertTrue(app.secureTextFields["setup-api-key"].exists)
+        XCTAssertFalse(app.buttons["finish-initial-setup"].isEnabled)
+    }
+
+    func testSettingsScanShortcutPresentsScanner() {
+        let app = launch()
+        app.buttons["open-settings"].tap()
+        XCTAssertTrue(app.buttons["scan-settings-qr"].waitForExistence(timeout: 5))
+        app.buttons["scan-settings-qr"].tap()
+
+        XCTAssertTrue(
+            app.staticTexts["Scan a DoNotType settings QR code"].waitForExistence(timeout: 5),
+            "the scan shortcut should present the camera surface after navigation")
+        XCTAssertTrue(app.buttons["Cancel"].exists)
     }
 
     func testHistoryOpensAndIsEmptyOnAFreshInstall() {

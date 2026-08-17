@@ -35,6 +35,9 @@
          the directory layout, because a part is found by its path under prompt/. -->
     <None Include="..\..\prompt\**\*.md" Link="prompt\%(RecursiveDir)%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest" />
+    <!-- The binary distribution must carry the grant under which it is distributed. -->
+    <None Include="..\..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

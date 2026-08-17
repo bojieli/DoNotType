@@ -192,6 +192,10 @@ jobs:
           $env:DOTNET_ROOT = "$env:RUNNER_TEMP\no-global-dotnet"
           $env:DOTNET_MULTILEVEL_LOOKUP = "0"
           $dnt = "$PWD\publish\dnt.exe"
+          if (!(Test-Path publish/LICENSE.txt)) { throw "the MIT license is missing" }
+          if ((Get-Content publish/LICENSE.txt -First 1) -ne "MIT License") {
+            throw "the bundled license is not MIT"
+          }
           & $dnt prompt validate
           if ($LASTEXITCODE -ne 0) { throw "the packaged prompt is missing or invalid" }
           & $dnt providers --no-stored-key
@@ -284,6 +288,7 @@ jobs:
         run: |
           unzip -p "$APK" assets/prompt/system.md \
             | grep -q "Context corrects SPELLING, never CONTENT"
+          unzip -p "$APK" assets/LICENSE.txt | grep -qx "MIT License"
           for PART in system rewrite summary \
             fidelity/raw fidelity/light fidelity/tidy \
             style/formal style/concise style/bullets \
@@ -319,8 +324,13 @@ jobs:
       - name: Build
         run: |
           cd ios
+          mkdir -p ../artifacts/ios-build
           xcodebuild -project DoNotType.xcodeproj -scheme DoNotType \
-            -destination 'generic/platform=iOS Simulator' build
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ../artifacts/ios-build build
+          license=../artifacts/ios-build/Build/Products/Debug-iphonesimulator/DoNotType.app/LICENSE
+          test -s "$license"
+          grep -qx "MIT License" "$license"
 
   publish:
     name: Publish release

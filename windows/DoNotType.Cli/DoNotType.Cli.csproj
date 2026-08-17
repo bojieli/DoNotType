@@ -36,6 +36,9 @@
          keeps the directory layout, because a part is found by its path under prompt/. -->
     <None Include="..\..\prompt\**\*.md" Link="prompt\%(RecursiveDir)%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest" />
+    <!-- A standalone CLI copy is still a binary distribution and carries the same MIT grant. -->
+    <None Include="..\..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

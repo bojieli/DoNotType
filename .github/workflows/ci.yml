@@ -162,6 +162,10 @@ jobs:
             -p:PublishSingleFile=false -o publish
           if (!(Test-Path publish/hostfxr.dll)) { throw "the private .NET runtime is missing" }
           if (!(Test-Path publish/dnt.runtimeconfig.json)) { throw "the CLI runtime config is missing" }
+          if (!(Test-Path publish/LICENSE.txt)) { throw "the MIT license is missing" }
+          if ((Get-Content publish/LICENSE.txt -First 1) -ne "MIT License") {
+            throw "the bundled license is not MIT"
+          }
 
       # Media Foundation needs a real Windows session, so this is also the first moment the CLI
       # decodes a compressed recording end to end.
@@ -244,6 +248,7 @@ jobs:
           APK=app/build/outputs/apk/debug/app-debug.apk
           unzip -p "$APK" assets/prompt/system.md \
             | grep -q "Context corrects SPELLING, never CONTENT"
+          unzip -p "$APK" assets/LICENSE.txt | grep -qx "MIT License"
           for PART in system rewrite summary \
             fidelity/raw fidelity/light fidelity/tidy \
             style/formal style/concise style/bullets \

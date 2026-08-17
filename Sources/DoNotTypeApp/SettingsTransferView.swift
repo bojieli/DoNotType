@@ -1,4 +1,3 @@
-@preconcurrency import AVFoundation
 import AppKit
 import CoreImage
 import CoreImage.CIFilterBuiltins
@@ -6,7 +5,7 @@ import DoNotTypeCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Import and export stay in one screen so scanned or opened JSON is visible before it changes
+/// Import and export stay in one screen so opened JSON or a QR image is visible before it changes
 /// credentials or endpoints. The editor is deliberately plain text: it is also the paste route.
 struct SettingsTransferView: View {
     @Bindable var model: SettingsModel
@@ -16,7 +15,7 @@ struct SettingsTransferView: View {
     @State private var statusIsError = false
     @State private var exporting = false
     @State private var importingFile = false
-    @State private var scanning = false
+    @State private var importingQRImage = false
     @State private var qrExport: QRExport?
 
     var body: some View {
@@ -29,7 +28,7 @@ struct SettingsTransferView: View {
             .foregroundStyle(.orange)
 
             Text(
-                "Treat the JSON file and QR code like a password. A file or scan is loaded below "
+                "Treat the JSON file and QR code like a password. A file or QR image is loaded below "
                     + "for review first; check its provider and endpoint before importing it."
             )
             .font(.callout)
@@ -42,7 +41,7 @@ struct SettingsTransferView: View {
                 Button("Show QR code", action: showQRCode)
                 Divider().frame(height: 20)
                 Button("Open JSON…") { importingFile = true }
-                Button("Scan QR code…") { scanning = true }
+                Button("Import QR image…") { importingQRImage = true }
                 Spacer()
             }
 
@@ -87,18 +86,20 @@ struct SettingsTransferView: View {
         ) { result in
             switch result {
             case .success(let url): loadFile(url)
+                case .failure(let error): setStatus(error.localizedDescription, isError: true)
+            }
+        }
+        .fileImporter(
+            isPresented: $importingQRImage,
+            allowedContentTypes: [.image]
+        ) { result in
+            switch result {
+            case .success(let url): loadQRImage(url)
             case .failure(let error): setStatus(error.localizedDescription, isError: true)
             }
         }
         .sheet(item: $qrExport) { export in
             QRExportSheet(export: export)
-        }
-        .sheet(isPresented: $scanning) {
-            QRScannerSheet { value in
-                json = value
-                setStatus("QR code scanned. Review the JSON, then choose Import settings.")
-                scanning = false
-            }
         }
     }
 
@@ -120,8 +121,8 @@ struct SettingsTransferView: View {
     private func showQRCode() {
         do {
             let document = try SettingsTransferDocument.decode(json)
-            let compact = try document.jsonString(prettyPrinted: false)
-            guard let image = QRCode.image(for: compact, size: 560) else {
+            let qrValue = try SettingsTransferQRCode.encode(document)
+            guard let image = QRCode.image(for: qrValue, size: 560) else {
                 setStatus(
                     "These settings do not fit in one QR code. Save or copy the JSON instead.",
                     isError: true)
@@ -145,6 +146,21 @@ struct SettingsTransferView: View {
             let document = try SettingsTransferDocument.decode(Data(contentsOf: url))
             json = try document.jsonString()
             setStatus("Loaded \(url.lastPathComponent). Review it, then choose Import settings.")
+        } catch {
+            setStatus(error.localizedDescription, isError: true)
+        }
+    }
+
+    private func loadQRImage(_ url: URL) {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        do {
+            guard let value = QRCode.message(in: try Data(contentsOf: url)) else {
+                throw QRImportError.noQRCode
+            }
+            let document = try SettingsTransferQRCode.decode(value)
+            json = try document.jsonString()
+            setStatus("QR image loaded. Review it, then choose Import settings.")
         } catch {
             setStatus(error.localizedDescription, isError: true)
         }
@@ -196,16 +212,53 @@ private enum QRCode {
     static func image(for value: String, size: CGFloat) -> NSImage? {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(value.utf8)
-        filter.correctionLevel = "L"
+        // The QR-only transfer envelope is compressed, leaving enough room for medium error
+        // correction. That is more dependable when a phone photographs a laptop display.
+        filter.correctionLevel = "M"
         guard let output = filter.outputImage else { return nil }
         let extent = output.extent.integral
-        let scale = floor(min(size / extent.width, size / extent.height))
+        // Core Image omits the standard four-module quiet zone. A solid white border is
+        // particularly important when this sheet is displayed in macOS dark mode.
+        let quietZone: CGFloat = 4
+        let canvas = CGRect(
+            x: 0,
+            y: 0,
+            width: extent.width + quietZone * 2,
+            height: extent.height + quietZone * 2)
+        let positioned = output.transformed(
+            by: .init(
+                translationX: quietZone - extent.minX,
+                y: quietZone - extent.minY))
+        let padded = positioned.composited(
+            over: CIImage(color: .white).cropped(to: canvas))
+        let scale = floor(min(size / canvas.width, size / canvas.height))
         guard scale >= 1 else { return nil }
-        let rendered = output.transformed(by: .init(scaleX: scale, y: scale))
+        let rendered = padded.transformed(by: .init(scaleX: scale, y: scale))
         let representation = NSCIImageRep(ciImage: rendered)
         let image = NSImage(size: representation.size)
         image.addRepresentation(representation)
         return image
+    }
+
+    static func message(in data: Data) -> String? {
+        guard let image = CIImage(data: data, options: [.applyOrientationProperty: true]),
+            let detector = CIDetector(
+                ofType: CIDetectorTypeQRCode,
+                context: CIContext(),
+                options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]
+            )
+        else { return nil }
+        return detector.features(in: image)
+            .compactMap { ($0 as? CIQRCodeFeature)?.messageString }
+            .first
+    }
+}
+
+private enum QRImportError: LocalizedError {
+    case noQRCode
+
+    var errorDescription: String? {
+        "No readable QR code was found in that image."
     }
 }
 
@@ -225,123 +278,11 @@ private struct QRExportSheet: View {
                 Label("This QR code contains API keys.", systemImage: "lock.open.fill")
                     .foregroundStyle(.orange)
             }
+            Text("Keep the entire square and its white border visible to the phone camera.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
             Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
         }
         .padding(20)
-    }
-}
-
-private struct QRScannerSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    let onCode: (String) -> Void
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("Point the camera at a DoNotType settings QR code.").font(.headline)
-            CameraQRScanner(onCode: onCode)
-                .frame(width: 620, height: 420)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            Text("Nothing is imported until you review the JSON and choose Import settings.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Button("Cancel") { dismiss() }
-        }
-        .padding(20)
-    }
-}
-
-private struct CameraQRScanner: NSViewRepresentable {
-    let onCode: (String) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(onCode: onCode) }
-
-    func makeNSView(context: Context) -> CameraPreviewView {
-        let view = CameraPreviewView()
-        view.previewLayer.session = context.coordinator.session
-        context.coordinator.start()
-        return view
-    }
-
-    func updateNSView(_ nsView: CameraPreviewView, context: Context) {}
-
-    static func dismantleNSView(_ nsView: CameraPreviewView, coordinator: Coordinator) {
-        coordinator.stop()
-    }
-
-    final class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate, @unchecked Sendable {
-        let session = AVCaptureSession()
-        private let onCode: (String) -> Void
-        private var configured = false
-        private var delivered = false
-
-        init(onCode: @escaping (String) -> Void) { self.onCode = onCode }
-
-        func start() {
-            switch AVCaptureDevice.authorizationStatus(for: .video) {
-            case .authorized: configureAndStart()
-            case .notDetermined:
-                AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                    guard granted else { return }
-                    self?.configureAndStart()
-                }
-            default: break
-            }
-        }
-
-        private func configureAndStart() {
-            guard !configured,
-                let camera = AVCaptureDevice.default(for: .video),
-                let input = try? AVCaptureDeviceInput(device: camera),
-                session.canAddInput(input)
-            else { return }
-            configured = true
-            session.beginConfiguration()
-            session.addInput(input)
-            let output = AVCaptureMetadataOutput()
-            guard session.canAddOutput(output) else {
-                session.commitConfiguration()
-                return
-            }
-            session.addOutput(output)
-            output.setMetadataObjectsDelegate(self, queue: .main)
-            output.metadataObjectTypes = [.qr]
-            session.commitConfiguration()
-            session.startRunning()
-        }
-
-        func stop() { if session.isRunning { session.stopRunning() } }
-
-        nonisolated func captureOutput(
-            _ output: AVCaptureOutput,
-            didOutput metadataObjects: [AVMetadataObject],
-            from connection: AVCaptureConnection
-        ) {
-            guard let value = (metadataObjects.first as? AVMetadataMachineReadableCodeObject)?
-                .stringValue
-            else { return }
-            DispatchQueue.main.async { [weak self] in
-                guard let self, !delivered else { return }
-                delivered = true
-                onCode(value)
-            }
-        }
-    }
-}
-
-private final class CameraPreviewView: NSView {
-    let previewLayer = AVCaptureVideoPreviewLayer()
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        previewLayer.videoGravity = .resizeAspectFill
-        layer?.addSublayer(previewLayer)
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    override func layout() {
-        super.layout()
-        previewLayer.frame = bounds
     }
 }

@@ -36,6 +36,9 @@ targets:
       - path: ../prompt
         buildPhase: resources
         type: folder
+      # The installed app carries the same canonical MIT grant as the source checkout.
+      - path: ../LICENSE
+        buildPhase: resources
       # Translations, if any exist. SwiftUI looks a literal up by its English text, so adding a
       # .lproj here is the whole mechanism — see docs/LOCALIZATION.md.
       - path: ../Resources/Localizations
@@ -69,6 +72,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.donottype.sharedtests
+        GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/DoNotType.app/DoNotType
         BUNDLE_LOADER: $(TEST_HOST)
 
@@ -86,6 +90,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.donottype.uitests
+        GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: DoNotType
 
   # The keyboard. No microphone, by platform design -- it reads finished transcripts out of the

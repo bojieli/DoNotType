@@ -130,6 +130,7 @@ class DoNotTypeIME : InputMethodService() {
         // The provider may have changed in the app since this keyboard was last shown, and with it
         // whether a rewrite is possible at all.
         refreshStyleRow()
+        render()
         pendingLifecycleNotice?.let { message ->
             pendingLifecycleNotice = null
             showNotice(message)
@@ -458,6 +459,14 @@ class DoNotTypeIME : InputMethodService() {
         noticeJob?.cancel()
         state = State.IDLE
 
+        // Do not capture speech that cannot be sent. The keyboard points directly to the app so
+        // the missing key is fixed before recording, rather than reported after the user talks.
+        if (Settings.apiKey.isNullOrBlank()) {
+            showFixInTheApp("No API key yet — tap here to add one")
+            state = State.ERROR
+            return
+        }
+
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -744,17 +753,20 @@ class DoNotTypeIME : InputMethodService() {
 
     private fun render() {
         if (!::statusLabel.isInitialized) return
+        val hasAPIKey = !Settings.apiKey.isNullOrBlank()
         when (state) {
             State.IDLE -> {
-                showStatus(
-                    if (ScreenReaderService.instance == null) {
+                if (!hasAPIKey) {
+                    showFixInTheApp("Add an API key in DoNotType before dictating")
+                } else {
+                    showStatus(if (ScreenReaderService.instance == null) {
                         "Tap to talk · screen grounding off"
                     } else {
                         "Tap to talk, or hold"
-                    },
-                )
-                talkButton.text = "Tap to talk"
-                talkButton.isEnabled = true
+                    })
+                }
+                talkButton.text = if (hasAPIKey) "Tap to talk" else "API key required"
+                talkButton.isEnabled = hasAPIKey
                 indicator.mode = DictationIndicatorView.Mode.IDLE
                 stopLevelUpdates()
             }
@@ -778,13 +790,13 @@ class DoNotTypeIME : InputMethodService() {
                 // showNotice already supplied the meaningful line; do not overwrite it with the
                 // generic idle prompt as the old IDLE transition did.
                 talkButton.text = "Tap to talk"
-                talkButton.isEnabled = true
+                talkButton.isEnabled = hasAPIKey
                 indicator.mode = DictationIndicatorView.Mode.IDLE
                 stopLevelUpdates()
             }
             State.ERROR -> {
-                talkButton.text = "Tap to talk"
-                talkButton.isEnabled = true
+                talkButton.text = if (hasAPIKey) "Tap to talk" else "API key required"
+                talkButton.isEnabled = hasAPIKey
                 indicator.mode = DictationIndicatorView.Mode.IDLE
                 stopLevelUpdates()
             }

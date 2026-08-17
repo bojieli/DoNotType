@@ -29,6 +29,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setIcon(for: .idle)
 
         settingsModel.onHotkeyChange = { [weak self] in self?.dictation.reloadHotkey() }
+        settingsModel.onHotkeyCaptureChange = { [weak self] active in
+            self?.dictation.setHotkeyCaptureActive(active) ?? false
+        }
         settingsModel.onKeyStatusChange = { [weak self] in self?.rebuildMenu() }
         dictation.onStateChange = { [weak self] state in
             self?.setIcon(for: state)

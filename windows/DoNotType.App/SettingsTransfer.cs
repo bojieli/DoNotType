@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -11,6 +12,8 @@ public static class SettingsTransfer
     public const string Format = "app.donottype.settings";
     public const int Version = 1;
     public const int MaximumBytes = 1_048_576;
+    private const string QrPrefix = "DNT1:";
+    private const int MaximumQrEnvelopeBytes = 16_384;
 
     public sealed class Document
     {
@@ -162,6 +165,60 @@ public static class SettingsTransfer
         }
         Validate(document);
         return document;
+    }
+
+    /// <summary>Compresses the portable JSON so a camera can resolve it from another screen.</summary>
+    public static string EncodeQr(Document document)
+    {
+        var json = Encoding.UTF8.GetBytes(Encode(document, pretty: false));
+        using var output = new MemoryStream();
+        using (var compressor = new DeflateStream(output, CompressionLevel.SmallestSize, leaveOpen: true))
+            compressor.Write(json);
+        var base64Url = Convert.ToBase64String(output.ToArray())
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+        return QrPrefix + base64Url;
+    }
+
+    /// <summary>Accepts compressed DNT1 codes and raw JSON codes from earlier releases.</summary>
+    public static Document DecodeQr(string value)
+    {
+        if (!value.StartsWith(QrPrefix, StringComparison.Ordinal)) return Decode(value);
+        if (Encoding.UTF8.GetByteCount(value) > MaximumQrEnvelopeBytes)
+            throw new InvalidDataException("The QR payload is too large.");
+
+        var base64 = value[QrPrefix.Length..].Replace('-', '+').Replace('_', '/');
+        base64 += new string('=', (4 - base64.Length % 4) % 4);
+        byte[] compressed;
+        try { compressed = Convert.FromBase64String(base64); }
+        catch (FormatException error)
+        {
+            throw new InvalidDataException("The QR payload is damaged.", error);
+        }
+
+        try
+        {
+            using var input = new DeflateStream(
+                new MemoryStream(compressed), CompressionMode.Decompress);
+            using var output = new MemoryStream();
+            var buffer = new byte[8192];
+            while (true)
+            {
+                var count = input.Read(buffer, 0, buffer.Length);
+                if (count == 0) break;
+                output.Write(buffer, 0, count);
+                if (output.Length > MaximumBytes)
+                    throw new InvalidDataException(
+                        "The settings document is larger than the 1 MB limit.");
+            }
+            return Decode(Encoding.UTF8.GetString(output.ToArray()));
+        }
+        catch (InvalidDataException) { throw; }
+        catch (IOException error)
+        {
+            throw new InvalidDataException("The QR payload is damaged.", error);
+        }
     }
 
     public static void Apply(Document document, AppSettings settings)

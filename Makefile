@@ -62,6 +62,9 @@ app: build
 	@# The contract ships inside the bundle so the app does not depend on the source tree. The
 	@# directory layout is preserved, because a part is found by its path under prompt/.
 	@cp -R prompt "$(CONTENTS)/Resources/prompt"
+	@# Binary distributions carry the same MIT grant as the source checkout. Keep the repository's
+	@# canonical file as the source so the bundle cannot grow a stale second license text.
+	@cp LICENSE "$(CONTENTS)/Resources/LICENSE.txt"
 	@# Both rendered from Resources/Icon/DoNotType.svg; see Resources/Icon/make-icons.sh.
 	@cp Resources/AppIcon.icns "$(CONTENTS)/Resources/AppIcon.icns"
 	@cp Resources/MenuBar/*.png "$(CONTENTS)/Resources/"

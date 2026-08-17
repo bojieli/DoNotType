@@ -25,8 +25,35 @@ struct ContentView: View {
     @Bindable var model: DictationModel
     @Bindable var files: FileTranscriptionModel
     @Environment(\.scenePhase) private var scenePhase
+    @State private var showingInitialSetup: Bool
+
+    private static let initialSetupKey = "didCompleteInitialSetupV1"
+
+    init(model: DictationModel, files: FileTranscriptionModel) {
+        self.model = model
+        self.files = files
+        let arguments = ProcessInfo.processInfo.arguments
+        let forceSetup = arguments.contains("-ui-testing-onboarding")
+        let shouldShow = forceSetup || (
+            !arguments.contains("-ui-testing")
+                && !UserDefaults.standard.bool(forKey: Self.initialSetupKey)
+                && !model.hasAPIKey
+        )
+        _showingInitialSetup = State(initialValue: shouldShow)
+    }
 
     var body: some View {
+        if showingInitialSetup {
+            InitialSetupView(model: model) {
+                UserDefaults.standard.set(true, forKey: Self.initialSetupKey)
+                showingInitialSetup = false
+            }
+        } else {
+            dictationScreen
+        }
+    }
+
+    private var dictationScreen: some View {
         NavigationStack {
             VStack(spacing: 28) {
                 Spacer()
@@ -148,28 +175,31 @@ struct ContentView: View {
     }
 
     private var recordButton: some View {
-        ZStack {
-            // The ring pulses with the newest bar, so the microphone is visibly live from the
-            // corner of the eye that is watching the button rather than the meter.
-            let newest = model.levels.last?.level ?? 0
-            Circle()
-                .stroke(Color.accentColor.opacity(0.25), lineWidth: 10)
-                .frame(width: 168, height: 168)
-                .scaleEffect(1 + newest * 0.22)
-                .animation(.easeOut(duration: 0.08), value: newest)
+        Button(action: {}) {
+            ZStack {
+                // The ring pulses with the newest bar, so the microphone is visibly live from the
+                // corner of the eye that is watching the button rather than the meter.
+                let newest = model.levels.last?.level ?? 0
+                Circle()
+                    .stroke(Color.accentColor.opacity(0.25), lineWidth: 10)
+                    .frame(width: 168, height: 168)
+                    .scaleEffect(1 + newest * 0.22)
+                    .animation(.easeOut(duration: 0.08), value: newest)
 
-            Circle()
-                .fill(model.state == .recording ? Color.red : Color.accentColor)
-                .frame(width: 132, height: 132)
+                Circle()
+                    .fill(model.state == .recording ? Color.red : Color.accentColor)
+                    .frame(width: 132, height: 132)
 
-            if model.state == .transcribing {
-                ThinkingDots()
-            } else {
-                Image(systemName: model.state == .recording ? "stop.fill" : "mic.fill")
-                    .font(.system(size: 46))
-                    .foregroundStyle(.white)
+                if model.state == .transcribing {
+                    ThinkingDots()
+                } else {
+                    Image(systemName: model.state == .recording ? "stop.fill" : "mic.fill")
+                        .font(.system(size: 46))
+                        .foregroundStyle(.white)
+                }
             }
         }
+        .buttonStyle(.plain)
         // Tap toggles; holding records only while held. Both, for the same reason the desktop
         // hotkey supports both: hold-only means keeping a finger down for the length of a
         // thought, and toggle-only means a mis-tap leaves the microphone open.
@@ -177,20 +207,21 @@ struct ContentView: View {
         // Recording starts on touch-down either way -- waiting to find out which gesture it is
         // would clip the first word, the one people say fastest.
         .contentShape(Circle())
-        .gesture(
+        .highPriorityGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { model.pressBegan(at: $0.time) }
                 .onEnded { model.pressEnded(at: $0.time) }
         )
-        .disabled(model.state == .transcribing)
-        // A raw gesture is invisible to VoiceOver, which had left the one control this app exists
-        // for unusable by anyone driving it that way. Activating announces itself as a button and
-        // toggles, since press-and-hold is not a gesture VoiceOver can forward.
-        .accessibilityElement(children: .ignore)
+        .disabled(model.state == .transcribing || !model.hasAPIKey)
+        // The real Button makes the disabled state visible to VoiceOver as well as blocking touch.
+        // Its visual gesture still starts on touch-down; VoiceOver uses the explicit action below.
         .accessibilityIdentifier("record")
-        .accessibilityAddTraits(.isButton)
         .accessibilityLabel(model.state == .recording ? "Stop dictating" : "Dictate")
-        .accessibilityHint("Double tap to start and stop. Touch and hold to record only while held.")
+        .accessibilityHint(
+            model.hasAPIKey
+                ? "Double tap to start and stop. Touch and hold to record only while held."
+                : "Add an API key in Settings before dictating."
+        )
         .accessibilityAction {
             if model.state == .recording {
                 model.pressEnded()
@@ -204,7 +235,17 @@ struct ContentView: View {
     private var statusLine: some View {
         Group {
             switch model.state {
-            case .idle: Text("Tap to dictate, or hold to talk").foregroundStyle(.secondary)
+            case .idle:
+                if model.hasAPIKey {
+                    Text("Tap to dictate, or hold to talk").foregroundStyle(.secondary)
+                } else {
+                    NavigationLink {
+                        SettingsView(model: model)
+                    } label: {
+                        Label("Add an API key in Settings", systemImage: "key")
+                    }
+                    .accessibilityIdentifier("configure-api-key")
+                }
             case .recording: Text("Listening… tap to stop").foregroundStyle(.secondary)
             case .transcribing:
                 // Named, not a bare spinner: after you stop talking the wait is dead time, and the
@@ -247,6 +288,7 @@ struct ContentView: View {
                     systemImage: "arrow.clockwise")
             }
             .buttonStyle(.bordered)
+            .disabled(!model.hasAPIKey)
         }
     }
 }

@@ -332,9 +332,15 @@ final class DictationModel {
         #if DEBUG
         // The simulator cannot feed silence into AVAudioEngine reliably. This launch-only seam
         // keeps the user-visible no-speech outcome under UI test without changing release builds.
-        if ProcessInfo.processInfo.arguments.contains("-ui-testing-no-speech-notice") {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-ui-testing-no-api-key") {
+            apiKey = ""
+        } else if arguments.contains("-ui-testing-configured") {
+            apiKey = "ui-test-key"
+        }
+        if arguments.contains("-ui-testing-no-speech-notice") {
             state = .notice("No speech detected — recording wasn’t sent")
-        } else if ProcessInfo.processInfo.arguments.contains("-ui-testing-recording-state") {
+        } else if arguments.contains("-ui-testing-recording-state") {
             // Drives the foreground-lifecycle contract without relying on a simulator microphone.
             state = .recording
         }
@@ -450,7 +456,7 @@ final class DictationModel {
     /// - Parameter secondStage: a model backend to run a rewrite or summary through, for when the
     ///   chosen service is a recogniser and has no text input at all.
     func makeFileTranscriber(secondStage: ProviderKind? = nil) -> FileTranscriber? {
-        guard !apiKey.isEmpty,
+        guard hasAPIKey,
             let promptURL = Self.bundledPromptURL,
             let backend = try? ProviderFactory.make(
                 provider, apiKey: apiKey, endpoint: endpoint)
@@ -580,11 +586,17 @@ final class DictationModel {
     }
 
     var hasAppGroup: Bool { TranscriptStore.containerURL != nil }
+    var hasAPIKey: Bool {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing-no-api-key") { return false }
+        #endif
+        return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
     /// Counted over everything, not the filtered view — a queue you cannot see is still a queue.
     var retryableCount: Int { allRecords.count(where: \.canRetry) }
 
     var keySource: String {
-        apiKey.isEmpty ? "not set" : "Keychain"
+        hasAPIKey ? "Keychain" : "not set"
     }
 
     func refresh() async {
@@ -649,6 +661,13 @@ final class DictationModel {
     }
 
     private func beginRecording() async {
+        // Fail before asking for the microphone or capturing speech. A recording with nowhere to
+        // send it is not useful, and discovering that only after speaking makes setup look broken.
+        guard hasAPIKey else {
+            state = .failed("Add an API key in Settings before dictating.")
+            return
+        }
+
         guard await requestMicrophone() else {
             // Taking somebody to the setting rather than describing where it is. On iOS the app's
             // own page is one tap from here and several taps from the home screen, and a person
@@ -666,7 +685,7 @@ final class DictationModel {
         // here rather than after they stop with somebody watching. On a phone this matters more
         // than anywhere: the screen goes off between dictations and the connection rots. Silent on
         // failure by design — nothing has been asked for yet. See `ProviderTransport`.
-        if !apiKey.isEmpty,
+        if hasAPIKey,
             let backend = try? ProviderFactory.make(
                 provider, apiKey: apiKey, endpoint: endpoint),
             let origin = backend.endpointOrigin
@@ -1085,7 +1104,7 @@ final class DictationModel {
         connectionStatus = nil
         defer { isCheckingConnection = false }
 
-        guard !apiKey.isEmpty else {
+        guard hasAPIKey else {
             connectionStatus = "No API key set."
             return
         }
@@ -1137,7 +1156,7 @@ final class DictationModel {
     }
 
     private func makeCoordinator() -> RetryCoordinator? {
-        guard !apiKey.isEmpty,
+        guard hasAPIKey,
             let promptURL = Self.bundledPromptURL,
             let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(fidelity: fidelity)

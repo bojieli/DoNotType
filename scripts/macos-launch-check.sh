@@ -54,6 +54,10 @@ done
 
 EXECUTABLE=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$PLIST")
 [ -x "$APP/Contents/MacOS/$EXECUTABLE" ] || fail "CFBundleExecutable names a file that is not there"
+LICENSE_FILE="$APP/Contents/Resources/LICENSE.txt"
+[ -s "$LICENSE_FILE" ] || fail "the MIT license is missing from the app bundle"
+grep -qx "MIT License" "$LICENSE_FILE" || fail "the bundled license is not MIT"
+echo "  MIT license is bundled"
 
 # The contract ships inside the bundle so the app does not depend on the source tree. If a part is
 # missing the app starts and then cannot transcribe anything, which is a worse failure than not

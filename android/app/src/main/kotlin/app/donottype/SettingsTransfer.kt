@@ -8,12 +8,21 @@ import app.donottype.core.RewriteStyle
 import app.donottype.core.TranscriptMode
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.util.Base64
+import java.util.zip.Deflater
+import java.util.zip.DeflaterOutputStream
+import java.util.zip.Inflater
+import java.util.zip.InflaterInputStream
 
 /** Version 1 of the same portable document used by the Swift and Windows clients. */
 object SettingsTransfer {
     const val FORMAT = "app.donottype.settings"
     const val VERSION = 1
     const val MAXIMUM_BYTES = 1_048_576
+    private const val QR_PREFIX = "DNT1:"
+    private const val MAXIMUM_QR_ENVELOPE_BYTES = 16_384
 
     data class Parsed(
         val root: JSONObject,
@@ -190,6 +199,61 @@ object SettingsTransfer {
     }
 
     fun parseAndApply(value: String) = apply(parse(value))
+
+    /**
+     * Compresses settings before QR generation. Raw JSON near QR's capacity is technically valid
+     * but too dense to scan reliably from another screen. The prefix versions this QR-only
+     * envelope; files and the editor continue to use ordinary portable JSON.
+     */
+    fun encodeQR(value: String): String {
+        val compact = parse(value).root.toString().toByteArray(Charsets.UTF_8)
+        val output = ByteArrayOutputStream()
+        // Apple's NSData .zlib and .NET's DeflateStream use the raw DEFLATE stream carried by
+        // DNT1. `nowrap = true` keeps Android byte-compatible with both.
+        val deflater = Deflater(Deflater.BEST_COMPRESSION, true)
+        try {
+            DeflaterOutputStream(output, deflater).use { it.write(compact) }
+        } finally {
+            deflater.end()
+        }
+        val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(output.toByteArray())
+        return QR_PREFIX + encoded
+    }
+
+    /** Accepts both the compressed envelope and raw-JSON codes made by earlier releases. */
+    fun decodeQR(value: String): String {
+        if (!value.startsWith(QR_PREFIX)) return value
+        require(value.toByteArray(Charsets.UTF_8).size <= MAXIMUM_QR_ENVELOPE_BYTES) {
+            "The QR payload is too large."
+        }
+        val compressed = runCatching {
+            Base64.getUrlDecoder().decode(value.removePrefix(QR_PREFIX))
+        }.getOrElse { throw IllegalArgumentException("The QR payload is damaged.") }
+
+        val output = ByteArrayOutputStream()
+        val inflater = Inflater(true)
+        try {
+            runCatching {
+                InflaterInputStream(ByteArrayInputStream(compressed), inflater).use { input ->
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        output.write(buffer, 0, count)
+                        require(output.size() <= MAXIMUM_BYTES) {
+                            "The settings document is larger than the 1 MB limit."
+                        }
+                    }
+                }
+            }.getOrElse {
+                if (it is IllegalArgumentException) throw it
+                throw IllegalArgumentException("The QR payload is damaged.")
+            }
+        } finally {
+            inflater.end()
+        }
+        return output.toString(Charsets.UTF_8.name())
+    }
 
     private fun canonicalId(kind: ProviderKind): String =
         if (kind == ProviderKind.GEMINI) "google" else kind.id

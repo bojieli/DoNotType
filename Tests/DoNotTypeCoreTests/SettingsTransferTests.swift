@@ -68,4 +68,21 @@ struct SettingsTransferTests {
             try SettingsTransferDocument.decode(oversized)
         }
     }
+
+    @Test func qrEnvelopeIsCompactAndBackwardsCompatible() throws {
+        let expected = document()
+        let raw = try expected.jsonString(prettyPrinted: false)
+        let encoded = try SettingsTransferQRCode.encode(expected)
+
+        #expect(encoded.hasPrefix(SettingsTransferQRCode.prefix))
+        #expect(encoded.utf8.count < raw.utf8.count)
+        #expect(try SettingsTransferQRCode.decode(encoded) == expected)
+        #expect(try SettingsTransferQRCode.decode(raw) == expected)
+    }
+
+    @Test func qrEnvelopeRejectsDamagedData() {
+        #expect(throws: SettingsTransferError.self) {
+            try SettingsTransferQRCode.decode("\(SettingsTransferQRCode.prefix)not-compressed")
+        }
+    }
 }

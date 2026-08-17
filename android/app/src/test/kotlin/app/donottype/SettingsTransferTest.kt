@@ -5,6 +5,7 @@ import app.donottype.core.ProviderKind
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.RewriteStyle
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -72,6 +73,24 @@ class SettingsTransferTest {
         val oversized = valid + " ".repeat(SettingsTransfer.MAXIMUM_BYTES)
         assertThrows(IllegalArgumentException::class.java) {
             SettingsTransfer.parse(oversized)
+        }
+    }
+
+    @Test fun qrEnvelopeIsCompactAndBackwardsCompatible() {
+        val encoded = SettingsTransfer.encodeQR(valid)
+
+        assertTrue(encoded.startsWith("DNT1:"))
+        assertTrue(encoded.toByteArray().size < valid.toByteArray().size)
+        assertEquals(
+            SettingsTransfer.parse(valid).root.toString(),
+            SettingsTransfer.parse(SettingsTransfer.decodeQR(encoded)).root.toString(),
+        )
+        assertEquals(valid, SettingsTransfer.decodeQR(valid))
+    }
+
+    @Test fun qrEnvelopeRejectsDamagedData() {
+        assertThrows(IllegalArgumentException::class.java) {
+            SettingsTransfer.decodeQR("DNT1:not-compressed")
         }
     }
 }

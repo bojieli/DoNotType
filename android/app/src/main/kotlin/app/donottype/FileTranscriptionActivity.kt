@@ -164,6 +164,10 @@ class FileTranscriptionActivity : AppCompatActivity() {
     }
 
     private fun start() {
+        if (Settings.apiKey.isNullOrBlank()) {
+            Toast.makeText(this, "Add an API key in Settings first", Toast.LENGTH_LONG).show()
+            return
+        }
         val uri = pickedUri ?: run {
             Toast.makeText(this, "Choose a recording first", Toast.LENGTH_SHORT).show()
             return
@@ -215,10 +219,12 @@ class FileTranscriptionActivity : AppCompatActivity() {
 
     private fun refresh() {
         val mode = Settings.fileMode
-        transcribeButton.isEnabled = !running && pickedUri != null
+        val hasAPIKey = !Settings.apiKey.isNullOrBlank()
+        transcribeButton.isEnabled = hasAPIKey && !running && pickedUri != null
         transcribeButton.text = if (running) "Transcribing…" else "Transcribe"
 
         modeNote.text = when {
+            !hasAPIKey -> "Add and save an API key in DoNotType Settings before transcribing."
             !mode.needsSecondPass -> ""
             !transcriber.supports(mode) ->
                 "${Settings.provider.id} is a speech recognition service: it cannot rewrite or " +

@@ -47,4 +47,11 @@ final class DictionaryStoreTests: XCTestCase {
             createdAt: Date(timeIntervalSinceNow: -61)))
         XCTAssertNil(observations.load())
     }
+
+    func testMITLicenseShipsInApplicationBundle() throws {
+        let url = try XCTUnwrap(Bundle.main.url(forResource: "LICENSE", withExtension: nil))
+        let license = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(license.hasPrefix("MIT License\n"))
+        XCTAssertTrue(license.contains("Copyright (c) 2026 Bojie Li"))
+    }
 }

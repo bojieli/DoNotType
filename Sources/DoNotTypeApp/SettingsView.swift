@@ -1,3 +1,4 @@
+import AppKit
 import DoNotTypeCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -443,10 +444,14 @@ private struct GeneralTab: View {
             }
 
             Section("Dictation") {
-                Picker("Key", selection: $model.trigger) {
-                    ForEach(HotkeyMonitor.Trigger.allCases, id: \.self) { trigger in
-                        Text(trigger.label).tag(trigger)
-                    }
+                LabeledContent("Hot key") {
+                    HotkeyRecorder(
+                        value: Binding(
+                            get: { Optional(model.trigger) },
+                            set: { if let value = $0 { model.trigger = value } }),
+                        canClear: false,
+                        conflictingValue: model.secondaryTrigger,
+                        setCaptureActive: model.setHotkeyCaptureActive)
                 }
                 Picker("Behaviour", selection: $model.hotkeyMode) {
                     ForEach(HotkeyMonitor.Mode.allCases, id: \.self) { mode in
@@ -895,6 +900,240 @@ private struct HistoryRow: View {
 }
 
 
+// MARK: - Hot-key recorder
+
+/// A settings control that records the next physical shortcut instead of asking the user to
+/// translate it into a dropdown choice. Modifier-only keys are committed when released, which
+/// leaves time to turn Command into Command+Space (or any other chord) before capture completes.
+private struct HotkeyRecorder: View {
+    @Binding var value: HotkeyMonitor.Trigger?
+    let canClear: Bool
+    let conflictingValue: HotkeyMonitor.Trigger?
+    let setCaptureActive: (Bool) -> Bool
+
+    @State private var isCapturing = false
+    @State private var eventMonitor: Any?
+    @State private var pressedModifierKeys: Set<CGKeyCode> = []
+    @State private var modifierCandidate: CGKeyCode?
+    @State private var peakModifiers: CGEventFlags = []
+    @State private var attemptedKeyChord = false
+    @State private var issue: String?
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            HStack(spacing: 6) {
+                Button(action: toggleCapture) {
+                    HStack(spacing: 7) {
+                        if isCapturing {
+                            Image(systemName: "keyboard.badge.ellipsis")
+                            Text("Press shortcut…")
+                        } else {
+                            Image(systemName: "keyboard")
+                            Text(value?.label ?? "Not set")
+                                .monospaced()
+                        }
+                    }
+                    .frame(minWidth: 150, minHeight: 24)
+                    .padding(.horizontal, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(nsColor: .controlBackgroundColor)))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(
+                            issue == nil
+                                ? (isCapturing ? Color.accentColor : Color.secondary.opacity(0.45))
+                                : Color.red,
+                            lineWidth: isCapturing || issue != nil ? 1.5 : 1)
+                }
+                .accessibilityLabel(isCapturing ? "Recording hot key" : "Hot key")
+                .accessibilityValue(value?.label ?? "Not set")
+                .help(
+                    isCapturing
+                        ? "Press a key combination. Press Escape to cancel."
+                        : "Click, then press the key combination you want to use.")
+
+                if canClear, value != nil, !isCapturing {
+                    Button {
+                        issue = nil
+                        value = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear hot key")
+                    .help("Remove this optional hot key")
+                }
+            }
+
+            if let issue {
+                Text(issue)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if isCapturing {
+                Text("Press Escape to cancel")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .onDisappear { stopCapture() }
+    }
+
+    private func toggleCapture() {
+        if isCapturing {
+            stopCapture()
+            return
+        }
+        guard setCaptureActive(true) else {
+            issue = "Finish the active dictation or other shortcut first."
+            return
+        }
+
+        issue = nil
+        isCapturing = true
+        pressedModifierKeys = []
+        modifierCandidate = nil
+        peakModifiers = []
+        attemptedKeyChord = false
+        eventMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.keyDown, .flagsChanged]
+        ) { event in
+            handle(event)
+        }
+    }
+
+    private func stopCapture() {
+        if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
+        eventMonitor = nil
+        pressedModifierKeys = []
+        modifierCandidate = nil
+        peakModifiers = []
+        attemptedKeyChord = false
+        if isCapturing {
+            isCapturing = false
+            _ = setCaptureActive(false)
+        }
+    }
+
+    private func handle(_ event: NSEvent) -> NSEvent? {
+        switch event.type {
+        case .keyDown:
+            let modifiers = Self.cgModifiers(event.modifierFlags)
+            if event.keyCode == 53, modifiers.isEmpty {  // Escape cancels capture.
+                stopCapture()
+                return nil
+            }
+            if (event.keyCode == 51 || event.keyCode == 117), modifiers.isEmpty {
+                if canClear {
+                    stopCapture()
+                    value = nil
+                } else {
+                    issue = "The primary hot key cannot be empty."
+                }
+                return nil
+            }
+
+            // If validation rejects this chord, releasing its modifier must not silently replace
+            // it with that modifier alone. Wait until all held modifiers are released, then let
+            // the user make another attempt.
+            attemptedKeyChord = true
+            let trigger = HotkeyMonitor.Trigger(
+                keyCode: event.keyCode,
+                modifiers: modifiers,
+                keyLabel: Self.keyLabel(for: event))
+            accept(trigger)
+            return nil
+
+        case .flagsChanged:
+            let keyCode = event.keyCode
+            guard let flag = HotkeyMonitor.Trigger.modifierFlag(for: keyCode),
+                let label = HotkeyMonitor.Trigger.modifierLabel(for: keyCode)
+            else { return event }
+
+            if pressedModifierKeys.contains(keyCode) {
+                pressedModifierKeys.remove(keyCode)
+                if attemptedKeyChord {
+                    if pressedModifierKeys.isEmpty {
+                        attemptedKeyChord = false
+                        modifierCandidate = nil
+                        peakModifiers = []
+                    }
+                    return event
+                }
+                guard let candidate = modifierCandidate,
+                    let candidateLabel = HotkeyMonitor.Trigger.modifierLabel(for: candidate)
+                else { return event }
+                let trigger = HotkeyMonitor.Trigger(
+                    keyCode: candidate,
+                    modifiers: peakModifiers,
+                    keyLabel: candidate == keyCode ? label : candidateLabel)
+                accept(trigger)
+            } else {
+                pressedModifierKeys.insert(keyCode)
+                modifierCandidate = keyCode
+                peakModifiers.formUnion(Self.cgModifiers(event.modifierFlags))
+                peakModifiers.formUnion(flag)
+            }
+            // Modifier state still reaches AppKit, preventing a swallowed key-down from leaving
+            // the settings window thinking Command or Option is held after capture ends.
+            return event
+
+        default:
+            return event
+        }
+    }
+
+    private func accept(_ trigger: HotkeyMonitor.Trigger) {
+        if trigger.isReserved {
+            issue = "Return and Escape are reserved for finishing or cancelling a dictation."
+            return
+        }
+        guard trigger.isSafeForGlobalUse else {
+            issue = "Add ⌘, ⌥, or ⌃, or use a modifier or function key by itself."
+            return
+        }
+        guard trigger != conflictingValue else {
+            issue = "This hot key is already used by the other dictation action."
+            return
+        }
+        stopCapture()
+        value = trigger
+    }
+
+    private static func cgModifiers(_ flags: NSEvent.ModifierFlags) -> CGEventFlags {
+        var result: CGEventFlags = []
+        if flags.contains(.command) { result.insert(.maskCommand) }
+        if flags.contains(.shift) { result.insert(.maskShift) }
+        if flags.contains(.control) { result.insert(.maskControl) }
+        if flags.contains(.option) { result.insert(.maskAlternate) }
+        if flags.contains(.function) { result.insert(.maskSecondaryFn) }
+        return result
+    }
+
+    private static func keyLabel(for event: NSEvent) -> String {
+        let namedKeys: [CGKeyCode: String] = [
+            36: "Return", 48: "Tab", 49: "Space", 51: "Delete", 53: "Esc", 71: "Clear",
+            76: "Enter", 114: "Help", 115: "Home", 116: "Page Up", 117: "Forward Delete",
+            119: "End", 121: "Page Down", 123: "←", 124: "→", 125: "↓", 126: "↑",
+            122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6", 98: "F7",
+            100: "F8", 101: "F9", 109: "F10", 103: "F11", 111: "F12", 105: "F13",
+            107: "F14", 113: "F15", 106: "F16", 64: "F17", 79: "F18", 80: "F19",
+            90: "F20",
+        ]
+        if let named = namedKeys[event.keyCode] { return named }
+        if let characters = event.charactersIgnoringModifiers?.trimmed, !characters.isEmpty {
+            return characters.uppercased()
+        }
+        return "Key \(event.keyCode)"
+    }
+}
+
+
 // MARK: - Rewrite
 
 /// The rewrite, as its own named section.
@@ -914,11 +1153,12 @@ private struct RewriteSection: View {
         let availability = model.rewriteAvailability
 
         Section("Rewrite") {
-            Picker("Second key", selection: $model.secondaryTrigger) {
-                Text("None — always verbatim").tag(HotkeyMonitor.Trigger?.none)
-                ForEach(HotkeyMonitor.Trigger.allCases, id: \.self) { trigger in
-                    Text(trigger.label).tag(HotkeyMonitor.Trigger?.some(trigger))
-                }
+            LabeledContent("Second hot key") {
+                HotkeyRecorder(
+                    value: $model.secondaryTrigger,
+                    canClear: true,
+                    conflictingValue: model.trigger,
+                    setCaptureActive: model.setHotkeyCaptureActive)
             }
             .disabled(!availability.isAvailable)
 

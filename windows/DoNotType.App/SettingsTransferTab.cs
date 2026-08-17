@@ -71,7 +71,7 @@ public sealed class SettingsTransferTab(
         Add("Save JSON…", SaveFile);
         Add("Show QR", ShowQr);
         Add("Open JSON…", OpenFile);
-        Add("Scan QR image…", ScanQrImage);
+        Add("Import QR image…", ImportQrImage);
 
         top.Controls.Add(buttons);
         top.Controls.Add(warning);
@@ -155,7 +155,7 @@ public sealed class SettingsTransferTab(
         Try(() =>
         {
             var document = SettingsTransfer.Decode(_editor.Text);
-            var compact = SettingsTransfer.Encode(document, pretty: false);
+            var compact = SettingsTransfer.EncodeQr(document);
             var bitmap = QrImages.Encode(compact, 640);
             var window = new Form
             {
@@ -188,7 +188,7 @@ public sealed class SettingsTransferTab(
         });
     }
 
-    private void ScanQrImage()
+    private void ImportQrImage()
     {
         using var dialog = new OpenFileDialog
         {
@@ -200,9 +200,9 @@ public sealed class SettingsTransferTab(
             using var image = new Bitmap(dialog.FileName);
             var value = QrImages.Decode(image)
                 ?? throw new InvalidDataException("No QR code was found in that image.");
-            var document = SettingsTransfer.Decode(value);
+            var document = SettingsTransfer.DecodeQr(value);
             _editor.Text = SettingsTransfer.Encode(document);
-            Note("QR code scanned. Review it, then choose Import settings.");
+            Note("QR image loaded. Review it, then choose Import settings.");
         });
     }
 
@@ -235,7 +235,7 @@ public sealed class SettingsTransferTab(
                     new Dictionary<EncodeHintType, object>
                     {
                         [EncodeHintType.CHARACTER_SET] = "UTF-8",
-                        [EncodeHintType.MARGIN] = 2,
+                        [EncodeHintType.MARGIN] = 4,
                     });
             }
             catch (Exception error)

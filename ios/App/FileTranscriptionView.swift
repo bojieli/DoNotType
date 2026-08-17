@@ -52,6 +52,9 @@ final class FileTranscriptionModel {
             ?? .verbatim
     }
 
+    var hasAPIKey: Bool { dictation.hasAPIKey }
+    var settingsModel: DictationModel { dictation }
+
     var visibleText: String {
         guard let outcome else { return "" }
         return display == .verbatim ? outcome.verbatim : outcome.delivered
@@ -179,6 +182,18 @@ struct FileTranscriptionView: View {
 
     var body: some View {
         Form {
+            if !model.hasAPIKey {
+                Section {
+                    NavigationLink {
+                        SettingsView(model: model.settingsModel)
+                    } label: {
+                        Label("Add an API key in Settings", systemImage: "key")
+                    }
+                } footer: {
+                    Text("Choose a recording after a transcription provider is configured.")
+                }
+            }
+
             Section {
                 Button {
                     isPickingFile = true
@@ -187,6 +202,7 @@ struct FileTranscriptionView: View {
                         model.fileName ?? "Choose a recording…",
                         systemImage: model.fileName == nil ? "waveform.badge.plus" : "waveform")
                 }
+                .disabled(!model.hasAPIKey || model.phase.isRunning)
                 .accessibilityIdentifier("choose-recording")
 
                 Picker("Produce", selection: $model.mode) {

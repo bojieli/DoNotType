@@ -27,6 +27,7 @@ final class DictationController {
     private let log = Log("dictation")
     private let recorder = AudioRecorder()
     private let hotkey = HotkeyMonitor()
+    private var hotkeyPausedForCapture = false
     private let grounding = GroundingCoordinator()
     private let overlay = RecordingOverlay()
     private let insertions = InsertionTracker()
@@ -118,6 +119,7 @@ final class DictationController {
 
     /// Re-reads the trigger and mode after the user changes them in settings.
     func reloadHotkey() {
+        guard !hotkeyPausedForCapture else { return }
         hotkey.stop()
         hotkey.trigger = Settings.shared.trigger
         hotkey.mode = Settings.shared.hotkeyMode
@@ -125,6 +127,23 @@ final class DictationController {
         hotkey.finishAndSendAction = Settings.shared.finishAndSendAction
         hotkey.secondaryTrigger = Settings.shared.secondaryTrigger
         _ = hotkey.start()
+    }
+
+    /// Gives the settings recorder exclusive access to keystrokes. Otherwise pressing the old
+    /// shortcut while trying to replace it would begin a dictation behind the settings window.
+    /// An in-flight dictation keeps ownership until it has finished so its release is never lost.
+    func setHotkeyCaptureActive(_ active: Bool) -> Bool {
+        if active {
+            guard state == .idle, !hotkeyPausedForCapture else { return false }
+            hotkeyPausedForCapture = true
+            hotkey.stop()
+            return true
+        }
+
+        guard hotkeyPausedForCapture else { return true }
+        hotkeyPausedForCapture = false
+        reloadHotkey()
+        return true
     }
 
     /// Drains anything that failed while the network was down. Called at launch.

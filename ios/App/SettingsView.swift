@@ -19,6 +19,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            transferSection
             setupSection
             providerSection
             dictationSection
@@ -26,11 +27,21 @@ struct SettingsView: View {
             historySection
             promptSection
             logsSection
-            transferSection
             aboutSection
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    SettingsTransferView(model: model, startsScanning: true)
+                } label: {
+                    Image(systemName: "qrcode.viewfinder")
+                }
+                .accessibilityLabel("Scan settings QR code")
+                .accessibilityIdentifier("scan-settings-qr")
+            }
+        }
         .onAppear(perform: refreshPermissions)
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { refreshPermissions() }
@@ -55,11 +66,9 @@ struct SettingsView: View {
 
             SetupRow(
                 title: "Allow Full Access",
-                detail: model.hasAppGroup
-                    ? "Granted — the keyboard can read your transcripts."
-                    : "Required: the shared container is the keyboard's only way to see "
-                        + "transcripts. It does not grant the microphone.",
-                isDone: model.hasAppGroup,
+                detail: "Required: the shared container is the keyboard's only way to see "
+                    + "transcripts. iOS does not let this app verify the switch.",
+                isDone: nil,
                 action: openSystemSettings)
         } header: {
             Text("Setup")
@@ -165,7 +174,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            .disabled(model.isCheckingConnection)
+            .disabled(model.isCheckingConnection || !model.hasAPIKey)
         } header: {
             Text("Provider")
         } footer: {
@@ -292,13 +301,17 @@ struct SettingsView: View {
     }
 
     private var transferSection: some View {
-        Section("Transfer") {
+        Section {
             NavigationLink {
                 SettingsTransferView(model: model)
             } label: {
-                Label("Import or export settings", systemImage: "arrow.left.arrow.right")
+                Label("Import, export, or edit settings", systemImage: "arrow.left.arrow.right")
             }
             .accessibilityIdentifier("open-settings-transfer")
+        } header: {
+            Text("Move settings")
+        } footer: {
+            Text("Scan a QR code with the button above, or open this page for QR images and JSON files.")
         }
     }
 
@@ -314,6 +327,135 @@ struct SettingsView: View {
     }
 
     // MARK: - Permissions
+
+    private func refreshPermissions() {
+        microphoneGranted = AVAudioApplication.shared.recordPermission == .granted
+    }
+
+    private func requestMicrophone() {
+        if AVAudioApplication.shared.recordPermission == .undetermined {
+            AVAudioApplication.requestRecordPermission { granted in
+                Task { @MainActor in microphoneGranted = granted }
+            }
+        } else {
+            openSystemSettings()
+        }
+    }
+
+    private func openSystemSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+}
+
+/// The first launch is a setup flow rather than a dictation button that cannot work yet.
+///
+/// Import is first because an existing user can configure the provider in one scan. The three iOS
+/// permissions follow in the order a new user encounters them; the API key remains editable here
+/// because transcription cannot start without it.
+struct InitialSetupView: View {
+    @Bindable var model: DictationModel
+    let onComplete: () -> Void
+
+    @State private var microphoneGranted = false
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    NavigationLink {
+                        SettingsTransferView(model: model, startsScanning: true)
+                    } label: {
+                        Label("Scan settings QR code", systemImage: "qrcode.viewfinder")
+                    }
+                    .accessibilityIdentifier("setup-scan-settings-qr")
+
+                    NavigationLink {
+                        SettingsTransferView(model: model)
+                    } label: {
+                        Label("Import QR image or JSON", systemImage: "square.and.arrow.down")
+                    }
+                    .accessibilityIdentifier("setup-import-settings")
+                } header: {
+                    Text("Already use DoNotType?")
+                } footer: {
+                    Text("An imported profile can fill in the provider, model, and API key below.")
+                }
+
+                Section {
+                    Picker("Service", selection: $model.provider) {
+                        ForEach(ProviderKind.pickerOrder, id: \.self) { kind in
+                            Text(kind.pickerLabel).tag(kind)
+                        }
+                    }
+
+                    SecureField("API key", text: $model.apiKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("setup-api-key")
+
+                    TextField("Model", text: $model.model)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    Button("Test connection") {
+                        Task { await model.checkConnection() }
+                    }
+                    .disabled(!model.hasAPIKey || model.isCheckingConnection)
+
+                    if let status = model.connectionStatus {
+                        Text(status)
+                            .font(.footnote)
+                            .foregroundStyle(status.hasPrefix("✓") ? .green : .red)
+                    }
+                } header: {
+                    Text("1. Configure transcription")
+                } footer: {
+                    Text("The key is stored in Keychain and sent only to the selected provider.")
+                }
+
+                Section {
+                    SetupRow(
+                        title: "Allow microphone access",
+                        detail: "Required to record dictation in this app.",
+                        isDone: microphoneGranted,
+                        action: requestMicrophone)
+
+                    SetupRow(
+                        title: "Add the DoNotType keyboard",
+                        detail: "Settings › General › Keyboard › Keyboards › Add New Keyboard.",
+                        isDone: nil,
+                        action: openSystemSettings)
+
+                    SetupRow(
+                        title: "Allow Full Access",
+                        detail: "Required so the keyboard can read transcripts from this app. "
+                            + "iOS does not let the app verify this switch.",
+                        isDone: nil,
+                        action: openSystemSettings)
+                } header: {
+                    Text("2. Enable dictation")
+                } footer: {
+                    Text("iOS makes microphone access and keyboard access separate choices.")
+                }
+            }
+            .navigationTitle("Set up DoNotType")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Finish Setup", action: onComplete)
+                        .disabled(!model.hasAPIKey)
+                        .accessibilityIdentifier("finish-initial-setup")
+                }
+            }
+            .interactiveDismissDisabled()
+            .onAppear(perform: refreshPermissions)
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { refreshPermissions() }
+            }
+        }
+    }
 
     private func refreshPermissions() {
         microphoneGranted = AVAudioApplication.shared.recordPermission == .granted

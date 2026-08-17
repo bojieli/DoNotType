@@ -82,6 +82,9 @@ val syncContract by tasks.registering(Sync::class) {
     from(rootProject.file("../Sources/DoNotTypeCore/Resources/SILERO-VAD-NOTICE.txt")) {
         into("third-party")
     }
+    // Ship the application's own grant as well as dependency notices. Reading directly from the
+    // repository root keeps LICENSE authoritative instead of maintaining a second copy here.
+    from(rootProject.file("../LICENSE")) { rename { "LICENSE.txt" } }
     into(layout.buildDirectory.dir("generated/assets"))
 }
 
