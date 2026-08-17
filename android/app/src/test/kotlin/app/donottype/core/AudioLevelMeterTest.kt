@@ -17,8 +17,23 @@ import org.junit.Test
  */
 class AudioLevelMeterTest {
 
-    /** Every fixture with somebody talking in it. */
-    private val speechFixtures = listOf(
+    /**
+     * Every fixture with somebody talking in it that this checkout actually has.
+     *
+     * Filtered, because most of these are real recordings of a real person and `.gitignore`
+     * excludes the `.wav` files under `eval/audio` from the repository. They exist on the machine
+     * they were recorded on and nowhere else, so a test that demands them passes locally and fails
+     * for everybody — which is exactly what it did, on every push for five commits.
+     *
+     * `formats/speech.wav` is committed and always survives the filter, so this is never empty and
+     * never becomes a test that checks nothing. The Swift original reaches the same place by
+     * skipping each missing fixture.
+     */
+    private val speechFixtures: List<String> by lazy {
+        allSpeechRecordings.filter { tryFixture("eval/audio/$it") != null }
+    }
+
+    private val allSpeechRecordings = listOf(
         "gemini-version.wav",
         "git-command.wav",
         "jargon-spelling.wav",
@@ -37,15 +52,19 @@ class AudioLevelMeterTest {
         "formats/speech.wav",
     )
 
-    private fun fixture(relative: String): ByteArray {
+    /** The fixture's bytes, or null when this checkout does not have that recording. */
+    private fun tryFixture(relative: String): ByteArray? {
         var directory = File(System.getProperty("user.dir") ?: ".").absoluteFile
         repeat(8) {
             val candidate = File(directory, relative)
             if (candidate.exists()) return candidate.readBytes()
             directory = directory.parentFile ?: return@repeat
         }
-        throw AssertionError("fixture $relative not found")
+        return null
     }
+
+    private fun fixture(relative: String): ByteArray =
+        tryFixture(relative) ?: throw AssertionError("fixture $relative not found")
 
     /** The bars a whole recording would draw, in order. */
     private fun bars(name: String): List<AudioLevelMeter.Bar> {
@@ -134,7 +153,7 @@ class AudioLevelMeterTest {
      */
     @Test
     fun `the onset of clipping is visible`() {
-        val body = AudioChunker.pcmBody(fixture("eval/audio/real-brand.wav"))!!
+        val body = AudioChunker.pcmBody(fixture("eval/audio/formats/speech.wav"))!!
         val doubled = ArrayList<Int>(body.size / 2)
         for (index in 0 until body.size / 2) {
             val low = body[index * 2].toInt() and 0xFF

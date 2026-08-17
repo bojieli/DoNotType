@@ -10,9 +10,32 @@ namespace DoNotType.Core.Tests;
 /// <remarks>See `eval/audio/MANIFEST.md` for what each recording is.</remarks>
 public sealed class AudioLevelMeterTests
 {
-    /// <summary>Every fixture with somebody talking in it.</summary>
-    public static TheoryData<string> SpeechFixtures =>
-        new()
+    /// <summary>Every fixture with somebody talking in it that this checkout actually has.</summary>
+    /// <remarks>
+    /// Filtered, because most of these are real recordings of a real person and `.gitignore`
+    /// excludes `eval/audio/*.wav` from the repository. They are here on the machine they were
+    /// recorded on and nowhere else, so a test that demands them passes locally and fails for
+    /// everybody — which is exactly what it did, on every push for five commits.
+    ///
+    /// <para>`formats/speech.wav` is committed and always survives the filter, so this is never
+    /// empty and never becomes a test that checks nothing. The Swift original reaches the same
+    /// place by throwing `XCTSkip` per fixture; xUnit 2.9 has no runtime skip, so the list is
+    /// narrowed instead of the assertion being waived.</para>
+    /// </remarks>
+    public static TheoryData<string> SpeechFixtures
+    {
+        get
+        {
+            var present = new TheoryData<string>();
+            foreach (var name in SpeechRecordings.Where(name => TryFixture(FixturePath(name)) is not null))
+            {
+                present.Add(name);
+            }
+            return present;
+        }
+    }
+
+    private static readonly string[] SpeechRecordings =
         {
             "gemini-version.wav",
             "git-command.wav",
@@ -32,7 +55,10 @@ public sealed class AudioLevelMeterTests
             Path.Combine("formats", "speech.wav"),
         };
 
-    private static byte[] Fixture(string relative)
+    private static string FixturePath(string name) => Path.Combine("eval", "audio", name);
+
+    /// <summary>The fixture's bytes, or null when this checkout does not have that recording.</summary>
+    private static byte[]? TryFixture(string relative)
     {
         var directory = AppContext.BaseDirectory;
         for (var depth = 0; depth < 8; depth++)
@@ -41,13 +67,17 @@ public sealed class AudioLevelMeterTests
             if (File.Exists(candidate)) return File.ReadAllBytes(candidate);
             directory = Path.Combine(directory, "..");
         }
-        throw new FileNotFoundException($"fixture {relative} not found from {AppContext.BaseDirectory}");
+        return null;
     }
+
+    private static byte[] Fixture(string relative) =>
+        TryFixture(relative)
+        ?? throw new FileNotFoundException($"fixture {relative} not found from {AppContext.BaseDirectory}");
 
     /// <summary>The bars a whole recording would draw, in order.</summary>
     private static List<AudioLevelMeter.Bar> Bars(string name)
     {
-        var wav = Fixture(Path.Combine("eval", "audio", name));
+        var wav = Fixture(FixturePath(name));
         var body = AudioChunker.PcmBody(wav)
             ?? throw new InvalidOperationException($"{name} is not a WAV this test can read");
         return new AudioLevelMeter().Append(body);
@@ -140,7 +170,7 @@ public sealed class AudioLevelMeterTests
     [Fact]
     public void TheOnsetOfClippingIsVisible()
     {
-        var pcm = AudioChunker.PcmBody(Fixture(Path.Combine("eval", "audio", "real-brand.wav")))!;
+        var pcm = AudioChunker.PcmBody(Fixture(FixturePath(Path.Combine("formats", "speech.wav"))))!;
         var doubled = new short[pcm.Length / 2];
         for (var index = 0; index < doubled.Length; index++)
         {
