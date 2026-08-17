@@ -20,6 +20,7 @@ public sealed class AppSettings
     public Fidelity Fidelity { get; set; } = Fidelity.Light;
     public HotkeyMonitor.Trigger Trigger { get; set; } = HotkeyMonitor.Trigger.RightControl;
     public HotkeyMonitor.Mode HotkeyMode { get; set; } = HotkeyMonitor.Mode.Automatic;
+    public CancelShortcut CancelShortcut { get; set; } = DoNotType.Core.CancelShortcut.Escape;
 
     /// <summary>
     /// A second key that dictates and then rewrites, or null for one key and verbatim only.

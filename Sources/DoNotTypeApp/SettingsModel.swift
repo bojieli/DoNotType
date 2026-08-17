@@ -218,6 +218,13 @@ final class SettingsModel {
         }
     }
 
+    var cancelShortcut: CancelShortcut {
+        didSet {
+            Settings.shared.cancelShortcut = cancelShortcut
+            onHotkeyChange?()
+        }
+    }
+
     var secondaryTrigger: HotkeyMonitor.Trigger? {
         didSet {
             Settings.shared.secondaryTrigger = secondaryTrigger
@@ -541,6 +548,7 @@ final class SettingsModel {
         fallbackEndpoint = settings.fallbackProvider.map { settings.endpoint(for: $0) } ?? ""
         trigger = settings.trigger
         hotkeyMode = settings.hotkeyMode
+        cancelShortcut = settings.cancelShortcut
         secondaryTrigger = settings.secondaryTrigger
         secondaryStyle = settings.secondaryStyle
         microphoneUID = settings.microphoneUID

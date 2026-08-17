@@ -30,6 +30,7 @@ public sealed class DictationController : IDisposable
 
     private ScreenContext? _pendingContext;
     private CancellationTokenSource? _groundingCts;
+    private CancellationTokenSource? _dictationCts;
     private Task<ScreenContext>? _fullCapture;
 
     public State Current { get; private set; } = State.Idle;
@@ -117,9 +118,11 @@ public sealed class DictationController : IDisposable
         _history.Configure(settings.Retention, settings.KeepAudio);
 
         _hotkey.IsRecording = () => Current == State.Recording;
+        _hotkey.IsDictationActive = () =>
+            Current is State.Recording or State.Transcribing or State.Deriving;
         _hotkey.Pressed += BeginRecording;
         _hotkey.Released += FinishRecording;
-        _hotkey.Cancelled += CancelRecording;
+        _hotkey.Cancelled += CancelActiveDictation;
 
         // Both are cheap only because the verbatim transcript is always kept.
         _hotkey.UndoRequested += () => _ = UndoLastInsertionAsync(revertToVerbatim: false);
@@ -162,6 +165,7 @@ public sealed class DictationController : IDisposable
         _hotkey.Key = _settings.Trigger;
         _hotkey.SecondaryKey = _settings.SecondaryTrigger;
         _hotkey.RecordingMode = _settings.HotkeyMode;
+        _hotkey.CancelKey = _settings.CancelShortcut;
         _hotkey.Start();
     }
 
@@ -170,6 +174,8 @@ public sealed class DictationController : IDisposable
         _hotkey.Dispose();
         _recorder.Dispose();
         _groundingCts?.Dispose();
+        _dictationCts?.Cancel();
+        _dictationCts?.Dispose();
     }
 
     // ---- Recording ---------------------------------------------------------------------------
@@ -314,6 +320,21 @@ public sealed class DictationController : IDisposable
         SetState(State.Idle);
     }
 
+    private void CancelActiveDictation()
+    {
+        if (Current == State.Recording)
+        {
+            CancelRecording();
+            return;
+        }
+        if (Current is not (State.Transcribing or State.Deriving)) return;
+
+        DictationLog.Info(
+            () => "transcription cancellation requested",
+            new Dictionary<string, string> { ["dictation"] = Short(_pendingId) });
+        if (_dictationCts is { } cancellation) _ = cancellation.CancelAsync();
+    }
+
     private async void FinishRecording()
     {
         if (Current != State.Recording) return;
@@ -363,7 +384,17 @@ public sealed class DictationController : IDisposable
         });
 
         SetState(State.Transcribing);
-        await TranscribeAsync(wav).ConfigureAwait(false);
+        var cancellation = new CancellationTokenSource();
+        _dictationCts = cancellation;
+        try
+        {
+            await TranscribeAsync(wav, cancellation.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (ReferenceEquals(_dictationCts, cancellation)) _dictationCts = null;
+            cancellation.Dispose();
+        }
     }
 
 
@@ -443,8 +474,9 @@ public sealed class DictationController : IDisposable
         };
     }
 
-    private async Task TranscribeAsync(byte[] wav)
+    private async Task TranscribeAsync(byte[] wav, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         // Snapshotted, not read live. Nothing today can change it mid-flight — a press while a
         // transcription is running is refused — but this method is long and the field is set by a
         // keyboard hook, and "the style changed under us" is not a bug anybody would find twice.
@@ -509,8 +541,9 @@ public sealed class DictationController : IDisposable
             // Hedged when a fallback backend is configured: the primary gets the whole delay to
             // itself, and only a stalled one is ever raced. See FallbackTranscriber.
             var outcome = await BuildTranscriber(service, wav, context)
-                .TranscribeAsync()
+                .TranscribeAsync(cancellationToken)
                 .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             var result = outcome.Result;
             // Recorded as the backend that answered, not the one that was asked: a history row
             // naming the wrong one would make history useless for the comparisons it exists for.
@@ -566,8 +599,10 @@ public sealed class DictationController : IDisposable
                     });
                     try
                     {
-                        var styled = await service.RewriteAsync(text, instruction)
+                        var styled = await service.RewriteAsync(
+                                text, instruction, cancellationToken)
                             .ConfigureAwait(false);
+                        cancellationToken.ThrowIfCancellationRequested();
                         record.StyledText = styled;
                         record.Mode = mode.Id;
                         delivered = styled;
@@ -581,6 +616,11 @@ public sealed class DictationController : IDisposable
                                 ["ms"] = ((long)Stopwatch.GetElapsedTime(rewriteStart)
                                     .TotalMilliseconds).ToString(),
                             });
+                    }
+                    catch (OperationCanceledException)
+                        when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
                     }
                     catch (Exception error)
                         when (error is ProviderException or HttpRequestException
@@ -603,6 +643,7 @@ public sealed class DictationController : IDisposable
                 }
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             record.LatencySeconds = Stopwatch.GetElapsedTime(releasedAt).TotalSeconds;
             _history.Insert(record, _settings.KeepAudio ? wav : null);
             HistoryChanged?.Invoke();
@@ -652,6 +693,13 @@ public sealed class DictationController : IDisposable
                 ["totalMs"] = ((long)Stopwatch.GetElapsedTime(releasedAt).TotalMilliseconds)
                     .ToString(),
             });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            DictationLog.Info(
+                () => "transcription cancelled",
+                new Dictionary<string, string> { ["dictation"] = Short(_pendingId) });
+            SetState(State.Idle);
         }
         catch (Exception error) when (error is ProviderException or HttpRequestException or TaskCanceledException)
         {

@@ -24,6 +24,7 @@ final class Settings {
         static let blockedURLPrefixes = "blockedURLPrefixes"
         static let retention = "retention"
         static let hotkeyMode = "hotkeyMode"
+        static let cancelShortcut = "cancelShortcut"
         static let secondaryTrigger = "secondaryTrigger"
         static let secondaryStyle = "secondaryStyle"
         static let microphoneUID = "microphoneUID"
@@ -68,6 +69,7 @@ final class Settings {
             Key.blockedURLPrefixes: Self.defaultBlockedURLPrefixes,
             Key.retention: RetentionPolicy.forever.rawValue,
             Key.hotkeyMode: HotkeyMonitor.Mode.automatic.rawValue,
+            Key.cancelShortcut: CancelShortcut.escape.rawValue,
             Key.secondaryStyle: RewriteStyle.formal.rawValue,
             // Audible boundaries make it clear when capture has begun and ended, even when the
             // recording overlay is behind another window. Users can still turn them off below.
@@ -184,6 +186,14 @@ final class Settings {
                 ?? .automatic
         }
         set { defaults.set(newValue.rawValue, forKey: Key.hotkeyMode) }
+    }
+
+    var cancelShortcut: CancelShortcut {
+        get {
+            CancelShortcut(rawValue: defaults.string(forKey: Key.cancelShortcut) ?? "")
+                ?? .escape
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.cancelShortcut) }
     }
 
     /// How long transcripts are kept. Note that a failed dictation keeps its audio regardless,

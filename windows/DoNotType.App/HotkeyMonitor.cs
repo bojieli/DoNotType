@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using DoNotType.Core;
 
 namespace DoNotType.App;
 
@@ -51,6 +52,7 @@ public sealed class HotkeyMonitor : IDisposable
 
     public Mode RecordingMode { get; set; } = Mode.Automatic;
     public Trigger Key { get; set; } = Trigger.RightControl;
+    public CancelShortcut CancelKey { get; set; } = CancelShortcut.Escape;
 
     /// <summary>
     /// A second key that dictates and then rewrites, or null when there is only one.
@@ -79,12 +81,17 @@ public sealed class HotkeyMonitor : IDisposable
     /// <summary>Set by the owner so tap-toggle knows whether a tap should start or stop.</summary>
     public Func<bool> IsRecording { get; set; } = () => false;
 
+    /// <summary>True during capture, recognition, and the optional rewrite.</summary>
+    public Func<bool> IsDictationActive { get; set; } = () => false;
+
     private readonly Interop.LowLevelKeyboardProc _callback;
     private IntPtr _hook;
     private bool _isHeld;
     /// <summary>The press's own event time, not the moment the hook got to it. See HandleRelease.</summary>
     private uint _pressedAt;
     private bool _startedByTap;
+    /// <summary>Consumes key-up even though key-down cancellation may already have returned idle.</summary>
+    private bool _isCancellingWithEscape;
 
     public HotkeyMonitor()
     {
@@ -137,6 +144,26 @@ public sealed class HotkeyMonitor : IDisposable
         var isDown = message is Interop.WM_KEYDOWN or Interop.WM_SYSKEYDOWN;
         var isUp = message is Interop.WM_KEYUP or Interop.WM_SYSKEYUP;
 
+        if (info.vkCode == 0x1B) // VK_ESCAPE
+        {
+            if (isUp && _isCancellingWithEscape)
+            {
+                _isCancellingWithEscape = false;
+                return (IntPtr)1;
+            }
+            if (isDown && _isCancellingWithEscape)
+            {
+                // Auto-repeat stays captured, but only the first key-down raises cancellation.
+                return (IntPtr)1;
+            }
+            if (isDown && CancelShortcutPolicy.CapturesEscape(CancelKey, IsDictationActive()))
+            {
+                _isCancellingWithEscape = true;
+                Cancelled?.Invoke();
+                return (IntPtr)1;
+            }
+        }
+
         var isSecondary = SecondaryKey is { } secondary && info.vkCode == VirtualKey(secondary);
         if (info.vkCode == VirtualKey(Key) || isSecondary)
         {
@@ -153,11 +180,6 @@ public sealed class HotkeyMonitor : IDisposable
                 _isHeld = false;
                 HandleRelease(info.time);
             }
-        }
-        else if (isDown && info.vkCode == 0x1B && IsRecording())
-        {
-            // Escape aborts a recording in flight without inserting anything.
-            Cancelled?.Invoke();
         }
         else if (isDown)
         {
@@ -178,7 +200,7 @@ public sealed class HotkeyMonitor : IDisposable
             }
         }
 
-        // Never swallow the key: the trigger keeps working as an ordinary modifier.
+        // Every event except an active, configured cancellation is passed through unchanged.
         return Interop.CallNextHookEx(_hook, nCode, wParam, lParam);
     }
 

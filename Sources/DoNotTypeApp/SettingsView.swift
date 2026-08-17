@@ -451,11 +451,18 @@ private struct GeneralTab: View {
                         Text(mode.label).tag(mode)
                     }
                 }
+                Picker("Cancel shortcut", selection: $model.cancelShortcut) {
+                    ForEach(CancelShortcut.allCases, id: \.self) { shortcut in
+                        Text(shortcut.label).tag(shortcut)
+                    }
+                }
                 Text(
-                    model.hotkeyMode == .automatic
-                        ? "A quick tap starts recording and a second tap ends it; holding the key "
-                            + "past a moment records only while held. Escape cancels."
-                        : "Escape cancels a recording without inserting anything."
+                    "A quick tap starts recording and a second tap ends it; holding the key past "
+                        + "a moment records only while held. "
+                        + (model.cancelShortcut == .escape
+                            ? "Escape cancels recording or transcription only while one is active; "
+                                + "at all other times it belongs to the app you are using."
+                            : "No key is intercepted to cancel an active dictation.")
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)

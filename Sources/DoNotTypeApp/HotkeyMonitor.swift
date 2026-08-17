@@ -52,6 +52,7 @@ final class HotkeyMonitor {
 
     var trigger: Trigger = .rightCommand
     var mode: Mode = .automatic
+    var cancelShortcut: CancelShortcut = .escape
 
     /// Optional second key bound to a rewrite style.
     ///
@@ -65,7 +66,7 @@ final class HotkeyMonitor {
 
     var onPress: (() -> Void)?
     var onRelease: (() -> Void)?
-    /// Fires when the user taps Escape while recording.
+    /// Fires when the configured cancel key is pressed during recording or transcription.
     var onCancel: (() -> Void)?
 
     /// Extra chorded shortcuts that work whether or not a recording is in flight.
@@ -75,6 +76,8 @@ final class HotkeyMonitor {
     var chords: [(keyCode: CGKeyCode, flags: CGEventFlags, action: () -> Void)] = []
     /// Set by the owner so tap-toggle knows whether a tap should start or stop.
     var isRecording: () -> Bool = { false }
+    /// Unlike `isRecording`, this includes the request and optional rewrite after key-up.
+    var isDictationActive: () -> Bool = { false }
 
     private let log = Log("hotkey")
     private var tap: CFMachPort?
@@ -87,6 +90,8 @@ final class HotkeyMonitor {
     private var startedByTap = false
     /// Which key began the in-flight recording, so release routes to the same style.
     private var usedSecondary = false
+    /// Keeps the key-up swallowed after key-down cancellation has already returned the app idle.
+    private var isCancellingWithEscape = false
     private(set) var restartCount = 0
 
     func start() -> Bool {
@@ -114,20 +119,23 @@ final class HotkeyMonitor {
     private func installTap() -> Bool {
         let mask =
             (1 << CGEventType.flagsChanged.rawValue) | (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.keyUp.rawValue)
 
-        // Listen-only: we observe the modifier without consuming it, so Right ⌘ keeps working as
-        // a modifier for anything else the user presses.
+        // An active tap is required to consume Escape. Every other event is returned unchanged, so
+        // Right ⌘ keeps working as a modifier and Escape remains the foreground app's key at idle.
         guard
             let tap = CGEvent.tapCreate(
                 tap: .cgSessionEventTap,
                 place: .headInsertEventTap,
-                options: .listenOnly,
+                options: .defaultTap,
                 eventsOfInterest: CGEventMask(mask),
                 callback: { _, type, event, refcon in
                     guard let refcon else { return Unmanaged.passUnretained(event) }
                     let monitor = Unmanaged<HotkeyMonitor>.fromOpaque(refcon).takeUnretainedValue()
-                    MainActor.assumeIsolated { monitor.handle(type: type, event: event) }
-                    return Unmanaged.passUnretained(event)
+                    let consumed = MainActor.assumeIsolated {
+                        monitor.handle(type: type, event: event)
+                    }
+                    return consumed ? nil : Unmanaged.passUnretained(event)
                 },
                 userInfo: Unmanaged.passUnretained(self).toOpaque()
             )
@@ -143,7 +151,8 @@ final class HotkeyMonitor {
         return true
     }
 
-    private func handle(type: CGEventType, event: CGEvent) {
+    /// Returns true only for the configured cancellation keystroke while dictation is active.
+    private func handle(type: CGEventType, event: CGEvent) -> Bool {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             // Re-enable immediately rather than waiting for the next watchdog tick.
@@ -152,11 +161,11 @@ final class HotkeyMonitor {
         case .flagsChanged:
             let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
             let isSecondary = secondaryTrigger.map { $0.keyCode == keyCode } ?? false
-            guard keyCode == trigger.keyCode || isSecondary else { return }
+            guard keyCode == trigger.keyCode || isSecondary else { return false }
 
             let active = isSecondary ? secondaryTrigger! : trigger
             let down = event.flags.contains(active.flag)
-            guard down != isHeld else { return }
+            guard down != isHeld else { return false }
             isHeld = down
             if down {
                 usedSecondary = isSecondary
@@ -165,24 +174,38 @@ final class HotkeyMonitor {
                 handleRelease(at: event.timestamp)
             }
 
-        case .keyDown:
+        case .keyDown, .keyUp:
             let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
 
-            // Escape aborts a recording in flight without inserting anything.
-            if isRecording(), keyCode == 53 {
-                onCancel?()
-                return
+            if keyCode == 53 {  // kVK_Escape
+                if type == .keyUp, isCancellingWithEscape {
+                    isCancellingWithEscape = false
+                    return true
+                }
+                if type == .keyDown {
+                    // Repeated key-downs remain swallowed but only the first one cancels.
+                    if isCancellingWithEscape { return true }
+                    if cancelShortcut.capturesEscape(
+                        whileDictationIsActive: isDictationActive())
+                    {
+                        isCancellingWithEscape = true
+                        onCancel?()
+                        return true
+                    }
+                }
             }
 
+            guard type == .keyDown else { return false }
             let flags = event.flags.intersection([.maskCommand, .maskShift, .maskControl, .maskAlternate])
             for chord in chords where chord.keyCode == keyCode && flags == chord.flags {
                 chord.action()
-                return
+                return false
             }
 
         default:
             break
         }
+        return false
     }
 
     // MARK: - Press semantics

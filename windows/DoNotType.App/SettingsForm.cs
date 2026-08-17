@@ -35,6 +35,7 @@ public sealed class SettingsForm : Form
     private readonly NumericUpDown _fallbackAfter = new() { Minimum = 1, Maximum = 120, Width = 70 };
     private readonly Label _fallbackNote = new() { AutoSize = true, MaximumSize = new Size(430, 0) };
     private readonly ComboBox _trigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _cancelShortcut = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _secondTrigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _secondStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _microphone = new() { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -130,10 +131,13 @@ public sealed class SettingsForm : Form
         layout.Controls.Add(Heading("Dictation"));
         layout.Controls.Add(Labelled("Key", _trigger));
         layout.Controls.Add(Labelled("Behaviour", _mode));
+        layout.Controls.Add(Labelled("Cancel shortcut", _cancelShortcut));
         layout.Controls.Add(Labelled("Fidelity", _fidelity));
         layout.Controls.Add(Caption(
             "A quick tap starts recording and a second tap ends it; holding the key past a moment "
-            + "records only while held. Escape cancels. Even Tidy only changes typography — none "
+            + "records only while held. Escape can cancel recording or transcription, but is "
+            + "intercepted only while one is active; choose None to disable it. Even Tidy only "
+            + "changes typography — none "
             + "of the fidelity settings reword you."));
 
         // Its own heading, not two more rows under Dictation. "Second key" names the mechanism and
@@ -700,6 +704,9 @@ public sealed class SettingsForm : Form
         }
         _trigger.SelectedIndex = (int)_settings.Trigger;
 
+        _cancelShortcut.Items.AddRange(["Escape", "None"]);
+        _cancelShortcut.SelectedIndex = (int)_settings.CancelShortcut;
+
         _secondTrigger.Items.Add("None");
         foreach (var trigger in Enum.GetValues<HotkeyMonitor.Trigger>())
         {
@@ -770,6 +777,7 @@ public sealed class SettingsForm : Form
         }
         _model.Text = _settings.ModelFor(_settings.Provider);
         _settings.Trigger = (HotkeyMonitor.Trigger)_trigger.SelectedIndex;
+        _settings.CancelShortcut = (CancelShortcut)_cancelShortcut.SelectedIndex;
         _settings.SecondaryTrigger = _secondTrigger.SelectedIndex > 0
             ? (HotkeyMonitor.Trigger)(_secondTrigger.SelectedIndex - 1)
             : null;

@@ -32,6 +32,7 @@ final class DictationController {
     private let insertions = InsertionTracker()
 
     private var levelTimer: Timer?
+    private var transcriptionTask: Task<Void, Never>?
     /// The in-flight dictation's id, from the key press to the insertion.
     private var pendingID = UUID()
 
@@ -64,14 +65,19 @@ final class DictationController {
         }
         hotkey.trigger = Settings.shared.trigger
         hotkey.mode = Settings.shared.hotkeyMode
+        hotkey.cancelShortcut = Settings.shared.cancelShortcut
         hotkey.secondaryTrigger = Settings.shared.secondaryTrigger
         hotkey.isRecording = { [weak self] in self?.state == .recording }
+        hotkey.isDictationActive = { [weak self] in
+            guard let self else { return false }
+            return self.state == .recording || self.state == .transcribing
+        }
         hotkey.onPressStyled = { [weak self] isStyled in
             self?.pendingStyle = isStyled ? Settings.shared.secondaryStyle : .verbatim
         }
         hotkey.onPress = { [weak self] in self?.beginRecording() }
         hotkey.onRelease = { [weak self] in self?.finishRecording() }
-        hotkey.onCancel = { [weak self] in self?.cancelRecording() }
+        hotkey.onCancel = { [weak self] in self?.cancelActiveDictation() }
 
         // ⌘⇧Z undoes the last insertion; ⌘⌥Z swaps a rewrite back to what was actually said.
         // Both are cheap only because the verbatim transcript is always kept.
@@ -88,6 +94,7 @@ final class DictationController {
 
     func stop() {
         hotkey.stop()
+        transcriptionTask?.cancel()
         levelTimer?.invalidate()
     }
 
@@ -105,6 +112,7 @@ final class DictationController {
         hotkey.stop()
         hotkey.trigger = Settings.shared.trigger
         hotkey.mode = Settings.shared.hotkeyMode
+        hotkey.cancelShortcut = Settings.shared.cancelShortcut
         hotkey.secondaryTrigger = Settings.shared.secondaryTrigger
         _ = hotkey.start()
     }
@@ -196,6 +204,20 @@ final class DictationController {
         state = .idle
     }
 
+    private func cancelActiveDictation() {
+        switch state {
+        case .recording:
+            cancelRecording()
+        case .transcribing:
+            log.info("transcription cancellation requested", ["dictation": Self.short(pendingID)])
+            grounding.cancel()
+            transcriptionTask?.cancel()
+            overlay.hide()
+        case .idle, .failed:
+            break
+        }
+    }
+
     private func startLevelUpdates() {
         levelTimer?.invalidate()
         levelTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) {
@@ -268,10 +290,17 @@ final class DictationController {
         // Started here, not at the request: the wait the user experiences includes the screen
         // context read and any fallback, and a figure that skipped those would flatter the app.
         let releasedAt = Date()
-        Task { [weak self] in
+        transcriptionTask = Task { [weak self] in
             guard let self else { return }
+            defer { transcriptionTask = nil }
+            let context = await grounding.finishCapture()
+            guard !Task.isCancelled else {
+                try? FileManager.default.removeItem(at: audio.url)
+                transcriptionCancelled()
+                return
+            }
             await transcribe(
-                audio: audio, context: await grounding.finishCapture(), releasedAt: releasedAt)
+                audio: audio, context: context, releasedAt: releasedAt)
         }
     }
 
@@ -279,6 +308,11 @@ final class DictationController {
         audio: AudioFile, context: ScreenContext?, releasedAt: Date = Date()
     ) async {
         defer { try? FileManager.default.removeItem(at: audio.url) }
+
+        guard !Task.isCancelled else {
+            transcriptionCancelled()
+            return
+        }
 
         let style = pendingStyle
         pendingStyle = .verbatim
@@ -303,7 +337,12 @@ final class DictationController {
 
         // Offline is worth knowing *before* spending fifteen seconds on a timeout: the dictation
         // goes straight to the queue and the user is told it is safe rather than lost.
-        if await !Reachability.shared.isOnline {
+        let isOnline = await Reachability.shared.isOnline
+        guard !Task.isCancelled else {
+            transcriptionCancelled()
+            return
+        }
+        if !isOnline {
             record.status = .pending
             record.errorMessage = "Offline when recorded."
             await store.insert(record, audio: try? Data(contentsOf: audio.url))
@@ -340,6 +379,7 @@ final class DictationController {
                 }
             }
             let result = outcome.result
+            try Task.checkCancellation()
             // Recorded as the backend that actually answered, not the one that was asked. A
             // history row claiming Gemini for a transcript xAI produced would make the whole
             // history untrustworthy for exactly the comparisons it exists to support.
@@ -398,6 +438,7 @@ final class DictationController {
                     let rewriter = TextStage.service(instruction: instruction)
                         ?? coordinator.service
                     let styled = try await rewriter.rewrite(text, instruction: instruction)
+                    try Task.checkCancellation()
                     record.styledText = styled
                     record.style = style
                     delivered = styled
@@ -408,7 +449,10 @@ final class DictationController {
                             "chars": "\(styled.count)", "from": "\(text.count)",
                             "ms": LogClock.ms(Date().timeIntervalSince(rewriteStart)),
                         ])
+                } catch is CancellationError {
+                    throw CancellationError()
                 } catch {
+                    if Task.isCancelled { throw CancellationError() }
                     rewriteFailed = true
                     // The words survive either way, so this is a warning rather than a failure —
                     // but it used to be `try?`, which meant a rewrite that failed every time was
@@ -423,10 +467,12 @@ final class DictationController {
                 record.rewriteSeconds = Date().timeIntervalSince(rewriteStart)
             }
 
+            try Task.checkCancellation()
             record.latencySeconds = Date().timeIntervalSince(releasedAt)
             await store.insert(record, audio: settings.keepAudio ? try? Data(contentsOf: audio.url) : nil)
             onHistoryChange?()
 
+            try Task.checkCancellation()
             state = .idle
 
             // The words exist by now; only the last step cannot happen. So they go on the
@@ -486,7 +532,13 @@ final class DictationController {
             // Confirm rather than vanish: a silent disappearance leaves the user checking whether
             // anything happened, especially when the target app scrolled.
             overlay.confirmInserted(characters: delivered.count, rewriteFailed: rewriteFailed)
+        } catch is CancellationError {
+            transcriptionCancelled()
         } catch {
+            if Task.isCancelled {
+                transcriptionCancelled()
+                return
+            }
             let advice = FailureAdvice.describe(
                 error, isOnline: await Reachability.shared.isOnline)
             let detail = FailureAdvice.detail(of: error)
@@ -512,6 +564,13 @@ final class DictationController {
 
             fail(advice.message)
         }
+    }
+
+    private func transcriptionCancelled() {
+        pendingStyle = .verbatim
+        log.info("transcription cancelled", ["dictation": Self.short(pendingID)])
+        overlay.hide()
+        state = .idle
     }
 
     // MARK: - Undo and re-paste

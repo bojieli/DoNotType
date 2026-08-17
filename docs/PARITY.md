@@ -13,7 +13,7 @@ reachable by a user of that client, not merely present in its core library.
 |---|---|---|---|---|
 | Hold a key and speak | ✅ Right ⌘ | ✅ Right Ctrl | ✅ keyboard button | ✅ app button |
 | Tap to toggle, hold to talk | ✅ | ✅ | ✅ | ✅ |
-| Cancel mid-recording | ✅ Escape | ✅ Escape | ✅ drag off the button | ✅ |
+| Cancel recording or transcription | ✅ Escape / None | ✅ Escape / None | ✅ drag off the button ¹⁴ | ✅ ¹⁴ |
 | Push-to-talk / hands-free as a *setting* | ✅ | ✅ | — ¹ | — ¹ |
 | Rewrite a dictation | ✅ second hotkey | ✅ second hotkey | ✅ style chips | ✅ style picker |
 | Says why a rewrite is unavailable | ✅ | ✅ | ✅ | ✅ |
@@ -49,6 +49,10 @@ summary of ten seconds of speech is not that. Summaries are offered where a reco
 enough for one to mean something: the file transcription screen and `dnt transcribe --mode
 summary:brief`. The wall is in the type system rather than in a convention — the live path is typed
 `RewriteStyle`, which has no summary case, so no client can reach one by accident.
+
+¹⁴ The mobile gesture cancels capture before it is sent. Desktop Escape also cancels an in-flight
+request or rewrite, and is intercepted only during that active dictation; at idle it remains the
+foreground application's key.
 
 ## Screen grounding
 

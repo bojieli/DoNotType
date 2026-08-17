@@ -80,7 +80,13 @@ final class GroundingCoordinator {
             task?.cancel()
             return nil
         }
-        guard let task, var merged = await task.value else { return snapshot }
+        guard let task else { return snapshot }
+        let captured = await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        guard !Task.isCancelled, var merged = captured else { return snapshot }
 
         merged.selectedText = snapshot.selectedText ?? merged.selectedText
         merged.role = snapshot.role ?? merged.role
