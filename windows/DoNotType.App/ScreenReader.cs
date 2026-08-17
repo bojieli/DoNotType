@@ -21,6 +21,9 @@ public sealed class ScreenReader
     public sealed record EditableSnapshot(
         int ProcessId, string RuntimeId, string Value, int SelectionStart, int SelectionLength);
 
+    /// <summary>The exact focused editable element, without reading any of its text.</summary>
+    public sealed record FocusIdentity(int ProcessId, string RuntimeId);
+
     private const int VisibleTextChars = 10_000;
     private const int CaretWindowChars = 1_000;
     private const int MaxElements = 1_500;
@@ -118,6 +121,27 @@ public sealed class ScreenReader
                 focused.Current.ProcessId,
                 string.Join('.', focused.GetRuntimeId()),
                 value, start, length);
+        }
+        catch (Exception e) when (e is ElementNotAvailableException or COMException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Cheap enough to capture at hotkey-down and after insertion. The two identities must match
+    /// before finish-and-send is allowed to emit its delayed Enter key.
+    /// </summary>
+    public FocusIdentity? CaptureFocusIdentity()
+    {
+        try
+        {
+            var focused = AutomationElement.FocusedElement;
+            if (focused is null || focused.Current.IsPassword) return null;
+            if (focused.Current.ControlType != ControlType.Edit
+                && focused.Current.ControlType != ControlType.Document) return null;
+            return new FocusIdentity(
+                focused.Current.ProcessId, string.Join('.', focused.GetRuntimeId()));
         }
         catch (Exception e) when (e is ElementNotAvailableException or COMException or InvalidOperationException)
         {

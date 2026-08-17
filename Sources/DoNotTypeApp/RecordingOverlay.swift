@@ -18,8 +18,9 @@ final class RecordingOverlay {
         state.append(levels)
     }
 
-    func update(phase: OverlayState.Phase) {
+    func update(phase: OverlayState.Phase, hint: String? = nil) {
         state.phase = phase
+        if let hint { state.hint = hint }
     }
 
     func show(phase: OverlayState.Phase, hint: String) {
@@ -42,9 +43,13 @@ final class RecordingOverlay {
     ///   happen. Worth saying: somebody who held the rewrite key and got their own words back
     ///   would otherwise have to notice, and the usual cause is a backend that cannot rewrite at
     ///   all rather than anything they did.
-    func confirmInserted(characters: Int, rewriteFailed: Bool = false) {
-        update(phase: .inserted(characters, rewriteFailed: rewriteFailed))
-        hide(after: rewriteFailed ? .seconds(3) : .milliseconds(900))
+    func confirmInserted(
+        characters: Int, rewriteFailed: Bool = false,
+        submission: OverlayState.Submission = .notRequested
+    ) {
+        update(phase: .inserted(characters, rewriteFailed: rewriteFailed, submission: submission))
+        let needsReading = rewriteFailed || submission.isSkipped
+        hide(after: needsReading ? .seconds(3) : .milliseconds(900))
     }
 
     func hide(after delay: Duration = .zero) {
@@ -117,6 +122,17 @@ final class RecordingOverlay {
 @MainActor
 @Observable
 final class OverlayState {
+    enum Submission: Equatable {
+        case notRequested
+        case sent
+        case skippedFocusMoved
+        case skippedUnavailable
+
+        var isSkipped: Bool {
+            self == .skippedFocusMoved || self == .skippedUnavailable
+        }
+    }
+
     enum Phase: Equatable {
         case recording
         case transcribing
@@ -131,7 +147,7 @@ final class OverlayState {
         case deriving(RewriteStyle)
         /// Brief confirmation that words were inserted, so success is visible rather than a
         /// silent disappearance the user has to infer from the text appearing.
-        case inserted(Int, rewriteFailed: Bool)
+        case inserted(Int, rewriteFailed: Bool, submission: Submission)
         case learned(String)
         case failed(String)
     }
@@ -186,7 +202,7 @@ private struct OverlayView: View {
                     .foregroundStyle(.white.opacity(0.75))
             case .transcribing:
                 ThinkingDots()
-                Text("Transcribing…")
+                Text("Transcribing…" + progressHint)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
             case .transcribingChunk(let done, let total):
@@ -196,23 +212,21 @@ private struct OverlayView: View {
                     .frame(width: LevelMeter.width)
                     // A determinate bar here, not the dots: with several parts in flight there is
                     // real progress to report, and reporting it beats implying it.
-                Text("Transcribing… part \(min(done + 1, total)) of \(total)")
+                Text("Transcribing… part \(min(done + 1, total)) of \(total)" + progressHint)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
                     .monospacedDigit()
             case .deriving(let style):
                 ThinkingDots()
-                Text(TranscriptMode.rewrite(style).progressLabel)
+                Text(TranscriptMode.rewrite(style).progressLabel + progressHint)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
-            case .inserted(let characters, let rewriteFailed):
+            case .inserted(let characters, let rewriteFailed, let submission):
                 Image(systemName: rewriteFailed
                     ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
                     .foregroundStyle(rewriteFailed ? .orange : .green)
                     .transition(.scale.combined(with: .opacity))
-                Text(
-                    "Inserted \(characters) character\(characters == 1 ? "" : "s")"
-                        + (rewriteFailed ? " — not rewritten" : ""))
+                Text(insertedMessage(characters, rewriteFailed: rewriteFailed, submission: submission))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
             case .learned(let message):
@@ -241,6 +255,22 @@ private struct OverlayView: View {
             Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 1)
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var progressHint: String { state.hint.isEmpty ? "" : " · \(state.hint)" }
+
+    private func insertedMessage(
+        _ characters: Int, rewriteFailed: Bool, submission: OverlayState.Submission
+    ) -> String {
+        var message = "Inserted \(characters) character\(characters == 1 ? "" : "s")"
+        switch submission {
+        case .notRequested: break
+        case .sent: message += " and sent"
+        case .skippedFocusMoved: message += " — not sent; focus moved"
+        case .skippedUnavailable: message += " — not sent; key unavailable"
+        }
+        if rewriteFailed { message += " — not rewritten" }
+        return message
     }
 }
 

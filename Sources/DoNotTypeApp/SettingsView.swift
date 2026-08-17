@@ -456,6 +456,11 @@ private struct GeneralTab: View {
                         Text(shortcut.label).tag(shortcut)
                     }
                 }
+                Picker("Finish and send", selection: $model.finishAndSendAction) {
+                    Text("Off").tag(FinishAndSendAction.disabled)
+                    Text("Return").tag(FinishAndSendAction.returnKey)
+                    Text("⌘ Return").tag(FinishAndSendAction.modifiedReturn)
+                }
                 Text(
                     "A quick tap starts recording and a second tap ends it; holding the key past "
                         + "a moment records only while held. "
@@ -463,6 +468,11 @@ private struct GeneralTab: View {
                             ? "Escape cancels recording or transcription only while one is active; "
                                 + "at all other times it belongs to the app you are using."
                             : "No key is intercepted to cancel an active dictation.")
+                        + (model.finishAndSendAction == .disabled
+                            ? " Finish and send is off."
+                            : " Press Return while recording to stop; after the text is inserted "
+                                + "DoNotType sends "
+                                + (model.finishAndSendAction == .returnKey ? "Return." : "⌘ Return."))
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)

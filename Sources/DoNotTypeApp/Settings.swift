@@ -25,6 +25,7 @@ final class Settings {
         static let retention = "retention"
         static let hotkeyMode = "hotkeyMode"
         static let cancelShortcut = "cancelShortcut"
+        static let finishAndSendAction = "finishAndSendAction"
         static let secondaryTrigger = "secondaryTrigger"
         static let secondaryStyle = "secondaryStyle"
         static let microphoneUID = "microphoneUID"
@@ -70,6 +71,8 @@ final class Settings {
             Key.retention: RetentionPolicy.forever.rawValue,
             Key.hotkeyMode: HotkeyMonitor.Mode.automatic.rawValue,
             Key.cancelShortcut: CancelShortcut.escape.rawValue,
+            // Finishing a message can send it to another person, so it must be a deliberate opt-in.
+            Key.finishAndSendAction: FinishAndSendAction.disabled.rawValue,
             Key.secondaryStyle: RewriteStyle.formal.rawValue,
             // Audible boundaries make it clear when capture has begun and ended, even when the
             // recording overlay is behind another window. Users can still turn them off below.
@@ -194,6 +197,14 @@ final class Settings {
                 ?? .escape
         }
         set { defaults.set(newValue.rawValue, forKey: Key.cancelShortcut) }
+    }
+
+    var finishAndSendAction: FinishAndSendAction {
+        get {
+            FinishAndSendAction(rawValue: defaults.string(forKey: Key.finishAndSendAction) ?? "")
+                ?? .disabled
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.finishAndSendAction) }
     }
 
     /// How long transcripts are kept. Note that a failed dictation keeps its audio regardless,

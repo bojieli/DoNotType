@@ -21,6 +21,9 @@ public sealed class AppSettings
     public HotkeyMonitor.Trigger Trigger { get; set; } = HotkeyMonitor.Trigger.RightControl;
     public HotkeyMonitor.Mode HotkeyMode { get; set; } = HotkeyMonitor.Mode.Automatic;
     public CancelShortcut CancelShortcut { get; set; } = DoNotType.Core.CancelShortcut.Escape;
+    /// <summary>Off by default because the final key can send text to another person.</summary>
+    public DoNotType.Core.FinishAndSendAction FinishAndSendAction { get; set; } =
+        DoNotType.Core.FinishAndSendAction.Disabled;
 
     /// <summary>
     /// A second key that dictates and then rewrites, or null for one key and verbatim only.

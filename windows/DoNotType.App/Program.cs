@@ -43,9 +43,11 @@ internal sealed class TrayApplication : ApplicationContext
         // Only when there is more than one part. A single-chunk dictation is the ordinary case, and
         // "part 1 of 1" underneath a label that already says Transcribing is noise.
         _controller.ChunkProgress += (done, total) => _overlay.BeginInvoke(() =>
-            _overlay.SetPhase(
-                RecordingOverlay.Phase.Transcribing,
-                total > 1 ? $"part {Math.Min(done + 1, total)} of {total}" : null));
+        {
+            var progress = total > 1 ? $"part {Math.Min(done + 1, total)} of {total}" : null;
+            if (_controller.WillSubmit) progress = JoinHint(progress, "will send");
+            _overlay.SetPhase(RecordingOverlay.Phase.Transcribing, progress);
+        });
         _controller.HistoryChanged += () => BeginInvokeOnTray(RebuildMenu);
         _controller.DictionaryLearned += terms => BeginInvokeOnTray(() =>
         {
@@ -63,11 +65,24 @@ internal sealed class TrayApplication : ApplicationContext
         {
             var plural = insertion.Characters == 1 ? string.Empty : "s";
             var suffix = insertion.RewriteFailed ? " — not rewritten" : string.Empty;
+            var message = insertion.Submission switch
+            {
+                DictationController.Submission.Sent =>
+                    $"Inserted {insertion.Characters} character{plural} and sent",
+                DictationController.Submission.SkippedFocusMoved =>
+                    $"Inserted {insertion.Characters} character{plural} — not sent; focus moved",
+                DictationController.Submission.SkippedUnavailable =>
+                    $"Inserted {insertion.Characters} character{plural} — not sent; key unavailable",
+                _ => $"Inserted {insertion.Characters} character{plural}",
+            };
             _overlay.Show(
                 RecordingOverlay.Phase.Inserted,
-                $"Inserted {insertion.Characters} character{plural}{suffix}");
+                message + suffix);
             // Longer when there is something to read, which a confirmation otherwise is not.
-            _ = HideOverlayAfter(TimeSpan.FromSeconds(insertion.RewriteFailed ? 3.5 : 1.6));
+            var needsReading = insertion.RewriteFailed
+                || insertion.Submission is DictationController.Submission.SkippedFocusMoved
+                    or DictationController.Submission.SkippedUnavailable;
+            _ = HideOverlayAfter(TimeSpan.FromSeconds(needsReading ? 3.5 : 1.6));
         });
 
         _tray = new NotifyIcon
@@ -150,7 +165,9 @@ internal sealed class TrayApplication : ApplicationContext
                     break;
                 case DictationController.State.Transcribing:
                     _levelTimer.Stop();
-                    _overlay.SetPhase(RecordingOverlay.Phase.Transcribing, string.Empty);
+                    _overlay.SetPhase(
+                        RecordingOverlay.Phase.Transcribing,
+                        _controller.WillSubmit ? "will send" : string.Empty);
                     break;
                 case DictationController.State.Deriving:
                     // The style's own word — "Tightening…", "Making bullets…" — because somebody
@@ -158,7 +175,9 @@ internal sealed class TrayApplication : ApplicationContext
                     _levelTimer.Stop();
                     _overlay.SetPhase(
                         RecordingOverlay.Phase.Deriving,
-                        TranscriptMode.Rewrite(_settings.SecondaryStyle).ProgressLabel);
+                        JoinHint(
+                            TranscriptMode.Rewrite(_settings.SecondaryStyle).ProgressLabel,
+                            _controller.WillSubmit ? "will send" : null));
                     break;
                 case DictationController.State.Failed:
                     _levelTimer.Stop();
@@ -178,12 +197,20 @@ internal sealed class TrayApplication : ApplicationContext
         });
     }
 
-    private string HintForMode() => _settings.HotkeyMode switch
+    private string HintForMode()
     {
-        HotkeyMonitor.Mode.PushToTalk => "Release to send",
-        HotkeyMonitor.Mode.HandsFree => "Tap again to send",
-        _ => "Release or tap to send",
-    };
+        var ordinary = _settings.HotkeyMode switch
+        {
+            HotkeyMonitor.Mode.PushToTalk => "Release to send",
+            HotkeyMonitor.Mode.HandsFree => "Tap again to send",
+            _ => "Release or tap to send",
+        };
+        return _settings.FinishAndSendAction == FinishAndSendAction.Disabled
+            ? ordinary : ordinary + " · Enter to send";
+    }
+
+    private static string JoinHint(string? first, string? second) =>
+        string.Join(" · ", new[] { first, second }.Where(value => !string.IsNullOrEmpty(value)));
 
     private async Task HideOverlayAfter(TimeSpan delay)
     {

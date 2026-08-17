@@ -36,15 +36,25 @@ hotkey down ──┬─ start recording
               ├─ phase 2 capture (accessibility walk, 500 ms cap)
               └─ screenshot if the tree came back thin
                         │
-hotkey up  ────┬─ finish recording, encode already done
+finish input ──┬─ trigger release/tap, or recording-only Return when opted in
+               ├─ finish recording, encode already done
                ├─ upload finished file, or fall back to inline
                ├─ transcribe (context parts first, audio last)
-               └─ paste, confirm, store
+               ├─ paste, confirm, store
+               └─ if Return latched the intent, verify exact field and submit
 ```
 
 Both "not awaited" steps exist for the same reason: everything expensive should happen while the
 user is still talking, because that time is free. What they feel is only what happens after they
 let go.
+
+Finish-and-send carries an extra identity beside the ordinary process-level paste guard: process ID
+plus the focused accessibility/UI Automation element token. Return/Enter is consumed only while
+recording and latches the configured output action before recognition begins. After paste settles,
+the exact field is read again; only a match may receive Return/Enter, `⌘ Return`, or `Ctrl+Enter`.
+The option defaults off, and cancellation, failure, manual-paste fallback, or an identity that could
+not be read has no submit path. For both configured Escape and finish-and-send Return/Enter, the
+physical key-down, every repeat, and the matching key-up are consumed; none reaches the target app.
 
 ## Decisions that were measured
 

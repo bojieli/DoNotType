@@ -18,6 +18,7 @@ internal static partial class Interop
     internal const int WM_KEYUP = 0x0101;
     internal const int WM_SYSKEYDOWN = 0x0104;
     internal const int WM_SYSKEYUP = 0x0105;
+    internal const uint LLKHF_INJECTED = 0x00000010;
 
     internal delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -55,6 +56,7 @@ internal static partial class Interop
     internal const ushort VK_Z = 0x5A;
     internal const ushort VK_SHIFT = 0x10;
     internal const ushort VK_MENU = 0x12;
+    internal const ushort VK_RETURN = 0x0D;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct INPUT

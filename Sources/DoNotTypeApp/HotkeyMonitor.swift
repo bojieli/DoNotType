@@ -53,6 +53,7 @@ final class HotkeyMonitor {
     var trigger: Trigger = .rightCommand
     var mode: Mode = .automatic
     var cancelShortcut: CancelShortcut = .escape
+    var finishAndSendAction: FinishAndSendAction = .disabled
 
     /// Optional second key bound to a rewrite style.
     ///
@@ -68,6 +69,8 @@ final class HotkeyMonitor {
     var onRelease: (() -> Void)?
     /// Fires when the configured cancel key is pressed during recording or transcription.
     var onCancel: (() -> Void)?
+    /// Fires when Return ends a recording that should be submitted after insertion.
+    var onFinishAndSend: ((FinishAndSendAction) -> Void)?
 
     /// Extra chorded shortcuts that work whether or not a recording is in flight.
     ///
@@ -92,6 +95,8 @@ final class HotkeyMonitor {
     private var usedSecondary = false
     /// Keeps the key-up swallowed after key-down cancellation has already returned the app idle.
     private var isCancellingWithEscape = false
+    /// Keeps Return's key-up swallowed after its key-down has moved recording to transcription.
+    private var isFinishingWithReturn = false
     private(set) var restartCount = 0
 
     func start() -> Bool {
@@ -121,8 +126,9 @@ final class HotkeyMonitor {
             (1 << CGEventType.flagsChanged.rawValue) | (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
 
-        // An active tap is required to consume Escape. Every other event is returned unchanged, so
-        // Right ⌘ keeps working as a modifier and Escape remains the foreground app's key at idle.
+        // An active tap is required to consume the configured recording-only keys. Every other
+        // event is returned unchanged, so Right ⌘ keeps working as a modifier and Return/Escape
+        // remain the foreground app's keys at idle.
         guard
             let tap = CGEvent.tapCreate(
                 tap: .cgSessionEventTap,
@@ -151,7 +157,7 @@ final class HotkeyMonitor {
         return true
     }
 
-    /// Returns true only for the configured cancellation keystroke while dictation is active.
+    /// Returns true only for a configured recording-only keystroke in its active state.
     private func handle(type: CGEventType, event: CGEvent) -> Bool {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
@@ -175,7 +181,30 @@ final class HotkeyMonitor {
             }
 
         case .keyDown, .keyUp:
+            // Synthetic paste/submit events from this process are output, never controls. Without
+            // this, a submit racing a newly started recording could finish that new recording.
+            if event.getIntegerValueField(.eventSourceUnixProcessID)
+                == Int64(ProcessInfo.processInfo.processIdentifier)
+            {
+                return false
+            }
             let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+
+            if keyCode == 36 || keyCode == 76 {  // kVK_Return or kVK_ANSI_KeypadEnter
+                if type == .keyUp, isFinishingWithReturn {
+                    isFinishingWithReturn = false
+                    return true
+                }
+                if type == .keyDown {
+                    // Repeats stay swallowed, but only the first key-down finishes the recording.
+                    if isFinishingWithReturn { return true }
+                    if finishAndSendAction.capturesReturn(whileRecording: isRecording()) {
+                        isFinishingWithReturn = true
+                        onFinishAndSend?(finishAndSendAction)
+                        return true
+                    }
+                }
+            }
 
             if keyCode == 53 {  // kVK_Escape
                 if type == .keyUp, isCancellingWithEscape {

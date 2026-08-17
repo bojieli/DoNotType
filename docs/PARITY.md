@@ -14,6 +14,7 @@ reachable by a user of that client, not merely present in its core library.
 | Hold a key and speak | ✅ Right ⌘ | ✅ Right Ctrl | ✅ keyboard button | ✅ app button |
 | Tap to toggle, hold to talk | ✅ | ✅ | ✅ | ✅ |
 | Cancel recording or transcription | ✅ Escape / None | ✅ Escape / None | ✅ drag off the button ¹⁴ | ✅ ¹⁴ |
+| Finish recording, insert, and submit | ✅ Return / ⌘Return / Off ¹⁵ | ✅ Enter / Ctrl+Enter / Off ¹⁵ | — ¹⁵ | — ¹⁵ |
 | Push-to-talk / hands-free as a *setting* | ✅ | ✅ | — ¹ | — ¹ |
 | Rewrite a dictation | ✅ second hotkey | ✅ second hotkey | ✅ style chips | ✅ style picker |
 | Says why a rewrite is unavailable | ✅ | ✅ | ✅ | ✅ |
@@ -53,6 +54,11 @@ summary:brief`. The wall is in the type system rather than in a convention — t
 ¹⁴ The mobile gesture cancels capture before it is sent. Desktop Escape also cancels an in-flight
 request or rewrite, and is intercepted only during that active dictation; at idle it remains the
 foreground application's key.
+
+¹⁵ Desktop finish-and-send is opt-in and captures Return/Enter only while recording. It latches the
+request before transcription, inserts first, and emits the configured submit key only if the exact
+field focused at recording start still has focus after insertion. Mobile clients already own their
+foreground recording UI but cannot submit a message in another app, so there is no equivalent key.
 
 ## Screen grounding
 

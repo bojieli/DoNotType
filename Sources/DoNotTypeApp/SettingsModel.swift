@@ -225,6 +225,13 @@ final class SettingsModel {
         }
     }
 
+    var finishAndSendAction: FinishAndSendAction {
+        didSet {
+            Settings.shared.finishAndSendAction = finishAndSendAction
+            onHotkeyChange?()
+        }
+    }
+
     var secondaryTrigger: HotkeyMonitor.Trigger? {
         didSet {
             Settings.shared.secondaryTrigger = secondaryTrigger
@@ -549,6 +556,7 @@ final class SettingsModel {
         trigger = settings.trigger
         hotkeyMode = settings.hotkeyMode
         cancelShortcut = settings.cancelShortcut
+        finishAndSendAction = settings.finishAndSendAction
         secondaryTrigger = settings.secondaryTrigger
         secondaryStyle = settings.secondaryStyle
         microphoneUID = settings.microphoneUID

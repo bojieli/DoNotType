@@ -164,6 +164,12 @@ cannot work.
 that came out too formal, is one key away from being fixed — `⌘⌥Z` swaps in what you actually said.
 A tool that discards the original cannot offer this at all, which is the difference being argued.
 
+**Finish and send is one key, but never a global Return key.** It is off by default. When enabled,
+press Return/Enter while recording: DoNotType stops, transcribes, inserts into the original field,
+then sends Return/Enter or the configured `⌘ Return` / `Ctrl+Enter`. The intent is latched before
+the wait, and the final key is emitted only if that exact field still has focus after insertion.
+At idle and while transcription is running, Return/Enter is never intercepted.
+
 More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Files, modes, and a command line
@@ -268,7 +274,9 @@ for masking before the first request, and anything else key-shaped is caught by 
   varied invisibly would not be worth trusting.
 - **Hotkey** — which key, whether a tap toggles or a hold talks, and an optional **second key
   bound to a rewrite** (formal, concise, bullets) for when you want an email rather than a
-  transcript. Your main key always stays verbatim.
+  transcript. Your main key always stays verbatim. An opt-in **finish and send** action makes
+  Return/Enter during recording insert and then submit with plain Return/Enter, `⌘ Return`, or
+  `Ctrl+Enter`; the key continues to belong to the foreground app whenever recording is not active.
 - **Shortcuts** — undo the last insertion, or revert a rewrite to what you actually said: `⌘⇧Z` /
   `⌘⌥Z` on macOS, `Ctrl+Shift+Z` / `Ctrl+Alt+Z` on Windows. Both are cheap only because the
   verbatim transcript is always kept. Not `Ctrl+Z`, which belongs to whatever you are typing into.

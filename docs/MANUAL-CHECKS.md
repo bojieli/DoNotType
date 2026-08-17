@@ -1,6 +1,6 @@
 # The checks a machine cannot do
 
-Almost everything in this project is tested automatically. Six things are not, and the first four
+Almost everything in this project is tested automatically. Seven things are not, and the first four
 are what a user meets first.
 
 The gap is not laziness. **Microphone capture** needs a microphone and a person making a noise into
@@ -46,6 +46,25 @@ the number you said.
 stopped early), text landing in the wrong window (injection raced the focus), or the number being
 "corrected" to something on screen (the failure this project is about — if you see it, it belongs in
 `eval/nearmiss/` as a case).
+
+### Finish and send
+
+On macOS and Windows, enable each finish-and-send choice in turn. Start recording in a disposable
+chat or test field, speak, and press Return/Enter instead of releasing or tapping the recording key.
+
+- Plain Return/Enter should insert the transcript and submit it once.
+- `⌘ Return` / `Ctrl+Enter` should insert first and emit that exact chord once.
+- Hold Escape and Return/Enter briefly during their active cases. The target must receive neither
+  the physical key-down, its repeats, nor its key-up; only the later configured submit is delivered.
+- Move to another field immediately after insertion: the overlay should say it was not sent, and no
+  Return/Enter should reach the newly focused field.
+- Set the feature to Off, then press Return/Enter during recording; it should behave as the target
+  application's ordinary key and must not stop recording.
+- With recording and transcription both idle, test Return/Enter in another application. All three
+  settings must leave it untouched.
+
+**Passes if** only the recording-time key is captured, a successful path submits exactly once, and
+focus movement, cancellation, transcription failure, or manual-paste fallback never submits.
 
 ## 2. Permissions, from cold
 

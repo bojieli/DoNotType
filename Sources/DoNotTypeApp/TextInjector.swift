@@ -68,6 +68,41 @@ enum TextInjector {
             ["dictation": dictation, "chars": "\(text.count)"])
     }
 
+    /// Sends the configured submit keystroke after insertion has completed and focus was verified.
+    @discardableResult
+    static func submit(using action: FinishAndSendAction, dictation: String = "-") -> Bool {
+        guard action != .disabled else { return false }
+        guard let source = CGEventSource(stateID: .combinedSessionState) else {
+            log.warning("submission key unavailable", ["dictation": dictation])
+            return false
+        }
+
+        // Keep synthetic Return out of our global event tap. In particular, it must not finish a
+        // new recording the user happened to start while the previous paste was settling.
+        source.setLocalEventsFilterDuringSuppressionState(
+            [.permitLocalMouseEvents, .permitSystemDefinedEvents],
+            state: .eventSuppressionStateSuppressionInterval)
+
+        let returnKey: CGKeyCode = 36
+        guard
+            let down = CGEvent(keyboardEventSource: source, virtualKey: returnKey, keyDown: true),
+            let up = CGEvent(keyboardEventSource: source, virtualKey: returnKey, keyDown: false)
+        else {
+            log.warning("submission key unavailable", ["dictation": dictation])
+            return false
+        }
+        let flags: CGEventFlags = action == .modifiedReturn ? .maskCommand : []
+        down.flags = flags
+        up.flags = flags
+        down.post(tap: .cgAnnotatedSessionEventTap)
+        up.post(tap: .cgAnnotatedSessionEventTap)
+
+        log.info(
+            "submission key sent",
+            ["dictation": dictation, "action": action.rawValue])
+        return true
+    }
+
     // MARK: - Private
 
     /// Every type of every item, so non-text clipboard contents survive.

@@ -44,6 +44,8 @@ final class DictationController {
 
     /// Which key started the in-flight recording decides whether it is rewritten.
     private var pendingStyle: RewriteStyle = .verbatim
+    /// Latched only when Return, rather than the normal trigger, finishes this recording.
+    private var pendingFinishAndSend: FinishAndSendAction = .disabled
     private(set) var lastLearnedTerms: [String] = []
 
     /// Who was focused when the key went down, so the transcript cannot be typed somewhere else.
@@ -51,6 +53,8 @@ final class DictationController {
     /// The process id rather than the name: two windows of the same app are the same target, and
     /// two apps with the same name are not something to gamble a paste on.
     private var pendingTarget: (pid: pid_t, name: String)?
+    /// Exact field identity used to keep the delayed submit key in the field recording began in.
+    private var pendingFocusIdentity: AccessibilityReader.FocusedElementIdentity?
 
     init(store: HistoryStore) {
         self.store = store
@@ -68,6 +72,7 @@ final class DictationController {
         hotkey.trigger = Settings.shared.trigger
         hotkey.mode = Settings.shared.hotkeyMode
         hotkey.cancelShortcut = Settings.shared.cancelShortcut
+        hotkey.finishAndSendAction = Settings.shared.finishAndSendAction
         hotkey.secondaryTrigger = Settings.shared.secondaryTrigger
         hotkey.isRecording = { [weak self] in self?.state == .recording }
         hotkey.isDictationActive = { [weak self] in
@@ -80,6 +85,7 @@ final class DictationController {
         hotkey.onPress = { [weak self] in self?.beginRecording() }
         hotkey.onRelease = { [weak self] in self?.finishRecording() }
         hotkey.onCancel = { [weak self] in self?.cancelActiveDictation() }
+        hotkey.onFinishAndSend = { [weak self] action in self?.finishAndSend(action) }
 
         // ⌘⇧Z undoes the last insertion; ⌘⌥Z swaps a rewrite back to what was actually said.
         // Both are cheap only because the verbatim transcript is always kept.
@@ -115,6 +121,7 @@ final class DictationController {
         hotkey.trigger = Settings.shared.trigger
         hotkey.mode = Settings.shared.hotkeyMode
         hotkey.cancelShortcut = Settings.shared.cancelShortcut
+        hotkey.finishAndSendAction = Settings.shared.finishAndSendAction
         hotkey.secondaryTrigger = Settings.shared.secondaryTrigger
         _ = hotkey.start()
     }
@@ -167,10 +174,12 @@ final class DictationController {
             // Without it a log with three dictations in it is three interleaved stories, and the
             // question being asked is always about one of them.
             pendingID = UUID()
+            pendingFinishAndSend = .disabled
             // Where the words are meant to go, decided now rather than when they arrive.
             pendingTarget = NSWorkspace.shared.frontmostApplication.map {
                 ($0.processIdentifier, $0.localizedName ?? "?")
             }
+            pendingFocusIdentity = AccessibilityReader.focusedElementIdentity()
             log.info(
                 "recording started",
                 [
@@ -202,7 +211,7 @@ final class DictationController {
             // mid-sentence instead of eight seconds into a wait. See `ProviderTransport`.
             warmUpConnection()
 
-            overlay.show(phase: .recording, hint: Settings.shared.hotkeyMode.overlayHint)
+            overlay.show(phase: .recording, hint: recordingHint())
             startLevelUpdates()
         } catch {
             recorder.cancel()
@@ -232,6 +241,8 @@ final class DictationController {
         grounding.cancel()
         stopLevelUpdates()
         overlay.hide()
+        pendingFinishAndSend = .disabled
+        pendingFocusIdentity = nil
         state = .idle
     }
 
@@ -248,6 +259,21 @@ final class DictationController {
         case .idle, .failed:
             break
         }
+    }
+
+    private func finishAndSend(_ action: FinishAndSendAction) {
+        guard state == .recording else { return }
+        pendingFinishAndSend = action
+        log.info(
+            "finish-and-send requested",
+            ["dictation": Self.short(pendingID), "action": action.rawValue])
+        finishRecording()
+    }
+
+    private func recordingHint() -> String {
+        let ordinary = Settings.shared.hotkeyMode.overlayHint
+        return Settings.shared.finishAndSendAction == .disabled
+            ? ordinary : ordinary + " · Return to send"
     }
 
     private func startLevelUpdates() {
@@ -336,7 +362,13 @@ final class DictationController {
             ])
 
         state = .transcribing
-        overlay.update(phase: .transcribing)
+        let finishAndSend = pendingFinishAndSend
+        let submitTarget = pendingFocusIdentity
+        let target = pendingTarget
+        let dictationID = pendingID
+        overlay.update(
+            phase: .transcribing,
+            hint: finishAndSend == .disabled ? "" : "will send")
         // Started here, not at the request: the wait the user experiences includes the screen
         // context read and any fallback, and a figure that skipped those would flatter the app.
         let releasedAt = Date()
@@ -356,7 +388,9 @@ final class DictationController {
                 }
                 if let session = pipeline?.session { await session.setContext(context) }
                 await transcribe(
-                    audio: audio, context: context, releasedAt: releasedAt, livePipeline: pipeline)
+                    audio: audio, context: context, releasedAt: releasedAt, livePipeline: pipeline,
+                    dictationID: dictationID, target: target, finishAndSend: finishAndSend,
+                    submitTarget: submitTarget)
             } onCancel: {
                 contextTask?.cancel()
                 pipeline?.cancel()
@@ -366,7 +400,9 @@ final class DictationController {
 
     private func transcribe(
         audio: AudioFile, context: ScreenContext?, releasedAt: Date = Date(),
-        livePipeline: LiveAudioPipeline? = nil
+        livePipeline: LiveAudioPipeline? = nil, dictationID: UUID,
+        target: (pid: pid_t, name: String)?, finishAndSend: FinishAndSendAction,
+        submitTarget: AccessibilityReader.FocusedElementIdentity?
     ) async {
         defer { try? FileManager.default.removeItem(at: audio.url) }
 
@@ -386,7 +422,7 @@ final class DictationController {
         }
 
         var record = DictationRecord(
-            id: pendingID,
+            id: dictationID,
             status: .pending,
             provider: settings.provider.rawValue,
             model: settings.model,
@@ -415,7 +451,7 @@ final class DictationController {
         log.info(
             "transcribing",
             [
-                "dictation": Self.short(pendingID),
+                "dictation": Self.short(dictationID),
                 "provider": settings.provider.rawValue, "model": settings.model,
                 "fidelity": settings.fidelity.rawValue,
                 "style": style.rawValue,
@@ -460,7 +496,7 @@ final class DictationController {
             log.info(
                 "transcript received",
                 [
-                    "dictation": Self.short(pendingID),
+                    "dictation": Self.short(dictationID),
                     "chars": "\(text.count)",
                     "language": result.transcript.language,
                     "chunks": "\(result.chunkCount)",
@@ -476,7 +512,7 @@ final class DictationController {
             guard !text.isEmpty else {
                 // Not an error, and the one outcome people report as one: the key worked, the
                 // request worked, and nothing was said.
-                log.info("nothing was said", ["dictation": Self.short(pendingID)])
+                log.info("nothing was said", ["dictation": Self.short(dictationID)])
                 overlay.hide()
                 state = .idle  // silence in, nothing out
                 return
@@ -495,7 +531,7 @@ final class DictationController {
                 log.info(
                     "second stage",
                     [
-                        "dictation": Self.short(pendingID), "style": style.rawValue,
+                        "dictation": Self.short(dictationID), "style": style.rawValue,
                         "chars": "\(text.count)",
                     ])
                 do {
@@ -511,7 +547,7 @@ final class DictationController {
                     log.info(
                         "second stage finished",
                         [
-                            "dictation": Self.short(pendingID),
+                            "dictation": Self.short(dictationID),
                             "chars": "\(styled.count)", "from": "\(text.count)",
                             "ms": LogClock.ms(Date().timeIntervalSince(rewriteStart)),
                         ])
@@ -526,7 +562,7 @@ final class DictationController {
                     log.warning(
                         "second stage failed, delivering the verbatim transcript",
                         [
-                            "dictation": Self.short(pendingID), "style": style.rawValue,
+                            "dictation": Self.short(dictationID), "style": style.rawValue,
                             "detail": FailureAdvice.detail(of: error),
                         ])
                 }
@@ -545,7 +581,7 @@ final class DictationController {
             // clipboard and the user is told to paste — which is a working dictation with one
             // extra keystroke, rather than a failure.
             if let missing = PermissionGuide.accessibility() {
-                TextInjector.copyForManualPaste(delivered, dictation: Self.short(pendingID))
+                TextInjector.copyForManualPaste(delivered, dictation: Self.short(dictationID))
                 PermissionGuide.present(missing)
                 fail("Copied — press ⌘V. Accessibility is off, so it could not paste itself.")
                 return
@@ -564,15 +600,15 @@ final class DictationController {
             // occasionally destructive: the text lands in a terminal, a chat box, a password
             // field. So it is checked instead. Nothing is lost when it fires — the transcript is
             // already in the history and on the clipboard, one keystroke from where it was going.
-            if let expected = pendingTarget,
+            if let expected = target,
                 let current = NSWorkspace.shared.frontmostApplication,
                 current.processIdentifier != expected.pid
             {
-                TextInjector.copyForManualPaste(delivered, dictation: Self.short(pendingID))
+                TextInjector.copyForManualPaste(delivered, dictation: Self.short(dictationID))
                 log.warning(
                     "focus moved while transcribing; not typing into a window the user did not dictate into",
                     [
-                        "dictation": Self.short(pendingID),
+                        "dictation": Self.short(dictationID),
                         "spokeInto": expected.name,
                         "nowFocused": current.localizedName ?? "?",
                         "waitedMs": LogClock.ms(Date().timeIntervalSince(releasedAt)),
@@ -582,22 +618,57 @@ final class DictationController {
                 return
             }
 
-            await TextInjector.insert(delivered, dictation: Self.short(pendingID))
+            await TextInjector.insert(delivered, dictation: Self.short(dictationID))
             insertions.record(recordID: record.id, delivered: delivered, verbatim: text)
-            if settings.learnDictionaryFromEdits {
+
+            let submission: OverlayState.Submission
+            if finishAndSend == .disabled {
+                submission = .notRequested
+            } else if let expected = submitTarget {
+                let current = AccessibilityReader.focusedElementIdentity()
+                if current == expected {
+                    submission = TextInjector.submit(
+                        using: finishAndSend, dictation: Self.short(dictationID))
+                        ? .sent : .skippedUnavailable
+                } else {
+                    submission = .skippedFocusMoved
+                    log.warning(
+                        "submission skipped because focus moved after insertion",
+                        ["dictation": Self.short(dictationID), "action": finishAndSend.rawValue])
+                }
+            } else {
+                submission = .skippedUnavailable
+                log.warning(
+                    "submission skipped because the original field could not be identified",
+                    ["dictation": Self.short(dictationID), "action": finishAndSend.rawValue])
+            }
+
+            // Once Return has been sent the message is no longer editable, so an undo shortcut or
+            // correction watcher would act on whatever the app focused next instead of this text.
+            if submission == .sent {
+                insertions.clear()
+            } else if settings.learnDictionaryFromEdits {
                 insertions.watchForCorrections(to: delivered) { [weak self] candidates in
                     self?.learn(candidates)
                 }
             }
+            let submissionLog = switch submission {
+            case .notRequested: "not requested"
+            case .sent: "sent"
+            case .skippedFocusMoved: "skipped: focus moved"
+            case .skippedUnavailable: "skipped: unavailable"
+            }
             log.info(
                 "dictation complete",
                 [
-                    "dictation": Self.short(pendingID), "chars": "\(delivered.count)",
+                    "dictation": Self.short(dictationID), "chars": "\(delivered.count)",
                     "totalMs": LogClock.ms(Date().timeIntervalSince(releasedAt)),
+                    "submission": submissionLog,
                 ])
             // Confirm rather than vanish: a silent disappearance leaves the user checking whether
             // anything happened, especially when the target app scrolled.
-            overlay.confirmInserted(characters: delivered.count, rewriteFailed: rewriteFailed)
+            overlay.confirmInserted(
+                characters: delivered.count, rewriteFailed: rewriteFailed, submission: submission)
         } catch is CancellationError {
             transcriptionCancelled()
         } catch {
@@ -661,7 +732,7 @@ final class DictationController {
         guard didUndo else { return }
 
         overlay.show(
-            phase: .inserted(0, rewriteFailed: false),
+            phase: .inserted(0, rewriteFailed: false, submission: .notRequested),
             hint: revertToVerbatim ? "Reverted to what you said" : "Removed")
         overlay.update(phase: .failed(revertToVerbatim ? "Reverted to verbatim" : "Insertion removed"))
         overlay.hide(after: .milliseconds(1_200))

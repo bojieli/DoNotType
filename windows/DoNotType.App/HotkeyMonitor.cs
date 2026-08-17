@@ -53,6 +53,7 @@ public sealed class HotkeyMonitor : IDisposable
     public Mode RecordingMode { get; set; } = Mode.Automatic;
     public Trigger Key { get; set; } = Trigger.RightControl;
     public CancelShortcut CancelKey { get; set; } = CancelShortcut.Escape;
+    public FinishAndSendAction FinishAndSendKey { get; set; } = FinishAndSendAction.Disabled;
 
     /// <summary>
     /// A second key that dictates and then rewrites, or null when there is only one.
@@ -71,6 +72,7 @@ public sealed class HotkeyMonitor : IDisposable
     public event Action? Pressed;
     public event Action? Released;
     public event Action? Cancelled;
+    public event Action<FinishAndSendAction>? FinishAndSendRequested;
 
     /// <summary>Ctrl+Shift+Z — take the last insertion back out of the field.</summary>
     public event Action? UndoRequested;
@@ -92,6 +94,8 @@ public sealed class HotkeyMonitor : IDisposable
     private bool _startedByTap;
     /// <summary>Consumes key-up even though key-down cancellation may already have returned idle.</summary>
     private bool _isCancellingWithEscape;
+    /// <summary>Consumes key-up after key-down has already moved recording to transcription.</summary>
+    private bool _isFinishingWithEnter;
 
     public HotkeyMonitor()
     {
@@ -140,9 +144,33 @@ public sealed class HotkeyMonitor : IDisposable
         if (nCode < 0) return Interop.CallNextHookEx(_hook, nCode, wParam, lParam);
 
         var info = Marshal.PtrToStructure<Interop.KBDLLHOOKSTRUCT>(lParam);
+        // Our own paste and submit keystrokes must never become recording controls, including if a
+        // user starts the next recording while the previous paste is settling.
+        if ((info.flags & Interop.LLKHF_INJECTED) != 0)
+            return Interop.CallNextHookEx(_hook, nCode, wParam, lParam);
         var message = (int)wParam;
         var isDown = message is Interop.WM_KEYDOWN or Interop.WM_SYSKEYDOWN;
         var isUp = message is Interop.WM_KEYUP or Interop.WM_SYSKEYUP;
+
+        if (info.vkCode == Interop.VK_RETURN)
+        {
+            if (isUp && _isFinishingWithEnter)
+            {
+                _isFinishingWithEnter = false;
+                return (IntPtr)1;
+            }
+            if (isDown && _isFinishingWithEnter)
+            {
+                // Auto-repeat remains captured without finishing the same recording twice.
+                return (IntPtr)1;
+            }
+            if (isDown && FinishAndSendActionPolicy.CapturesEnter(FinishAndSendKey, IsRecording()))
+            {
+                _isFinishingWithEnter = true;
+                FinishAndSendRequested?.Invoke(FinishAndSendKey);
+                return (IntPtr)1;
+            }
+        }
 
         if (info.vkCode == 0x1B) // VK_ESCAPE
         {
@@ -200,7 +228,7 @@ public sealed class HotkeyMonitor : IDisposable
             }
         }
 
-        // Every event except an active, configured cancellation is passed through unchanged.
+        // Every event except an active, configured recording-only key is passed through unchanged.
         return Interop.CallNextHookEx(_hook, nCode, wParam, lParam);
     }
 

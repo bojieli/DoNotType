@@ -64,6 +64,8 @@ public sealed class DictationController : IDisposable
     /// in flight becomes.
     /// </remarks>
     private RewriteStyle _pendingStyle = RewriteStyle.Verbatim;
+    /// <summary>Latched only when Enter, rather than the normal trigger, ends the recording.</summary>
+    private FinishAndSendAction _pendingFinishAndSend = FinishAndSendAction.Disabled;
 
     /// <summary>Which process was focused when the key went down, and its window title.</summary>
     /// <remarks>
@@ -71,6 +73,7 @@ public sealed class DictationController : IDisposable
     /// a title changes while the user works without the target having moved at all.
     /// </remarks>
     private (uint Pid, string Title)? _pendingTarget;
+    private ScreenReader.FocusIdentity? _pendingFocusIdentity;
 
     /// <summary>
     /// Eight characters is enough to pick one dictation out of a day's log and short enough to sit
@@ -95,7 +98,15 @@ public sealed class DictationController : IDisposable
     /// event rather than a second one: two events would have to arrive in a particular order for
     /// the interface to render correctly, and nothing would enforce it.
     /// </param>
-    public sealed record Insertion(int Characters, bool RewriteFailed);
+    public enum Submission
+    {
+        NotRequested,
+        Sent,
+        SkippedFocusMoved,
+        SkippedUnavailable,
+    }
+
+    public sealed record Insertion(int Characters, bool RewriteFailed, Submission Submission);
 
     public event Action<Insertion>? Inserted;
 
@@ -116,6 +127,10 @@ public sealed class DictationController : IDisposable
     public HistoryStore History => _history;
     public IReadOnlyList<AudioLevelMeter.Bar> DrainLevels() => _recorder.DrainLevels();
 
+    /// <summary>Whether the current recognition will submit after insertion.</summary>
+    public bool WillSubmit => _pendingFinishAndSend != FinishAndSendAction.Disabled
+        && Current is State.Transcribing or State.Deriving;
+
     public DictationController(AppSettings settings)
     {
         _settings = settings;
@@ -129,6 +144,7 @@ public sealed class DictationController : IDisposable
         _hotkey.Pressed += BeginRecording;
         _hotkey.Released += FinishRecording;
         _hotkey.Cancelled += CancelActiveDictation;
+        _hotkey.FinishAndSendRequested += FinishAndSend;
 
         // Both are cheap only because the verbatim transcript is always kept.
         _hotkey.UndoRequested += () => _ = UndoLastInsertionAsync(revertToVerbatim: false);
@@ -180,6 +196,7 @@ public sealed class DictationController : IDisposable
         _hotkey.SecondaryKey = _settings.SecondaryTrigger;
         _hotkey.RecordingMode = _settings.HotkeyMode;
         _hotkey.CancelKey = _settings.CancelShortcut;
+        _hotkey.FinishAndSendKey = _settings.FinishAndSendAction;
         _hotkey.Start();
     }
 
@@ -240,12 +257,14 @@ public sealed class DictationController : IDisposable
             // Without it a log with three dictations in it is three interleaved stories, and the
             // question being asked is always about one of them.
             _pendingId = Guid.NewGuid();
+            _pendingFinishAndSend = FinishAndSendAction.Disabled;
             _pendingStyle = _hotkey.UsedSecondary && _settings.SecondaryTrigger is not null
                 ? _settings.SecondaryStyle
                 : RewriteStyle.Verbatim;
             // Where the words are meant to go, decided now rather than when they arrive.
             Interop.GetWindowThreadProcessId(Interop.GetForegroundWindow(), out var targetPid);
             _pendingTarget = targetPid == 0 ? null : (targetPid, Interop.ForegroundWindowTitle());
+            _pendingFocusIdentity = _screen.CaptureFocusIdentity();
 
             DictationLog.Info(() => "recording started", new Dictionary<string, string>
             {
@@ -354,6 +373,8 @@ public sealed class DictationController : IDisposable
         _liveSession = null;
         _groundingCts?.Cancel();
         _pendingContext = null;
+        _pendingFinishAndSend = FinishAndSendAction.Disabled;
+        _pendingFocusIdentity = null;
         SetState(State.Idle);
     }
 
@@ -371,6 +392,18 @@ public sealed class DictationController : IDisposable
             new Dictionary<string, string> { ["dictation"] = Short(_pendingId) });
         if (_dictationCts is { } cancellation) _ = cancellation.CancelAsync();
         _liveSession?.Cancel();
+    }
+
+    private void FinishAndSend(FinishAndSendAction action)
+    {
+        if (Current != State.Recording) return;
+        _pendingFinishAndSend = action;
+        DictationLog.Info(() => "finish-and-send requested", new Dictionary<string, string>
+        {
+            ["dictation"] = Short(_pendingId),
+            ["action"] = action.ToString(),
+        });
+        FinishRecording();
     }
 
     private async void FinishRecording()
@@ -444,12 +477,18 @@ public sealed class DictationController : IDisposable
         });
 
         SetState(State.Transcribing);
+        var finishAndSend = _pendingFinishAndSend;
+        var submitTarget = _pendingFocusIdentity;
+        var dictationId = _pendingId;
+        var target = _pendingTarget;
         var live = _liveSession;
         var cancellation = new CancellationTokenSource();
         _dictationCts = cancellation;
         try
         {
-            await TranscribeAsync(wav, live, cancellation.Token).ConfigureAwait(false);
+            await TranscribeAsync(
+                wav, live, cancellation.Token, finishAndSend, submitTarget, dictationId, target)
+                .ConfigureAwait(false);
         }
         finally
         {
@@ -574,8 +613,12 @@ public sealed class DictationController : IDisposable
 
     private async Task TranscribeAsync(
         byte[] wav,
-        LiveDictationSession? liveSession = null,
-        CancellationToken cancellationToken = default)
+        LiveDictationSession? liveSession,
+        CancellationToken cancellationToken,
+        FinishAndSendAction finishAndSend,
+        ScreenReader.FocusIdentity? submitTarget,
+        Guid dictationId,
+        (uint Pid, string Title)? target)
     {
         cancellationToken.ThrowIfCancellationRequested();
         // Snapshotted, not read live. Nothing today can change it mid-flight — a press while a
@@ -616,7 +659,7 @@ public sealed class DictationController : IDisposable
         var releasedAt = Stopwatch.GetTimestamp();
         var record = new DictationRecord
         {
-            Id = _pendingId,
+            Id = dictationId,
             Model = _settings.Model,
             Fidelity = _settings.Fidelity,
             AppName = context?.AppName,
@@ -627,7 +670,7 @@ public sealed class DictationController : IDisposable
 
         DictationLog.Info(() => "transcribing", new Dictionary<string, string>
         {
-            ["dictation"] = Short(_pendingId),
+            ["dictation"] = Short(dictationId),
             ["provider"] = _settings.Provider.ToString(),
             ["model"] = _settings.Model,
             ["fidelity"] = _settings.Fidelity.Id(),
@@ -659,7 +702,7 @@ public sealed class DictationController : IDisposable
 
             DictationLog.Info(() => "transcript received", new Dictionary<string, string>
             {
-                ["dictation"] = Short(_pendingId),
+                ["dictation"] = Short(dictationId),
                 ["chars"] = text.Length.ToString(),
                 ["language"] = result.Transcript.Language ?? string.Empty,
                 ["chunks"] = result.ChunkCount.ToString(),
@@ -676,7 +719,7 @@ public sealed class DictationController : IDisposable
                 // request worked, and nothing was said.
                 DictationLog.Info(
                     () => "nothing was said",
-                    new Dictionary<string, string> { ["dictation"] = Short(_pendingId) });
+                    new Dictionary<string, string> { ["dictation"] = Short(dictationId) });
                 SetState(State.Idle); // silence in, nothing out
                 return;
             }
@@ -698,7 +741,7 @@ public sealed class DictationController : IDisposable
                     var rewriteStart = Stopwatch.GetTimestamp();
                     DictationLog.Info(() => "second stage", new Dictionary<string, string>
                     {
-                        ["dictation"] = Short(_pendingId),
+                        ["dictation"] = Short(dictationId),
                         ["style"] = style.Id(),
                         ["chars"] = text.Length.ToString(),
                     });
@@ -715,7 +758,7 @@ public sealed class DictationController : IDisposable
                             () => "second stage finished",
                             new Dictionary<string, string>
                             {
-                                ["dictation"] = Short(_pendingId),
+                                ["dictation"] = Short(dictationId),
                                 ["chars"] = styled.Length.ToString(),
                                 ["from"] = text.Length.ToString(),
                                 ["ms"] = ((long)Stopwatch.GetElapsedTime(rewriteStart)
@@ -739,7 +782,7 @@ public sealed class DictationController : IDisposable
                             () => "second stage failed, delivering the verbatim transcript",
                             new Dictionary<string, string>
                             {
-                                ["dictation"] = Short(_pendingId),
+                                ["dictation"] = Short(dictationId),
                                 ["style"] = style.Id(),
                                 ["detail"] = FailureAdvice.Detail(error),
                             });
@@ -766,14 +809,14 @@ public sealed class DictationController : IDisposable
             // Nothing is lost when this fires -- the transcript is already in the history and on
             // the clipboard, one keystroke from where it was going.
             Interop.GetWindowThreadProcessId(Interop.GetForegroundWindow(), out var focusedNow);
-            if (_pendingTarget is { } expected && focusedNow != 0 && focusedNow != expected.Pid)
+            if (target is { } expected && focusedNow != 0 && focusedNow != expected.Pid)
             {
-                TextInjector.CopyForManualPaste(delivered, Short(_pendingId));
+                TextInjector.CopyForManualPaste(delivered, Short(dictationId));
                 DictationLog.Warn(
                     () => "focus moved while transcribing; not typing into a window the user did not dictate into",
                     new Dictionary<string, string>
                     {
-                        ["dictation"] = Short(_pendingId),
+                        ["dictation"] = Short(dictationId),
                         ["spokeInto"] = expected.Title.Length == 0 ? "untitled" : expected.Title,
                         ["nowFocused"] = Interop.ForegroundWindowTitle(),
                         ["waitedMs"] = ((long)Stopwatch.GetElapsedTime(releasedAt).TotalMilliseconds)
@@ -787,13 +830,54 @@ public sealed class DictationController : IDisposable
             var insertionTarget = _settings.LearnDictionaryFromEdits
                 ? _screen.CaptureFocusedEditable()
                 : null;
-            await TextInjector.InsertAsync(delivered, Short(_pendingId)).ConfigureAwait(false);
+            await TextInjector.InsertAsync(delivered, Short(dictationId)).ConfigureAwait(false);
             // The failure is carried out rather than left to be noticed. The words landed either
             // way, but somebody who held the rewrite key and got their own words back should be
             // told that is what happened — most often because the backend is a recogniser, which
             // cannot rewrite text at all.
             _insertions.Record(record.Id, delivered, text);
-            if (insertionTarget is not null)
+
+            Submission submission;
+            if (finishAndSend == FinishAndSendAction.Disabled)
+            {
+                submission = Submission.NotRequested;
+            }
+            else if (submitTarget is null)
+            {
+                submission = Submission.SkippedUnavailable;
+                DictationLog.Warn(
+                    () => "submission skipped because the original field could not be identified",
+                    new Dictionary<string, string>
+                    {
+                        ["dictation"] = Short(dictationId),
+                        ["action"] = finishAndSend.ToString(),
+                    });
+            }
+            else if (_screen.CaptureFocusIdentity() != submitTarget)
+            {
+                submission = Submission.SkippedFocusMoved;
+                DictationLog.Warn(
+                    () => "submission skipped because focus moved after insertion",
+                    new Dictionary<string, string>
+                    {
+                        ["dictation"] = Short(dictationId),
+                        ["action"] = finishAndSend.ToString(),
+                    });
+            }
+            else
+            {
+                submission = TextInjector.Submit(finishAndSend, Short(dictationId))
+                    ? Submission.Sent
+                    : Submission.SkippedUnavailable;
+            }
+
+            // A sent message is no longer editable. Keeping an undo or correction observer would
+            // make it operate on whichever control the target app focuses after sending.
+            if (submission == Submission.Sent)
+            {
+                _insertions.Clear();
+            }
+            else if (insertionTarget is not null)
             {
                 _corrections.Watch(insertionTarget, delivered, candidates =>
                 {
@@ -803,20 +887,21 @@ public sealed class DictationController : IDisposable
                     DictionaryLearned?.Invoke(added);
                 });
             }
-            Inserted?.Invoke(new Insertion(delivered.Length, rewriteFailed));
+            Inserted?.Invoke(new Insertion(delivered.Length, rewriteFailed, submission));
             DictationLog.Info(() => "dictation complete", new Dictionary<string, string>
             {
-                ["dictation"] = Short(_pendingId),
+                ["dictation"] = Short(dictationId),
                 ["chars"] = delivered.Length.ToString(),
                 ["totalMs"] = ((long)Stopwatch.GetElapsedTime(releasedAt).TotalMilliseconds)
                     .ToString(),
+                ["submission"] = submission.ToString(),
             });
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             DictationLog.Info(
                 () => "transcription cancelled",
-                new Dictionary<string, string> { ["dictation"] = Short(_pendingId) });
+                new Dictionary<string, string> { ["dictation"] = Short(dictationId) });
             SetState(State.Idle);
         }
         catch (Exception error) when (error is ProviderException or HttpRequestException or TaskCanceledException)
@@ -839,7 +924,7 @@ public sealed class DictationController : IDisposable
                 ["retryable"] = advice.IsRetryable ? "yes" : "no",
                 ["provider"] = _settings.Provider.ToString(),
                 ["model"] = _settings.Model,
-                ["dictation"] = Short(_pendingId),
+                ["dictation"] = Short(dictationId),
                 ["detail"] = detail,
             });
 

@@ -30,6 +30,12 @@ struct AccessibilityReader: Sendable {
         let selectionLength: Int
     }
 
+    /// The exact focused editable element, without reading any of its text.
+    struct FocusedElementIdentity: Sendable, Equatable {
+        let pid: pid_t
+        let elementToken: UInt
+    }
+
     static var isTrusted: Bool { AXIsProcessTrusted() }
 
     /// Prompts for Accessibility access, which macOS only shows once per app signature.
@@ -38,6 +44,17 @@ struct AccessibilityReader: Sendable {
     /// global and is therefore not usable from concurrency-checked code.
     static func requestTrust() {
         _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+    }
+
+    /// Cheap enough to take at hotkey-down and again after insertion. Finish-and-send compares the
+    /// two so a delayed Return cannot be delivered to a different field in the same application.
+    static func focusedElementIdentity() -> FocusedElementIdentity? {
+        guard isTrusted, let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        guard let focused: AXUIElement = copy(appElement, kAXFocusedUIElementAttribute),
+            let role: String = copy(focused, kAXRoleAttribute), isEditableRole(role)
+        else { return nil }
+        return FocusedElementIdentity(pid: app.processIdentifier, elementToken: CFHash(focused))
     }
 
     // MARK: - Phase 1: cheap

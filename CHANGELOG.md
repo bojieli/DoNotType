@@ -10,6 +10,14 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **Optional one-key finish and send on macOS and Windows.** Pressing Return/Enter while recording
+  can now stop capture, wait for transcription, insert the result, and then emit Return/Enter or
+  the configured `⌘ Return` / `Ctrl+Enter`. It is off by default. The key is captured only during
+  recording, the intent survives the transcription wait, and submission happens only after a
+  successful insertion if the exact original field still has focus. Cancellation, failures,
+  clipboard-only fallback, or changed focus never send. The recording and progress overlays show
+  the pending action, and the confirmation distinguishes sent text from a safely skipped submit.
+
 - **A local personal dictionary, including optional learning from corrections on all four apps.** Typeless's
   useful incentive is real: people correct a misspelling while it is in front of them and rarely
   stop work to populate a settings list in advance. DoNotType now accepts direct entries and a

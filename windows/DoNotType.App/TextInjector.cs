@@ -65,6 +65,42 @@ public static class TextInjector
         });
     }
 
+    /// <summary>Sends the configured submit keystroke after insertion and focus verification.</summary>
+    public static bool Submit(FinishAndSendAction action, string dictation = "-")
+    {
+        if (action == FinishAndSendAction.Disabled) return false;
+        var inputs = action == FinishAndSendAction.ModifiedEnter
+            ? new[]
+            {
+                KeyEvent(Interop.VK_CONTROL, down: true),
+                KeyEvent(Interop.VK_RETURN, down: true),
+                KeyEvent(Interop.VK_RETURN, down: false),
+                KeyEvent(Interop.VK_CONTROL, down: false),
+            }
+            : new[]
+            {
+                KeyEvent(Interop.VK_RETURN, down: true),
+                KeyEvent(Interop.VK_RETURN, down: false),
+            };
+        var sent = Interop.SendInput(
+            (uint)inputs.Length, inputs, Marshal.SizeOf<Interop.INPUT>()) == (uint)inputs.Length;
+        if (sent)
+        {
+            Log.Info(() => "submission key sent", new Dictionary<string, string>
+            {
+                ["dictation"] = dictation,
+                ["action"] = action.ToString(),
+            });
+        }
+        else
+        {
+            Log.Warn(
+                () => "submission key unavailable",
+                new Dictionary<string, string> { ["dictation"] = dictation });
+        }
+        return sent;
+    }
+
     private static readonly Log Log = new("inject");
 
 
