@@ -30,15 +30,26 @@ public sealed class AudioRecorder : IDisposable
     private const int BufferBytes = SampleRate / 5; // 3200 bytes: 1600 samples, 100 ms
 
     private readonly Lock _gate = new();
+    private readonly Lock _lifecycleGate = new();
     private readonly List<byte> _pcm = [];
-    private readonly Interop.WaveInProc _callback;
+    private readonly AutoResetEvent _bufferReady = new(false);
 
     private IntPtr _handle;
     private GCHandle[] _pinned = [];
-    private Interop.WAVEHDR[] _headers = [];
+    private IntPtr[] _headers = [];
+    private int _preparedHeaders;
+    private int _nextBuffer;
+    private int _captureError;
+    private string? _captureFailure;
     private DateTime _startedAt;
+    private Thread? _captureThread;
+    private volatile bool _workerShouldStop;
+    private volatile bool _isRecording;
+    private bool _disposed;
 
-    public bool IsRecording { get; private set; }
+    private static readonly Log AudioLog = new("audio");
+
+    public bool IsRecording => _isRecording;
 
     private AudioLevelMeter _meter = new(SampleRate);
     /// <summary>Bars the overlay has not drawn yet. See <see cref="DrainLevels"/>.</summary>
@@ -67,8 +78,6 @@ public sealed class AudioRecorder : IDisposable
         }
     }
 
-    public AudioRecorder() => _callback = OnWaveIn;
-
     /// <summary>
     /// Windows has no permission prompt for the microphone; access is a Settings privacy toggle,
     /// and denial surfaces here as a failure to open the device.
@@ -86,149 +95,418 @@ public sealed class AudioRecorder : IDisposable
     /// <summary>The exact PCM appended to the recovery WAV, delivered in capture order.</summary>
     public Action<byte[]>? PcmCaptured { get; set; }
 
+    /// <summary>Lets the owner abandon live mode while retaining this recorder's complete WAV.</summary>
+    public Action<Exception>? PcmCaptureFailed { get; set; }
+
     public void Start()
     {
-        lock (_gate)
+        lock (_lifecycleGate)
         {
-            if (IsRecording) return;
-            _pcm.Clear();
-            _meter = new AudioLevelMeter(SampleRate);
-            _pendingBars.Clear();
-
-            var format = new Interop.WAVEFORMATEX
+            lock (_gate)
             {
-                wFormatTag = Interop.WAVE_FORMAT_PCM,
-                nChannels = 1,
-                nSamplesPerSec = SampleRate,
-                nAvgBytesPerSec = SampleRate * 2,
-                nBlockAlign = 2,
-                wBitsPerSample = 16,
-                cbSize = 0,
-            };
-
-            const uint CALLBACK_FUNCTION = 0x00030000;
-            var result = Interop.waveInOpen(
-                out _handle, AudioDevices.Resolve(PreferredDeviceName), ref format, _callback,
-                IntPtr.Zero,
-                CALLBACK_FUNCTION);
-            if (result != 0)
-            {
-                // The distinction matters: one of these is a permission somebody can grant in ten
-                // seconds and the other is a missing device. Told apart here rather than making
-                // the user guess from one sentence covering both.
-                //
-                // MMSYSERR_BADDEVICEID (2) and MMSYSERR_NODRIVER (6) mean there is nothing to
-                // record from. MMSYSERR_ALLOCATED (4) means another application holds it. A
-                // privacy block surfaces as one of these rather than as a code of its own, so the
-                // Settings page is offered in every case except "no device at all".
-                var reason = result switch
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (_isRecording) return;
+                if (_handle != IntPtr.Zero)
                 {
-                    2 or 6 => "no recording device is connected",
-                    4 => "another application is using the microphone",
-                    _ => "Windows refused access to the microphone",
-                };
-                throw new MicrophoneUnavailableException(
-                    $"Could not open the microphone: {reason} (waveInOpen returned {result}).",
-                    canBeFixedInSettings: result is not (2 or 6));
-            }
+                    throw new InvalidOperationException(
+                        "The previous microphone session has not finished shutting down.");
+                }
 
-            _pinned = new GCHandle[BufferCount];
-            _headers = new Interop.WAVEHDR[BufferCount];
-            for (var i = 0; i < BufferCount; i++)
-            {
-                var buffer = new byte[BufferBytes];
-                _pinned[i] = GCHandle.Alloc(buffer, GCHandleType.Pinned);
-                _headers[i] = new Interop.WAVEHDR
+                _pcm.Clear();
+                _meter = new AudioLevelMeter(SampleRate);
+                _pendingBars.Clear();
+                _captureError = 0;
+                _captureFailure = null;
+                _preparedHeaders = 0;
+                _nextBuffer = 0;
+                _workerShouldStop = false;
+
+                var format = new Interop.WAVEFORMATEX
                 {
-                    lpData = _pinned[i].AddrOfPinnedObject(),
-                    dwBufferLength = BufferBytes,
+                    wFormatTag = Interop.WAVE_FORMAT_PCM,
+                    nChannels = 1,
+                    nSamplesPerSec = SampleRate,
+                    nAvgBytesPerSec = SampleRate * 2,
+                    nBlockAlign = 2,
+                    wBitsPerSample = 16,
+                    cbSize = 0,
                 };
-                Interop.waveInPrepareHeader(_handle, ref _headers[i], Marshal.SizeOf<Interop.WAVEHDR>());
-                Interop.waveInAddBuffer(_handle, ref _headers[i], Marshal.SizeOf<Interop.WAVEHDR>());
-            }
 
-            Interop.waveInStart(_handle);
-            IsRecording = true;
-            _startedAt = DateTime.UtcNow;
+                // Event mode keeps all real work out of waveInProc. Microsoft explicitly permits
+                // only a tiny set of operations in that native callback and warns that calling a
+                // wave function there can deadlock; the old recorder requeued every buffer there.
+                // https://learn.microsoft.com/en-us/previous-versions/dd743849(v=vs.85)
+                const uint CALLBACK_EVENT = 0x00050000;
+                var result = Interop.waveInOpenEvent(
+                    out _handle, AudioDevices.Resolve(PreferredDeviceName), ref format,
+                    _bufferReady.SafeWaitHandle.DangerousGetHandle(), IntPtr.Zero, CALLBACK_EVENT);
+                if (result != 0)
+                {
+                    _handle = IntPtr.Zero;
+                    throw OpenFailure(result);
+                }
+
+                try
+                {
+                    AllocateAndQueueBuffers();
+                    _startedAt = DateTime.UtcNow;
+                    _isRecording = true;
+                    EnsureSuccess(Interop.waveInStart(_handle), "start microphone capture");
+
+                    _captureThread = new Thread(CaptureLoop)
+                    {
+                        IsBackground = true,
+                        Name = "DoNotType microphone",
+                    };
+                    _captureThread.Start();
+                }
+                catch
+                {
+                    _isRecording = false;
+                    _workerShouldStop = true;
+                    Interop.waveInReset(_handle);
+                    ReleaseNativeResources();
+                    throw;
+                }
+            }
         }
     }
 
     /// <summary>Stops and returns a complete WAV, or null when it was too short to be speech.</summary>
     public byte[]? Stop()
     {
-        lock (_gate)
+        lock (_lifecycleGate)
         {
-            if (!IsRecording) return null;
-            var elapsed = DateTime.UtcNow - _startedAt;
-            Teardown();
+            Thread? worker;
+            TimeSpan elapsed;
+            lock (_gate)
+            {
+                if (!_isRecording) return null;
+                elapsed = DateTime.UtcNow - _startedAt;
+                worker = BeginStop();
+            }
 
-            if (elapsed < MinimumDuration || _pcm.Count == 0) return null;
-            return WrapInWavContainer([.. _pcm]);
+            // No locks held while waiting: the worker may be finishing a buffer under _gate.
+            worker?.Join();
+
+            lock (_gate)
+            {
+                // waveInReset returns every queued buffer, including the partial tail that had not
+                // reached 100 ms. Drain it after the worker exits so releasing the key never clips
+                // the end of the last word.
+                try
+                {
+                    if (_captureError == 0 && _captureFailure is null) DrainReturnedBuffers();
+                }
+                catch (Exception error)
+                {
+                    _captureFailure = error.GetType().Name;
+                    AudioLog.Error(
+                        () => "could not drain the final microphone buffers",
+                        new Dictionary<string, string>
+                        {
+                            ["type"] = error.GetType().Name,
+                            ["detail"] = error.Message,
+                        });
+                }
+                finally
+                {
+                    ReleaseNativeResources();
+                }
+                ThrowIfCaptureFailed();
+
+                if (elapsed < MinimumDuration || _pcm.Count == 0) return null;
+                return WrapInWavContainer([.. _pcm]);
+            }
         }
     }
 
     public void Cancel()
     {
+        lock (_lifecycleGate)
+        {
+            CancelUnderLifecycleGate();
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_disposed) return;
+            CancelUnderLifecycleGate();
+            _disposed = true;
+            // If the driver refused to close, it may still retain this event handle. The process
+            // is exiting and leaking it is safer than letting native code signal a recycled one.
+            if (_handle == IntPtr.Zero) _bufferReady.Dispose();
+        }
+    }
+
+    private void CancelUnderLifecycleGate()
+    {
+        Thread? worker;
+        lock (_gate) worker = _handle == IntPtr.Zero ? null : BeginStop();
+        worker?.Join();
         lock (_gate)
         {
-            Teardown();
+            ReleaseNativeResources();
             _pcm.Clear();
         }
     }
 
-    public void Dispose() => Cancel();
-
-    private void Teardown()
+    private void AllocateAndQueueBuffers()
     {
-        if (!IsRecording) return;
-        IsRecording = false;
-
-        Interop.waveInStop(_handle);
-        Interop.waveInReset(_handle);
-
-        for (var i = 0; i < _headers.Length; i++)
+        var headerSize = Marshal.SizeOf<Interop.WAVEHDR>();
+        _pinned = new GCHandle[BufferCount];
+        _headers = new IntPtr[BufferCount];
+        for (var i = 0; i < BufferCount; i++)
         {
-            Interop.waveInUnprepareHeader(_handle, ref _headers[i], Marshal.SizeOf<Interop.WAVEHDR>());
-            if (_pinned[i].IsAllocated) _pinned[i].Free();
+            var buffer = new byte[BufferBytes];
+            _pinned[i] = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+            var header = new Interop.WAVEHDR
+            {
+                lpData = _pinned[i].AddrOfPinnedObject(),
+                dwBufferLength = BufferBytes,
+                dwUser = (IntPtr)i,
+            };
+            _headers[i] = Marshal.AllocHGlobal(headerSize);
+            Marshal.StructureToPtr(header, _headers[i], fDeleteOld: false);
+            EnsureSuccess(
+                Interop.waveInPrepareHeader(_handle, _headers[i], headerSize),
+                "prepare a recording buffer");
+            _preparedHeaders++;
+            EnsureSuccess(
+                Interop.waveInAddBuffer(_handle, _headers[i], headerSize),
+                "queue a recording buffer");
         }
-        _pinned = [];
-        _headers = [];
-
-        Interop.waveInClose(_handle);
-        _handle = IntPtr.Zero;
     }
 
-    private void OnWaveIn(
-        IntPtr hwi, uint uMsg, IntPtr dwInstance, ref Interop.WAVEHDR header, IntPtr dwParam2)
+    private Thread? BeginStop()
     {
-        if (uMsg != Interop.MM_WIM_DATA) return;
+        _isRecording = false;
+        _workerShouldStop = true;
+        _bufferReady.Set();
 
-        lock (_gate)
+        RecordNativeFailure(Interop.waveInStop(_handle), "waveInStop");
+        RecordNativeFailure(Interop.waveInReset(_handle), "waveInReset");
+        var worker = _captureThread;
+        _captureThread = null;
+        return worker;
+    }
+
+    private void CaptureLoop()
+    {
+        try
         {
-            if (!IsRecording) return;
-
-            var recorded = (int)header.dwBytesRecorded;
-            if (recorded > 0)
+            while (true)
             {
-                var chunk = new byte[recorded];
-                Marshal.Copy(header.lpData, chunk, 0, recorded);
-                _pcm.AddRange(chunk);
-                // The live pipeline only writes to an unbounded channel here. VAD and network work
-                // run on its consumer, never on the waveIn callback.
-                PcmCaptured?.Invoke(chunk);
+                _bufferReady.WaitOne();
+                if (_workerShouldStop) return;
 
-                _pendingBars.AddRange(_meter.Append(chunk));
-                // A UI that has stopped collecting is a UI that is not drawing them either; keeping
-                // more than a few seconds of undrawn bars would only be a leak with a nice name.
-                if (_pendingBars.Count > MaximumPendingBars)
+                while (ProcessNextBuffer())
                 {
-                    _pendingBars.RemoveRange(0, _pendingBars.Count - MaximumPendingBars);
+                    if (_workerShouldStop) return;
                 }
             }
-            // Requeue so capture continues; the driver hands the buffer back each time it fills.
-            Interop.waveInAddBuffer(hwi, ref header, Marshal.SizeOf<Interop.WAVEHDR>());
+        }
+        catch (Exception error)
+        {
+            lock (_gate) _captureFailure = error.GetType().Name;
+            try
+            {
+                AudioLog.Error(
+                    () => "microphone worker failed",
+                    new Dictionary<string, string>
+                    {
+                        ["type"] = error.GetType().Name,
+                        ["detail"] = error.Message,
+                    });
+            }
+            catch
+            {
+                // A diagnostics failure cannot be allowed to escape a background Thread.
+            }
         }
     }
+
+    private bool ProcessNextBuffer()
+    {
+        lock (_gate)
+        {
+            if (_workerShouldStop || !_isRecording || _headers.Length == 0) return false;
+            var pointer = _headers[_nextBuffer];
+            var header = Marshal.PtrToStructure<Interop.WAVEHDR>(pointer);
+            if ((header.dwFlags & WHDR_DONE) == 0) return false;
+
+            Append(header);
+            var result = Interop.waveInAddBuffer(
+                _handle, pointer, Marshal.SizeOf<Interop.WAVEHDR>());
+            if (result != 0)
+            {
+                _captureError = result;
+                return false;
+            }
+            _nextBuffer = (_nextBuffer + 1) % BufferCount;
+            return true;
+        }
+    }
+
+    private void DrainReturnedBuffers()
+    {
+        // Every header is queued during a healthy capture. After reset, walk the same ring order
+        // the driver filled rather than scanning by index and scrambling buffers across the wrap.
+        for (var count = 0; count < BufferCount; count++)
+        {
+            var header = Marshal.PtrToStructure<Interop.WAVEHDR>(_headers[_nextBuffer]);
+            if ((header.dwFlags & WHDR_DONE) == 0) break;
+            Append(header);
+            _nextBuffer = (_nextBuffer + 1) % BufferCount;
+        }
+    }
+
+    private void Append(Interop.WAVEHDR header)
+    {
+        var recorded = checked((int)header.dwBytesRecorded);
+        if (recorded <= 0) return;
+        if (recorded > header.dwBufferLength)
+        {
+            throw new InvalidDataException("The microphone driver returned an oversized buffer.");
+        }
+
+        var chunk = new byte[recorded];
+        Marshal.Copy(header.lpData, chunk, 0, recorded);
+        _pcm.AddRange(chunk);
+        try
+        {
+            PcmCaptured?.Invoke(chunk);
+        }
+        catch (Exception error)
+        {
+            // Live streaming is an optimisation over this complete recovery WAV. Abandon live
+            // mode and let the normal post-recording request preserve the user's words.
+            AudioLog.Warn(
+                () => "live audio consumer failed; continuing local capture",
+                new Dictionary<string, string>
+                {
+                    ["type"] = error.GetType().Name,
+                    ["detail"] = error.Message,
+                });
+            PcmCaptured = null;
+            try
+            {
+                PcmCaptureFailed?.Invoke(error);
+            }
+            catch (Exception notificationError)
+            {
+                AudioLog.Warn(
+                    () => "could not notify the live audio owner",
+                    new Dictionary<string, string>
+                    {
+                        ["type"] = notificationError.GetType().Name,
+                        ["detail"] = notificationError.Message,
+                    });
+            }
+        }
+
+        _pendingBars.AddRange(_meter.Append(chunk));
+        if (_pendingBars.Count > MaximumPendingBars)
+        {
+            _pendingBars.RemoveRange(0, _pendingBars.Count - MaximumPendingBars);
+        }
+    }
+
+    private void ReleaseNativeResources()
+    {
+        if (_handle == IntPtr.Zero)
+        {
+            ReleaseAllocations();
+            return;
+        }
+
+        var headerSize = Marshal.SizeOf<Interop.WAVEHDR>();
+        for (var i = 0; i < _preparedHeaders; i++)
+        {
+            RecordNativeFailure(
+                Interop.waveInUnprepareHeader(_handle, _headers[i], headerSize),
+                "waveInUnprepareHeader");
+        }
+        var close = Interop.waveInClose(_handle);
+        RecordNativeFailure(close, "waveInClose");
+        if (close != 0)
+        {
+            // The driver may still own the headers. Leaking this failed session is safer than
+            // freeing memory that native code can write into; Start refuses to overlap it.
+            return;
+        }
+
+        _handle = IntPtr.Zero;
+        _preparedHeaders = 0;
+        ReleaseAllocations();
+    }
+
+    private void ReleaseAllocations()
+    {
+        foreach (var header in _headers)
+        {
+            if (header != IntPtr.Zero) Marshal.FreeHGlobal(header);
+        }
+        _headers = [];
+        foreach (var pinned in _pinned)
+        {
+            if (pinned.IsAllocated) pinned.Free();
+        }
+        _pinned = [];
+    }
+
+    private void RecordNativeFailure(int result, string operation)
+    {
+        if (result == 0) return;
+        _captureError = result;
+        AudioLog.Warn(
+            () => $"{operation} failed",
+            new Dictionary<string, string> { ["code"] = result.ToString() });
+    }
+
+    private void ThrowIfCaptureFailed()
+    {
+        if (_captureFailure is not null)
+        {
+            throw new MicrophoneUnavailableException(
+                $"The microphone stopped unexpectedly ({_captureFailure}). Try again or choose "
+                    + "another microphone in Settings.",
+                canBeFixedInSettings: true);
+        }
+        if (_captureError != 0)
+        {
+            throw new MicrophoneUnavailableException(
+                $"The microphone stopped while recording (waveIn returned {_captureError}). "
+                    + "Try again or choose another microphone in Settings.",
+                canBeFixedInSettings: true);
+        }
+    }
+
+    private static MicrophoneUnavailableException OpenFailure(int result)
+    {
+        var reason = result switch
+        {
+            2 or 6 => "no recording device is connected",
+            4 => "another application is using the microphone",
+            _ => "Windows refused access to the microphone",
+        };
+        return new MicrophoneUnavailableException(
+            $"Could not open the microphone: {reason} (waveInOpen returned {result}).",
+            canBeFixedInSettings: result is not (2 or 6));
+    }
+
+    private static void EnsureSuccess(int result, string operation)
+    {
+        if (result == 0) return;
+        throw new MicrophoneUnavailableException(
+            $"Could not {operation} (waveIn returned {result}). Try another microphone in Settings.",
+            canBeFixedInSettings: true);
+    }
+
+    private const uint WHDR_DONE = 0x00000001;
 
     /// <summary>Length of a recording this class produced, from its own 44-byte header.</summary>
     /// <remarks>

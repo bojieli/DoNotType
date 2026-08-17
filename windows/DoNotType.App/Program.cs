@@ -345,8 +345,17 @@ internal sealed class TrayApplication : ApplicationContext
     /// </summary>
     private void BeginInvokeOnTray(Action action)
     {
-        if (_overlay.IsHandleCreated && _overlay.InvokeRequired) _overlay.BeginInvoke(action);
-        else action();
+        if (_overlay.IsDisposed) return;
+        try
+        {
+            if (_overlay.IsHandleCreated && _overlay.InvokeRequired) _overlay.BeginInvoke(action);
+            else action();
+        }
+        catch (InvalidOperationException) when (_overlay.IsDisposed || !_overlay.IsHandleCreated)
+        {
+            // The controller can finish cancelling on a worker thread while the tray is closing.
+            // A late status update has nowhere to be shown and must not crash the process.
+        }
     }
 
     private static string Truncate(string value, int max) =>
@@ -356,10 +365,11 @@ internal sealed class TrayApplication : ApplicationContext
     {
         if (disposing)
         {
+            // Stop all producers before tearing down the controls their callbacks target.
+            _controller.Dispose();
             _levelTimer.Dispose();
             _tray.Visible = false;
             _tray.Dispose();
-            _controller.Dispose();
             _overlay.Dispose();
         }
         base.Dispose(disposing);

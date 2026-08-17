@@ -1,5 +1,7 @@
 package app.donottype
 
+import android.content.Context
+import android.content.SharedPreferences
 import app.donottype.core.Fidelity
 import app.donottype.core.Log
 import app.donottype.core.LogLevel
@@ -9,16 +11,14 @@ import app.donottype.core.PersonalDictionary
 import app.donottype.core.RewriteStyle
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.TranscriptMode
-import android.content.Context
-import android.content.SharedPreferences
 import org.json.JSONArray
 
 /**
  * Preferences and the API key.
  *
- * Android has no per-app Keychain equivalent that an IME can reach without a foreground activity,
- * so the key lives in private `SharedPreferences` — readable only by this UID. That is weaker than
- * the macOS Keychain and worth being honest about in onboarding.
+ * Provider keys are encrypted with a non-exportable AES key in Android Keystore. The encrypted
+ * envelopes live in this app's private preferences so the settings activity, file activity and
+ * input method can all use them without requiring a foreground authentication prompt.
  */
 object Settings {
     private const val FILE = "donottype"
@@ -53,18 +53,27 @@ object Settings {
         "com.android.settings",
     )
 
-    private lateinit var prefs: SharedPreferences
+    // Written last by initialise(); the volatile write publishes apiKeys to entry points that read
+    // settings without taking initialise()'s monitor (activity, file screen, and IME service).
+    @Volatile private lateinit var prefs: SharedPreferences
+    private lateinit var apiKeys: ApiKeyStore
 
+    @Synchronized
     fun initialise(context: Context) {
         if (::prefs.isInitialized) return
-        prefs = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        val localPreferences =
+            context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        apiKeys = ApiKeyStore(localPreferences)
+        // Publish the readiness sentinel last so a concurrent entry point cannot observe prefs
+        // without the secure key store that all API-key access now requires.
+        prefs = localPreferences
         // Started here rather than by each entry point, because there are three of them -- the
         // settings screen, the file screen and the keyboard service -- and the one that matters
         // most for debugging is the keyboard, which nobody remembers to wire up.
         startLogging(context)
     }
 
-    private val ready: Boolean get() = ::prefs.isInitialized
+    private val ready: Boolean get() = ::prefs.isInitialized && ::apiKeys.isInitialized
 
     var provider: ProviderKind
         get() = if (ready) ProviderKind.from(prefs.getString(KEY_PROVIDER, null)) else ProviderKind.DEFAULT
@@ -86,12 +95,31 @@ object Settings {
 
     fun keyFor(kind: ProviderKind): String? {
         if (!ready) return null
-        prefs.getString("$KEY_API-${kind.id}", null)?.takeIf { it.isNotEmpty() }?.let { return it }
-        return if (kind == ProviderKind.GEMINI) prefs.getString(KEY_API, null) else null
+        val providerPreference = "$KEY_API-${kind.id}"
+        apiKeys.read(providerPreference)?.let { return it }
+        if (kind != ProviderKind.GEMINI) return null
+
+        // The original Android app had one Gemini-only key. Move it into the per-provider store
+        // only after the encrypted write succeeds so an upgrade cannot lose a working key.
+        val legacy = apiKeys.read(KEY_API) ?: return null
+        if (setKey(kind, legacy)) runCatching { apiKeys.write(KEY_API, null) }
+        return legacy
     }
 
-    fun setKey(kind: ProviderKind, value: String?) {
-        if (ready) prefs.edit().putString("$KEY_API-${kind.id}", value).apply()
+    fun setKey(kind: ProviderKind, value: String?): Boolean {
+        if (!ready) return false
+        return runCatching {
+            apiKeys.write("$KEY_API-${kind.id}", value)
+            LogRouter.redact(value)
+        }.fold(
+            onSuccess = { true },
+            onFailure = { error ->
+                Log("settings").error(
+                    mapOf("detail" to (error.message ?: error.javaClass.simpleName)),
+                ) { "could not store an API key securely" }
+                false
+            },
+        )
     }
 
     /**

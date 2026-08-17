@@ -30,6 +30,31 @@ release yet, so everything below is unreleased.
   previous audio route promptly. Both recorder teardowns now fully unblock and remove their input
   hooks before returning, so a failed start or fast retry cannot inherit half-open capture state.
 
+- **Android API keys are encrypted at rest.** Existing private SharedPreferences keys migrate in
+  place to AES-GCM values protected by a non-exportable Android Keystore key. New secrets never
+  fall back to plaintext when secure storage fails, the settings screen reports that failure, and
+  newly entered keys join log redaction immediately rather than only after the next app launch.
+
+- **Windows contains failures at its native and UI lifecycle boundaries.** Finishing from the
+  low-level hotkey now runs behind an observed asynchronous safety boundary, so an unexpected
+  setup or teardown exception becomes a visible failure with diagnostics instead of terminating
+  the tray process. The native keyboard callback also contains managed exceptions before they can
+  cross into Windows. Microphone capture no longer runs managed work or requeues buffers inside the
+  driver callback, an operation Microsoft documents as deadlock-prone; a signaled worker consumes
+  stable unmanaged headers instead. Exit cancels producers before disposing controls, ignores
+  late UI callbacks, and leaves cancellation-source disposal to the tasks still using those
+  sources. Microphone start is now transactional: every native return code is checked, partial
+  setup releases its handles and pinned buffers, a driver that stops accepting buffers is reported
+  instead of uploading truncated speech, and a failed live consumer falls back to the complete
+  local recording.
+
+- **The iOS UI suite now waits for actionable controls, not merely allocated rows.** SwiftUI can
+  expose a lazy Form row just outside the viewport, where XCUITest reports that it exists but a tap
+  does not activate its navigation link. Settings navigation waits for an on-screen row, and the
+  prompt editor is located by its stable identifier across Xcode accessibility-type changes. CI
+  now retains the complete Xcode result bundle on failure, including the screenshots and
+  accessibility hierarchy that console output omits.
+
 - **Optional one-key finish and send on macOS and Windows.** Pressing Return/Enter while recording
   can now stop capture, wait for transcription, insert the result, and then emit Return/Enter or
   the configured `⌘ Return` / `Ctrl+Enter`. It is off by default. The key is captured only during

@@ -251,7 +251,7 @@ for masking before the first request, and anything else key-shaped is caught by 
   OpenRouter, a server you run yourself (vLLM, llama.cpp), or a speech recognition service
   (xAI, Deepgram, Mistral Voxtral), with a live connection test. Keys **and models are stored per
   provider**, so switching backends to compare them is one dropdown rather than a re-typing
-  exercise. Keys live in the Keychain / DPAPI / private prefs, never in a config file.
+  exercise. Keys live in the Keychain / DPAPI / Android Keystore, never in a config file.
 - **Recognition services are a different trade, and the app says so.** They return a transcript in
   around 1.2 s against 6.5 s for a model, and cannot read your screen. xAI can still rewrite, on a
   Grok chat model behind the same key; Deepgram and Voxtral cannot. Selecting one

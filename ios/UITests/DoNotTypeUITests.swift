@@ -30,12 +30,26 @@ final class DoNotTypeUITests: XCTestCase {
     /// fast machine and failed on a CI runner looking for the very first section on screen.
     @discardableResult
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
-        if element.waitForExistence(timeout: 3) { return true }
+        if element.waitForExistence(timeout: 3), isInsideViewport(element, in: app) { return true }
         for _ in 0..<8 {
             app.swipeUp()
-            if element.waitForExistence(timeout: 1) { return true }
+            if element.waitForExistence(timeout: 1), isInsideViewport(element, in: app) {
+                return true
+            }
         }
         return false
+    }
+
+    /// `exists` is not enough for a lazy Form: SwiftUI exposes rows just outside the viewport.
+    /// Tapping one of those can log a synthesized event without activating its NavigationLink.
+    /// Reading `isHittable` is itself an XCTest failure when a lazy row has no activation point,
+    /// so use its frame and keep the top/bottom bars out of the actionable viewport.
+    private func isInsideViewport(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        let frame = element.frame
+        guard !frame.isNull, !frame.isInfinite, frame.width > 0, frame.height > 0 else {
+            return false
+        }
+        return app.frame.insetBy(dx: 1, dy: 80).intersects(frame)
     }
 
     /// The one that would have caught the missing plist keys: installing and launching is the
@@ -156,8 +170,11 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(reveal(prompt, in: app), "the prompt row should be reachable")
         prompt.tap()
 
-        let editor = app.textViews["prompt-editor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Prompt"].waitForExistence(timeout: 10))
+        // TextEditor has been exposed as both TextView and Other across iOS/Xcode releases; the
+        // identifier is ours and is the stable contract.
+        let editor = app.descendants(matching: .any)["prompt-editor"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
         let text = (editor.value as? String) ?? ""
         XCTAssertTrue(
             text.contains("SPELLING"),

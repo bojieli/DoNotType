@@ -1,5 +1,6 @@
 package app.donottype
 
+import android.content.Context
 import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
@@ -9,6 +10,7 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import app.donottype.core.Fidelity
 import app.donottype.core.LogRouter
+import app.donottype.core.ProviderKind
 import app.donottype.core.RewriteStyle
 import app.donottype.core.SummaryStyle
 import app.donottype.core.TranscriptMode
@@ -17,6 +19,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -122,6 +125,36 @@ class SettingsActivityTest {
                 save.performClick()
             }
             scenario.onActivity { assertEquals("k-123", Settings.apiKey) }
+        }
+    }
+
+    /** Provider secrets may be readable by this UID, but never readable as plaintext on disk. */
+    @Test
+    fun apiKeysAreEncryptedAtRestAndLegacyPlaintextMigrates() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val preferences = activity.getSharedPreferences("donottype", Context.MODE_PRIVATE)
+                val currentName = "apiKey-${ProviderKind.GEMINI.id}"
+                val legacyName = "apiKey-${ProviderKind.DEEPGRAM.id}"
+                try {
+                    val currentSecret = "current-secret-that-must-not-appear"
+                    assertTrue(Settings.setKey(ProviderKind.GEMINI, currentSecret))
+                    assertEquals(currentSecret, Settings.keyFor(ProviderKind.GEMINI))
+                    val stored = preferences.getString(currentName, null).orEmpty()
+                    assertNotEquals(currentSecret, stored)
+                    assertTrue(stored.startsWith(ApiKeyStore.PREFIX))
+
+                    val legacySecret = "legacy-secret-that-must-be-migrated"
+                    preferences.edit().putString(legacyName, legacySecret).commit()
+                    assertEquals(legacySecret, Settings.keyFor(ProviderKind.DEEPGRAM))
+                    val migrated = preferences.getString(legacyName, null).orEmpty()
+                    assertNotEquals(legacySecret, migrated)
+                    assertTrue(migrated.startsWith(ApiKeyStore.PREFIX))
+                } finally {
+                    Settings.setKey(ProviderKind.GEMINI, null)
+                    Settings.setKey(ProviderKind.DEEPGRAM, null)
+                }
+            }
         }
     }
 

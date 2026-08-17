@@ -73,6 +73,8 @@ public sealed class HotkeyMonitor : IDisposable
     public event Action? Released;
     public event Action? Cancelled;
     public event Action<FinishAndSendAction>? FinishAndSendRequested;
+    /// <summary>An event subscriber failed while running inside the native keyboard callback.</summary>
+    public event Action<string>? Faulted;
 
     /// <summary>Ctrl+Shift+Z — take the last insertion back out of the field.</summary>
     public event Action? UndoRequested;
@@ -96,6 +98,8 @@ public sealed class HotkeyMonitor : IDisposable
     private bool _isCancellingWithEscape;
     /// <summary>Consumes key-up after key-down has already moved recording to transcription.</summary>
     private bool _isFinishingWithEnter;
+
+    private static readonly Log HotkeyLog = new("hotkey");
 
     public HotkeyMonitor()
     {
@@ -140,6 +144,38 @@ public sealed class HotkeyMonitor : IDisposable
     public void Dispose() => Stop();
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        try
+        {
+            return HookCallbackCore(nCode, wParam, lParam);
+        }
+        catch (Exception error)
+        {
+            // A managed exception crossing a native hook delegate can terminate the process. It
+            // also leaves the held-key flags latched, so reset them before reporting the failure.
+            _isHeld = false;
+            _isCancellingWithEscape = false;
+            _isFinishingWithEnter = false;
+            try
+            {
+                HotkeyLog.Error(
+                    () => "keyboard hook callback failed",
+                    new Dictionary<string, string>
+                    {
+                        ["type"] = error.GetType().Name,
+                        ["detail"] = error.Message,
+                    });
+                Faulted?.Invoke("The dictation hotkey failed. Try again; details are in Logs.");
+            }
+            catch
+            {
+                // This catch is the final managed boundary before Windows regains control.
+            }
+            return Interop.CallNextHookEx(_hook, nCode, wParam, lParam);
+        }
+    }
+
+    private IntPtr HookCallbackCore(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode < 0) return Interop.CallNextHookEx(_hook, nCode, wParam, lParam);
 

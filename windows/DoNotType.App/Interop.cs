@@ -135,8 +135,6 @@ internal static partial class Interop
     [DllImport("winmm.dll", CharSet = CharSet.Unicode, EntryPoint = "waveInGetDevCapsW")]
     internal static extern int waveInGetDevCaps(IntPtr deviceId, out WAVEINCAPS caps, int size);
     internal const int WAVE_FORMAT_PCM = 1;
-    internal const uint MM_WIM_DATA = 0x3C0;
-    internal const uint WAVERR_STILLPLAYING = 33;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct WAVEFORMATEX
@@ -163,22 +161,19 @@ internal static partial class Interop
         public IntPtr reserved;
     }
 
-    internal delegate void WaveInProc(
-        IntPtr hwi, uint uMsg, IntPtr dwInstance, ref WAVEHDR dwParam1, IntPtr dwParam2);
-
-    [LibraryImport("winmm.dll")]
-    internal static partial int waveInOpen(
+    [LibraryImport("winmm.dll", EntryPoint = "waveInOpen")]
+    internal static partial int waveInOpenEvent(
         out IntPtr phwi, int uDeviceID, ref WAVEFORMATEX pwfx,
-        WaveInProc dwCallback, IntPtr dwInstance, uint fdwOpen);
+        IntPtr eventHandle, IntPtr dwInstance, uint fdwOpen);
 
     [LibraryImport("winmm.dll")]
-    internal static partial int waveInPrepareHeader(IntPtr hwi, ref WAVEHDR pwh, int cbwh);
+    internal static partial int waveInPrepareHeader(IntPtr hwi, IntPtr pwh, int cbwh);
 
     [LibraryImport("winmm.dll")]
-    internal static partial int waveInUnprepareHeader(IntPtr hwi, ref WAVEHDR pwh, int cbwh);
+    internal static partial int waveInUnprepareHeader(IntPtr hwi, IntPtr pwh, int cbwh);
 
     [LibraryImport("winmm.dll")]
-    internal static partial int waveInAddBuffer(IntPtr hwi, ref WAVEHDR pwh, int cbwh);
+    internal static partial int waveInAddBuffer(IntPtr hwi, IntPtr pwh, int cbwh);
 
     [LibraryImport("winmm.dll")]
     internal static partial int waveInStart(IntPtr hwi);

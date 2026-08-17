@@ -34,6 +34,7 @@ public sealed class DictationController : IDisposable
     private CancellationTokenSource? _dictationCts;
     private Task<ScreenContext>? _fullCapture;
     private LiveDictationSession? _liveSession;
+    private volatile bool _disposed;
 
     public State Current { get; private set; } = State.Idle;
     public string? LastError { get; private set; }
@@ -139,6 +140,13 @@ public sealed class DictationController : IDisposable
         _corrections = new CorrectionObserver(_screen);
         _history = new HistoryStore(HistoryStore.DefaultDirectory());
         _history.Configure(settings.Retention, settings.KeepAudio);
+        _recorder.PcmCaptureFailed = _ =>
+        {
+            // Stop() waits for the capture worker holding the recorder lock, so this exchange is
+            // complete before the finish path decides between live and post-recording modes.
+            var failed = Interlocked.Exchange(ref _liveSession, null);
+            failed?.Cancel();
+        };
 
         _hotkey.IsRecording = () => Current == State.Recording;
         _hotkey.IsDictationActive = () =>
@@ -147,6 +155,7 @@ public sealed class DictationController : IDisposable
         _hotkey.Released += FinishRecording;
         _hotkey.Cancelled += CancelActiveDictation;
         _hotkey.FinishAndSendRequested += FinishAndSend;
+        _hotkey.Faulted += HandleHotkeyFailure;
 
         // Both are cheap only because the verbatim transcript is always kept.
         _hotkey.UndoRequested += () => _ = UndoLastInsertionAsync(revertToVerbatim: false);
@@ -204,12 +213,16 @@ public sealed class DictationController : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         _hotkey.Dispose();
+        _recorder.PcmCaptureFailed = null;
         _recorder.Dispose();
         _corrections.Dispose();
-        _groundingCts?.Dispose();
         _dictationCts?.Cancel();
-        _dictationCts?.Dispose();
+        // The tasks using these sources own their disposal. Disposing a CTS while an HTTP request
+        // is still unregistering its callback turns an ordinary app exit into a shutdown race.
+        _groundingCts?.Cancel();
     }
 
     // ---- Recording ---------------------------------------------------------------------------
@@ -350,6 +363,30 @@ public sealed class DictationController : IDisposable
 
     private bool _openedMicrophoneSettings;
 
+    private void HandleHotkeyFailure(string message)
+    {
+        // The failing subscriber may have opened the microphone before it threw. Clean every
+        // partially established resource so the visible "try again" instruction actually works.
+        try
+        {
+            _recorder.Cancel();
+        }
+        catch (Exception error)
+        {
+            DictationLog.Warn(
+                () => "could not clean up after a hotkey failure",
+                new Dictionary<string, string> { ["detail"] = error.Message });
+        }
+        _recorder.PcmCaptured = null;
+        _liveSession?.Cancel();
+        _liveSession = null;
+        _groundingCts?.Cancel();
+        _pendingContext = null;
+        _pendingFinishAndSend = FinishAndSendAction.Disabled;
+        _pendingFocusIdentity = null;
+        Fail(message);
+    }
+
     /// <summary>Opens a `ms-settings:` page, which needs the shell rather than a plain start.</summary>
     private static void OpenSettingsPage(string uri)
     {
@@ -408,7 +445,56 @@ public sealed class DictationController : IDisposable
         FinishRecording();
     }
 
-    private async void FinishRecording()
+    /// <summary>
+    /// Event-compatible shell around the asynchronous finish path.
+    /// </summary>
+    /// <remarks>
+    /// Hotkey events are synchronous and cannot await a Task. Keeping the implementation itself as
+    /// <c>async void</c> would send any exception thrown before the request-level handler directly
+    /// to WinForms' unhandled-exception path and terminate the tray app. This shell starts a Task;
+    /// <see cref="FinishRecordingAsync"/> contains the final safety boundary for that Task.
+    /// </remarks>
+    private void FinishRecording() => _ = FinishRecordingAsync();
+
+    private async Task FinishRecordingAsync()
+    {
+        try
+        {
+            await FinishRecordingCoreAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!_disposed) SetState(State.Idle);
+        }
+        catch (Exception error)
+        {
+            _groundingCts?.Cancel();
+            _liveSession?.Cancel();
+            _liveSession = null;
+            _recorder.PcmCaptured = null;
+
+            DictationLog.Error(
+                () => "unexpected failure while finishing a dictation",
+                new Dictionary<string, string>
+                {
+                    ["dictation"] = Short(_pendingId),
+                    ["type"] = error.GetType().Name,
+                    ["detail"] = FailureAdvice.Detail(error),
+                });
+
+            if (_disposed) return;
+            var message = error switch
+            {
+                MicrophoneUnavailableException microphone => microphone.Message,
+                ProviderException or HttpRequestException or TaskCanceledException =>
+                    FailureAdvice.Describe(error).Message,
+                _ => "Dictation failed unexpectedly. Try again; details are available in Logs.",
+            };
+            Fail(message);
+        }
+    }
+
+    private async Task FinishRecordingCoreAsync()
     {
         if (Current != State.Recording) return;
 
@@ -1056,6 +1142,7 @@ public sealed class DictationController : IDisposable
 
     private void SetState(State state)
     {
+        if (_disposed) return;
         Current = state;
         if (state != State.Failed) LastError = null;
         StateChanged?.Invoke(state);
@@ -1063,6 +1150,7 @@ public sealed class DictationController : IDisposable
 
     private void Fail(string message)
     {
+        if (_disposed) return;
         LastError = message;
         Current = State.Failed;
         StateChanged?.Invoke(State.Failed);
@@ -1071,6 +1159,7 @@ public sealed class DictationController : IDisposable
     /// <summary>Reports a no-op without blocking the next hotkey press.</summary>
     private void Notice(string message)
     {
+        if (_disposed) return;
         SetState(State.Idle);
         Noticed?.Invoke(message);
     }

@@ -195,11 +195,16 @@ class SettingsActivity : AppCompatActivity() {
             button("Save") {
                 // Keys and models are stored per provider, so this writes to whichever one is
                 // selected rather than to a single shared slot.
-                Settings.apiKey = apiKeyField.text.toString().trim()
+                val keySaved = Settings.setKey(
+                    Settings.provider, apiKeyField.text.toString().trim())
                 Settings.model = modelField.text.toString().trim()
                     .ifEmpty { Settings.provider.defaultModel }
                 modelField.setText(Settings.model)
-                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this,
+                    if (keySaved) "Saved" else "API key could not be stored securely",
+                    Toast.LENGTH_LONG,
+                ).show()
                 refreshStatus()
             }
         )
@@ -230,13 +235,17 @@ class SettingsActivity : AppCompatActivity() {
 
         column.addView(
             button("Save fallback") {
-                Settings.fallbackProvider?.let {
+                val keySaved = Settings.fallbackProvider?.let {
                     Settings.setKey(it, fallbackKeyField.text.toString().trim())
-                }
+                } ?: true
                 Settings.fallbackAfterSeconds =
                     fallbackDelayField.text.toString().toIntOrNull() ?: 8
                 fallbackDelayField.setText(Settings.fallbackAfterSeconds.toString())
-                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this,
+                    if (keySaved) "Saved" else "Fallback key could not be stored securely",
+                    Toast.LENGTH_LONG,
+                ).show()
                 refreshProviderNotes()
             }
         )

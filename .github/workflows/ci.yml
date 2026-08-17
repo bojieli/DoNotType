@@ -302,6 +302,17 @@ jobs:
       - name: Test app and keyboard extension
         working-directory: ios
         run: |
+          mkdir -p ../artifacts
           xcodebuild test -project DoNotType.xcodeproj -scheme DoNotType \
             -destination "platform=iOS Simulator,name=${{ steps.simulator.outputs.name }}" \
-            -configuration Debug CODE_SIGNING_ALLOWED=NO
+            -configuration Debug CODE_SIGNING_ALLOWED=NO \
+            -resultBundlePath ../artifacts/ios-tests.xcresult
+
+      # Console output omits the accessibility hierarchy and screenshots that explain most UI-test
+      # failures. Keep Xcode's result bundle even on failure so CI is diagnostic, not just red.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: ios-test-results
+          path: artifacts/ios-tests.xcresult
+          if-no-files-found: warn
