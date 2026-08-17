@@ -115,6 +115,8 @@ public sealed class SettingsForm : Form
         tabs.TabPages.Add(BuildHistoryTab());
         tabs.TabPages.Add(BuildPromptTab());
         tabs.TabPages.Add(new LogsTab(_settings).Build());
+        tabs.TabPages.Add(new SettingsTransferTab(
+            _settings, _controller, RefreshAfterSettingsTransfer).Build());
         Controls.Add(tabs);
 
         LoadValues();
@@ -1010,6 +1012,45 @@ public sealed class SettingsForm : Form
 
         _controller.ReloadHotkey();
         _connection.Text = "Saved.";
+    }
+
+    private void RefreshAfterSettingsTransfer()
+    {
+        _provider.SelectedIndex = Math.Max(
+            ProviderFactory.PickerOrder.ToList().IndexOf(_settings.Provider), 0);
+        _model.Text = _settings.ModelFor(_settings.Provider);
+        _apiKey.Text = _settings.KeyFor(_settings.Provider) ?? string.Empty;
+
+        _fallback.Items.Clear();
+        _fallback.Items.Add("None");
+        foreach (var kind in FallbackChoices(_settings.Provider))
+            _fallback.Items.Add(kind.PickerLabel());
+        _fallback.SelectedIndex = FallbackIndex(_settings.ResolvedFallbackProvider());
+        _fallbackKey.Text = _settings.ResolvedFallbackProvider() is { } fallback
+            ? _settings.KeyFor(fallback) ?? string.Empty : string.Empty;
+        _fallbackAfter.Value = Math.Clamp(_settings.FallbackAfterSeconds, 1, 120);
+
+        _trigger.SelectedIndex = (int)_settings.Trigger;
+        _cancelShortcut.SelectedIndex = (int)_settings.CancelShortcut;
+        _finishAndSend.SelectedIndex = (int)_settings.FinishAndSendAction;
+        _secondTrigger.SelectedIndex = _settings.SecondaryTrigger is { } secondary
+            ? (int)secondary + 1 : 0;
+        _secondStyle.SelectedIndex = Math.Max(0, (int)_settings.SecondaryStyle - 1);
+        _mode.SelectedIndex = _settings.HotkeyMode switch
+        {
+            HotkeyMonitor.Mode.PushToTalk => 1,
+            HotkeyMonitor.Mode.HandsFree => 2,
+            _ => 0,
+        };
+        _fidelity.SelectedIndex = (int)_settings.Fidelity;
+        _grounding.Checked = _settings.GroundingEnabled;
+        _sounds.Checked = _settings.InteractionSounds;
+        _retention.SelectedIndex = (int)_settings.Retention;
+        _keepAudio.Checked = _settings.KeepAudio;
+        _controller.ReloadHotkey();
+        RefreshProviderNotes();
+        RefreshDictionary();
+        RefreshHistory();
     }
 
     private async Task TestConnectionAsync(Button button)

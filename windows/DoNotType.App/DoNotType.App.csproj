@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DoNotType.Core\DoNotType.Core.csproj" />
+    <PackageReference Include="ZXing.Net" Version="0.16.11" />
   </ItemGroup>
 
   <ItemGroup>

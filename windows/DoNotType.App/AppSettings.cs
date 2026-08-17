@@ -338,6 +338,9 @@ public sealed class AppSettings
     {
         if (string.IsNullOrEmpty(value)) ProtectedApiKeys.Remove(kind.ToString());
         else ProtectedApiKeys[kind.ToString()] = Protect(value);
+        // A deliberate provider-specific write supersedes the legacy Gemini-only slot. Otherwise
+        // clearing Gemini during import would reveal the old key again on the next read.
+        if (kind == ProviderKind.Gemini) ApiKey = null;
     }
 
     /// <summary>
