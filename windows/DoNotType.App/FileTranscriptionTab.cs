@@ -163,6 +163,7 @@ internal sealed class FileTranscriptionTab
         {
             Fidelity = _settings.Fidelity,
             KeytermBiasing = _settings.KeytermBiasing,
+            PersonalDictionary = _settings.PersonalDictionaryTerms(),
         };
 
         var transcriber = new FileTranscriber(service, builder, _settings.Fidelity, SecondStage(builder));
@@ -221,7 +222,11 @@ internal sealed class FileTranscriptionTab
             if (string.IsNullOrEmpty(key)) continue;
             return new TranscriptionService(
                 ProviderFactory.Create(kind, key, _settings.ModelFor(kind)),
-                builder.SystemInstruction(_settings.Fidelity));
+                builder.SystemInstruction(_settings.Fidelity))
+            {
+                Fidelity = _settings.Fidelity,
+                PersonalDictionary = _settings.PersonalDictionaryTerms(),
+            };
         }
         return null;
     }

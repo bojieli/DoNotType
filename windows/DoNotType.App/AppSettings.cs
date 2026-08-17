@@ -48,6 +48,63 @@ public sealed class AppSettings
     /// </summary>
     public bool KeytermBiasing { get; set; }
 
+    /// <summary>Spellings explicitly entered or imported by the user.</summary>
+    public List<string> DictionaryTerms { get; set; } = [];
+
+    /// <summary>Spellings learned from edits after dictation, kept visible and removable.</summary>
+    public List<string> LearnedDictionaryTerms { get; set; } = [];
+
+    /// <summary>
+    /// Opt-in because observing another application's text after insertion is more sensitive than
+    /// storing a dictionary. Only spelling/capitalisation fixes are retained.
+    /// </summary>
+    public bool LearnDictionaryFromEdits { get; set; }
+
+    public IReadOnlyList<string> PersonalDictionaryTerms()
+    {
+        lock (this)
+        {
+            NormalizeDictionary();
+            return DoNotType.Core.PersonalDictionary.Sanitize(
+                DictionaryTerms.Concat(LearnedDictionaryTerms));
+        }
+    }
+
+    /// <summary>Adds learned spellings atomically and returns only entries that were actually new.</summary>
+    public IReadOnlyList<string> LearnDictionaryTerms(IEnumerable<string> candidates)
+    {
+        lock (this)
+        {
+            NormalizeDictionary();
+            var combined = DictionaryTerms.Concat(LearnedDictionaryTerms).ToList();
+            var seen = new HashSet<string>(combined, StringComparer.OrdinalIgnoreCase);
+            var added = new List<string>();
+            foreach (var raw in candidates)
+            {
+                string term;
+                try { term = DoNotType.Core.PersonalDictionary.Normalize(raw); }
+                catch (DoNotType.Core.PersonalDictionary.ValidationException) { continue; }
+                if (combined.Count >= DoNotType.Core.PersonalDictionary.MaxTerms || !seen.Add(term))
+                    continue;
+                LearnedDictionaryTerms.Add(term);
+                combined.Add(term);
+                added.Add(term);
+            }
+            if (added.Count > 0) Save();
+            return added;
+        }
+    }
+
+    public void ForgetLearnedDictionaryTerms(IEnumerable<string> terms)
+    {
+        lock (this)
+        {
+            var removed = new HashSet<string>(terms, StringComparer.OrdinalIgnoreCase);
+            LearnedDictionaryTerms.RemoveAll(removed.Contains);
+            Save();
+        }
+    }
+
     /// <summary>The pinned microphone's name, or null to follow the system default.</summary>
     public string? MicrophoneName { get; set; }
 
@@ -185,8 +242,10 @@ public sealed class AppSettings
         {
             if (File.Exists(Path))
             {
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Path), Options)
+                var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Path), Options)
                     ?? new AppSettings();
+                loaded.NormalizeDictionary();
+                return loaded;
             }
         }
         catch (Exception e) when (e is JsonException or IOException)
@@ -198,8 +257,22 @@ public sealed class AppSettings
 
     public void Save()
     {
-        System.IO.Directory.CreateDirectory(Directory);
-        File.WriteAllText(Path, JsonSerializer.Serialize(this, Options));
+        lock (this)
+        {
+            NormalizeDictionary();
+            System.IO.Directory.CreateDirectory(Directory);
+            File.WriteAllText(Path, JsonSerializer.Serialize(this, Options));
+        }
+    }
+
+    private void NormalizeDictionary()
+    {
+        DictionaryTerms = DoNotType.Core.PersonalDictionary.Sanitize(DictionaryTerms).ToList();
+        var manual = new HashSet<string>(DictionaryTerms, StringComparer.OrdinalIgnoreCase);
+        LearnedDictionaryTerms = DoNotType.Core.PersonalDictionary.Sanitize(LearnedDictionaryTerms)
+            .Where(term => !manual.Contains(term))
+            .Take(DoNotType.Core.PersonalDictionary.MaxTerms - DictionaryTerms.Count)
+            .ToList();
     }
 
     // ---- API key -----------------------------------------------------------------------------

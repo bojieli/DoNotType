@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Automation;
+using System.Windows.Automation.Text;
 using DoNotType.Core;
 
 namespace DoNotType.App;
@@ -16,6 +17,10 @@ namespace DoNotType.App;
 /// </summary>
 public sealed class ScreenReader
 {
+    /// <summary>A stable identity and full editable value captured at insertion time.</summary>
+    public sealed record EditableSnapshot(
+        int ProcessId, string RuntimeId, string Value, int SelectionStart, int SelectionLength);
+
     private const int VisibleTextChars = 10_000;
     private const int CaretWindowChars = 1_000;
     private const int MaxElements = 1_500;
@@ -80,6 +85,44 @@ public sealed class ScreenReader
             // Partial grounding beats none.
         }
         return context;
+    }
+
+    /// <summary>
+    /// Captures the focused editable field for correction learning. Password controls are never
+    /// read, and a control without a reliable selection offset is not observed.
+    /// </summary>
+    public EditableSnapshot? CaptureFocusedEditable()
+    {
+        try
+        {
+            var focused = AutomationElement.FocusedElement;
+            if (focused is null || focused.Current.IsPassword) return null;
+            if (focused.Current.ControlType != ControlType.Edit
+                && focused.Current.ControlType != ControlType.Document) return null;
+            if (!focused.TryGetCurrentPattern(TextPattern.Pattern, out var raw)
+                || raw is not TextPattern pattern) return null;
+
+            var selections = pattern.GetSelection();
+            if (selections.Length == 0) return null;
+            var selection = selections[0];
+            var whole = pattern.DocumentRange;
+            var value = whole.GetText(-1);
+            var before = whole.Clone();
+            before.MoveEndpointByRange(
+                TextPatternRangeEndpoint.End, selection, TextPatternRangeEndpoint.Start);
+            var start = before.GetText(-1).Length;
+            var length = selection.GetText(-1).Length;
+            if (start < 0 || start + length > value.Length) return null;
+
+            return new EditableSnapshot(
+                focused.Current.ProcessId,
+                string.Join('.', focused.GetRuntimeId()),
+                value, start, length);
+        }
+        catch (Exception e) when (e is ElementNotAvailableException or COMException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     private static string ForegroundProcessName()

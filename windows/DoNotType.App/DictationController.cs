@@ -25,6 +25,7 @@ public sealed class DictationController : IDisposable
     private readonly AudioRecorder _recorder = new();
     private readonly HotkeyMonitor _hotkey = new();
     private readonly ScreenReader _screen = new();
+    private readonly CorrectionObserver _corrections;
     private readonly HistoryStore _history;
     private readonly AppSettings _settings;
 
@@ -109,12 +110,16 @@ public sealed class DictationController : IDisposable
     public event Action<int, int>? ChunkProgress;
     public event Action? HistoryChanged;
 
+    /// <summary>New spellings learned from an edit, exposed for an undo affordance.</summary>
+    public event Action<IReadOnlyList<string>>? DictionaryLearned;
+
     public HistoryStore History => _history;
     public IReadOnlyList<AudioLevelMeter.Bar> DrainLevels() => _recorder.DrainLevels();
 
     public DictationController(AppSettings settings)
     {
         _settings = settings;
+        _corrections = new CorrectionObserver(_screen);
         _history = new HistoryStore(HistoryStore.DefaultDirectory());
         _history.Configure(settings.Retention, settings.KeepAudio);
 
@@ -131,8 +136,18 @@ public sealed class DictationController : IDisposable
     }
 
     private readonly InsertionTracker _insertions = new();
+    private IReadOnlyList<string> _lastLearnedTerms = [];
+
     public bool CanUndo => _insertions.CanUndo;
     public bool CanRevertToVerbatim => _insertions.CanRevertToVerbatim;
+    public bool CanUndoDictionaryLearning => _lastLearnedTerms.Count > 0;
+
+    public void UndoLastDictionaryLearning()
+    {
+        if (_lastLearnedTerms.Count == 0) return;
+        _settings.ForgetLearnedDictionaryTerms(_lastLearnedTerms);
+        _lastLearnedTerms = [];
+    }
     /// <summary>Takes the last insertion back out of the field it went into.</summary>
     public async Task UndoLastInsertionAsync(bool revertToVerbatim)
     {
@@ -172,6 +187,7 @@ public sealed class DictationController : IDisposable
     {
         _hotkey.Dispose();
         _recorder.Dispose();
+        _corrections.Dispose();
         _groundingCts?.Dispose();
         _dictationCts?.Cancel();
         _dictationCts?.Dispose();
@@ -438,6 +454,7 @@ public sealed class DictationController : IDisposable
             {
                 Fidelity = _settings.Fidelity,
                 KeytermBiasing = _settings.KeytermBiasing,
+                PersonalDictionary = _settings.PersonalDictionaryTerms(),
             };
             return new LiveDictationSession(
                 (wav, context, token) => BuildTranscriber(
@@ -494,6 +511,7 @@ public sealed class DictationController : IDisposable
         {
             Fidelity = _settings.Fidelity,
             KeytermBiasing = _settings.KeytermBiasing,
+            PersonalDictionary = _settings.PersonalDictionaryTerms(),
         };
 
         Task<TranscriptionResult> RunSecondary(CancellationToken token) =>
@@ -571,6 +589,7 @@ public sealed class DictationController : IDisposable
             // has no system instruction to read it out of.
             Fidelity = _settings.Fidelity,
             KeytermBiasing = _settings.KeytermBiasing,
+            PersonalDictionary = _settings.PersonalDictionaryTerms(),
         };
 
         // From here, not from the request: reading the screen and any retry are both time the
@@ -746,12 +765,25 @@ public sealed class DictationController : IDisposable
                 return;
             }
 
+            var insertionTarget = _settings.LearnDictionaryFromEdits
+                ? _screen.CaptureFocusedEditable()
+                : null;
             await TextInjector.InsertAsync(delivered, Short(_pendingId)).ConfigureAwait(false);
             // The failure is carried out rather than left to be noticed. The words landed either
             // way, but somebody who held the rewrite key and got their own words back should be
             // told that is what happened — most often because the backend is a recogniser, which
             // cannot rewrite text at all.
             _insertions.Record(record.Id, delivered, text);
+            if (insertionTarget is not null)
+            {
+                _corrections.Watch(insertionTarget, delivered, candidates =>
+                {
+                    var added = _settings.LearnDictionaryTerms(candidates);
+                    if (added.Count == 0) return;
+                    _lastLearnedTerms = added;
+                    DictionaryLearned?.Invoke(added);
+                });
+            }
             Inserted?.Invoke(new Insertion(delivered.Length, rewriteFailed));
             DictationLog.Info(() => "dictation complete", new Dictionary<string, string>
             {
@@ -864,7 +896,12 @@ public sealed class DictationController : IDisposable
         record.RetryCount++;
         var service = new TranscriptionService(
             ProviderFactory.Create(_settings.Provider, key, _settings.Model),
-            Prompt(promptPath).SystemInstruction(record.Fidelity));
+            Prompt(promptPath).SystemInstruction(record.Fidelity))
+        {
+            Fidelity = record.Fidelity,
+            KeytermBiasing = _settings.KeytermBiasing,
+            PersonalDictionary = _settings.PersonalDictionaryTerms(),
+        };
 
 
         try

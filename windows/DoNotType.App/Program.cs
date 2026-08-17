@@ -47,6 +47,13 @@ internal sealed class TrayApplication : ApplicationContext
                 RecordingOverlay.Phase.Transcribing,
                 total > 1 ? $"part {Math.Min(done + 1, total)} of {total}" : null));
         _controller.HistoryChanged += () => BeginInvokeOnTray(RebuildMenu);
+        _controller.DictionaryLearned += terms => BeginInvokeOnTray(() =>
+        {
+            RebuildMenu();
+            var shown = string.Join(", ", terms.Select(term => $"“{term}”"));
+            _overlay.Show(RecordingOverlay.Phase.Inserted, $"Learned {shown} — undo from tray");
+            _ = HideOverlayAfter(TimeSpan.FromSeconds(3.5));
+        });
         _controller.Undone += message => BeginInvokeOnTray(() =>
         {
             _overlay.Show(RecordingOverlay.Phase.Inserted, message);
@@ -235,6 +242,20 @@ internal sealed class TrayApplication : ApplicationContext
             var copy = new ToolStripMenuItem("Copy last transcript");
             copy.Click += (_, _) => Clipboard.SetText(latest.Text);
             menu.Items.Add(copy);
+        }
+
+        if (_controller.CanUndoDictionaryLearning)
+        {
+            menu.Items.Add(new ToolStripSeparator());
+            var undoLearning = new ToolStripMenuItem("Undo last dictionary learning");
+            undoLearning.Click += (_, _) =>
+            {
+                _controller.UndoLastDictionaryLearning();
+                RebuildMenu();
+                _overlay.Show(RecordingOverlay.Phase.Inserted, "Removed learned spelling");
+                _ = HideOverlayAfter(TimeSpan.FromSeconds(1.6));
+            };
+            menu.Items.Add(undoLearning);
         }
 
         menu.Items.Add(new ToolStripSeparator());

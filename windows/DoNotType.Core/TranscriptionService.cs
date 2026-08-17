@@ -75,6 +75,9 @@ public sealed class TranscriptionService(
     /// </summary>
     public bool KeytermBiasing { get; init; }
 
+    /// <summary>User-supplied spellings. This is independent of optional screen grounding.</summary>
+    public IReadOnlyList<string> PersonalDictionary { get; init; } = [];
+
     /// <summary>
     /// Whether a request that has stalled is joined by a second identical one, the faster of the
     /// two winning. See <see cref="StallHedge"/> for what counts as stalled and why it is not a
@@ -95,6 +98,12 @@ public sealed class TranscriptionService(
         var parts = new List<InputPart>();
         IReadOnlyList<string> keyterms = [];
 
+        if (Provider.Grounding is GroundingSupport.MultimodalGrounding
+            && DoNotType.Core.PersonalDictionary.ReferenceBlock(PersonalDictionary) is { } reference)
+        {
+            parts.Add(new InputPart.Text(reference));
+        }
+
         // Each backend is sent only what it can use. Encoding ten thousand characters of screen
         // text for an endpoint whose request body is raw audio would not merely be wasted — it
         // would put a "grounded" request in the history for a transcript produced without it.
@@ -106,9 +115,18 @@ public sealed class TranscriptionService(
                     parts.AddRange(_encoder.Encode(context));
                     break;
                 case GroundingSupport.KeytermGrounding keyterm when KeytermBiasing:
-                    keyterms = Keyterms.Derive(context, keyterm.MaxTerms, keyterm.MaxCharsPerTerm);
+                    keyterms = DoNotType.Core.PersonalDictionary.MergeKeyterms(
+                        PersonalDictionary,
+                        Keyterms.Derive(context, keyterm.MaxTerms, keyterm.MaxCharsPerTerm),
+                        keyterm.MaxTerms, keyterm.MaxCharsPerTerm);
                     break;
             }
+        }
+
+        if (Provider.Grounding is GroundingSupport.KeytermGrounding speech && keyterms.Count == 0)
+        {
+            keyterms = DoNotType.Core.PersonalDictionary.Keyterms(
+                PersonalDictionary, speech.MaxTerms, speech.MaxCharsPerTerm);
         }
 
         // Falls back to the WAV whenever libopus is unavailable or the encode fails, because a

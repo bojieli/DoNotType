@@ -62,11 +62,40 @@ public sealed class SettingsForm : Form
         Dock = DockStyle.Fill,
     };
     private readonly Label _historySummary = new() { AutoSize = true };
+    private readonly ListView _dictionary = new()
+    {
+        View = View.Details,
+        FullRowSelect = true,
+        Dock = DockStyle.Fill,
+        MultiSelect = false,
+    };
+    private readonly TextBox _dictionaryEntry = new() { Width = 280 };
+    private readonly Label _dictionaryStatus = new() { AutoSize = true, MaximumSize = new Size(540, 0) };
+    private readonly CheckBox _learnDictionary = new()
+    {
+        Text = "Learn spelling corrections I make after dictation",
+        AutoSize = true,
+    };
+    private readonly Action<IReadOnlyList<string>> _dictionaryLearnedHandler;
+
+    private sealed record DictionaryRow(string Term, bool Learned);
 
     public SettingsForm(AppSettings settings, DictationController controller)
     {
         _settings = settings;
         _controller = controller;
+        _dictionaryLearnedHandler = terms =>
+        {
+            if (IsDisposed) return;
+            BeginInvoke(() =>
+            {
+                RefreshDictionary();
+                _dictionaryStatus.Text = "Learned " + string.Join(", ", terms.Select(t => $"“{t}”"))
+                    + ". Use the tray menu to undo.";
+            });
+        };
+        _controller.DictionaryLearned += _dictionaryLearnedHandler;
+        FormClosed += (_, _) => _controller.DictionaryLearned -= _dictionaryLearnedHandler;
 
         Text = "DoNotType Settings";
         Icon = AppIcon.Window;
@@ -80,6 +109,7 @@ public sealed class SettingsForm : Form
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
         tabs.TabPages.Add(BuildGeneralTab());
+        tabs.TabPages.Add(BuildDictionaryTab());
         tabs.TabPages.Add(new FileTranscriptionTab(_settings).Build());
         tabs.TabPages.Add(BuildHistoryTab());
         tabs.TabPages.Add(BuildPromptTab());
@@ -87,6 +117,7 @@ public sealed class SettingsForm : Form
         Controls.Add(tabs);
 
         LoadValues();
+        RefreshDictionary();
         RefreshHistory();
     }
 
@@ -175,8 +206,8 @@ public sealed class SettingsForm : Form
             + "by default only where it was measured to matter: when the text around the caret "
             + "already contains numbers (75% substitution there, against 30% elsewhere)."));
         layout.Controls.Add(Caption(
-            "Screen text is sent as-is — no vocabulary list, no dictionary, no previous "
-            + "transcripts. It may correct spelling, never the words you said."));
+            "Screen text is sent as-is and remains separate from your explicit personal "
+            + "dictionary. It may correct spelling, never the words you said."));
 
         var save = new Button { Text = "Save", Width = 120 };
         save.Click += (_, _) => SaveValues();
@@ -184,6 +215,178 @@ public sealed class SettingsForm : Form
 
         page.Controls.Add(layout);
         return page;
+    }
+
+    // ---- Dictionary -------------------------------------------------------------------------
+
+    private TabPage BuildDictionaryTab()
+    {
+        var page = new TabPage("Dictionary");
+        _dictionary.Columns.Add("Spelling", 360);
+        _dictionary.Columns.Add("Source", 110);
+
+        var header = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 112,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            Padding = new Padding(12, 10, 12, 0),
+        };
+        header.Controls.Add(_learnDictionary);
+        header.Controls.Add(Caption(
+            "Optional. For one minute after an insertion, DoNotType watches only that same "
+            + "editable control and learns stable spelling or capitalisation corrections. "
+            + "Password fields, additions, deletions, numbers and ordinary rewrites are ignored."));
+
+        var editor = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 92,
+            Padding = new Padding(12, 8, 12, 0),
+            WrapContents = true,
+        };
+        editor.Controls.Add(_dictionaryEntry);
+        var add = new Button { Text = "Add / save", Width = 100 };
+        add.Click += (_, _) => SaveDictionaryEntry();
+        editor.Controls.Add(add);
+        var remove = new Button { Text = "Remove", Width = 90 };
+        remove.Click += (_, _) => RemoveDictionaryEntry();
+        editor.Controls.Add(remove);
+        var import = new Button { Text = "Import CSV…", Width = 100 };
+        import.Click += (_, _) => ImportDictionary();
+        editor.Controls.Add(import);
+        editor.Controls.Add(_dictionaryStatus);
+
+        _dictionary.SelectedIndexChanged += (_, _) =>
+        {
+            if (SelectedDictionaryRow() is { } row) _dictionaryEntry.Text = row.Term;
+        };
+        _dictionaryEntry.KeyDown += (_, eventArgs) =>
+        {
+            if (eventArgs.KeyCode != Keys.Enter) return;
+            SaveDictionaryEntry();
+            eventArgs.SuppressKeyPress = true;
+        };
+        _learnDictionary.CheckedChanged += (_, _) =>
+        {
+            _settings.LearnDictionaryFromEdits = _learnDictionary.Checked;
+            _settings.Save();
+        };
+
+        page.Controls.Add(_dictionary);
+        page.Controls.Add(editor);
+        page.Controls.Add(header);
+        return page;
+    }
+
+    private DictionaryRow? SelectedDictionaryRow() =>
+        _dictionary.SelectedItems.Count == 0
+            ? null
+            : _dictionary.SelectedItems[0].Tag as DictionaryRow;
+
+    private void RefreshDictionary()
+    {
+        _learnDictionary.Checked = _settings.LearnDictionaryFromEdits;
+        _dictionary.BeginUpdate();
+        _dictionary.Items.Clear();
+        foreach (var term in _settings.DictionaryTerms)
+        {
+            var row = new DictionaryRow(term, false);
+            var item = new ListViewItem(term) { Tag = row };
+            item.SubItems.Add("Added");
+            _dictionary.Items.Add(item);
+        }
+        foreach (var term in _settings.LearnedDictionaryTerms)
+        {
+            var row = new DictionaryRow(term, true);
+            var item = new ListViewItem(term) { Tag = row };
+            item.SubItems.Add("Learned");
+            _dictionary.Items.Add(item);
+        }
+        _dictionary.EndUpdate();
+        _dictionaryStatus.Text = $"{_settings.PersonalDictionaryTerms().Count} of "
+            + $"{DoNotType.Core.PersonalDictionary.MaxTerms} entries";
+    }
+
+    private void SaveDictionaryEntry()
+    {
+        try
+        {
+            var value = DoNotType.Core.PersonalDictionary.Normalize(_dictionaryEntry.Text);
+            var selected = SelectedDictionaryRow();
+            var allExceptSelected = _settings.PersonalDictionaryTerms()
+                .Where(term => selected is null
+                    || !term.Equals(selected.Term, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (allExceptSelected.Contains(value, StringComparer.OrdinalIgnoreCase))
+                throw new DoNotType.Core.PersonalDictionary.ValidationException(
+                    $"“{value}” is already in the dictionary.");
+            if (selected is null && allExceptSelected.Count >= DoNotType.Core.PersonalDictionary.MaxTerms)
+                throw new DoNotType.Core.PersonalDictionary.ValidationException(
+                    $"The dictionary can contain at most {DoNotType.Core.PersonalDictionary.MaxTerms} entries.");
+
+            if (selected is null) _settings.DictionaryTerms.Add(value);
+            else
+            {
+                var terms = selected.Learned
+                    ? _settings.LearnedDictionaryTerms : _settings.DictionaryTerms;
+                var index = terms.FindIndex(term => term == selected.Term);
+                if (index >= 0) terms[index] = value;
+            }
+            _settings.Save();
+            _dictionaryEntry.Clear();
+            RefreshDictionary();
+        }
+        catch (DoNotType.Core.PersonalDictionary.ValidationException error)
+        {
+            _dictionaryStatus.Text = error.Message;
+        }
+    }
+
+    private void RemoveDictionaryEntry()
+    {
+        if (SelectedDictionaryRow() is not { } row) return;
+        var terms = row.Learned ? _settings.LearnedDictionaryTerms : _settings.DictionaryTerms;
+        terms.RemoveAll(term => term == row.Term);
+        _settings.Save();
+        _dictionaryEntry.Clear();
+        RefreshDictionary();
+    }
+
+    private void ImportDictionary()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Filter = "CSV or text (*.csv;*.txt)|*.csv;*.txt|All files (*.*)|*.*",
+            Title = "Import personal dictionary",
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        try
+        {
+            var imported = DoNotType.Core.PersonalDictionary.EntriesFromCsv(
+                File.ReadAllBytes(dialog.FileName));
+            var all = _settings.PersonalDictionaryTerms().ToList();
+            var seen = new HashSet<string>(all, StringComparer.OrdinalIgnoreCase);
+            var additions = new List<string>();
+            foreach (var term in imported)
+            {
+                if (!seen.Add(term)) continue;
+                if (all.Count + additions.Count >= DoNotType.Core.PersonalDictionary.MaxTerms)
+                    throw new DoNotType.Core.PersonalDictionary.ValidationException(
+                        $"The dictionary can contain at most {DoNotType.Core.PersonalDictionary.MaxTerms} entries.");
+                additions.Add(term);
+            }
+            _settings.DictionaryTerms.AddRange(additions);
+            _settings.Save();
+            RefreshDictionary();
+            _dictionaryStatus.Text = $"Imported {additions.Count} new entries.";
+        }
+        catch (Exception error) when (error is IOException
+                                      or DoNotType.Core.PersonalDictionary.ValidationException)
+        {
+            _dictionaryStatus.Text = error.Message;
+        }
     }
 
     // ---- History -----------------------------------------------------------------------------
