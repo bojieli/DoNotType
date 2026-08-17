@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -17,7 +20,7 @@ jobs:
     name: Contract
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Prompt builds for every fidelity
         run: swift test --filter PromptBuilderTests
       # Per-part overrides and the split of the old single-file format, which is the path an
@@ -29,7 +32,7 @@ jobs:
     name: Swift core and macOS app
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Unit tests
         # Integration tests are deliberately excluded: they call a paid API and fail when the
@@ -48,7 +51,7 @@ jobs:
           make app
           ./scripts/macos-launch-check.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: macos-screenshots
@@ -79,7 +82,7 @@ jobs:
     name: Replayed eval
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Is there a cassette?
         id: cassette
@@ -103,8 +106,8 @@ jobs:
     name: Windows core
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
 
@@ -127,8 +130,8 @@ jobs:
     name: Windows app
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
 
@@ -145,12 +148,29 @@ jobs:
       - name: Build the CLI
         run: dotnet build windows/DoNotType.Cli/DoNotType.Cli.csproj -c Release
 
+      # Publish both executables into one self-contained runtime layout. The release used to put a
+      # framework-dependent CLI beside a single-file app, but a single-file app's private runtime
+      # cannot satisfy another executable; dnt.exe therefore failed on a clean Windows install.
+      - name: Publish the release layout
+        shell: powershell
+        run: |
+          dotnet publish windows/DoNotType.App/DoNotType.App.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=false -o publish
+          dotnet publish windows/DoNotType.Cli/DoNotType.Cli.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=false -o publish
+          if (!(Test-Path publish/hostfxr.dll)) { throw "the private .NET runtime is missing" }
+          if (!(Test-Path publish/dnt.runtimeconfig.json)) { throw "the CLI runtime config is missing" }
+
       # Media Foundation needs a real Windows session, so this is also the first moment the CLI
       # decodes a compressed recording end to end.
       - name: Decode every format through the CLI
         shell: powershell
         run: |
-          $dnt = "$PWD\windows\DoNotType.Cli\bin\Release\net10.0-windows\dnt.exe"
+          $env:DOTNET_ROOT = "$env:RUNNER_TEMP\no-global-dotnet"
+          $env:DOTNET_MULTILEVEL_LOOKUP = "0"
+          $dnt = "$PWD\publish\dnt.exe"
           & $dnt doctor --no-stored-key
           if ($LASTEXITCODE -ne 0) { throw "dnt doctor reported a problem" }
 
@@ -164,7 +184,7 @@ jobs:
           Add-Type -AssemblyName System.Drawing, System.Windows.Forms
           New-Item -ItemType Directory -Force -Path shots | Out-Null
 
-          $exe = "$PWD\windows\DoNotType.App\bin\Release\net10.0-windows\DoNotType.exe"
+          $exe = "$PWD\publish\DoNotType.exe"
           $err = "$PWD\shots\stderr.txt"
           $proc = Start-Process $exe -PassThru -RedirectStandardError $err
           Start-Sleep -Seconds 25
@@ -190,7 +210,7 @@ jobs:
 
           Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: windows-screenshots
@@ -200,21 +220,21 @@ jobs:
     name: Android
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
 
       # Includes the cross-platform encoder check against eval/conformance/golden.json.
       - name: Unit tests
         working-directory: android
-        run: gradle test --no-daemon
+        run: ./gradlew test --no-daemon
 
       - name: Assemble debug APK
         working-directory: android
-        run: gradle assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon
 
       # Every part, not just the entry point: a part missing from the APK is invisible until
       # somebody picks that fidelity or style, and then it fails mid-dictation.
@@ -243,20 +263,20 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Instrumented UI tests
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
           target: google_apis
           arch: x86_64
           disable-animations: true
           working-directory: android
-          script: gradle connectedDebugAndroidTest --no-daemon
+          script: ./gradlew connectedDebugAndroidTest --no-daemon
 
   ios:
     name: iOS
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install XcodeGen
         run: brew install xcodegen
 

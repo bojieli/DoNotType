@@ -13,10 +13,10 @@ import XCTest
 @MainActor
 final class DoNotTypeUITests: XCTestCase {
 
-    private func launch() -> XCUIApplication {
+    private func launch(arguments: [String] = []) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments += ["-ui-testing"]
+        app.launchArguments += ["-ui-testing"] + arguments
         app.launch()
         return app
     }
@@ -45,6 +45,18 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["DoNotType"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["record"].exists, "the dictation button should be on screen")
         XCTAssertTrue(app.staticTexts["Tap to dictate, or hold to talk"].exists)
+    }
+
+    /// A rejected silent recording must end with an explanation, not the ordinary idle prompt.
+    /// The button remains live because this is a harmless no-op rather than an error state.
+    func testNoSpeechOutcomeIsVisibleAndImmediatelyRetryable() {
+        let app = launch(arguments: ["-ui-testing-no-speech-notice"])
+        let notice = app.staticTexts["No speech detected — recording wasn’t sent"]
+
+        XCTAssertTrue(notice.waitForExistence(timeout: 10))
+        let record = app.buttons["record"]
+        XCTAssertTrue(record.exists)
+        XCTAssertTrue(record.isEnabled, "no speech should not disable the next dictation")
     }
 
     /// The style picker, which is how a phone makes the choice the desktop makes with a second

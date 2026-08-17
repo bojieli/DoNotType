@@ -167,9 +167,11 @@ class DictationService(private val context: Context) {
             log.content("transcript", LogLevel.TRACE) { text }
 
             if (text.isBlank()) {
-                // Not an error, and the one outcome people report as one: the key worked, the
-                // request worked, and nothing was said.
+                // Do not store a completed empty row, and do not make the IME infer this from a
+                // successful result. A typed exception lets it keep the outcome visible without
+                // presenting silence as a provider failure worth retrying.
                 log.info(mapOf("dictation" to id)) { "nothing was said" }
+                return Result.failure(NoSpeechException())
             }
 
             record.status = DictationRecord.Status.COMPLETED

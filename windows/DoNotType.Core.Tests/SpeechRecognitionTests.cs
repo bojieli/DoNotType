@@ -95,7 +95,9 @@ public class KeytermsTests
         Assert.True(Keyterms.Derive(new ScreenContext { VisibleText = words }, maxTerms: 5).Count <= 5);
 
         var repeated = new ScreenContext { VisibleText = "start Brindlewood BRINDLEWOOD brindlewood again" };
-        Assert.Single(Keyterms.Derive(repeated).Where(t => t.Equals("brindlewood", StringComparison.OrdinalIgnoreCase)));
+        Assert.Single(
+            Keyterms.Derive(repeated),
+            term => term.Equals("brindlewood", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

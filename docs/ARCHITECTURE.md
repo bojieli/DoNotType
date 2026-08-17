@@ -192,7 +192,8 @@ grounding. Every eval clip is far below the chunking threshold, so nothing is sk
 
 ## Testing layers
 
-- **Unit** (`swift test`, `dotnet test`, `gradle test`) — pure logic, no network. 184 + 61 + 30
+- **Unit** (`swift test`, `dotnet test`, `./gradlew test`) — pure logic, no network; counts are
+  reported by each runner rather than copied here and allowed to go stale.
   tests. Where a type exists on several platforms, the ports assert the same invariants: a stats
   screen that reports different numbers on different platforms is worse than no stats screen.
 - **Integration** (`DNT_INTEGRATION=1 swift test`) — live API on real recorded speech. Opt-in

@@ -10,6 +10,19 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **A stopped recording always explains what happened.** Recordings that are too short, contain no
+  detected speech, or produce a blank transcript now leave a visible, short-lived notice on macOS,
+  iOS, Windows, and Android instead of making the recording UI disappear without an answer. The
+  controls remain immediately retryable; Android also fixes an error state whose retry-looking
+  button previously ignored taps. Windows confirmations can no longer race with a later recording
+  and hide its overlay.
+
+- **Reproducible Android and self-contained Windows release builds.** Android now carries the
+  Gradle 8.9 wrapper and checksum required by its pinned Android Gradle Plugin instead of trusting
+  whichever system Gradle happens to be installed. The Windows app and CLI now share one private
+  .NET runtime, so both work on a clean machine without a global .NET installation. CI exercises
+  the exact packaged layout, and build actions are current and pinned to immutable revisions.
+
 - **Optional one-key finish and send on macOS and Windows.** Pressing Return/Enter while recording
   can now stop capture, wait for transcription, insert the result, and then emit Return/Enter or
   the configured `⌘ Return` / `Ctrl+Enter`. It is off by default. The key is captured only during

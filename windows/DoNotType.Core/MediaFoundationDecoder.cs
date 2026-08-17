@@ -34,6 +34,7 @@ public static class MediaFoundationDecoder
     private static readonly Log Log = new("audio");
 
     /// <summary>Whether this platform can run the Media Foundation path at all.</summary>
+    [SupportedOSPlatformGuard("windows")]
     public static bool IsAvailable => OperatingSystem.IsWindows();
 
     /// <summary>Decodes to 16 kHz mono WAV bytes.</summary>

@@ -41,6 +41,6 @@ useful and honest; silence is not.
 
 ## Checks
 
-- [ ] `swift test`, `dotnet test` and `gradle test` pass
+- [ ] `swift test`, `dotnet test` and `./gradlew test` pass
 - [ ] Comments explain *why* where a decision looks arbitrary
 - [ ] Nothing new is logged that could contain a transcript or a key

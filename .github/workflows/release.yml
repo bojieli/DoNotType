@@ -8,13 +8,18 @@ on:
     tags: ['v*']
   workflow_dispatch:
     inputs:
+      version:
+        description: 'Version to stamp into manually built artifacts'
+        type: string
+        required: true
+        default: '0.1.0'
       publish:
         description: 'Create a draft GitHub release from this run'
         type: boolean
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -34,13 +39,43 @@ jobs:
       NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
       NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate signing configuration
+        shell: bash
+        run: |
+          certificate_values=0
+          for value in "$MACOS_CERTIFICATE" "$MACOS_CERTIFICATE_PASSWORD"; do
+            if [[ -n "$value" ]]; then certificate_values=$((certificate_values + 1)); fi
+          done
+          if [[ "$certificate_values" -ne 0 && "$certificate_values" -ne 2 ]]; then
+            echo "MACOS_CERTIFICATE and MACOS_CERTIFICATE_PASSWORD must be set together" >&2
+            exit 1
+          fi
+
+          notary_values=0
+          for value in "$NOTARY_KEY_ID" "$NOTARY_ISSUER_ID" "$NOTARY_KEY"; do
+            if [[ -n "$value" ]]; then notary_values=$((notary_values + 1)); fi
+          done
+          if [[ "$notary_values" -ne 0 && "$notary_values" -ne 3 ]]; then
+            echo "NOTARY_KEY_ID, NOTARY_ISSUER_ID, and NOTARY_KEY must be set together" >&2
+            exit 1
+          fi
+          if [[ "$notary_values" -ne 0 && "$certificate_values" -eq 0 ]]; then
+            echo "notarization requires a Developer ID signing certificate" >&2
+            exit 1
+          fi
 
       # Before the build, never after: `make app` signs the bundle as its last step, and editing a
       # plist inside a signed bundle invalidates the signature. An app whose About box disagrees
       # with the tag it was built from is a support conversation nobody can win.
       - name: Stamp the version
-        run: ./scripts/stamp-version.sh "${GITHUB_REF_NAME#v}"
+        env:
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then version="$MANUAL_VERSION"; fi
+          ./scripts/stamp-version.sh "$version"
 
       # A release that fails its own suite should not exist. Cheap insurance against tagging a
       # commit that was never green.
@@ -88,7 +123,7 @@ jobs:
           # worse than none — it fails and looks like corruption.
           (cd dist && shasum -a 256 DoNotType-macOS.zip | tee DoNotType-macOS.zip.sha256)
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos
           path: dist/
@@ -97,15 +132,18 @@ jobs:
     name: Windows app
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
 
       - name: Stamp the version
         shell: bash
+        env:
+          MANUAL_VERSION: ${{ inputs.version }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then VERSION="$MANUAL_VERSION"; fi
           ./scripts/stamp-version.sh "$VERSION"
           # Without the leading v: MSBuild rejects "v0.1.0" as an assembly version, and it says so
           # through a NuGet restore that fails without logging an error, which reads as an outage.
@@ -121,27 +159,43 @@ jobs:
         shell: pwsh
         run: |
           git clone --depth 1 --branch v1.5.2 https://github.com/xiph/opus.git $env:RUNNER_TEMP/opus
+          if ((git -C $env:RUNNER_TEMP/opus rev-parse HEAD) -ne "ddbe48383984d56acd9e1ab6a090c54ca6b735a6") {
+            throw "the libopus v1.5.2 tag no longer resolves to the reviewed commit"
+          }
           cmake -S $env:RUNNER_TEMP/opus -B $env:RUNNER_TEMP/opus/build `
             -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release
           cmake --build $env:RUNNER_TEMP/opus/build --config Release
           New-Item -ItemType Directory -Force -Path native | Out-Null
           Copy-Item $env:RUNNER_TEMP/opus/build/Release/opus.dll native/opus.dll
 
-      - name: Publish self-contained
+      # A shared self-contained layout keeps both executables runnable on a machine without .NET.
+      # A framework-dependent CLI beside a single-file app does not work: the app's embedded
+      # runtime is private and cannot satisfy dnt.exe. Publishing both to one directory deduplicates
+      # that runtime, so correctness costs only a few MB rather than a second 70 MB runtime.
+      - name: Publish self-contained app
         shell: pwsh
         run: >
           dotnet publish windows/DoNotType.App/DoNotType.App.csproj
           -c Release -r win-x64 --self-contained true
-          -p:PublishSingleFile=true -p:Version=$env:VERSION -o publish
+          -p:PublishSingleFile=false -p:Version=$env:VERSION -o publish
 
-      # The CLI ships beside the app, as it does inside the macOS bundle. Framework-dependent
-      # rather than self-contained: it lands next to an app that already carries the runtime, and a
-      # second copy would double the download for one small executable.
-      - name: Publish the CLI
+      - name: Publish self-contained CLI into the shared runtime
         run: >
           dotnet publish windows/DoNotType.Cli/DoNotType.Cli.csproj
-          -c Release -r win-x64 --self-contained false
-          -p:PublishSingleFile=true -o publish-cli
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=false -p:Version=$env:VERSION -o publish
+
+      - name: Exercise the packaged executables without a global runtime
+        shell: pwsh
+        run: |
+          if (!(Test-Path publish/hostfxr.dll)) { throw "the private .NET runtime is missing" }
+          $env:DOTNET_ROOT = "$env:RUNNER_TEMP\no-global-dotnet"
+          $env:DOTNET_MULTILEVEL_LOOKUP = "0"
+          $dnt = "$PWD\publish\dnt.exe"
+          & $dnt prompt validate
+          if ($LASTEXITCODE -ne 0) { throw "the packaged prompt is missing or invalid" }
+          & $dnt providers --no-stored-key
+          if ($LASTEXITCODE -ne 0) { throw "the packaged CLI did not start" }
 
       - name: Package
         shell: pwsh
@@ -149,10 +203,8 @@ jobs:
           # opus.dll sits beside the executable, which is where the import resolver looks first.
           # Without it the app still dictates — it just uploads WAV and is slower.
           Copy-Item native/opus.dll publish/opus.dll
-          # The directory layout is preserved: a part is found by its path under prompt/.
-          Copy-Item -Recurse prompt publish/prompt
-          # opus.dll is also what lets the CLI read a .opus recording, not only write one.
-          Copy-Item publish-cli/dnt.exe publish/dnt.exe
+          # Both project files already publish prompt/ with its directory layout preserved. Copying
+          # it again here would create publish/prompt/prompt on PowerShell and ship two contracts.
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path publish/* -DestinationPath dist/DoNotType-Windows-x64.zip
           # Written byte-for-byte rather than through Out-File, which appends a CRLF even with
@@ -164,7 +216,7 @@ jobs:
             "$PWD/dist/DoNotType-Windows-x64.zip.sha256",
             "$hash  DoNotType-Windows-x64.zip`n")
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows
           path: dist/
@@ -177,19 +229,35 @@ jobs:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+
+      - name: Validate signing configuration
+        run: |
+          signing_values=0
+          for value in "$ANDROID_KEYSTORE" "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_ALIAS"; do
+            if [[ -n "$value" ]]; then signing_values=$((signing_values + 1)); fi
+          done
+          if [[ "$signing_values" -ne 0 && "$signing_values" -ne 3 ]]; then
+            echo "ANDROID_KEYSTORE, ANDROID_KEYSTORE_PASSWORD, and ANDROID_KEY_ALIAS must be set together" >&2
+            exit 1
+          fi
 
       - name: Stamp the version
-        run: ./scripts/stamp-version.sh "${GITHUB_REF_NAME#v}"
+        env:
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then version="$MANUAL_VERSION"; fi
+          ./scripts/stamp-version.sh "$version"
 
       - name: Unit tests
         working-directory: android
-        run: gradle test --no-daemon
+        run: ./gradlew test --no-daemon
 
       # Signed with the upload keystore when it exists. Without it the APK is debug-signed, which
       # installs fine from a file but can never be updated in place by a differently-signed build
@@ -202,10 +270,10 @@ jobs:
         working-directory: android
         run: |
           if [ -f release.keystore ]; then
-            gradle assembleRelease --no-daemon
+            ./gradlew assembleRelease --no-daemon
             echo "APK=app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_ENV"
           else
-            gradle assembleDebug --no-daemon
+            ./gradlew assembleDebug --no-daemon
             echo "APK=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
           fi
 
@@ -230,7 +298,7 @@ jobs:
           cp "android/$APK" dist/DoNotType-Android.apk
           (cd dist && sha256sum DoNotType-Android.apk | tee DoNotType-Android.apk.sha256)
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: android
           path: dist/
@@ -243,7 +311,7 @@ jobs:
     name: iOS builds
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Generate the project
         run: |
           brew install xcodegen
@@ -259,9 +327,11 @@ jobs:
     needs: [macos, windows, android, ios]
     if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
 
@@ -274,7 +344,7 @@ jobs:
       # Drafted rather than published outright. A release is a public, hard-to-retract act, and the
       # notes below are generated — someone should read them before anyone downloads them.
       - name: Draft the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           draft: true
           generate_release_notes: true

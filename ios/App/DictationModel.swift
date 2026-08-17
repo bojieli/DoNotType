@@ -31,6 +31,8 @@ final class DictationModel {
         case idle
         case recording
         case transcribing
+        /// The gesture completed normally, but there was nothing worth sending.
+        case notice(String)
         case failed(String)
     }
 
@@ -295,6 +297,14 @@ final class DictationModel {
         // Console and no shell, so a log file in the shared container is the only evidence a bug
         // report can ever carry.
         AppLogging.start(directory: directory)
+
+        #if DEBUG
+        // The simulator cannot feed silence into AVAudioEngine reliably. This launch-only seam
+        // keeps the user-visible no-speech outcome under UI test without changing release builds.
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing-no-speech-notice") {
+            state = .notice("No speech detected — recording wasn’t sent")
+        }
+        #endif
     }
 
     // MARK: - Files
@@ -461,7 +471,7 @@ final class DictationModel {
     func toggleRecording() {
         switch state {
         case .recording: finishRecording()
-        case .idle, .failed: Task { await beginRecording() }
+        case .idle, .notice, .failed: Task { await beginRecording() }
         case .transcribing: break
         }
     }
@@ -484,7 +494,7 @@ final class DictationModel {
 
         switch state {
         case .recording: finishRecording()  // second tap ends it
-        case .idle, .failed: Task { await beginRecording() }
+        case .idle, .notice, .failed: Task { await beginRecording() }
         case .transcribing: break
         }
     }
@@ -583,7 +593,7 @@ final class DictationModel {
 
         guard let url = stoppedURL ?? recordingURL else {
             log.info("recording produced no file", ["dictation": Self.short(pendingID)])
-            state = .idle
+            state = .failed("Recording failed — no audio was captured.")
             return
         }
         recordingURL = nil
@@ -591,7 +601,8 @@ final class DictationModel {
         guard stoppedURL != nil else {
             livePipeline?.cancel()
             livePipeline = nil
-            state = .idle
+            log.info("recording too short to send", ["dictation": Self.short(pendingID)])
+            showNotice("Recording was too short — try again")
             return
         }
 
@@ -617,7 +628,7 @@ final class DictationModel {
                     "nothing was said, so nothing was sent",
                     ["dictation": Self.short(pendingID), "audio": activity.summary])
                 try? FileManager.default.removeItem(at: url)
-                state = .idle
+                showNotice("No speech detected — recording wasn’t sent")
                 return
             }
         }
@@ -753,10 +764,11 @@ final class DictationModel {
             log.content("transcript", text, level: .trace)
 
             guard !text.isEmpty else {
-                // Not an error, and the one outcome people report as one: the tap worked, the
-                // request worked, and nothing was said.
+                // Live segmentation can produce no Silero-qualified chunks, and a backend can
+                // also return an empty transcript. Both need a visible outcome; returning to idle
+                // immediately makes a successful tap look ignored.
                 log.info("nothing was said", ["dictation": Self.short(pendingID)])
-                state = .idle
+                showNotice("No speech was transcribed")
                 return
             }
 
@@ -958,6 +970,16 @@ final class DictationModel {
                 systemInstruction: instruction, fidelity: fidelity,
                 personalDictionary: personalDictionaryTerms),
             store: history)
+    }
+
+    /// Keeps a harmless outcome visible long enough to read while leaving the record button live.
+    private func showNotice(_ message: String) {
+        state = .notice(message)
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard let self, self.state == .notice(message) else { return }
+            self.state = .idle
+        }
     }
 
     /// A quarter-second of 16 kHz mono silence for the connection test, built rather than shipped

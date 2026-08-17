@@ -149,6 +149,9 @@ final class OverlayState {
         /// silent disappearance the user has to infer from the text appearing.
         case inserted(Int, rewriteFailed: Bool, submission: Submission)
         case learned(String)
+        /// A completed gesture with no request to make, such as a silent or too-short recording.
+        /// It is feedback, not a failure: the microphone worked and no paid request was sent.
+        case notice(String)
         case failed(String)
     }
 
@@ -231,6 +234,12 @@ private struct OverlayView: View {
                     .foregroundStyle(.white.opacity(0.75))
             case .learned(let message):
                 Image(systemName: "character.book.closed.fill")
+                    .foregroundStyle(.blue)
+                Text(message)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+            case .notice(let message):
+                Image(systemName: "info.circle.fill")
                     .foregroundStyle(.blue)
                 Text(message)
                     .font(.system(size: 12, weight: .medium))

@@ -29,6 +29,8 @@ public sealed class RecordingOverlay : Form
         /// disappearance the user has to infer from the text appearing.
         /// </summary>
         Inserted,
+        /// <summary>The gesture completed, but there was no request worth making.</summary>
+        Notice,
         Failed,
     }
 
@@ -143,7 +145,7 @@ public sealed class RecordingOverlay : Form
     /// </summary>
     private void ResizeForPhase()
     {
-        if (_phase != Phase.Failed)
+        if (_phase is not (Phase.Failed or Phase.Notice))
         {
             Size = new Size(CompactWidth, CompactHeight);
             return;
@@ -215,6 +217,16 @@ public sealed class RecordingOverlay : Form
             case Phase.Inserted:
                 DrawTick(g, new Rectangle(24, Height / 2 - 7, 14, 14));
                 g.DrawString(_hint, font, textBrush, 48, Height / 2 - 8);
+                break;
+
+            case Phase.Notice:
+                using (var info = new SolidBrush(Color.FromArgb(230, 125, 180, 245)))
+                using (var format = new StringFormat { Trimming = StringTrimming.EllipsisWord })
+                {
+                    g.DrawString(
+                        _hint, font, info,
+                        new RectangleF(24, 14, Width - 48, Height - 24), format);
+                }
                 break;
 
             default:

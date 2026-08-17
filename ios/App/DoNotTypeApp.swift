@@ -202,6 +202,10 @@ struct ContentView: View {
                 // Named, not a bare spinner: after you stop talking the wait is dead time, and the
                 // user needs to know what is consuming it and that it will end.
                 Text("Transcribing…").foregroundStyle(.secondary)
+            case .notice(let message):
+                Text(message)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             case .failed(let message):
                 Text(message)
                     .foregroundStyle(.red)

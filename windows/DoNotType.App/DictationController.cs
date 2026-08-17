@@ -109,6 +109,8 @@ public sealed class DictationController : IDisposable
     public sealed record Insertion(int Characters, bool RewriteFailed, Submission Submission);
 
     public event Action<Insertion>? Inserted;
+    /// <summary>A harmless completed outcome that still needs to be visible to the user.</summary>
+    public event Action<string>? Noticed;
 
     /// <summary>
     /// Fires as each part of a long dictation lands, as (done, total).
@@ -415,16 +417,15 @@ public sealed class DictationController : IDisposable
         InteractionSounds.PlayStop();
         if (wav is null)
         {
-            // A tap rather than a hold. Not worth interrupting anyone over — but logged, because
-            // "I pressed the key and nothing happened" is a real report and this is the most
-            // common innocent explanation for it.
+            // A tap rather than a hold is not an error, but hiding the pill makes the gesture look
+            // lost. Say what happened without turning the tray icon into a warning.
             DictationLog.Info(
                 () => "recording too short to send",
                 new Dictionary<string, string> { ["dictation"] = Short(_pendingId) });
             _groundingCts?.Cancel();
             _liveSession?.Cancel();
             _liveSession = null;
-            SetState(State.Idle);
+            Notice("Recording was too short — try again");
             return;
         }
 
@@ -464,7 +465,7 @@ public sealed class DictationController : IDisposable
                     ["audio"] = activity.Summary,
                 });
             _groundingCts?.Cancel();
-            SetState(State.Idle);
+            Notice("No speech detected — recording wasn't sent");
             return;
         }
 
@@ -715,12 +716,13 @@ public sealed class DictationController : IDisposable
 
             if (text.Length == 0)
             {
-                // Not an error, and the one outcome people report as one: the key worked, the
-                // request worked, and nothing was said.
+                // Live segmentation can produce no Silero-qualified chunks, and a backend can
+                // also return an empty transcript. Both need a visible outcome; returning to idle
+                // immediately makes a successful key press look ignored.
                 DictationLog.Info(
                     () => "nothing was said",
                     new Dictionary<string, string> { ["dictation"] = Short(dictationId) });
-                SetState(State.Idle); // silence in, nothing out
+                Notice("No speech was transcribed");
                 return;
             }
 
@@ -1064,5 +1066,12 @@ public sealed class DictationController : IDisposable
         LastError = message;
         Current = State.Failed;
         StateChanged?.Invoke(State.Failed);
+    }
+
+    /// <summary>Reports a no-op without blocking the next hotkey press.</summary>
+    private void Notice(string message)
+    {
+        SetState(State.Idle);
+        Noticed?.Invoke(message);
     }
 }

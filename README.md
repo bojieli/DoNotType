@@ -98,7 +98,7 @@ hour's work rather than a project.
 |---|---|---|---|---|---|---|
 | **macOS** | menu-bar app, hold Right ⌘ | ✅ accessibility tree + screenshot fallback | ✅ manual, CSV, optional learning | ✅ | `dnt` | `make app` |
 | **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | ✅ manual, CSV, optional learning | ✅ | `dnt.exe` | `cd windows && dotnet build` |
-| **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | ✅ manual, CSV, optional learning | ✅ | — | `cd android && gradle assembleDebug` |
+| **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | ✅ manual, CSV, optional learning | ✅ | — | `cd android && ./gradlew assembleDebug` |
 | **iOS** | containing app; keyboard inserts | ❌ not possible in the sandbox | ✅ manual, CSV, best-effort learning | ✅ | — | `cd ios && xcodegen generate` |
 
 Feature by feature, with the reason for every gap: [docs/PARITY.md](docs/PARITY.md). The only

@@ -28,6 +28,11 @@ internal sealed class TrayApplication : ApplicationContext
     private readonly DictationController _controller;
     private readonly RecordingOverlay _overlay = new();
     private readonly System.Windows.Forms.Timer _levelTimer = new() { Interval = 33 };
+    /// <summary>
+    /// Invalidates delayed hides when the pill has since changed purpose. Without this, the timer
+    /// from an "Inserted" confirmation can hide a new recording or transcription a second later.
+    /// </summary>
+    private long _overlayGeneration;
 
     private SettingsForm? _settingsForm;
 
@@ -46,20 +51,25 @@ internal sealed class TrayApplication : ApplicationContext
         {
             var progress = total > 1 ? $"part {Math.Min(done + 1, total)} of {total}" : null;
             if (_controller.WillSubmit) progress = JoinHint(progress, "will send");
-            _overlay.SetPhase(RecordingOverlay.Phase.Transcribing, progress);
+            SetOverlayPhase(RecordingOverlay.Phase.Transcribing, progress);
         });
         _controller.HistoryChanged += () => BeginInvokeOnTray(RebuildMenu);
         _controller.DictionaryLearned += terms => BeginInvokeOnTray(() =>
         {
             RebuildMenu();
             var shown = string.Join(", ", terms.Select(term => $"“{term}”"));
-            _overlay.Show(RecordingOverlay.Phase.Inserted, $"Learned {shown} — undo from tray");
+            ShowOverlay(RecordingOverlay.Phase.Inserted, $"Learned {shown} — undo from tray");
             _ = HideOverlayAfter(TimeSpan.FromSeconds(3.5));
         });
         _controller.Undone += message => BeginInvokeOnTray(() =>
         {
-            _overlay.Show(RecordingOverlay.Phase.Inserted, message);
+            ShowOverlay(RecordingOverlay.Phase.Inserted, message);
             _ = HideOverlayAfter(TimeSpan.FromSeconds(1.4));
+        });
+        _controller.Noticed += message => BeginInvokeOnTray(() =>
+        {
+            ShowOverlay(RecordingOverlay.Phase.Notice, message);
+            _ = HideOverlayAfter(TimeSpan.FromSeconds(3));
         });
         _controller.Inserted += insertion => BeginInvokeOnTray(() =>
         {
@@ -75,7 +85,7 @@ internal sealed class TrayApplication : ApplicationContext
                     $"Inserted {insertion.Characters} character{plural} — not sent; key unavailable",
                 _ => $"Inserted {insertion.Characters} character{plural}",
             };
-            _overlay.Show(
+            ShowOverlay(
                 RecordingOverlay.Phase.Inserted,
                 message + suffix);
             // Longer when there is something to read, which a confirmation otherwise is not.
@@ -160,12 +170,12 @@ internal sealed class TrayApplication : ApplicationContext
             switch (state)
             {
                 case DictationController.State.Recording:
-                    _overlay.Show(RecordingOverlay.Phase.Recording, HintForMode());
+                    ShowOverlay(RecordingOverlay.Phase.Recording, HintForMode());
                     _levelTimer.Start();
                     break;
                 case DictationController.State.Transcribing:
                     _levelTimer.Stop();
-                    _overlay.SetPhase(
+                    SetOverlayPhase(
                         RecordingOverlay.Phase.Transcribing,
                         _controller.WillSubmit ? "will send" : string.Empty);
                     break;
@@ -173,7 +183,7 @@ internal sealed class TrayApplication : ApplicationContext
                     // The style's own word — "Tightening…", "Making bullets…" — because somebody
                     // who held the second key is waiting for that specific thing.
                     _levelTimer.Stop();
-                    _overlay.SetPhase(
+                    SetOverlayPhase(
                         RecordingOverlay.Phase.Deriving,
                         JoinHint(
                             TranscriptMode.Rewrite(_settings.SecondaryStyle).ProgressLabel,
@@ -184,13 +194,13 @@ internal sealed class TrayApplication : ApplicationContext
                     // Not truncated: the overlay grows to fit, because the advice is a sentence
                     // about what to do and half of one is worse than none. It also stays up longer
                     // than a confirmation does — there is something to read.
-                    _overlay.SetPhase(
+                    SetOverlayPhase(
                         RecordingOverlay.Phase.Failed, _controller.LastError ?? "Failed");
                     _ = HideOverlayAfter(TimeSpan.FromSeconds(7));
                     break;
                 default:
                     _levelTimer.Stop();
-                    _overlay.Hide();
+                    HideOverlay();
                     break;
             }
             RebuildMenu();
@@ -214,8 +224,28 @@ internal sealed class TrayApplication : ApplicationContext
 
     private async Task HideOverlayAfter(TimeSpan delay)
     {
+        var generation = _overlayGeneration;
         await Task.Delay(delay).ConfigureAwait(true);
-        if (_controller.Current != DictationController.State.Recording) _overlay.Hide();
+        if (generation != _overlayGeneration) return;
+        HideOverlay();
+    }
+
+    private void ShowOverlay(RecordingOverlay.Phase phase, string hint)
+    {
+        _overlayGeneration++;
+        _overlay.Show(phase, hint);
+    }
+
+    private void SetOverlayPhase(RecordingOverlay.Phase phase, string? hint)
+    {
+        _overlayGeneration++;
+        _overlay.SetPhase(phase, hint);
+    }
+
+    private void HideOverlay()
+    {
+        _overlayGeneration++;
+        _overlay.Hide();
     }
 
     private void RebuildMenu()
@@ -279,7 +309,7 @@ internal sealed class TrayApplication : ApplicationContext
             {
                 _controller.UndoLastDictionaryLearning();
                 RebuildMenu();
-                _overlay.Show(RecordingOverlay.Phase.Inserted, "Removed learned spelling");
+                ShowOverlay(RecordingOverlay.Phase.Inserted, "Removed learned spelling");
                 _ = HideOverlayAfter(TimeSpan.FromSeconds(1.6));
             };
             menu.Items.Add(undoLearning);

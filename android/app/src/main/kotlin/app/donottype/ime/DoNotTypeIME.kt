@@ -61,7 +61,7 @@ class DoNotTypeIME : InputMethodService() {
     private val log = DntLog("dictate")
 
 
-    private enum class State { IDLE, RECORDING, TRANSCRIBING, ERROR }
+    private enum class State { IDLE, RECORDING, TRANSCRIBING, NOTICE, ERROR }
 
     private val recorder = WavRecorder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -93,6 +93,7 @@ class DoNotTypeIME : InputMethodService() {
     /** Which field was focused when the key went down: its app, and the editor's id within it. */
     private var pendingTarget: Pair<String?, Int>? = null
     private var correctionWatch: Job? = null
+    private var noticeJob: Job? = null
     private var lastLearnedTerms: List<String> = emptyList()
 
     private data class EditableSnapshot(
@@ -111,6 +112,7 @@ class DoNotTypeIME : InputMethodService() {
     override fun onDestroy() {
         scope.cancel()
         correctionWatch?.cancel()
+        noticeJob?.cancel()
         stopLevelUpdates()
         holdRunnable?.let { handler.removeCallbacks(it) }
         recorder.cancel()
@@ -422,7 +424,11 @@ class DoNotTypeIME : InputMethodService() {
     }
 
     private fun beginRecording() {
-        if (state != State.IDLE) return
+        if (state == State.RECORDING || state == State.TRANSCRIBING) return
+        // ERROR and NOTICE both render a live button. They must also accept it: previously ERROR
+        // looked retryable but beginRecording silently rejected every tap until the IME reopened.
+        noticeJob?.cancel()
+        state = State.IDLE
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
@@ -488,10 +494,11 @@ class DoNotTypeIME : InputMethodService() {
         pendingContext = null
 
         if (wav == null) {
-            // A tap rather than a hold. Not worth an error.
+            // A tap rather than a hold is not an error, but returning straight to the ordinary
+            // idle label makes the gesture look ignored.
             liveSession?.cancel()
             liveSession = null
-            state = State.IDLE
+            showNotice("Recording was too short — try again")
             return
         }
 
@@ -567,8 +574,7 @@ class DoNotTypeIME : InputMethodService() {
                     // request was never made, and nothing was said. Reported plainly rather than
                     // as an error, and never as a transcript.
                     if (error is NoSpeechException) {
-                        showStatus("Nothing was said")
-                        state = State.IDLE
+                        showNotice("No speech detected — recording wasn't sent")
                         return@fold
                     }
                     Log.e(TAG, "transcription failed", error)
@@ -681,6 +687,17 @@ class DoNotTypeIME : InputMethodService() {
         undoLearningOnTap = false
     }
 
+    /** Keeps a harmless outcome visible while leaving the talk button immediately reusable. */
+    private fun showNotice(message: String) {
+        noticeJob?.cancel()
+        showStatus(message)
+        state = State.NOTICE
+        noticeJob = scope.launch {
+            delay(3_000)
+            if (state == State.NOTICE) state = State.IDLE
+        }
+    }
+
     private fun openTheApp() {
         log.info(mapOf("reason" to statusLabel.text.toString())) { "opening the app to fix it" }
         try {
@@ -726,6 +743,14 @@ class DoNotTypeIME : InputMethodService() {
                 talkButton.text = "Working…"
                 talkButton.isEnabled = false
                 indicator.mode = DictationIndicatorView.Mode.TRANSCRIBING
+                stopLevelUpdates()
+            }
+            State.NOTICE -> {
+                // showNotice already supplied the meaningful line; do not overwrite it with the
+                // generic idle prompt as the old IDLE transition did.
+                talkButton.text = "Tap to talk"
+                talkButton.isEnabled = true
+                indicator.mode = DictationIndicatorView.Mode.IDLE
                 stopLevelUpdates()
             }
             State.ERROR -> {

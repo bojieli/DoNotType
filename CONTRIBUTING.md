@@ -37,7 +37,7 @@ The apps have UI tests, which run where the app runs rather than on a build mach
 ```bash
 cd ios && xcodebuild test -scheme DoNotType \
   -destination 'platform=iOS Simulator,name=iPhone 17'   # installs and drives the app
-cd android && gradle connectedDebugAndroidTest           # needs a device or emulator attached
+cd android && ./gradlew connectedDebugAndroidTest         # needs a device or emulator attached
 ```
 
 Both are worth running before touching anything a window draws. A unit test cannot see that a
@@ -50,7 +50,7 @@ Per platform:
 | | requirements | build |
 |---|---|---|
 | macOS | Xcode 26+, Swift 6 | `make app` |
-| Android | Android SDK 35, JDK 17 | `cd android && gradle assembleDebug` |
+| Android | Android SDK 35, JDK 17 | `cd android && ./gradlew assembleDebug` |
 | iOS | Xcode 26+, `brew install xcodegen` | `cd ios && xcodegen generate` |
 | Windows | .NET 10 SDK, libopus | `cd windows && dotnet build` |
 
@@ -122,7 +122,7 @@ not defects.
 ## Commits and PRs
 
 - One coherent change per commit; the body explains why, not a restatement of the diff.
-- `swift test`, `dotnet test` and `gradle test` must pass. Integration tests are opt-in and not
+- `swift test`, `dotnet test` and `./gradlew test` must pass. Integration tests are opt-in and not
   required in CI.
 - If you touched a platform you cannot run, say so in the PR. "Compiles, untested on device" is
   useful and honest; silence is not.

@@ -303,17 +303,15 @@ final class DictationController {
             audio = try recorder.stop()
             recorder.onPCM = nil
         } catch AudioRecorder.RecorderError.tooShort {
-            // A tap rather than a hold. Silently return to idle; not worth interrupting anyone —
-            // but logged, because "I pressed the key and nothing happened" is a real report and
-            // this is the most common innocent explanation for it.
+            // A tap rather than a hold is not an error, but hiding the pill makes the gesture look
+            // lost. Say what happened without turning the menu-bar icon into a warning.
             log.info("recording too short to send", ["dictation": Self.short(pendingID)])
             livePipeline?.cancel()
             livePipeline = nil
             pendingContextTask?.cancel()
             pendingContextTask = nil
             grounding.cancel()
-            overlay.hide()
-            state = .idle
+            notice("Recording was too short — try again")
             return
         } catch {
             livePipeline?.cancel()
@@ -346,8 +344,7 @@ final class DictationController {
             pendingContextTask = nil
             grounding.cancel()
             try? FileManager.default.removeItem(at: audio.url)
-            overlay.hide()
-            state = .idle
+            notice("No speech detected — recording wasn’t sent")
             return
         }
 
@@ -510,11 +507,11 @@ final class DictationController {
             log.content("transcript", text, level: .trace)
 
             guard !text.isEmpty else {
-                // Not an error, and the one outcome people report as one: the key worked, the
-                // request worked, and nothing was said.
+                // Live segmentation can legitimately produce no qualified chunks even though the
+                // pipeline existed. Do not turn that into the same silent disappearance the local
+                // VAD gate is intended to explain.
                 log.info("nothing was said", ["dictation": Self.short(dictationID)])
-                overlay.hide()
-                state = .idle  // silence in, nothing out
+                notice("No speech detected — recording wasn’t sent")
                 return
             }
 
@@ -834,5 +831,12 @@ final class DictationController {
             try? await Task.sleep(for: .seconds(5))
             if case .failed = state { state = .idle }
         }
+    }
+
+    /// Shows a harmless completed outcome without blocking the next hotkey press.
+    private func notice(_ message: String) {
+        overlay.update(phase: .notice(message))
+        overlay.hide(after: .seconds(3))
+        state = .idle
     }
 }
