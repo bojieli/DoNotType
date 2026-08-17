@@ -75,11 +75,15 @@ struct ContentView: View {
                 }
             }
         }
-        .task { await model.refresh() }
+        .task {
+            model.refreshDictionary()
+            await model.refresh()
+        }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             // Anything that failed while offline goes out as soon as the app is foregrounded.
             Task {
+                model.refreshDictionary()
                 await model.refresh()
                 await model.retryPending()
             }

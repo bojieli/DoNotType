@@ -1,3 +1,4 @@
+import DoNotTypeCore
 import UIKit
 
 /// The keyboard.
@@ -12,7 +13,11 @@ import UIKit
 final class KeyboardViewController: UIInputViewController {
 
     private let store = TranscriptStore()
+    private let dictionaryStore = DictionaryStore()
+    private let correctionStore = CorrectionObservationStore()
     private var entries: [TranscriptStore.Entry] = []
+    private var correctionTask: Task<Void, Never>?
+    private var lastLearnedTerms: [String] = []
 
     private lazy var tableView = UITableView(frame: .zero, style: .plain)
     private lazy var statusLabel = UILabel()
@@ -36,6 +41,13 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         reload()
+        observePendingCorrection()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        correctionTask?.cancel()
+        correctionTask = nil
+        super.viewWillDisappear(animated)
     }
 
     // MARK: - Interface
@@ -49,6 +61,9 @@ final class KeyboardViewController: UIInputViewController {
         statusLabel.textAlignment = .center
         statusLabel.accessibilityIdentifier = "kb-status"
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.isUserInteractionEnabled = true
+        statusLabel.addGestureRecognizer(
+            UITapGestureRecognizer(target: self, action: #selector(statusTapped)))
 
         tableView.dataSource = self
         tableView.delegate = self
@@ -109,6 +124,91 @@ final class KeyboardViewController: UIInputViewController {
         }
         tableView.reloadData()
     }
+
+    @objc private func statusTapped() {
+        guard !lastLearnedTerms.isEmpty else { return }
+        if let snapshot = try? dictionaryStore.forgetLearned(lastLearnedTerms) {
+            statusLabel.text = "Removed learned spelling · \(snapshot.all.count) dictionary entries"
+        }
+        lastLearnedTerms = []
+    }
+
+    private func correctionAnchor(for inserted: String) -> CorrectionObservationStore.Pending? {
+        let before = textDocumentProxy.documentContextBeforeInput
+        let after = textDocumentProxy.documentContextAfterInput
+        // Both are nil in a secure field. Empty strings in an ordinary blank field are safe.
+        guard before != nil || after != nil else { return nil }
+        return .init(
+            documentID: textDocumentProxy.documentIdentifier,
+            prefix: String((before ?? "").suffix(32)),
+            suffix: String((after ?? "").prefix(32)),
+            inserted: inserted)
+    }
+
+    /// Polls while this keyboard is visible; the persisted anchor resumes after switching back.
+    private func observePendingCorrection() {
+        correctionTask?.cancel()
+        guard dictionaryStore.load().learnsFromEdits,
+            let pending = correctionStore.load(),
+            pending.documentID == textDocumentProxy.documentIdentifier
+        else { return }
+
+        correctionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var prior: String?
+            var stableReads = 0
+            for _ in 0..<80 {
+                try? await Task.sleep(for: .milliseconds(750))
+                guard !Task.isCancelled,
+                    pending.documentID == textDocumentProxy.documentIdentifier
+                else { return }
+                guard let edited = observedInsertion(pending) else { return }
+                if edited == pending.inserted {
+                    prior = nil
+                    stableReads = 0
+                    continue
+                }
+                if edited == prior { stableReads += 1 }
+                else { prior = edited; stableReads = 1 }
+                guard stableReads >= 2 else { continue }
+
+                let candidates = PersonalDictionary.learnedCandidates(
+                    from: pending.inserted, corrected: edited)
+                if let (_, added) = try? dictionaryStore.learn(candidates), !added.isEmpty {
+                    lastLearnedTerms = added
+                    statusLabel.text = "Learned \(added.joined(separator: ", ")) — tap to undo"
+                }
+                correctionStore.clear()
+                return
+            }
+        }
+    }
+
+    private func observedInsertion(_ pending: CorrectionObservationStore.Pending) -> String? {
+        let before = textDocumentProxy.documentContextBeforeInput
+        let after = textDocumentProxy.documentContextAfterInput
+        guard before != nil || after != nil else { return nil }
+        let combined = (before ?? "") + (after ?? "")
+
+        let start: String.Index
+        if pending.prefix.isEmpty { start = combined.startIndex }
+        else {
+            guard let anchor = combined.range(of: pending.prefix, options: .backwards) else {
+                return nil
+            }
+            start = anchor.upperBound
+        }
+
+        let end: String.Index
+        if pending.suffix.isEmpty { end = combined.endIndex }
+        else {
+            guard let anchor = combined.range(of: pending.suffix, range: start..<combined.endIndex)
+            else { return nil }
+            end = anchor.lowerBound
+        }
+        guard start <= end else { return nil }
+        return String(combined[start..<end])
+    }
 }
 
 extension KeyboardViewController: UITableViewDataSource, UITableViewDelegate {
@@ -134,7 +234,15 @@ extension KeyboardViewController: UITableViewDataSource, UITableViewDelegate {
         tableView.deselectRow(at: indexPath, animated: true)
         let entry = entries[indexPath.row]
 
+        let correction = dictionaryStore.load().learnsFromEdits
+            ? correctionAnchor(for: entry.text) : nil
         textDocumentProxy.insertText(entry.text)
+        if let correction {
+            correctionStore.save(correction)
+            observePendingCorrection()
+        } else {
+            correctionStore.clear()
+        }
         store.markInserted(entry.id)
         reload()
     }

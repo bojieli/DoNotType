@@ -101,6 +101,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.donottype.keyboard
         INFOPLIST_FILE: Keyboard/Info.plist
         CODE_SIGN_ENTITLEMENTS: Keyboard/DoNotTypeKeyboard.entitlements
+    dependencies:
+      - package: DoNotTypeCore
+        product: DoNotTypeCore
 
 # Explicit so that `xcodebuild test -scheme DoNotType` runs the UI tests, rather than the UI tests
 # living in a scheme nobody invokes.

@@ -2,6 +2,7 @@ import AVFoundation
 import DoNotTypeCore
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// Settings: provider and key, fidelity, keyboard setup, permissions, and history retention.
 ///
@@ -21,6 +22,7 @@ struct SettingsView: View {
             setupSection
             providerSection
             dictationSection
+            dictionarySection
             historySection
             promptSection
             logsSection
@@ -170,6 +172,25 @@ struct SettingsView: View {
         }
     }
 
+    private var dictionarySection: some View {
+        Section {
+            NavigationLink {
+                DictionaryView(model: model)
+            } label: {
+                LabeledContent("Personal dictionary") {
+                    Text("(model.personalDictionaryTerms.count) entries")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityIdentifier("open-dictionary")
+        } footer: {
+            Text(
+                "Names, jargon and preferred capitalisation. Manual and learned entries stay "
+                    + "on device and are visible and removable."
+            )
+        }
+    }
+
     // MARK: - History
 
     private var historySection: some View {
@@ -281,6 +302,119 @@ struct SettingsView: View {
     private func openSystemSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
+    }
+}
+
+struct DictionaryView: View {
+    @Bindable var model: DictationModel
+    @State private var newTerm = ""
+    @State private var importing = false
+    @State private var editing: Entry?
+    @State private var editedTerm = ""
+
+    private struct Entry: Identifiable {
+        let term: String
+        let learned: Bool
+        var id: String { "\(learned)-\(term)" }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                Toggle("Learn corrections after insertion", isOn: $model.learnDictionaryFromEdits)
+            } footer: {
+                Text(
+                    "Optional. For one minute after insertion, the keyboard checks only the same "
+                        + "document. Secure fields, additions, deletions, numbers and ordinary "
+                        + "rewrites are ignored. If you switch keyboards to make the correction, "
+                        + "return to DoNotType so it can observe the result."
+                )
+            }
+
+            Section("Add") {
+                TextField("Word or phrase", text: $newTerm)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Add entry") {
+                    model.addDictionaryTerm(newTerm)
+                    if model.dictionaryStatus?.hasPrefix("Added") == true { newTerm = "" }
+                }
+                Button("Import CSV…") { importing = true }
+            }
+
+            if !model.dictionaryTerms.isEmpty {
+                Section("Added by you") {
+                    ForEach(model.dictionaryTerms, id: \.self) { term in row(term, learned: false) }
+                }
+            }
+
+            if !model.learnedDictionaryTerms.isEmpty {
+                Section("Learned from edits") {
+                    ForEach(model.learnedDictionaryTerms, id: \.self) { term in row(term, learned: true) }
+                }
+            }
+
+            Section {
+                Text(
+                    "\(model.personalDictionaryTerms.count) of \(PersonalDictionary.maxTerms) entries"
+                )
+                .foregroundStyle(.secondary)
+                if let status = model.dictionaryStatus { Text(status).font(.footnote) }
+            } footer: {
+                Text(
+                    "Model backends receive a strongly delimited spelling reference. Speech "
+                        + "recognizers receive only number-free entries through their hint channel."
+                )
+            }
+        }
+        .navigationTitle("Dictionary")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { model.refreshDictionary() }
+        .fileImporter(
+            isPresented: $importing,
+            allowedContentTypes: [.commaSeparatedText, .plainText]
+        ) { result in
+            if case .success(let url) = result { model.importDictionary(from: url) }
+        }
+        .sheet(item: $editing) { entry in
+            NavigationStack {
+                Form {
+                    TextField("Spelling", text: $editedTerm)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                .navigationTitle("Edit entry")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { editing = nil }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            model.replaceDictionaryTerm(
+                                entry.term, with: editedTerm, learned: entry.learned)
+                            editing = nil
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func row(_ term: String, learned: Bool) -> some View {
+        HStack {
+            Button(term) {
+                editedTerm = term
+                editing = Entry(term: term, learned: learned)
+            }
+            .foregroundStyle(.primary)
+            Spacer()
+            Button(role: .destructive) {
+                model.deleteDictionaryTerm(term, learned: learned)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+        }
     }
 }
 

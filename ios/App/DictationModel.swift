@@ -225,6 +225,21 @@ final class DictationModel {
         }
     }
 
+    private(set) var dictionaryTerms: [String] = []
+    private(set) var learnedDictionaryTerms: [String] = []
+    private(set) var dictionaryStatus: String?
+    var learnDictionaryFromEdits: Bool = false {
+        didSet {
+            guard learnDictionaryFromEdits != oldValue else { return }
+            if let snapshot = try? dictionaryStore.setLearning(learnDictionaryFromEdits) {
+                applyDictionary(snapshot)
+            }
+        }
+    }
+    var personalDictionaryTerms: [String] {
+        PersonalDictionary.sanitized(dictionaryTerms + learnedDictionaryTerms)
+    }
+
     /// Which part the editor is showing. One file at a time, for the same reason as on macOS: the
     /// contract is twelve separate instructions, and a single scrolling buffer is how the shipped
     /// text and the documentation about it ended up in the same box.
@@ -241,6 +256,7 @@ final class DictationModel {
     var isPromptCustom: Bool { customParts.contains(selectedPart) }
 
     private let transcriptStore = TranscriptStore()
+    private let dictionaryStore = DictionaryStore()
     private let prompts: PromptStore
     private let history: HistoryStore
     private let recorder = StreamingAudioRecorder()
@@ -272,6 +288,7 @@ final class DictationModel {
             ?? HistoryStore.defaultDirectory()
         history = HistoryStore(directory: directory.appendingPathComponent("History"))
         prompts = PromptStore(directory: directory.appendingPathComponent("Prompt"))
+        applyDictionary(dictionaryStore.load())
         loadPrompt()
 
         // Before the first request, and before anything else can log. On a phone there is no
@@ -297,7 +314,8 @@ final class DictationModel {
         else { return nil }
 
         let service = TranscriptionService(
-            provider: backend, model: model, systemInstruction: instruction, fidelity: fidelity)
+            provider: backend, model: model, systemInstruction: instruction, fidelity: fidelity,
+            personalDictionary: personalDictionaryTerms)
 
         var helper: TranscriptionService?
         if let secondStage, let key = KeychainStore.read(account: secondStage.rawValue),
@@ -305,7 +323,8 @@ final class DictationModel {
         {
             helper = TranscriptionService(
                 provider: backend, model: Self.storedModel(for: secondStage),
-                systemInstruction: instruction, fidelity: fidelity)
+                systemInstruction: instruction, fidelity: fidelity,
+                personalDictionary: personalDictionaryTerms)
         }
 
         return FileTranscriber(
@@ -366,6 +385,49 @@ final class DictationModel {
         try? prompts.restoreAll()
         loadPrompt()
         promptStatus = "Restored every part to the shipped contract."
+    }
+
+    // MARK: - Personal dictionary
+
+    func refreshDictionary() { applyDictionary(dictionaryStore.load()) }
+
+    func addDictionaryTerm(_ raw: String) {
+        do {
+            let snapshot = try dictionaryStore.add(raw)
+            applyDictionary(snapshot)
+            dictionaryStatus = "Added “(try PersonalDictionary.normalize(raw))”."
+        } catch { dictionaryStatus = error.localizedDescription }
+    }
+
+    func replaceDictionaryTerm(_ original: String, with raw: String, learned: Bool) {
+        do {
+            applyDictionary(try dictionaryStore.replace(original, with: raw, learned: learned))
+            dictionaryStatus = "Saved."
+        } catch { dictionaryStatus = error.localizedDescription }
+    }
+
+    func deleteDictionaryTerm(_ term: String, learned: Bool) {
+        do {
+            applyDictionary(try dictionaryStore.remove(term, learned: learned))
+            dictionaryStatus = "Removed “(term)”."
+        } catch { dictionaryStatus = error.localizedDescription }
+    }
+
+    func importDictionary(from url: URL) {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let (snapshot, count) = try dictionaryStore.importCSV(Data(contentsOf: url))
+            applyDictionary(snapshot)
+            dictionaryStatus = "Imported \(count) new "
+                + (count == 1 ? "entry." : "entries.")
+        } catch { dictionaryStatus = error.localizedDescription }
+    }
+
+    private func applyDictionary(_ snapshot: DictionaryStore.Snapshot) {
+        dictionaryTerms = snapshot.manual
+        learnedDictionaryTerms = snapshot.learned
+        learnDictionaryFromEdits = snapshot.learnsFromEdits
     }
 
     var hasAppGroup: Bool { TranscriptStore.containerURL != nil }
@@ -605,7 +667,8 @@ final class DictationModel {
 
         return TranscriptionService(
             provider: backend, model: Self.storedModel(for: kind),
-            systemInstruction: "", fidelity: fidelity)
+            systemInstruction: "", fidelity: fidelity,
+            personalDictionary: personalDictionaryTerms)
     }
 
     /// The rewrite block from the prompt in force — the user's edited copy when there is one.
@@ -865,7 +928,8 @@ final class DictationModel {
             primary: primary,
             secondary: TranscriptionService(
                 provider: backend, model: Self.storedModel(for: kind),
-                systemInstruction: instruction, fidelity: fidelity),
+                systemInstruction: instruction, fidelity: fidelity,
+                personalDictionary: personalDictionaryTerms),
             hedgeAfter: .seconds(fallbackAfterSeconds))
     }
 
@@ -882,7 +946,8 @@ final class DictationModel {
         return RetryCoordinator(
             service: TranscriptionService(
                 provider: backend, model: model,
-                systemInstruction: instruction, fidelity: fidelity),
+                systemInstruction: instruction, fidelity: fidelity,
+                personalDictionary: personalDictionaryTerms),
             store: history)
     }
 
