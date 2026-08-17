@@ -94,6 +94,7 @@ class DoNotTypeIME : InputMethodService() {
     private var pendingTarget: Pair<String?, Int>? = null
     private var correctionWatch: Job? = null
     private var noticeJob: Job? = null
+    private var pendingLifecycleNotice: String? = null
     private var lastLearnedTerms: List<String> = emptyList()
 
     private data class EditableSnapshot(
@@ -129,6 +130,26 @@ class DoNotTypeIME : InputMethodService() {
         // The provider may have changed in the app since this keyboard was last shown, and with it
         // whether a rewrite is possible at all.
         refreshStyleRow()
+        pendingLifecycleNotice?.let { message ->
+            pendingLifecycleNotice = null
+            showNotice(message)
+        }
+    }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        holdRunnable?.let { handler.removeCallbacks(it) }
+        holdRunnable = null
+        pressBecameHold = false
+
+        if (state == State.RECORDING) {
+            log.info { "recording stopped because the keyboard closed" }
+            discardRecording()
+            // The view is going away, so retain the explanation and show it when the keyboard next
+            // opens instead of starting a three-second notice that expires while nobody can see it.
+            pendingLifecycleNotice = "Recording stopped when the keyboard closed"
+            state = State.IDLE
+        }
+        super.onFinishInputView(finishingInput)
     }
 
     override fun onCreateInputView(): View {
@@ -350,11 +371,7 @@ class DoNotTypeIME : InputMethodService() {
             // A finger dragged off the button, or the system stealing the gesture. Discard rather
             // than transcribe: the user did not choose to end here.
             if (state == State.RECORDING) {
-                recorder.cancel()
-                recorder.onPcm = null
-                liveSession?.cancel()
-                liveSession = null
-                pendingContext = null
+                discardRecording()
                 state = State.IDLE
             }
             pressBecameHold = false
@@ -388,6 +405,17 @@ class DoNotTypeIME : InputMethodService() {
     private fun stopLevelUpdates() {
         levelRunnable?.let { handler.removeCallbacks(it) }
         levelRunnable = null
+    }
+
+    /** Discards capture and every in-flight piece derived from it without changing the UI state. */
+    private fun discardRecording() {
+        recorder.cancel()
+        recorder.onPcm = null
+        liveSession?.cancel()
+        liveSession = null
+        pendingContext = null
+        pendingTarget = null
+        stopLevelUpdates()
     }
 
     // MARK: - Dictation

@@ -303,6 +303,9 @@ final class DictationModel {
         // keeps the user-visible no-speech outcome under UI test without changing release builds.
         if ProcessInfo.processInfo.arguments.contains("-ui-testing-no-speech-notice") {
             state = .notice("No speech detected — recording wasn’t sent")
+        } else if ProcessInfo.processInfo.arguments.contains("-ui-testing-recording-state") {
+            // Drives the foreground-lifecycle contract without relying on a simulator microphone.
+            state = .recording
         }
         #endif
     }
@@ -571,6 +574,7 @@ final class DictationModel {
             startMetering()
         } catch {
             recorder.cancel()
+            deactivateAudioSession()
             livePipeline?.cancel()
             livePipeline = nil
             recorder.onPCM = nil
@@ -588,6 +592,7 @@ final class DictationModel {
         levelTimer?.invalidate()
         levelTimer = nil
         let stoppedURL = recorder.stop()
+        deactivateAudioSession()
         recorder.onPCM = nil
         levels = Self.silentMeter
 
@@ -643,6 +648,43 @@ final class DictationModel {
         let pipeline = livePipeline
         livePipeline = nil
         Task { await transcribe(url: url, livePipeline: pipeline) }
+    }
+
+    /// Stops capture when the app loses its visible foreground surface.
+    ///
+    /// The app has no background-audio entitlement, so attempting to continue would at best leave
+    /// a stale Recording state after suspension. It would also violate the stronger product rule:
+    /// the microphone never outlives the surface that says it is on.
+    func stopRecordingForBackground() {
+        guard state == .recording else { return }
+        log.info(
+            "recording stopped because the app left the foreground",
+            ["dictation": Self.short(pendingID)])
+        levelTimer?.invalidate()
+        levelTimer = nil
+        recorder.cancel()
+        recorder.onPCM = nil
+        deactivateAudioSession()
+        livePipeline?.cancel()
+        livePipeline = nil
+        recordingURL = nil
+        pressStartedAt = nil
+        levels = Self.silentMeter
+        // Do not auto-dismiss this notice while the process is suspended. It should still explain
+        // the stopped recording when the user returns, however long the app was in the background.
+        state = .notice("Recording stopped when DoNotType left the foreground")
+    }
+
+    /// Releases the route immediately so music, calls, and other audio regain their prior session.
+    private func deactivateAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(
+                false, options: .notifyOthersOnDeactivation)
+        } catch {
+            log.warning(
+                "could not deactivate the audio session",
+                ["detail": FailureAdvice.detail(of: error)])
+        }
     }
 
     /// How much of the recording the meter shows: 24 bars of 60 ms, so a second and a half.

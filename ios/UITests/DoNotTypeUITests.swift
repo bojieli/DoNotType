@@ -59,6 +59,21 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(record.isEnabled, "no speech should not disable the next dictation")
     }
 
+    /// A recording must not outlive the only surface that tells the user the microphone is on.
+    func testLeavingTheForegroundStopsRecordingAndExplainsWhy() {
+        let app = launch(arguments: ["-ui-testing-recording-state"])
+        XCTAssertTrue(app.staticTexts["Listening… tap to stop"].waitForExistence(timeout: 10))
+
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10))
+        app.activate()
+
+        XCTAssertTrue(
+            app.staticTexts["Recording stopped when DoNotType left the foreground"]
+                .waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["record"].isEnabled)
+    }
+
     /// The style picker, which is how a phone makes the choice the desktop makes with a second
     /// hotkey — before speaking, not from a menu afterwards.
     ///

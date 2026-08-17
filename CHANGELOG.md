@@ -23,6 +23,13 @@ release yet, so everything below is unreleased.
   .NET runtime, so both work on a clean machine without a global .NET installation. CI exercises
   the exact packaged layout, and build actions are current and pinned to immutable revisions.
 
+- **Microphone capture follows the visible mobile UI.** Closing the Android keyboard now discards
+  an active recording instead of leaving the microphone running in an invisible IME service, and
+  explains that outcome when the keyboard reopens. iOS stops capture when the app leaves the
+  foreground and deactivates its audio session after every stop or startup failure, restoring the
+  previous audio route promptly. Both recorder teardowns now fully unblock and remove their input
+  hooks before returning, so a failed start or fast retry cannot inherit half-open capture state.
+
 - **Optional one-key finish and send on macOS and Windows.** Pressing Return/Enter while recording
   can now stop capture, wait for transcription, insert the result, and then emit Return/Enter or
   the configured `⌘ Return` / `Ctrl+Enter`. It is off by default. The key is captured only during

@@ -80,12 +80,20 @@ struct ContentView: View {
             await model.refresh()
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            // Anything that failed while offline goes out as soon as the app is foregrounded.
-            Task {
-                model.refreshDictionary()
-                await model.refresh()
-                await model.retryPending()
+            switch phase {
+            case .active:
+                // Anything that failed while offline goes out as soon as the app is foregrounded.
+                Task {
+                    model.refreshDictionary()
+                    await model.refresh()
+                    await model.retryPending()
+                }
+            case .inactive, .background:
+                // iOS does not grant this app background audio. More importantly, a microphone
+                // must never keep capturing after its only visible recording surface disappears.
+                model.stopRecordingForBackground()
+            @unknown default:
+                model.stopRecordingForBackground()
             }
         }
     }

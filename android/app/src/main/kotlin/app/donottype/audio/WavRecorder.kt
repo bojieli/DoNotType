@@ -180,13 +180,26 @@ class WavRecorder {
 
     private fun teardown() {
         capturing = false
-        worker?.join(500)
-        worker = null
-        record?.run {
-            if (recordingState == AudioRecord.RECORDSTATE_RECORDING) stop()
-            release()
-        }
+        val activeRecord = record
+        val activeWorker = worker
         record = null
+        worker = null
+
+        // AudioRecord.read() is blocking. Stop the device first so the capture thread can observe
+        // `capturing = false`; waiting first left a narrow path where stop() returned while that
+        // thread was still writing into the WAV buffer being read or reset by the caller.
+        activeRecord?.let { recorder ->
+            if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                runCatching { recorder.stop() }
+            }
+        }
+        activeWorker?.join(500)
+        activeRecord?.release()
+        // Defensive second join for a device whose read only unblocks when the recorder is
+        // released. No PCM may be touched after this method hands it to stop() or cancel().
+        if (activeWorker?.isAlive == true) {
+            activeWorker.join(500)
+        }
     }
 
 }

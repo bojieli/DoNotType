@@ -10,6 +10,9 @@ final class StreamingAudioRecorder: @unchecked Sendable {
     private var converter: AVAudioConverter?
     private var outputURL: URL?
     private var startedAt: Date?
+    /// `engine.start()` can fail after the tap is installed. Track the tap independently from the
+    /// engine's running state so a retry never tries to install a second tap on the same bus.
+    private var tapInstalled = false
     private var meter = AudioLevelMeter(sampleRate: 16_000)
     private var pendingBars: [AudioLevelMeter.Bar] = []
 
@@ -45,6 +48,7 @@ final class StreamingAudioRecorder: @unchecked Sendable {
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             self?.append(buffer, target: target)
         }
+        tapInstalled = true
         engine.prepare()
         try engine.start()
         startedAt = Date()
@@ -75,9 +79,11 @@ final class StreamingAudioRecorder: @unchecked Sendable {
     }
 
     private func teardown() {
-        guard engine.isRunning else { return }
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
+        if engine.isRunning { engine.stop() }
         lock.withLock { file = nil }
         converter = nil
         startedAt = nil
