@@ -67,10 +67,13 @@ final class HotkeyMonitor {
 
     var onPress: (() -> Void)?
     var onRelease: (() -> Void)?
+    /// Fires when the physical trigger changes state, so automatic mode can show the exact gesture
+    /// that will finish the recording instead of the ambiguous "release or tap".
+    var onHoldChange: ((Bool) -> Void)?
     /// Fires when the configured cancel key is pressed during recording or transcription.
     var onCancel: (() -> Void)?
-    /// Fires when Return ends a recording that should be submitted after insertion.
-    var onFinishAndSend: ((FinishAndSendAction) -> Void)?
+    /// Fires when Return ends a recording. The action decides whether insertion is also submitted.
+    var onFinishWithReturn: ((FinishAndSendAction) -> Void)?
 
     /// Extra chorded shortcuts that work whether or not a recording is in flight.
     ///
@@ -86,7 +89,7 @@ final class HotkeyMonitor {
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var watchdog: Timer?
-    private var isHeld = false
+    private(set) var isHeld = false
     /// The press's own event timestamp, not the moment this code got to it. See `seconds(from:to:)`.
     private var pressedAt: CGEventTimestamp?
     /// Whether the in-flight recording began with this press, for `automatic` mode.
@@ -173,6 +176,7 @@ final class HotkeyMonitor {
             let down = event.flags.contains(active.flag)
             guard down != isHeld else { return false }
             isHeld = down
+            onHoldChange?(down)
             if down {
                 usedSecondary = isSecondary
                 handlePress(at: event.timestamp)
@@ -200,7 +204,7 @@ final class HotkeyMonitor {
                     if isFinishingWithReturn { return true }
                     if finishAndSendAction.capturesReturn(whileRecording: isRecording()) {
                         isFinishingWithReturn = true
-                        onFinishAndSend?(finishAndSendAction)
+                        onFinishWithReturn?(finishAndSendAction)
                         return true
                     }
                 }

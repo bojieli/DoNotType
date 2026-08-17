@@ -93,13 +93,14 @@ release yet, so everything below is unreleased.
   replace discipline, so interrupted edits keep the prior valid configuration; a Windows settings
   write failure is contained and shown instead of escaping a UI event and terminating the tray app.
 
-- **Optional one-key finish and send on macOS and Windows.** Pressing Return/Enter while recording
-  can now stop capture, wait for transcription, insert the result, and then emit Return/Enter or
-  the configured `⌘ Return` / `Ctrl+Enter`. It is off by default. The key is captured only during
-  recording, the intent survives the transcription wait, and submission happens only after a
-  successful insertion if the exact original field still has focus. Cancellation, failures,
-  clipboard-only fallback, or changed focus never send. The recording and progress overlays show
-  the pending action, and the confirmation distinguishes sent text from a safely skipped submit.
+- **One-key finish with Return/Enter on macOS and Windows.** Pressing Return/Enter while recording
+  now always stops capture, waits for transcription, and inserts the result. Sending an additional
+  Return/Enter or the configured `⌘ Return` / `Ctrl+Enter` remains opt-in. The physical key is
+  captured only during recording, the intent survives the transcription wait, and submission
+  happens only after a successful insertion if the exact original field still has focus.
+  Cancellation, failures, clipboard-only fallback, or changed focus never send. The recording and
+  progress overlays show the pending action, and the confirmation distinguishes sent text from a
+  safely skipped submit.
 
 - **A local personal dictionary, including optional learning from corrections on all four apps.** Typeless's
   useful incentive is real: people correct a misspelling while it is in front of them and rarely

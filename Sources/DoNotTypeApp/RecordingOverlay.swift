@@ -18,15 +18,19 @@ final class RecordingOverlay {
         state.append(levels)
     }
 
-    func update(phase: OverlayState.Phase, hint: String? = nil) {
+    func update(
+        phase: OverlayState.Phase, hint: String? = nil, subhint: String? = nil
+    ) {
         state.phase = phase
         if let hint { state.hint = hint }
+        if let subhint { state.subhint = subhint }
     }
 
-    func show(phase: OverlayState.Phase, hint: String) {
+    func show(phase: OverlayState.Phase, hint: String, subhint: String = "") {
         dismissWork?.cancel()
         state.phase = phase
         state.hint = hint
+        state.subhint = subhint
         state.clearLevels()
 
         if panel == nil { panel = makePanel() }
@@ -75,7 +79,7 @@ final class RecordingOverlay {
         // A window clips its content to its own frame, and the pill sizes itself to whatever it is
         // currently saying — which at 220 points was routinely more than it had room for. SwiftUI
         // does not overflow: it wraps, and then it truncates. So the effect was invisible in the
-        // code and plain on screen. "Release or tap to send" broke onto two lines, and a failure
+        // code and plain on screen. An old combined recording hint broke unpredictably, and a failure
         // message reached the two-line limit and ended in an ellipsis, which is the one thing this
         // project does not do to an error — that text is what somebody copies to find out what
         // went wrong.
@@ -163,6 +167,8 @@ final class OverlayState {
 
     var phase: Phase = .recording
     var hint: String = ""
+    /// A deliberately separate second row during recording, such as "Return to send".
+    var subhint: String = ""
     /// The visible history, oldest first. Always full: the meter starts flat rather than growing
     /// in from the left, because an empty meter and a silent one should not look different.
     private(set) var levels = [AudioLevelMeter.Bar](repeating: .silent, count: visibleBars)
@@ -200,14 +206,10 @@ private struct OverlayView: View {
             case .recording:
                 LevelMeter(bars: state.levels)
                     .frame(width: LevelMeter.width, height: 22)
-                Text(state.hint)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
+                StatusLabel(state.hint, detail: state.subhint)
             case .transcribing:
                 ThinkingDots()
-                Text("Transcribing…" + progressHint)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
+                StatusLabel("Transcribing…", detail: state.hint)
             case .transcribingChunk(let done, let total):
                 ProgressView(value: Double(done), total: Double(max(total, 1)))
                     .progressViewStyle(.linear)
@@ -215,15 +217,12 @@ private struct OverlayView: View {
                     .frame(width: LevelMeter.width)
                     // A determinate bar here, not the dots: with several parts in flight there is
                     // real progress to report, and reporting it beats implying it.
-                Text("Transcribing… part \(min(done + 1, total)) of \(total)" + progressHint)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
-                    .monospacedDigit()
+                StatusLabel(
+                    "Transcribing… part \(min(done + 1, total)) of \(total)",
+                    detail: state.hint)
             case .deriving(let style):
                 ThinkingDots()
-                Text(TranscriptMode.rewrite(style).progressLabel + progressHint)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
+                StatusLabel(TranscriptMode.rewrite(style).progressLabel, detail: state.hint)
             case .inserted(let characters, let rewriteFailed, let submission):
                 Image(systemName: rewriteFailed
                     ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
@@ -266,8 +265,6 @@ private struct OverlayView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var progressHint: String { state.hint.isEmpty ? "" : " · \(state.hint)" }
-
     private func insertedMessage(
         _ characters: Int, rewriteFailed: Bool, submission: OverlayState.Submission
     ) -> String {
@@ -280,6 +277,32 @@ private struct OverlayView: View {
         }
         if rewriteFailed { message += " — not rewritten" }
         return message
+    }
+}
+
+/// Two short rows keep the gesture and its outcome distinct without making the pill wider.
+private struct StatusLabel: View {
+    let title: String
+    let detail: String
+
+    init(_ title: String, detail: String = "") {
+        self.title = title
+        self.detail = detail
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.8))
+                .monospacedDigit()
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.58))
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 

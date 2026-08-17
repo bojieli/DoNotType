@@ -50,11 +50,12 @@ let go.
 
 Finish-and-send carries an extra identity beside the ordinary process-level paste guard: process ID
 plus the focused accessibility/UI Automation element token. Return/Enter is consumed only while
-recording and latches the configured output action before recognition begins. After paste settles,
-the exact field is read again; only a match may receive Return/Enter, `⌘ Return`, or `Ctrl+Enter`.
-The option defaults off, and cancellation, failure, manual-paste fallback, or an identity that could
-not be read has no submit path. For both configured Escape and finish-and-send Return/Enter, the
-physical key-down, every repeat, and the matching key-up are consumed; none reaches the target app.
+recording and latches the configured output action before recognition begins. It always finishes
+capture and inserts; the default output action stops there. After paste settles, only an exact field
+match may receive the optional Return/Enter, `⌘ Return`, or `Ctrl+Enter`. Cancellation, failure,
+manual-paste fallback, or an identity that could not be read has no submit path. For both configured
+Escape and recording-time Return/Enter, the physical key-down, every repeat, and the matching key-up
+are consumed; none reaches the target app.
 
 ## Decisions that were measured
 

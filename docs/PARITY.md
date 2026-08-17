@@ -55,10 +55,11 @@ summary:brief`. The wall is in the type system rather than in a convention — t
 request or rewrite, and is intercepted only during that active dictation; at idle it remains the
 foreground application's key.
 
-¹⁵ Desktop finish-and-send is opt-in and captures Return/Enter only while recording. It latches the
-request before transcription, inserts first, and emits the configured submit key only if the exact
-field focused at recording start still has focus after insertion. Mobile clients already own their
-foreground recording UI but cannot submit a message in another app, so there is no equivalent key.
+¹⁵ Desktop Return/Enter finishes capture only while recording and inserts the transcript. Sending
+an additional Return/Enter is opt-in: the app latches that request before transcription and emits
+the configured submit key only if the exact field focused at recording start still has focus after
+insertion. Mobile clients already own their foreground recording UI but cannot submit a message in
+another app, so there is no equivalent key.
 
 ## Screen grounding
 

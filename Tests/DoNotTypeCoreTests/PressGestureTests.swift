@@ -113,7 +113,28 @@ final class PressGestureTests: XCTestCase {
     func testEveryModeLabelsItselfAndItsOverlayHint() {
         for mode in PressGesture.Mode.allCases {
             XCTAssertFalse(mode.label.isEmpty)
-            XCTAssertFalse(mode.overlayHint.isEmpty)
+            XCTAssertFalse(mode.overlayHint(isTriggerHeld: false).isEmpty)
+            XCTAssertFalse(mode.overlayHint(isTriggerHeld: true).isEmpty)
+        }
+    }
+
+    func testAutomaticOverlayHintFollowsThePhysicalTrigger() {
+        XCTAssertEqual(
+            PressGesture.Mode.automatic.overlayHint(isTriggerHeld: true),
+            "Release to transcribe")
+        XCTAssertEqual(
+            PressGesture.Mode.automatic.overlayHint(isTriggerHeld: false),
+            "Tap to transcribe")
+    }
+
+    func testFixedModesDoNotLieAboutTheirGesture() {
+        for held in [false, true] {
+            XCTAssertEqual(
+                PressGesture.Mode.pushToTalk.overlayHint(isTriggerHeld: held),
+                "Release to transcribe")
+            XCTAssertEqual(
+                PressGesture.Mode.handsFree.overlayHint(isTriggerHeld: held),
+                "Tap to transcribe")
         }
     }
 }

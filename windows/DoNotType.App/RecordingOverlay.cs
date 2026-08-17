@@ -73,6 +73,7 @@ public sealed class RecordingOverlay : Form
 
     private Phase _phase = Phase.Recording;
     private string _hint = string.Empty;
+    private string _subhint = string.Empty;
 
     public RecordingOverlay()
     {
@@ -118,10 +119,11 @@ public sealed class RecordingOverlay : Form
 
     private void ClearLevels() => Array.Fill(_bars, AudioLevelMeter.Bar.Silent);
 
-    public void Show(Phase phase, string hint)
+    public void Show(Phase phase, string hint, string subhint = "")
     {
         _phase = phase;
         _hint = hint;
+        _subhint = subhint;
         ClearLevels();
         ResizeForPhase();
         PositionAtBottomOfActiveScreen();
@@ -131,10 +133,11 @@ public sealed class RecordingOverlay : Form
     }
 
     /// <param name="hint">Extra detail under the phase, or null when there is none worth showing.</param>
-    public void SetPhase(Phase phase, string? hint)
+    public void SetPhase(Phase phase, string? hint, string? subhint = null)
     {
         _phase = phase;
         _hint = hint ?? string.Empty;
+        _subhint = subhint ?? string.Empty;
         ResizeForPhase();
         PositionAtBottomOfActiveScreen();
         Invalidate();
@@ -193,7 +196,7 @@ public sealed class RecordingOverlay : Form
         {
             case Phase.Recording:
                 DrawMeter(g, new Rectangle(20, Height / 2 - 11, MeterWidth, 22));
-                g.DrawString(_hint, font, textBrush, TextLeft, Height / 2 - 8);
+                DrawStatus(g, _hint, _subhint, font, textBrush, TextLeft);
                 break;
 
             case Phase.Transcribing:
@@ -204,14 +207,14 @@ public sealed class RecordingOverlay : Form
                 // pretending to be a signal.
                 DrawThinkingDots(g, new Rectangle(20, Height / 2 - 4, MeterWidth, 8));
                 var label = _hint.Length == 0 ? "Transcribing…" : $"Transcribing… {_hint}";
-                g.DrawString(label, font, textBrush, TextLeft, Height / 2 - 8);
+                DrawStatus(g, label, _subhint, font, textBrush, TextLeft);
                 break;
 
             case Phase.Deriving:
                 DrawThinkingDots(g, new Rectangle(20, Height / 2 - 4, MeterWidth, 8));
-                g.DrawString(
-                    _hint.Length == 0 ? "Rewriting…" : _hint, font, textBrush,
-                    TextLeft, Height / 2 - 8);
+                DrawStatus(
+                    g, _hint.Length == 0 ? "Rewriting…" : _hint, _subhint,
+                    font, textBrush, TextLeft);
                 break;
 
             case Phase.Inserted:
@@ -245,6 +248,25 @@ public sealed class RecordingOverlay : Form
 
     private static Font MessageFont() =>
         new(SystemFonts.MessageBoxFont!.FontFamily, 9f, FontStyle.Regular);
+
+    /// <summary>Two compact rows keep the gesture and the pending submit distinct.</summary>
+    private void DrawStatus(
+        Graphics graphics, string title, string detail, Font titleFont, Brush titleBrush, float x)
+    {
+        if (string.IsNullOrEmpty(detail))
+        {
+            graphics.DrawString(title, titleFont, titleBrush, x, Height / 2f - 8);
+            return;
+        }
+
+        using var detailFont = new Font(titleFont.FontFamily, 8f, FontStyle.Regular);
+        using var detailBrush = new SolidBrush(Color.FromArgb(145, 235, 235, 235));
+        var titleHeight = titleFont.GetHeight(graphics);
+        var detailHeight = detailFont.GetHeight(graphics);
+        var top = (Height - titleHeight - detailHeight) / 2f;
+        graphics.DrawString(title, titleFont, titleBrush, x, top);
+        graphics.DrawString(detail, detailFont, detailBrush, x, top + titleHeight - 1);
+    }
 
     /// <summary>Where the label starts, clear of the meter or the dots.</summary>
     private const int TextLeft = 20 + MeterWidth + 12;

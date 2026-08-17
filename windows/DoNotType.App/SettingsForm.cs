@@ -164,14 +164,14 @@ public sealed class SettingsForm : Form
         layout.Controls.Add(Labelled("Key", _trigger));
         layout.Controls.Add(Labelled("Behaviour", _mode));
         layout.Controls.Add(Labelled("Cancel shortcut", _cancelShortcut));
-        layout.Controls.Add(Labelled("Finish and send", _finishAndSend));
+        layout.Controls.Add(Labelled("Finish with Enter", _finishAndSend));
         layout.Controls.Add(Labelled("Fidelity", _fidelity));
         layout.Controls.Add(Caption(
             "A quick tap starts recording and a second tap ends it; holding the key past a moment "
             + "records only while held. Escape can cancel recording or transcription, but is "
-            + "intercepted only while one is active; choose None to disable it. Finish and send "
-            + "is optional: press Enter while recording to stop, insert the transcript, then send "
-            + "Enter or Ctrl+Enter. Enter remains untouched at all other times. Even Tidy only "
+            + "intercepted only while one is active; choose None to disable it. Press Enter while "
+            + "recording to stop and insert; optionally send Enter or Ctrl+Enter afterward. Enter "
+            + "remains untouched at all other times. Even Tidy only "
             + "changes typography — none "
             + "of the fidelity settings reword you."));
 
@@ -914,7 +914,7 @@ public sealed class SettingsForm : Form
         _cancelShortcut.Items.AddRange(["Escape", "None"]);
         _cancelShortcut.SelectedIndex = (int)_settings.CancelShortcut;
 
-        _finishAndSend.Items.AddRange(["Off", "Enter", "Ctrl+Enter"]);
+        _finishAndSend.Items.AddRange(["Insert only", "Insert + Enter", "Insert + Ctrl+Enter"]);
         _finishAndSend.SelectedIndex = (int)_settings.FinishAndSendAction;
 
         _secondTrigger.Items.Add("None");

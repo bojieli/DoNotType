@@ -123,12 +123,15 @@ public sealed class DictationController : IDisposable
     /// </remarks>
     public event Action<int, int>? ChunkProgress;
     public event Action? HistoryChanged;
+    /// <summary>The configured dictation trigger was physically pressed or released.</summary>
+    public event Action<bool>? TriggerHoldChanged;
 
     /// <summary>New spellings learned from an edit, exposed for an undo affordance.</summary>
     public event Action<IReadOnlyList<string>>? DictionaryLearned;
 
     public HistoryStore History => _history;
     public IReadOnlyList<AudioLevelMeter.Bar> DrainLevels() => _recorder.DrainLevels();
+    public bool IsTriggerHeld => _hotkey.IsHeld;
 
     /// <summary>Whether the current recognition will submit after insertion.</summary>
     public bool WillSubmit => _pendingFinishAndSend != FinishAndSendAction.Disabled
@@ -153,8 +156,9 @@ public sealed class DictationController : IDisposable
             Current is State.Recording or State.Transcribing or State.Deriving;
         _hotkey.Pressed += BeginRecording;
         _hotkey.Released += FinishRecording;
+        _hotkey.HoldChanged += held => TriggerHoldChanged?.Invoke(held);
         _hotkey.Cancelled += CancelActiveDictation;
-        _hotkey.FinishAndSendRequested += FinishAndSend;
+        _hotkey.FinishWithEnterRequested += FinishWithEnter;
         _hotkey.Faulted += HandleHotkeyFailure;
 
         // Both are cheap only because the verbatim transcript is always kept.
@@ -439,11 +443,11 @@ public sealed class DictationController : IDisposable
         _liveSession?.Cancel();
     }
 
-    private void FinishAndSend(FinishAndSendAction action)
+    private void FinishWithEnter(FinishAndSendAction action)
     {
         if (Current != State.Recording) return;
         _pendingFinishAndSend = action;
-        DictationLog.Info(() => "finish-and-send requested", new Dictionary<string, string>
+        DictationLog.Info(() => "Enter finish requested", new Dictionary<string, string>
         {
             ["dictation"] = Short(_pendingId),
             ["action"] = action.ToString(),

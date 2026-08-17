@@ -62,13 +62,20 @@ internal sealed class TrayApplication : ApplicationContext
 
         _controller = new DictationController(_settings);
         _controller.StateChanged += OnStateChanged;
+        _controller.TriggerHoldChanged += held => BeginInvokeOnTray(() =>
+        {
+            if (_controller.Current != DictationController.State.Recording) return;
+            var hints = RecordingHints(held);
+            SetOverlayPhase(RecordingOverlay.Phase.Recording, hints.Primary, hints.Secondary);
+        });
         // Only when there is more than one part. A single-chunk dictation is the ordinary case, and
         // "part 1 of 1" underneath a label that already says Transcribing is noise.
         _controller.ChunkProgress += (done, total) => _overlay.BeginInvoke(() =>
         {
             var progress = total > 1 ? $"part {Math.Min(done + 1, total)} of {total}" : null;
-            if (_controller.WillSubmit) progress = JoinHint(progress, "will send");
-            SetOverlayPhase(RecordingOverlay.Phase.Transcribing, progress);
+            SetOverlayPhase(
+                RecordingOverlay.Phase.Transcribing, progress,
+                _controller.WillSubmit ? "Will send" : null);
         });
         _controller.HistoryChanged += () => BeginInvokeOnTray(RebuildMenu);
         _controller.DictionaryLearned += terms => BeginInvokeOnTray(() =>
@@ -192,14 +199,16 @@ internal sealed class TrayApplication : ApplicationContext
             switch (state)
             {
                 case DictationController.State.Recording:
-                    ShowOverlay(RecordingOverlay.Phase.Recording, HintForMode());
+                    var hints = RecordingHints(_controller.IsTriggerHeld);
+                    ShowOverlay(
+                        RecordingOverlay.Phase.Recording, hints.Primary, hints.Secondary);
                     _levelTimer.Start();
                     break;
                 case DictationController.State.Transcribing:
                     _levelTimer.Stop();
                     SetOverlayPhase(
                         RecordingOverlay.Phase.Transcribing,
-                        _controller.WillSubmit ? "will send" : string.Empty);
+                        string.Empty, _controller.WillSubmit ? "Will send" : string.Empty);
                     break;
                 case DictationController.State.Deriving:
                     // The style's own word — "Tightening…", "Making bullets…" — because somebody
@@ -207,9 +216,8 @@ internal sealed class TrayApplication : ApplicationContext
                     _levelTimer.Stop();
                     SetOverlayPhase(
                         RecordingOverlay.Phase.Deriving,
-                        JoinHint(
-                            TranscriptMode.Rewrite(_settings.SecondaryStyle).ProgressLabel,
-                            _controller.WillSubmit ? "will send" : null));
+                        TranscriptMode.Rewrite(_settings.SecondaryStyle).ProgressLabel,
+                        _controller.WillSubmit ? "Will send" : null);
                     break;
                 case DictationController.State.Failed:
                     _levelTimer.Stop();
@@ -229,20 +237,18 @@ internal sealed class TrayApplication : ApplicationContext
         });
     }
 
-    private string HintForMode()
+    private (string Primary, string Secondary) RecordingHints(bool isTriggerHeld)
     {
-        var ordinary = _settings.HotkeyMode switch
+        var primary = _settings.HotkeyMode switch
         {
-            HotkeyMonitor.Mode.PushToTalk => "Release to send",
-            HotkeyMonitor.Mode.HandsFree => "Tap again to send",
-            _ => "Release or tap to send",
+            HotkeyMonitor.Mode.PushToTalk => "Release to transcribe",
+            HotkeyMonitor.Mode.HandsFree => "Tap to transcribe",
+            _ => isTriggerHeld ? "Release to transcribe" : "Tap to transcribe",
         };
-        return _settings.FinishAndSendAction == FinishAndSendAction.Disabled
-            ? ordinary : ordinary + " · Enter to send";
+        var secondary = _settings.FinishAndSendAction == FinishAndSendAction.Disabled
+            ? string.Empty : "Enter to send";
+        return (primary, secondary);
     }
-
-    private static string JoinHint(string? first, string? second) =>
-        string.Join(" · ", new[] { first, second }.Where(value => !string.IsNullOrEmpty(value)));
 
     private async Task HideOverlayAfter(TimeSpan delay)
     {
@@ -252,16 +258,17 @@ internal sealed class TrayApplication : ApplicationContext
         HideOverlay();
     }
 
-    private void ShowOverlay(RecordingOverlay.Phase phase, string hint)
+    private void ShowOverlay(RecordingOverlay.Phase phase, string hint, string subhint = "")
     {
         _overlayGeneration++;
-        _overlay.Show(phase, hint);
+        _overlay.Show(phase, hint, subhint);
     }
 
-    private void SetOverlayPhase(RecordingOverlay.Phase phase, string? hint)
+    private void SetOverlayPhase(
+        RecordingOverlay.Phase phase, string? hint, string? subhint = null)
     {
         _overlayGeneration++;
-        _overlay.SetPhase(phase, hint);
+        _overlay.SetPhase(phase, hint, subhint);
     }
 
     private void HideOverlay()

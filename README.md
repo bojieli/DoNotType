@@ -164,11 +164,12 @@ cannot work.
 that came out too formal, is one key away from being fixed — `⌘⌥Z` swaps in what you actually said.
 A tool that discards the original cannot offer this at all, which is the difference being argued.
 
-**Finish and send is one key, but never a global Return key.** It is off by default. When enabled,
-press Return/Enter while recording: DoNotType stops, transcribes, inserts into the original field,
-then sends Return/Enter or the configured `⌘ Return` / `Ctrl+Enter`. The intent is latched before
-the wait, and the final key is emitted only if that exact field still has focus after insertion.
-At idle and while transcription is running, Return/Enter is never intercepted.
+**Finish with Return is one key, but never a global Return key.** Press Return/Enter while
+recording: DoNotType stops, transcribes, and inserts into the original field. By default it stops
+there; optionally it then sends Return/Enter or the configured `⌘ Return` / `Ctrl+Enter`. The
+intent is latched before the wait, and the final key is emitted only if that exact field still has
+focus after insertion. At idle and while transcription is running, Return/Enter is never
+intercepted.
 
 More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

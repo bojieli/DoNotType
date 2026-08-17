@@ -458,24 +458,12 @@ private struct GeneralTab: View {
                         Text(shortcut.label).tag(shortcut)
                     }
                 }
-                Picker("Finish and send", selection: $model.finishAndSendAction) {
-                    Text("Off").tag(FinishAndSendAction.disabled)
-                    Text("Return").tag(FinishAndSendAction.returnKey)
-                    Text("⌘ Return").tag(FinishAndSendAction.modifiedReturn)
+                Picker("Finish with Return", selection: $model.finishAndSendAction) {
+                    Text("Insert only").tag(FinishAndSendAction.disabled)
+                    Text("Insert + Return").tag(FinishAndSendAction.returnKey)
+                    Text("Insert + ⌘ Return").tag(FinishAndSendAction.modifiedReturn)
                 }
-                Text(
-                    "A quick tap starts recording and a second tap ends it; holding the key past "
-                        + "a moment records only while held. "
-                        + (model.cancelShortcut == .escape
-                            ? "Escape cancels recording or transcription only while one is active; "
-                                + "at all other times it belongs to the app you are using."
-                            : "No key is intercepted to cancel an active dictation.")
-                        + (model.finishAndSendAction == .disabled
-                            ? " Finish and send is off."
-                            : " Press Return while recording to stop; after the text is inserted "
-                                + "DoNotType sends "
-                                + (model.finishAndSendAction == .returnKey ? "Return." : "⌘ Return."))
-                )
+                Text(dictationHelp)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
@@ -506,6 +494,21 @@ private struct GeneralTab: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var dictationHelp: String {
+        let cancel = model.cancelShortcut == .escape
+            ? "Escape cancels recording or transcription only while one is active; at all other "
+                + "times it belongs to the app you are using."
+            : "No key is intercepted to cancel an active dictation."
+        let submit = switch model.finishAndSendAction {
+        case .disabled: " It will not submit the text."
+        case .returnKey: " DoNotType then sends Return."
+        case .modifiedReturn: " DoNotType then sends ⌘ Return."
+        }
+        return "A quick tap starts recording and a second tap ends it; holding the key past a "
+            + "moment records only while held. " + cancel
+            + " Press Return while recording to stop and insert the transcript." + submit
     }
 
     /// One backend's "does this actually work?" button, with room for the answer.

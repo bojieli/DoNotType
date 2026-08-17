@@ -71,8 +71,12 @@ public sealed class HotkeyMonitor : IDisposable
 
     public event Action? Pressed;
     public event Action? Released;
+    /// <summary>
+    /// Reports the physical trigger state so automatic mode can show one exact finishing gesture.
+    /// </summary>
+    public event Action<bool>? HoldChanged;
     public event Action? Cancelled;
-    public event Action<FinishAndSendAction>? FinishAndSendRequested;
+    public event Action<FinishAndSendAction>? FinishWithEnterRequested;
     /// <summary>An event subscriber failed while running inside the native keyboard callback.</summary>
     public event Action<string>? Faulted;
 
@@ -90,7 +94,7 @@ public sealed class HotkeyMonitor : IDisposable
 
     private readonly Interop.LowLevelKeyboardProc _callback;
     private IntPtr _hook;
-    private bool _isHeld;
+    public bool IsHeld { get; private set; }
     /// <summary>The press's own event time, not the moment the hook got to it. See HandleRelease.</summary>
     private uint _pressedAt;
     private bool _startedByTap;
@@ -153,7 +157,7 @@ public sealed class HotkeyMonitor : IDisposable
         {
             // A managed exception crossing a native hook delegate can terminate the process. It
             // also leaves the held-key flags latched, so reset them before reporting the failure.
-            _isHeld = false;
+            IsHeld = false;
             _isCancellingWithEscape = false;
             _isFinishingWithEnter = false;
             try
@@ -203,7 +207,7 @@ public sealed class HotkeyMonitor : IDisposable
             if (isDown && FinishAndSendActionPolicy.CapturesEnter(FinishAndSendKey, IsRecording()))
             {
                 _isFinishingWithEnter = true;
-                FinishAndSendRequested?.Invoke(FinishAndSendKey);
+                FinishWithEnterRequested?.Invoke(FinishAndSendKey);
                 return (IntPtr)1;
             }
         }
@@ -231,17 +235,19 @@ public sealed class HotkeyMonitor : IDisposable
         var isSecondary = SecondaryKey is { } secondary && info.vkCode == VirtualKey(secondary);
         if (info.vkCode == VirtualKey(Key) || isSecondary)
         {
-            if (isDown && !_isHeld)
+            if (isDown && !IsHeld)
             {
-                _isHeld = true;
+                IsHeld = true;
+                HoldChanged?.Invoke(true);
                 // Read once, at the press. Releasing a different key than the one held would
                 // otherwise change what the finished recording becomes.
                 UsedSecondary = isSecondary;
                 HandlePress(info.time);
             }
-            else if (isUp && _isHeld)
+            else if (isUp && IsHeld)
             {
-                _isHeld = false;
+                IsHeld = false;
+                HoldChanged?.Invoke(false);
                 HandleRelease(info.time);
             }
         }

@@ -84,8 +84,9 @@ final class DictationController {
         }
         hotkey.onPress = { [weak self] in self?.beginRecording() }
         hotkey.onRelease = { [weak self] in self?.finishRecording() }
+        hotkey.onHoldChange = { [weak self] held in self?.triggerHoldChanged(held) }
         hotkey.onCancel = { [weak self] in self?.cancelActiveDictation() }
-        hotkey.onFinishAndSend = { [weak self] action in self?.finishAndSend(action) }
+        hotkey.onFinishWithReturn = { [weak self] action in self?.finishWithReturn(action) }
 
         // ⌘⇧Z undoes the last insertion; ⌘⌥Z swaps a rewrite back to what was actually said.
         // Both are cheap only because the verbatim transcript is always kept.
@@ -211,7 +212,9 @@ final class DictationController {
             // mid-sentence instead of eight seconds into a wait. See `ProviderTransport`.
             warmUpConnection()
 
-            overlay.show(phase: .recording, hint: recordingHint())
+            let hints = recordingHints(isTriggerHeld: hotkey.isHeld)
+            overlay.show(
+                phase: .recording, hint: hints.primary, subhint: hints.secondary)
             startLevelUpdates()
         } catch {
             recorder.cancel()
@@ -261,19 +264,26 @@ final class DictationController {
         }
     }
 
-    private func finishAndSend(_ action: FinishAndSendAction) {
+    private func finishWithReturn(_ action: FinishAndSendAction) {
         guard state == .recording else { return }
         pendingFinishAndSend = action
         log.info(
-            "finish-and-send requested",
+            "Return finish requested",
             ["dictation": Self.short(pendingID), "action": action.rawValue])
         finishRecording()
     }
 
-    private func recordingHint() -> String {
-        let ordinary = Settings.shared.hotkeyMode.overlayHint
-        return Settings.shared.finishAndSendAction == .disabled
-            ? ordinary : ordinary + " · Return to send"
+    private func triggerHoldChanged(_ isHeld: Bool) {
+        guard state == .recording else { return }
+        let hints = recordingHints(isTriggerHeld: isHeld)
+        overlay.update(
+            phase: .recording, hint: hints.primary, subhint: hints.secondary)
+    }
+
+    private func recordingHints(isTriggerHeld: Bool) -> (primary: String, secondary: String) {
+        let primary = Settings.shared.hotkeyMode.overlayHint(isTriggerHeld: isTriggerHeld)
+        let secondary = Settings.shared.finishAndSendAction == .disabled ? "" : "Return to send"
+        return (primary, secondary)
     }
 
     private func startLevelUpdates() {
@@ -365,7 +375,7 @@ final class DictationController {
         let dictationID = pendingID
         overlay.update(
             phase: .transcribing,
-            hint: finishAndSend == .disabled ? "" : "will send")
+            hint: finishAndSend == .disabled ? "" : "Will send")
         // Started here, not at the request: the wait the user experiences includes the screen
         // context read and any fallback, and a figure that skipped those would flatter the app.
         let releasedAt = Date()

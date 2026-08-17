@@ -31,12 +31,14 @@ public enum PressGesture {
             }
         }
 
-        /// Shown in the recording overlay, so it always says how to stop.
-        public var overlayHint: String {
+        /// Shown in the recording overlay, so it always says how to stop. Automatic mode can say
+        /// one exact thing because the event tap knows whether the trigger is still physically
+        /// down: a held press ends on release; a completed tap ends on the next tap.
+        public func overlayHint(isTriggerHeld: Bool) -> String {
             switch self {
-            case .pushToTalk: "Release to send"
-            case .handsFree: "Tap again to send"
-            case .automatic: "Release or tap to send"
+            case .pushToTalk: "Release to transcribe"
+            case .handsFree: "Tap to transcribe"
+            case .automatic: isTriggerHeld ? "Release to transcribe" : "Tap to transcribe"
             }
         }
     }
