@@ -40,6 +40,12 @@ final class DictationController {
     /// Which key started the in-flight recording decides whether it is rewritten.
     private var pendingStyle: RewriteStyle = .verbatim
 
+    /// Who was focused when the key went down, so the transcript cannot be typed somewhere else.
+    ///
+    /// The process id rather than the name: two windows of the same app are the same target, and
+    /// two apps with the same name are not something to gamble a paste on.
+    private var pendingTarget: (pid: pid_t, name: String)?
+
     init(store: HistoryStore) {
         self.store = store
     }
@@ -135,6 +141,10 @@ final class DictationController {
             // Without it a log with three dictations in it is three interleaved stories, and the
             // question being asked is always about one of them.
             pendingID = UUID()
+            // Where the words are meant to go, decided now rather than when they arrive.
+            pendingTarget = NSWorkspace.shared.frontmostApplication.map {
+                ($0.processIdentifier, $0.localizedName ?? "?")
+            }
             log.info(
                 "recording started",
                 [
@@ -423,6 +433,37 @@ final class DictationController {
                 TextInjector.copyForManualPaste(delivered, dictation: Self.short(pendingID))
                 PermissionGuide.present(missing)
                 fail("Copied — press ⌘V. Accessibility is off, so it could not paste itself.")
+                return
+            }
+
+            // Where the user was looking when they spoke, not where they are looking now.
+            //
+            // The paste goes to whatever holds focus at the moment it fires, which is the right
+            // answer only if that is still the same place. It stopped being the same place every
+            // time a dictation took a minute: the user gave up waiting and moved on, and the
+            // transcript arrived in whatever they had moved on to. In this app's own logs that
+            // put 172 and 292 characters of speech into DoNotType's settings window — into the
+            // model name field, which then sent each of them to the API as a model.
+            //
+            // Short waits make it rare rather than impossible, and the failure is silent and
+            // occasionally destructive: the text lands in a terminal, a chat box, a password
+            // field. So it is checked instead. Nothing is lost when it fires — the transcript is
+            // already in the history and on the clipboard, one keystroke from where it was going.
+            if let expected = pendingTarget,
+                let current = NSWorkspace.shared.frontmostApplication,
+                current.processIdentifier != expected.pid
+            {
+                TextInjector.copyForManualPaste(delivered, dictation: Self.short(pendingID))
+                log.warning(
+                    "focus moved while transcribing; not typing into a window the user did not dictate into",
+                    [
+                        "dictation": Self.short(pendingID),
+                        "spokeInto": expected.name,
+                        "nowFocused": current.localizedName ?? "?",
+                        "waitedMs": LogClock.ms(Date().timeIntervalSince(releasedAt)),
+                    ])
+                insertions.record(recordID: record.id, delivered: delivered, verbatim: text)
+                fail("Copied — press ⌘V. You left \(expected.name) while it was transcribing.")
                 return
             }
 
