@@ -61,8 +61,12 @@ public sealed class DeepgramProvider(
     internal const int MaxKeyterms = 100;
     internal const int MaxKeytermChars = 50;
 
-    private static readonly HttpClient Shared = new() { Timeout = TimeSpan.FromSeconds(150) };
-    private HttpClient Http => httpClient ?? Shared;
+    /// <summary>The connection this request goes out on. See <see cref="ProviderTransport"/>.</summary>
+    /// <remarks>An injected client wins, so a test still talks to its own stub.</remarks>
+    private HttpClient Http(ConnectionPreference connection) =>
+        httpClient ?? ProviderTransport.Client(new Uri(Endpoint), connection);
+
+    public Uri? EndpointOrigin => ProviderTransport.Origin(new Uri(Endpoint));
 
     public string Name => "deepgram";
     public string Model => model;
@@ -83,7 +87,8 @@ public sealed class DeepgramProvider(
         int maxOutputTokens = 2048,
         CancellationToken cancellationToken = default,
         Fidelity fidelity = Fidelity.Light,
-        IReadOnlyList<string>? keyterms = null)
+        IReadOnlyList<string>? keyterms = null,
+        ConnectionPreference connection = ConnectionPreference.Pooled)
     {
         var audio = SpeechRecognition.RequireAudio(parts, Name);
 
@@ -110,7 +115,7 @@ public sealed class DeepgramProvider(
         request.Content = new ByteArrayContent(audio.Data);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue(audio.MimeType);
 
-        using var response = await Http.SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
+        using var response = await Http(connection).SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
@@ -194,8 +199,12 @@ public sealed class MistralProvider(
 {
     private const string Endpoint = "https://api.mistral.ai/v1/audio/transcriptions";
 
-    private static readonly HttpClient Shared = new() { Timeout = TimeSpan.FromSeconds(150) };
-    private HttpClient Http => httpClient ?? Shared;
+    /// <summary>The connection this request goes out on. See <see cref="ProviderTransport"/>.</summary>
+    /// <remarks>An injected client wins, so a test still talks to its own stub.</remarks>
+    private HttpClient Http(ConnectionPreference connection) =>
+        httpClient ?? ProviderTransport.Client(new Uri(Endpoint), connection);
+
+    public Uri? EndpointOrigin => ProviderTransport.Origin(new Uri(Endpoint));
 
     public string Name => "mistral";
     public string Model => model;
@@ -207,7 +216,8 @@ public sealed class MistralProvider(
         int maxOutputTokens = 2048,
         CancellationToken cancellationToken = default,
         Fidelity fidelity = Fidelity.Light,
-        IReadOnlyList<string>? keyterms = null)
+        IReadOnlyList<string>? keyterms = null,
+        ConnectionPreference connection = ConnectionPreference.Pooled)
     {
         var audio = SpeechRecognition.RequireAudio(parts, Name);
 
@@ -223,7 +233,7 @@ public sealed class MistralProvider(
         using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint) { Content = form };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-        using var response = await Http.SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
+        using var response = await Http(connection).SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
@@ -308,8 +318,12 @@ public sealed class XAISpeechProvider(
     internal const int MaxKeyterms = 100;
     internal const int MaxKeytermChars = 50;
 
-    private static readonly HttpClient Shared = new() { Timeout = TimeSpan.FromSeconds(150) };
-    private HttpClient Http => httpClient ?? Shared;
+    /// <summary>The connection this request goes out on. See <see cref="ProviderTransport"/>.</summary>
+    /// <remarks>An injected client wins, so a test still talks to its own stub.</remarks>
+    private HttpClient Http(ConnectionPreference connection) =>
+        httpClient ?? ProviderTransport.Client(new Uri(Endpoint), connection);
+
+    public Uri? EndpointOrigin => ProviderTransport.Origin(new Uri(Endpoint));
 
     public string Name => "xai";
     public string Model => model;
@@ -321,7 +335,8 @@ public sealed class XAISpeechProvider(
         int maxOutputTokens = 2048,
         CancellationToken cancellationToken = default,
         Fidelity fidelity = Fidelity.Light,
-        IReadOnlyList<string>? keyterms = null)
+        IReadOnlyList<string>? keyterms = null,
+        ConnectionPreference connection = ConnectionPreference.Pooled)
     {
         var audio = SpeechRecognition.RequireAudio(parts, Name);
 
@@ -342,7 +357,7 @@ public sealed class XAISpeechProvider(
         using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint) { Content = form };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-        using var response = await Http.SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
+        using var response = await Http(connection).SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {

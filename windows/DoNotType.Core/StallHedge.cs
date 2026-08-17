@@ -63,16 +63,22 @@ public static class StallHedge
     /// <para><paramref name="attempt"/> is called twice at most, so it must be safe to run
     /// concurrently with itself — which for an HTTP request it is, and for anything that writes to
     /// shared state it is not.</para>
+    ///
+    /// <para>It is told which of the two it is. The duplicate has to reach the backend by a route
+    /// the original is not already stuck on, and only the caller knows what that means; passing the
+    /// flag keeps this class from having to know anything about connections. On macOS, where this
+    /// was measured, sending the duplicate down the same pooled connection made it die in the same
+    /// millisecond as the request it was hedging — three times out of three.</para>
     /// </remarks>
     public static async Task<T> RaceAsync<T>(
         TimeSpan deadline,
-        Func<CancellationToken, Task<T>> attempt,
+        Func<bool, CancellationToken, Task<T>> attempt,
         Action? onHedge = null,
         CancellationToken cancellationToken = default)
     {
         if (deadline <= TimeSpan.Zero)
         {
-            return await attempt(cancellationToken).ConfigureAwait(false);
+            return await attempt(false, cancellationToken).ConfigureAwait(false);
         }
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -80,7 +86,7 @@ public static class StallHedge
         // is in flight, and a clock that can step backwards would answer that wrongly.
         var clock = Stopwatch.StartNew();
 
-        var original = RunAsync(attempt, linked.Token);
+        var original = RunAsync(attempt, isHedge: false, linked.Token);
         var duplicate = RunAfterAsync(deadline, attempt, onHedge, linked.Token);
 
         var pending = new List<Task<Attempt<T>>> { original, duplicate };
@@ -123,11 +129,13 @@ public static class StallHedge
     private readonly record struct Attempt<T>(T? Value, Exception? Failure);
 
     private static async Task<Attempt<T>> RunAsync<T>(
-        Func<CancellationToken, Task<T>> attempt, CancellationToken cancellationToken)
+        Func<bool, CancellationToken, Task<T>> attempt, bool isHedge,
+        CancellationToken cancellationToken)
     {
         try
         {
-            return new Attempt<T>(await attempt(cancellationToken).ConfigureAwait(false), null);
+            return new Attempt<T>(
+                await attempt(isHedge, cancellationToken).ConfigureAwait(false), null);
         }
         catch (Exception error)
         {
@@ -139,7 +147,7 @@ public static class StallHedge
 
     private static async Task<Attempt<T>> RunAfterAsync<T>(
         TimeSpan deadline,
-        Func<CancellationToken, Task<T>> attempt,
+        Func<bool, CancellationToken, Task<T>> attempt,
         Action? onHedge,
         CancellationToken cancellationToken)
     {
@@ -155,6 +163,6 @@ public static class StallHedge
         }
 
         onHedge?.Invoke();
-        return await RunAsync(attempt, cancellationToken).ConfigureAwait(false);
+        return await RunAsync(attempt, isHedge: true, cancellationToken).ConfigureAwait(false);
     }
 }

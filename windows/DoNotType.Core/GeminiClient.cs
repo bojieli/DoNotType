@@ -110,7 +110,6 @@ public sealed class GeminiProvider(
 {
     private const string Endpoint = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
-    private static readonly HttpClient Shared = new() { Timeout = TimeSpan.FromSeconds(150) };
 
     /// <summary>
     /// The cheapest thinking level a given model accepts.
@@ -129,7 +128,12 @@ public sealed class GeminiProvider(
         || model.StartsWith("gemini-4", StringComparison.Ordinal)
             ? "low"
             : "minimal";
-    private readonly HttpClient _http = httpClient ?? Shared;
+    /// <summary>The connection this request goes out on. See <see cref="ProviderTransport"/>.</summary>
+    /// <remarks>An injected client wins, so a test still talks to its own stub.</remarks>
+    private HttpClient Http(ConnectionPreference connection) =>
+        httpClient ?? ProviderTransport.Client(new Uri(Endpoint), connection);
+
+    public Uri? EndpointOrigin => ProviderTransport.Origin(new Uri(Endpoint));
 
     public string Name => "gemini";
 
@@ -146,7 +150,8 @@ public sealed class GeminiProvider(
         int maxOutputTokens = 2048,
         CancellationToken cancellationToken = default,
         Fidelity fidelity = Fidelity.Light,
-        IReadOnlyList<string>? keyterms = null)
+        IReadOnlyList<string>? keyterms = null,
+        ConnectionPreference connection = ConnectionPreference.Pooled)
     {
         var body = new JsonObject
         {
@@ -172,7 +177,7 @@ public sealed class GeminiProvider(
         request.Headers.TryAddWithoutValidation("x-goog-api-key", apiKey);
         request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
 
-        using var response = await _http.SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
+        using var response = await Http(connection).SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
         var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)

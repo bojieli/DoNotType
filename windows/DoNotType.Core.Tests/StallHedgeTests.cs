@@ -57,7 +57,7 @@ public class StallHedgeTests
     {
         var sent = 0;
 
-        var value = await StallHedge.RaceAsync(TimeSpan.FromSeconds(30), async _ =>
+        var value = await StallHedge.RaceAsync(TimeSpan.FromSeconds(30), async (_, _) =>
         {
             Interlocked.Increment(ref sent);
             return await Task.FromResult("first");
@@ -78,7 +78,7 @@ public class StallHedgeTests
 
         var value = await StallHedge.RaceAsync(
             TimeSpan.FromMilliseconds(20),
-            async token =>
+            async (_, token) =>
             {
                 var attempt = Interlocked.Increment(ref sent);
                 // The first request stalls for effectively ever; the second answers straight away.
@@ -100,7 +100,7 @@ public class StallHedgeTests
     {
         var sent = 0;
 
-        var value = await StallHedge.RaceAsync(TimeSpan.FromMilliseconds(20), async token =>
+        var value = await StallHedge.RaceAsync(TimeSpan.FromMilliseconds(20), async (_, token) =>
         {
             var attempt = Interlocked.Increment(ref sent);
             if (attempt == 1) await Task.Delay(100, token);
@@ -122,7 +122,7 @@ public class StallHedgeTests
 
         var error = await Assert.ThrowsAsync<ProviderException>(() =>
             StallHedge.RaceAsync<string>(
-                TimeSpan.FromSeconds(30), _ => throw new ProviderException("boom")));
+                TimeSpan.FromSeconds(30), (_, _) => throw new ProviderException("boom")));
 
         Assert.Equal("boom", error.Message);
         Assert.True(
@@ -139,7 +139,7 @@ public class StallHedgeTests
     {
         var sent = 0;
 
-        var value = await StallHedge.RaceAsync(TimeSpan.FromMilliseconds(20), async token =>
+        var value = await StallHedge.RaceAsync(TimeSpan.FromMilliseconds(20), async (_, token) =>
         {
             var attempt = Interlocked.Increment(ref sent);
             if (attempt == 1)
@@ -166,7 +166,7 @@ public class StallHedgeTests
         var sent = 0;
 
         var error = await Assert.ThrowsAsync<ProviderException>(() =>
-            StallHedge.RaceAsync<string>(TimeSpan.FromMilliseconds(20), async token =>
+            StallHedge.RaceAsync<string>(TimeSpan.FromMilliseconds(20), async (_, token) =>
             {
                 var attempt = Interlocked.Increment(ref sent);
                 if (attempt == 1)
@@ -188,7 +188,7 @@ public class StallHedgeTests
     {
         var sent = 0;
 
-        var value = await StallHedge.RaceAsync(TimeSpan.Zero, async token =>
+        var value = await StallHedge.RaceAsync(TimeSpan.Zero, async (_, token) =>
         {
             var attempt = Interlocked.Increment(ref sent);
             await Task.Delay(30, token);

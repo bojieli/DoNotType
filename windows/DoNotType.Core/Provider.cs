@@ -28,13 +28,24 @@ public interface ITranscriptionProvider
     /// </summary>
     GroundingSupport Grounding => GroundingSupport.Multimodal;
 
+    /// <summary>
+    /// Where a dictation will be sent, so the connection can be opened while the user is still
+    /// speaking rather than after they stop. Null disables warm-up for this backend.
+    /// </summary>
+    /// <remarks>
+    /// The origin rather than the endpoint: any answer from the host proves the connection, and a
+    /// GET to the API path would be a real call with a real bill.
+    /// </remarks>
+    Uri? EndpointOrigin => null;
+
     Task<TranscriptionResult> TranscribeAsync(
         string systemInstruction,
         IReadOnlyList<InputPart> parts,
         int maxOutputTokens = 2048,
         CancellationToken cancellationToken = default,
         Fidelity fidelity = Fidelity.Light,
-        IReadOnlyList<string>? keyterms = null);
+        IReadOnlyList<string>? keyterms = null,
+        ConnectionPreference connection = ConnectionPreference.Pooled);
 }
 
 /// <summary>

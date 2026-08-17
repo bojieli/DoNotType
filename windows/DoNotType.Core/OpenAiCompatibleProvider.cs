@@ -20,8 +20,12 @@ public sealed class OpenAiCompatibleProvider(
     string? reasoningEffort = "minimal",
     HttpClient? httpClient = null) : ITranscriptionProvider
 {
-    private static readonly HttpClient Shared = new() { Timeout = TimeSpan.FromSeconds(150) };
-    private readonly HttpClient _http = httpClient ?? Shared;
+    /// <summary>The connection this request goes out on. See <see cref="ProviderTransport"/>.</summary>
+    /// <remarks>An injected client wins, so a test still talks to its own stub.</remarks>
+    private HttpClient Http(ConnectionPreference connection) =>
+        httpClient ?? ProviderTransport.Client(new Uri(endpoint), connection);
+
+    public Uri? EndpointOrigin => ProviderTransport.Origin(new Uri(endpoint));
 
     public string Name => name;
 
@@ -34,7 +38,8 @@ public sealed class OpenAiCompatibleProvider(
         int maxOutputTokens = 2048,
         CancellationToken cancellationToken = default,
         Fidelity fidelity = Fidelity.Light,
-        IReadOnlyList<string>? keyterms = null)
+        IReadOnlyList<string>? keyterms = null,
+        ConnectionPreference connection = ConnectionPreference.Pooled)
     {
         var content = new JsonArray();
         foreach (var part in parts)
@@ -99,7 +104,7 @@ public sealed class OpenAiCompatibleProvider(
         }
         request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
 
-        using var response = await _http.SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
+        using var response = await Http(connection).SendLoggedAsync(request, Name, Model, cancellationToken).ConfigureAwait(false);
         var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)

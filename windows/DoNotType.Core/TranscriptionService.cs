@@ -89,7 +89,8 @@ public sealed class TranscriptionService(
     public async Task<TranscriptionResult> TranscribeAsync(
         byte[] wav,
         ScreenContext? context,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        ConnectionPreference connection = ConnectionPreference.Pooled)
     {
         var parts = new List<InputPart>();
         IReadOnlyList<string> keyterms = [];
@@ -116,7 +117,7 @@ public sealed class TranscriptionService(
 
         var result = await Provider.TranscribeAsync(
                 systemInstruction, parts, cancellationToken: cancellationToken,
-                fidelity: Fidelity, keyterms: keyterms)
+                fidelity: Fidelity, keyterms: keyterms, connection: connection)
             .ConfigureAwait(false);
 
         // Here rather than at the call site, because every backend and every caller — dictation,
@@ -156,17 +157,24 @@ public sealed class TranscriptionService(
     /// the request is being asked to transcribe.</para>
     /// </remarks>
     private async Task<TranscriptionResult> HedgedAttemptAsync(
-        byte[] wav, ScreenContext? context, CancellationToken cancellationToken)
+        byte[] wav, ScreenContext? context, CancellationToken cancellationToken,
+        ConnectionPreference connection = ConnectionPreference.Pooled)
     {
         if (!HedgeStalledRequests)
         {
-            return await TranscribeAsync(wav, context, cancellationToken).ConfigureAwait(false);
+            return await TranscribeAsync(wav, context, cancellationToken, connection)
+                .ConfigureAwait(false);
         }
 
         var deadline = StallHedge.DeadlineFor(AudioChunker.DurationSeconds(wav));
         return await StallHedge.RaceAsync(
                 deadline,
-                token => TranscribeAsync(wav, context, token),
+                // The duplicate goes out on a connection of its own. On the same one it is not a
+                // second draw — it is a second stream on whatever the original is stuck behind.
+                // See ProviderTransport.
+                (isHedge, token) => TranscribeAsync(
+                    wav, context, token,
+                    isHedge ? ConnectionPreference.Fresh : connection),
                 // Info, not debug: this is the app spending a second request on the user's behalf.
                 // A hedge that fires on every dictation is a backend having a bad day rather than a
                 // working feature, and that should be visible without turning anything on.
@@ -196,7 +204,13 @@ public sealed class TranscriptionService(
         {
             try
             {
-                return await HedgedAttemptAsync(wav, context, cancellationToken)
+                // Every attempt after the first opens its own connection. The one it would
+                // otherwise reuse is the one that just failed, and that is measurably why a retry
+                // succeeds at all: on macOS all sixteen slow dictations finished in 2-6 s once the
+                // request went out on a new connection.
+                return await HedgedAttemptAsync(
+                        wav, context, cancellationToken,
+                        attempt == 1 ? ConnectionPreference.Pooled : ConnectionPreference.Fresh)
                     .ConfigureAwait(false);
             }
             catch (Exception error) when (error is ProviderException or HttpRequestException or TaskCanceledException)

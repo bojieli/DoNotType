@@ -62,6 +62,13 @@ public sealed class DictationController : IDisposable
     /// </remarks>
     private RewriteStyle _pendingStyle = RewriteStyle.Verbatim;
 
+    /// <summary>Which process was focused when the key went down, and its window title.</summary>
+    /// <remarks>
+    /// The process id rather than the title: two windows of the same app are the same target, and
+    /// a title changes while the user works without the target having moved at all.
+    /// </remarks>
+    private (uint Pid, string Title)? _pendingTarget;
+
     /// <summary>
     /// Eight characters is enough to pick one dictation out of a day's log and short enough to sit
     /// in every line without pushing the interesting fields off the end.
@@ -167,6 +174,33 @@ public sealed class DictationController : IDisposable
 
     // ---- Recording ---------------------------------------------------------------------------
 
+    /// <summary>Opens the connection the dictation about to be recorded will need.</summary>
+    /// <remarks>
+    /// Nothing here needs the prompt directory or the history — only which host the audio is going
+    /// to — and this runs on the key-down path, so it builds the provider and nothing else.
+    ///
+    /// <para>Silent on failure by design: nothing has been asked for yet, so there is nothing to
+    /// report. A dead connection found here is replaced and the user never learns it happened.</para>
+    /// </remarks>
+    private void WarmUpConnection()
+    {
+        try
+        {
+            var key = _settings.ResolvedApiKey();
+            if (string.IsNullOrEmpty(key)) return;
+            var origin = ProviderFactory
+                .Create(_settings.Provider, key, _settings.Model)
+                .EndpointOrigin;
+            if (origin is null) return;
+            _ = Task.Run(() => ProviderTransport.WarmUpAsync(origin));
+        }
+        catch (Exception)
+        {
+            // A backend that cannot even be constructed is a problem for the dictation to report,
+            // with a message written for it. Warm-up has nothing to add.
+        }
+    }
+
     private void BeginRecording()
     {
         if (Current != State.Idle) return;
@@ -186,6 +220,9 @@ public sealed class DictationController : IDisposable
             _pendingStyle = _hotkey.UsedSecondary && _settings.SecondaryTrigger is not null
                 ? _settings.SecondaryStyle
                 : RewriteStyle.Verbatim;
+            // Where the words are meant to go, decided now rather than when they arrive.
+            Interop.GetWindowThreadProcessId(Interop.GetForegroundWindow(), out var targetPid);
+            _pendingTarget = targetPid == 0 ? null : (targetPid, Interop.ForegroundWindowTitle());
 
             DictationLog.Info(() => "recording started", new Dictionary<string, string>
             {
@@ -198,6 +235,12 @@ public sealed class DictationController : IDisposable
                 ["fidelity"] = _settings.Fidelity.Id(),
                 ["grounding"] = _settings.GroundingEnabled ? "on" : "off",
             });
+
+            // The same trick as the screen capture below, for the network. Opening a connection
+            // costs about a second and whether the pooled one is still alive cannot be known
+            // without using it, so both happen here rather than after the key comes up with
+            // somebody watching. See ProviderTransport.
+            WarmUpConnection();
 
             // Phase 1: cheap, synchronous, before focus can move.
             _pendingContext = _settings.GroundingEnabled ? _screen.CaptureIdentity() : null;
@@ -565,6 +608,36 @@ public sealed class DictationController : IDisposable
             HistoryChanged?.Invoke();
 
             SetState(State.Idle);
+
+            // Where the user was looking when they spoke, not where they are looking now.
+            //
+            // The paste goes to whatever holds focus at the moment it fires, which is the right
+            // answer only if that is still the same place. It stopped being the same place every
+            // time a dictation took a minute: the user gave up waiting and moved on, and the
+            // transcript arrived in whatever they had moved on to. On macOS, where this was found,
+            // that put 172 and 292 characters of speech into the app's own settings window.
+            //
+            // Nothing is lost when this fires -- the transcript is already in the history and on
+            // the clipboard, one keystroke from where it was going.
+            Interop.GetWindowThreadProcessId(Interop.GetForegroundWindow(), out var focusedNow);
+            if (_pendingTarget is { } expected && focusedNow != 0 && focusedNow != expected.Pid)
+            {
+                TextInjector.CopyForManualPaste(delivered, Short(_pendingId));
+                DictationLog.Warn(
+                    () => "focus moved while transcribing; not typing into a window the user did not dictate into",
+                    new Dictionary<string, string>
+                    {
+                        ["dictation"] = Short(_pendingId),
+                        ["spokeInto"] = expected.Title.Length == 0 ? "untitled" : expected.Title,
+                        ["nowFocused"] = Interop.ForegroundWindowTitle(),
+                        ["waitedMs"] = ((long)Stopwatch.GetElapsedTime(releasedAt).TotalMilliseconds)
+                            .ToString(),
+                    });
+                _insertions.Record(record.Id, delivered, text);
+                Fail("Copied — press Ctrl+V. You left that window while it was transcribing.");
+                return;
+            }
+
             await TextInjector.InsertAsync(delivered, Short(_pendingId)).ConfigureAwait(false);
             // The failure is carried out rather than left to be noticed. The words landed either
             // way, but somebody who held the rewrite key and got their own words back should be

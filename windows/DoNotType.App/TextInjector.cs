@@ -48,6 +48,23 @@ public static class TextInjector
             new Dictionary<string, string> { ["dictation"] = dictation });
     }
 
+    /// <summary>Puts the transcript on the clipboard and leaves it there.</summary>
+    /// <remarks>
+    /// For the cases where the paste must not happen: the words have been recorded, sent and paid
+    /// for by then, and the difference between "press Ctrl+V" and "nothing happened" is the
+    /// difference between one extra keystroke and an app that looks broken.
+    /// </remarks>
+    public static void CopyForManualPaste(string text, string dictation = "-")
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        SetClipboardText(text);
+        Log.Info(() => "left on the clipboard for a manual paste", new Dictionary<string, string>
+        {
+            ["dictation"] = dictation,
+            ["chars"] = text.Length.ToString(),
+        });
+    }
+
     private static readonly Log Log = new("inject");
 
 
