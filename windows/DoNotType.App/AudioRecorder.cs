@@ -83,6 +83,9 @@ public sealed class AudioRecorder : IDisposable
     /// </remarks>
     public string? PreferredDeviceName { get; set; }
 
+    /// <summary>The exact PCM appended to the recovery WAV, delivered in capture order.</summary>
+    public Action<byte[]>? PcmCaptured { get; set; }
+
     public void Start()
     {
         lock (_gate)
@@ -210,6 +213,9 @@ public sealed class AudioRecorder : IDisposable
                 var chunk = new byte[recorded];
                 Marshal.Copy(header.lpData, chunk, 0, recorded);
                 _pcm.AddRange(chunk);
+                // The live pipeline only writes to an unbounded channel here. VAD and network work
+                // run on its consumer, never on the waveIn callback.
+                PcmCaptured?.Invoke(chunk);
 
                 _pendingBars.AddRange(_meter.Append(chunk));
                 // A UI that has stopped collecting is a UI that is not drawing them either; keeping

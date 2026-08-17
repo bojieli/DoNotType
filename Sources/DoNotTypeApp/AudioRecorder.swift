@@ -49,6 +49,10 @@ final class AudioRecorder: @unchecked Sendable {
     /// Bars the overlay has not drawn yet. See `drainLevels`.
     private var pendingBars: [AudioLevelMeter.Bar] = []
 
+    /// The exact 16 kHz mono PCM written to the recovery WAV. The callback must return quickly;
+    /// `LiveAudioPipeline.append` only enqueues it and does VAD/network work elsewhere.
+    var onPCM: (@Sendable (Data) -> Void)?
+
     var isRecording: Bool { engine.isRunning }
 
     /// Hands the overlay the bars captured since it last asked, oldest first.
@@ -223,9 +227,15 @@ final class AudioRecorder: @unchecked Sendable {
         do {
             try file.write(from: converted)
             measure(converted)
+            emitPCM(converted)
         } catch {
             log.error("audio write failed: \(error.localizedDescription)")
         }
+    }
+
+    private func emitPCM(_ buffer: AVAudioPCMBuffer) {
+        guard let channel = buffer.int16ChannelData?[0], buffer.frameLength > 0 else { return }
+        onPCM?(Data(bytes: channel, count: Int(buffer.frameLength) * MemoryLayout<Int16>.size))
     }
 
     /// Measures what was just written, which is what the backend will be sent — so the meter

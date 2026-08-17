@@ -79,6 +79,9 @@ class WavRecorder {
 
     @Volatile private var capturing = false
 
+    /** Exact PCM appended to the recovery WAV, copied because the capture buffer is reused. */
+    @Volatile var onPcm: ((ByteArray) -> Unit)? = null
+
     private var meter = AudioLevelMeter(SAMPLE_RATE)
     private val pendingBars = ArrayList<AudioLevelMeter.Bar>()
 
@@ -140,6 +143,7 @@ class WavRecorder {
                 val read = recorder.read(buffer, 0, buffer.size)
                 if (read > 0) {
                     pcm.write(buffer, 0, read)
+                    onPcm?.invoke(buffer.copyOf(read))
                     val bars = meter.append(buffer, read)
                     if (bars.isNotEmpty()) {
                         synchronized(pendingBars) {
