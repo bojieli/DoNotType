@@ -32,6 +32,7 @@ public sealed class DictationController : IDisposable
     private CancellationTokenSource? _groundingCts;
     private CancellationTokenSource? _dictationCts;
     private Task<ScreenContext>? _fullCapture;
+    private LiveDictationSession? _liveSession;
 
     public State Current { get; private set; } = State.Idle;
     public string? LastError { get; private set; }
@@ -130,10 +131,8 @@ public sealed class DictationController : IDisposable
     }
 
     private readonly InsertionTracker _insertions = new();
-
     public bool CanUndo => _insertions.CanUndo;
     public bool CanRevertToVerbatim => _insertions.CanRevertToVerbatim;
-
     /// <summary>Takes the last insertion back out of the field it went into.</summary>
     public async Task UndoLastInsertionAsync(bool revertToVerbatim)
     {
@@ -213,6 +212,8 @@ public sealed class DictationController : IDisposable
 
         try
         {
+            _liveSession = CreateLiveSession();
+            _recorder.PcmCaptured = _liveSession is null ? null : _liveSession.Append;
             _recorder.PreferredDeviceName = _settings.MicrophoneName;
             InteractionSounds.Enabled = _settings.InteractionSounds;
             _recorder.Start();
@@ -250,6 +251,7 @@ public sealed class DictationController : IDisposable
 
             // Phase 1: cheap, synchronous, before focus can move.
             _pendingContext = _settings.GroundingEnabled ? _screen.CaptureIdentity() : null;
+            _liveSession?.SetContext(_pendingContext);
 
             if (_pendingContext is not null
                 && _settings.IsBlocked(_pendingContext.AppName, _pendingContext.BrowserUrl))
@@ -262,10 +264,23 @@ public sealed class DictationController : IDisposable
                 _groundingCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(700));
                 var token = _groundingCts.Token;
                 _fullCapture = Task.Run(() => _screen.CaptureFull(token), token);
+                _ = _fullCapture.ContinueWith(
+                    completed =>
+                    {
+                        if (completed.Status != TaskStatus.RanToCompletion) return;
+                        var full = MergeCapturedContext(_pendingContext, completed.Result);
+                        _liveSession?.SetContext(full);
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
             }
         }
         catch (MicrophoneUnavailableException error)
         {
+            _liveSession?.Cancel();
+            _liveSession = null;
+            _recorder.PcmCaptured = null;
             // Windows has no permission prompt for the microphone: access is a toggle somebody has
             // to find, which makes opening the page the whole of the guidance. Once per run — the
             // second time it opens it is no longer help, it is an argument.
@@ -289,6 +304,9 @@ public sealed class DictationController : IDisposable
         }
         catch (InvalidOperationException error)
         {
+            _liveSession?.Cancel();
+            _liveSession = null;
+            _recorder.PcmCaptured = null;
             Fail(error.Message);
         }
     }
@@ -315,6 +333,9 @@ public sealed class DictationController : IDisposable
     {
         if (Current != State.Recording) return;
         _recorder.Cancel();
+        _recorder.PcmCaptured = null;
+        _liveSession?.Cancel();
+        _liveSession = null;
         _groundingCts?.Cancel();
         _pendingContext = null;
         SetState(State.Idle);
@@ -333,6 +354,7 @@ public sealed class DictationController : IDisposable
             () => "transcription cancellation requested",
             new Dictionary<string, string> { ["dictation"] = Short(_pendingId) });
         if (_dictationCts is { } cancellation) _ = cancellation.CancelAsync();
+        _liveSession?.Cancel();
     }
 
     private async void FinishRecording()
@@ -340,6 +362,7 @@ public sealed class DictationController : IDisposable
         if (Current != State.Recording) return;
 
         var wav = _recorder.Stop();
+        _recorder.PcmCaptured = null;
         InteractionSounds.PlayStop();
         if (wav is null)
         {
@@ -350,6 +373,8 @@ public sealed class DictationController : IDisposable
                 () => "recording too short to send",
                 new Dictionary<string, string> { ["dictation"] = Short(_pendingId) });
             _groundingCts?.Cancel();
+            _liveSession?.Cancel();
+            _liveSession = null;
             SetState(State.Idle);
             return;
         }
@@ -361,7 +386,7 @@ public sealed class DictationController : IDisposable
         // system instruction, so for Deepgram, xAI and Voxtral the rule is never sent at all. Not
         // transmitting the audio is the only defence that holds for every backend.
         var activity = SpeechActivity.MeasureWav(wav);
-        if (!activity.HasSpeech)
+        if (_liveSession is null && !activity.HasSpeech)
         {
             DictationLog.Info(
                 () => "nothing was said, so nothing was sent",
@@ -384,16 +409,49 @@ public sealed class DictationController : IDisposable
         });
 
         SetState(State.Transcribing);
+        var live = _liveSession;
         var cancellation = new CancellationTokenSource();
         _dictationCts = cancellation;
         try
         {
-            await TranscribeAsync(wav, cancellation.Token).ConfigureAwait(false);
+            await TranscribeAsync(wav, live, cancellation.Token).ConfigureAwait(false);
         }
         finally
         {
+            _liveSession = null;
             if (ReferenceEquals(_dictationCts, cancellation)) _dictationCts = null;
             cancellation.Dispose();
+        }
+    }
+
+    private LiveDictationSession? CreateLiveSession()
+    {
+        try
+        {
+            var key = _settings.ResolvedApiKey();
+            var promptPath = PromptBuilder.FindPromptDirectory();
+            if (string.IsNullOrEmpty(key) || promptPath is null) return null;
+
+            var service = new TranscriptionService(
+                ProviderFactory.Create(_settings.Provider, key, _settings.Model),
+                Prompt(promptPath).SystemInstruction(_settings.Fidelity))
+            {
+                Fidelity = _settings.Fidelity,
+                KeytermBiasing = _settings.KeytermBiasing,
+            };
+            return new LiveDictationSession(
+                (wav, context, token) => BuildTranscriber(
+                        service, wav, context, reportProgress: false)
+                    .TranscribeAsync(token),
+                service.Provider.Name,
+                service.Provider.Model);
+        }
+        catch (Exception error)
+        {
+            DictationLog.Warn(
+                () => "live transcription could not be prepared; using post-recording path",
+                new Dictionary<string, string> { ["detail"] = error.Message });
+            return null;
         }
     }
 
@@ -403,12 +461,15 @@ public sealed class DictationController : IDisposable
     /// the provider, its key and the delay are all live settings.
     /// </summary>
     private FallbackTranscriber BuildTranscriber(
-        TranscriptionService primary, byte[] wav, ScreenContext? context)
+        TranscriptionService primary, byte[] wav, ScreenContext? context,
+        bool reportProgress = true)
     {
         Task<TranscriptionResult> RunPrimary(CancellationToken token) =>
             primary.TranscribeLongAsync(
                 wav, context,
-                onProgress: (done, total) => ChunkProgress?.Invoke(done, total),
+                onProgress: reportProgress
+                    ? (done, total) => ChunkProgress?.Invoke(done, total)
+                    : null,
                 cancellationToken: token);
 
         var kind = _settings.ResolvedFallbackProvider();
@@ -474,7 +535,10 @@ public sealed class DictationController : IDisposable
         };
     }
 
-    private async Task TranscribeAsync(byte[] wav, CancellationToken cancellationToken)
+    private async Task TranscribeAsync(
+        byte[] wav,
+        LiveDictationSession? liveSession = null,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         // Snapshotted, not read live. Nothing today can change it mid-flight — a press while a
@@ -486,6 +550,7 @@ public sealed class DictationController : IDisposable
         var key = _settings.ResolvedApiKey();
         if (string.IsNullOrEmpty(key))
         {
+            liveSession?.Dispose();
             Fail("No API key. Open Settings to add one.");
             return;
         }
@@ -494,6 +559,7 @@ public sealed class DictationController : IDisposable
         var promptPath = PromptBuilder.FindPromptDirectory();
         if (promptPath is null)
         {
+            liveSession?.Dispose();
             Fail("The prompt/ directory is missing next to the executable.");
             return;
         }
@@ -540,9 +606,10 @@ public sealed class DictationController : IDisposable
             // dictation -- take the single-request path unchanged.
             // Hedged when a fallback backend is configured: the primary gets the whole delay to
             // itself, and only a stalled one is ever raced. See FallbackTranscriber.
-            var outcome = await BuildTranscriber(service, wav, context)
-                .TranscribeAsync(cancellationToken)
-                .ConfigureAwait(false);
+            var outcome = liveSession is null
+                ? await BuildTranscriber(service, wav, context)
+                    .TranscribeAsync(cancellationToken).ConfigureAwait(false)
+                : await liveSession.FinishAsync(context).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             var result = outcome.Result;
             // Recorded as the backend that answered, not the one that was asked: a history row
@@ -733,6 +800,10 @@ public sealed class DictationController : IDisposable
 
             Fail(advice.Message);
         }
+        finally
+        {
+            liveSession?.Dispose();
+        }
     }
 
     /// <summary>Phase 1 wins on the fields it captured, having been taken before focus could move.</summary>
@@ -759,13 +830,17 @@ public sealed class DictationController : IDisposable
             _groundingCts = null;
         }
 
+        return MergeCapturedContext(identity, full);
+    }
+
+    private ScreenContext? MergeCapturedContext(ScreenContext? identity, ScreenContext full)
+    {
+        if (identity is null) return null;
         full.AppName ??= identity.AppName;
         full.WindowTitle ??= identity.WindowTitle;
         full.Role ??= identity.Role;
         full.IsEditable ??= identity.IsEditable;
         full.SelectedText ??= identity.SelectedText;
-
-        // The URL is only known after the walk, so the blocklist gets a second look.
         return _settings.IsBlocked(full.AppName, full.BrowserUrl) ? null : full;
     }
 

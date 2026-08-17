@@ -9,6 +9,7 @@ import app.donottype.core.DictationService
 import app.donottype.core.FailureAdvice
 import app.donottype.core.NoSpeechException
 import app.donottype.core.Log as DntLog
+import app.donottype.core.LiveTranscriptionSession
 import app.donottype.core.RewriteAvailability
 import app.donottype.core.RewriteStyle
 import app.donottype.core.ProviderFactory
@@ -81,6 +82,7 @@ class DoNotTypeIME : InputMethodService() {
 
     /** Captured at press, before focus can move. */
     private var pendingContext: ScreenContext? = null
+    private var liveSession: LiveTranscriptionSession? = null
 
     /** Which field was focused when the key went down: its app, and the editor's id within it. */
     private var pendingTarget: Pair<String?, Int>? = null
@@ -95,6 +97,8 @@ class DoNotTypeIME : InputMethodService() {
         stopLevelUpdates()
         holdRunnable?.let { handler.removeCallbacks(it) }
         recorder.cancel()
+        recorder.onPcm = null
+        liveSession?.cancel()
         super.onDestroy()
     }
 
@@ -322,6 +326,9 @@ class DoNotTypeIME : InputMethodService() {
             // than transcribe: the user did not choose to end here.
             if (state == State.RECORDING) {
                 recorder.cancel()
+                recorder.onPcm = null
+                liveSession?.cancel()
+                liveSession = null
                 pendingContext = null
                 state = State.IDLE
             }
@@ -434,9 +441,15 @@ class DoNotTypeIME : InputMethodService() {
             null
         }
 
+        liveSession = service.createLiveSession(pendingContext)
+        recorder.onPcm = liveSession?.let { session -> { pcm -> session.append(pcm) } }
+
         runCatching { recorder.start() }
             .onSuccess { state = State.RECORDING }
             .onFailure {
+                recorder.onPcm = null
+                liveSession?.cancel()
+                liveSession = null
                 Log.e(TAG, "could not start recording", it)
                 showStatus(it.message ?: "Could not start recording")
                 state = State.ERROR
@@ -447,17 +460,22 @@ class DoNotTypeIME : InputMethodService() {
         if (state != State.RECORDING) return
 
         val wav = recorder.stop()
+        recorder.onPcm = null
         val context = pendingContext
         pendingContext = null
 
         if (wav == null) {
             // A tap rather than a hold. Not worth an error.
+            liveSession?.cancel()
+            liveSession = null
             state = State.IDLE
             return
         }
 
         val key = Settings.apiKey
         if (key.isNullOrBlank()) {
+            liveSession?.cancel()
+            liveSession = null
             showFixInTheApp("No API key yet — tap here to add one")
             state = State.ERROR
             return
@@ -466,11 +484,13 @@ class DoNotTypeIME : InputMethodService() {
         // Read at the moment the recording ends, not when the request returns: tapping a
         // different chip while a transcription is in flight must not change what it becomes.
         val style = Settings.liveStyle
+        val live = liveSession
+        liveSession = null
 
         state = State.TRANSCRIBING
         scope.launch {
             val outcome = withContext(Dispatchers.IO) {
-                service.transcribe(wav, context, context?.appName, style)
+                service.transcribe(wav, context, context?.appName, style, live)
             }
             outcome.fold(
                 onSuccess = { record ->

@@ -243,9 +243,10 @@ final class DictationModel {
     private let transcriptStore = TranscriptStore()
     private let prompts: PromptStore
     private let history: HistoryStore
-    private var recorder: AVAudioRecorder?
+    private let recorder = StreamingAudioRecorder()
     private var levelTimer: Timer?
     private var recordingURL: URL?
+    private var livePipeline: LiveAudioPipeline?
 
     init() {
         let defaults = UserDefaults.standard
@@ -472,18 +473,17 @@ final class DictationModel {
 
             // 16 kHz mono: the model downsamples to it regardless, so anything richer is upload
             // paid for and discarded.
-            let recorder = try AVAudioRecorder(
-                url: url,
-                settings: [
-                    AVFormatIDKey: Int(kAudioFormatLinearPCM),
-                    AVSampleRateKey: 16_000,
-                    AVNumberOfChannelsKey: 1,
-                    AVLinearPCMBitDepthKey: 16,
-                    AVLinearPCMIsFloatKey: false,
-                ])
-            recorder.isMeteringEnabled = true
-            recorder.record()
-            self.recorder = recorder
+            if let coordinator = makeCoordinator() {
+                let session = LiveTranscriptionSession(
+                    transcriber: makeTranscriber(primary: coordinator.service), context: nil)
+                let pipeline = LiveAudioPipeline(session: session)
+                livePipeline = pipeline
+                recorder.onPCM = { [weak pipeline] pcm in pipeline?.append(pcm: pcm) }
+            } else {
+                livePipeline = nil
+                recorder.onPCM = nil
+            }
+            try recorder.start(url: url)
             state = .recording
 
             // One id from the tap to the transcript, on every line and on the history row. A phone
@@ -498,6 +498,10 @@ final class DictationModel {
                 ])
             startMetering()
         } catch {
+            recorder.cancel()
+            livePipeline?.cancel()
+            livePipeline = nil
+            recorder.onPCM = nil
             log.error(
                 "could not start recording",
                 [
@@ -511,16 +515,23 @@ final class DictationModel {
     private func finishRecording() {
         levelTimer?.invalidate()
         levelTimer = nil
-        recorder?.stop()
-        recorder = nil
+        let stoppedURL = recorder.stop()
+        recorder.onPCM = nil
         levels = Self.silentMeter
 
-        guard let url = recordingURL else {
+        guard let url = stoppedURL ?? recordingURL else {
             log.info("recording produced no file", ["dictation": Self.short(pendingID)])
             state = .idle
             return
         }
         recordingURL = nil
+
+        guard stoppedURL != nil else {
+            livePipeline?.cancel()
+            livePipeline = nil
+            state = .idle
+            return
+        }
 
         // Nothing without speech in it is ever sent. A model handed room tone does not reliably
         // return silence — it returns a plausible sentence, and a dictation tool that hands that
@@ -530,7 +541,7 @@ final class DictationModel {
         // is never sent at all. Not transmitting the audio is the only defence for every backend.
         if let recorded = try? Data(contentsOf: url) {
             let activity = SpeechActivity.measure(wav: recorded)
-            guard activity.hasSpeech else {
+            guard livePipeline != nil || activity.hasSpeech else {
                 log.info(
                     "nothing was said, so nothing was sent",
                     ["dictation": Self.short(pendingID), "audio": activity.summary])
@@ -547,7 +558,9 @@ final class DictationModel {
                 "bytes": "\((try? Data(contentsOf: url))?.count ?? 0)",
             ])
         state = .transcribing
-        Task { await transcribe(url: url) }
+        let pipeline = livePipeline
+        livePipeline = nil
+        Task { await transcribe(url: url, livePipeline: pipeline) }
     }
 
     /// How much of the recording the meter shows: 24 bars of 60 ms, so a second and a half.
@@ -558,29 +571,13 @@ final class DictationModel {
         [AudioLevelMeter.Bar](repeating: .silent, count: visibleBars)
     }
 
-    /// A peak this close to full scale is a sample at the rail.
-    ///
-    /// The shared meter decides this by counting clamped samples in a frame, which is the better
-    /// question — but `AVAudioRecorder` writes the file itself and never hands over PCM, so the
-    /// only view of the waveform here is the two numbers it reports. `peakPower` reaching 0 dBFS
-    /// is what it can say, and it says it about a whole 60 ms rather than about eight samples.
-    private static let railDecibels = -0.1
-
     private func startMetering() {
         levels = Self.silentMeter
-        // 60 ms, which is one bar — the same bar the other three clients draw, so the meter walks
-        // across at the same speed everywhere. What differs is where the number comes from: this
-        // one is the recorder's own reading of the interval rather than the loudest of three 20 ms
-        // frames measured off the samples.
-        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.06, repeats: true) { [weak self] _ in
+        levelTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, let recorder = self.recorder else { return }
-                recorder.updateMeters()
-                let bar = AudioLevelMeter.Bar(
-                    level: AudioLevelMeter.level(
-                        decibels: Double(recorder.averagePower(forChannel: 0))),
-                    isClipping: Double(recorder.peakPower(forChannel: 0)) >= Self.railDecibels)
-                self.levels = Array((self.levels + [bar]).suffix(Self.visibleBars))
+                guard let self else { return }
+                self.levels = Array(
+                    (self.levels + self.recorder.drainLevels()).suffix(Self.visibleBars))
             }
         }
     }
@@ -630,7 +627,7 @@ final class DictationModel {
 
     // MARK: - Transcription
 
-    private func transcribe(url: URL) async {
+    private func transcribe(url: URL, livePipeline: LiveAudioPipeline? = nil) async {
         defer { try? FileManager.default.removeItem(at: url) }
 
         // Read once, here. Moving the picker while a transcription is in flight must not change
@@ -655,8 +652,12 @@ final class DictationModel {
             let audio = try AudioFile(contentsOf: url)
             let requestStart = Date()
             // Hedged when a fallback is configured; a transparent pass-through otherwise.
-            let outcome = try await makeTranscriber(primary: coordinator.service)
-                .transcribe(audio: audio, context: nil)
+            let outcome = if let livePipeline {
+                try await livePipeline.finish()
+            } else {
+                try await makeTranscriber(primary: coordinator.service)
+                    .transcribe(audio: audio, context: nil)
+            }
             let result = outcome.result
             // Recorded as the backend that answered, not the one that was asked.
             record.provider = outcome.attribution.provider

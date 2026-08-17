@@ -49,6 +49,7 @@ class DictationService(private val context: Context) {
         screenContext: ScreenContext?,
         appName: String?,
         style: RewriteStyle = RewriteStyle.VERBATIM,
+        liveSession: LiveTranscriptionSession? = null,
     ): Result<DictationRecord> {
         val key = Settings.apiKey
         if (key.isNullOrBlank()) {
@@ -75,6 +76,7 @@ class DictationService(private val context: Context) {
         // transmitting the audio is the only defence that holds for every backend.
         val activity = SpeechActivity.measureWav(wav)
         if (!activity.hasSpeech) {
+            liveSession?.cancel()
             log.info(
                 mapOf("audio" to activity.summary),
             ) { "nothing was said, so nothing was sent" }
@@ -100,146 +102,9 @@ class DictationService(private val context: Context) {
         ) { "transcribing" }
 
         return try {
-            val instruction = PromptAssets.systemInstruction(context, Settings.fidelity)
-            val client = ProviderFactory.create(Settings.provider, key, Settings.model)
-
-            // Each backend is sent only what it can use. Encoding ten thousand characters of
-            // screen text for an endpoint whose request body is raw audio would not merely be
-            // wasted — it would put a "grounded" request in the history for a transcript that was
-            // produced without grounding.
-            var keyterms = emptyList<String>()
-            val contextParts = buildList {
-                val grounding = client.grounding()
-                if (screenContext == null || screenContext.isEmpty) return@buildList
-                when (grounding) {
-                    is GroundingSupport.Multimodal -> addAll(ContextEncoder().encode(screenContext))
-                    is GroundingSupport.Keyterms ->
-                        if (Settings.keytermBiasing) {
-                            keyterms = Keyterms.derive(
-                                screenContext,
-                                grounding.maxTerms,
-                                grounding.maxCharsPerTerm,
-                            )
-                        }
-                    is GroundingSupport.None -> Unit
-                }
-            }
-
-            // Long recordings are split on silence and transcribed concurrently; anything under
-            // the threshold comes back as one chunk and takes the ordinary path unchanged. Every
-            // chunk carries identical context, which is what keeps a name spelled the same on both
-            // sides of a seam.
-            val chunks = AudioChunker.split(wav)
             val requestStart = System.currentTimeMillis()
-
-            // Compressed for upload only. History keeps the WAV: a retry re-runs the whole
-            // pipeline and the chunker needs PCM to find silence in, so re-deriving that from a
-            // lossy copy would make a retried dictation worse than the first attempt.
-            fun audioPart(pcmWav: ByteArray): InputPart {
-                val ogg = OpusEncoder.encode(pcmWav)
-                return if (ogg != null) {
-                    InputPart.Audio(ogg, "audio/ogg")
-                } else {
-                    InputPart.Audio(pcmWav, "audio/wav")
-                }
-            }
-
-            // One request, joined by a second identical one if it stalls. See StallHedge. Per
-            // request rather than around the whole job, so a split recording re-sends the chunk
-            // that stalled rather than all of them — and so the deadline is measured against what
-            // that request was actually asked to transcribe.
-            suspend fun hedged(
-                backend: TranscriptionProvider,
-                audioSeconds: Double?,
-                parts: List<InputPart>,
-                hints: List<String>,
-            ): TranscriptionResult {
-                val deadline = StallHedge.deadlineMillis(audioSeconds)
-                return StallHedge.race(
-                    deadlineMillis = deadline,
-                    onHedge = {
-                        // Info, not debug: this is the app spending a second request on the user's
-                        // behalf, and it should be visible without turning anything on.
-                        log.info(
-                            mapOf(
-                                "dictation" to id,
-                                "provider" to backend.name,
-                                "after" to "%.1fs".format(deadline / 1000.0),
-                            ),
-                        ) { "request stalled; sending a second one" }
-                    },
-                ) {
-                    backend.transcribe(instruction, parts, Settings.fidelity, hints)
-                }
-            }
-
-            // One backend transcribing the whole recording, chunks and all, as a single unit —
-            // so the fallback can race the finished job rather than individual chunks.
-            suspend fun transcribeAll(
-                backend: TranscriptionProvider,
-                hints: List<String>,
-            ): TranscriptionResult {
-                val pieces = if (chunks.size == 1) {
-                    // Encoded once and reused, so a hedge re-sends the recording rather than
-                    // re-compressing it.
-                    listOf(
-                        hedged(
-                            backend, record.durationSeconds, contextParts + audioPart(wav), hints,
-                        ),
-                    )
-                } else {
-                    coroutineScope {
-                        // Bounded, because a ten-minute dictation fired all at once is the fastest
-                        // way to hit a rate limit and turn a slow dictation into a failed one.
-                        val gate = Semaphore(3)
-                        chunks.map { chunk ->
-                            async {
-                                gate.withPermit {
-                                    hedged(
-                                        backend,
-                                        chunk.durationSeconds,
-                                        contextParts + audioPart(chunk.data),
-                                        hints,
-                                    )
-                                }
-                            }
-                        }.awaitAll()
-                    }
-                }
-                return TranscriptionResult(
-                    Transcript(
-                        AudioChunker.stitch(pieces.map { it.transcript.transcript }),
-                        pieces.firstOrNull()?.transcript?.language.orEmpty(),
-                    ),
-                    TokenUsage(
-                        audioTokens = pieces.sumOf { it.usage.audioTokens ?: 0 }.takeIf { it > 0 },
-                    ),
-                    pieces.joinToString("\n") { it.rawOutput },
-                )
-            }
-
-            // Hedged when a fallback is configured: the primary gets the whole delay to itself and
-            // only a stalled one is ever raced. See FallbackTranscriber.
-            val fallbackKind = Settings.fallbackProvider
-            val fallbackClient = fallbackKind
-                ?.let { kind -> Settings.keyFor(kind)?.takeIf { it.isNotEmpty() }?.let { kind to it } }
-                ?.let { (kind, fallbackKey) ->
-                    ProviderFactory.create(kind, fallbackKey, Settings.modelFor(kind))
-                }
-
-            val outcome = FallbackTranscriber(
-                primary = { transcribeAll(client, keyterms) },
-                secondary = fallbackClient?.let { backend ->
-                    // A fallback with no keyterm channel simply ignores the hints.
-                    FallbackTranscriber.Transcriber { transcribeAll(backend, keyterms) }
-                },
-                hedgeAfterMillis = Settings.fallbackAfterSeconds * 1000L,
-            ).transcribe(
-                primaryName = client.name,
-                primaryModel = client.model,
-                secondaryName = fallbackClient?.name.orEmpty(),
-                secondaryModel = fallbackClient?.model.orEmpty(),
-            )
+            val outcome = liveSession?.finish(screenContext)
+                ?: transcribeFinished(wav, screenContext, id)
 
             record.requestMillis = System.currentTimeMillis() - requestStart
             record.audioTokens = outcome.result.usage.audioTokens
@@ -388,6 +253,119 @@ class DictationService(private val context: Context) {
             history.insert(record, wav)
             Result.failure(error)
         }
+    }
+
+    /** Constructs the live pipeline before AudioRecord starts, so its first sample is included. */
+    fun createLiveSession(screenContext: ScreenContext?): LiveTranscriptionSession? {
+        val key = Settings.apiKey?.takeIf { it.isNotBlank() } ?: return null
+        return runCatching {
+            val primary = ProviderFactory.create(Settings.provider, key, Settings.model)
+            LiveTranscriptionSession(primary.name, primary.model, screenContext) { wav, context ->
+                transcribePart(wav, context, "live")
+            }
+        }.getOrNull()
+    }
+
+    private suspend fun transcribeFinished(
+        wav: ByteArray,
+        screenContext: ScreenContext?,
+        id: String,
+    ): FallbackTranscriber.Outcome = coroutineScope {
+        val chunks = AudioChunker.split(wav)
+        val gate = Semaphore(3)
+        val outcomes = chunks.map { chunk ->
+            async { gate.withPermit { transcribePart(chunk.data, screenContext, id) } }
+        }.awaitAll()
+        combine(outcomes)
+    }
+
+    private suspend fun transcribePart(
+        wav: ByteArray,
+        screenContext: ScreenContext?,
+        id: String,
+    ): FallbackTranscriber.Outcome {
+        val key = Settings.apiKey?.takeIf { it.isNotBlank() }
+            ?: throw ProviderException("No API key. Open DoNotType to add one.")
+        val instruction = PromptAssets.systemInstruction(context, Settings.fidelity)
+        val client = ProviderFactory.create(Settings.provider, key, Settings.model)
+
+        fun requestInputs(backend: TranscriptionProvider): Pair<List<InputPart>, List<String>> {
+            var keyterms = emptyList<String>()
+            val parts = buildList {
+                val grounding = backend.grounding()
+                if (screenContext == null || screenContext.isEmpty) return@buildList
+                when (grounding) {
+                    is GroundingSupport.Multimodal -> addAll(ContextEncoder().encode(screenContext))
+                    is GroundingSupport.Keyterms ->
+                        if (Settings.keytermBiasing) {
+                            keyterms = Keyterms.derive(
+                                screenContext,
+                                grounding.maxTerms,
+                                grounding.maxCharsPerTerm,
+                            )
+                        }
+                    is GroundingSupport.None -> Unit
+                }
+            }
+            return parts to keyterms
+        }
+
+        fun audioPart(): InputPart {
+            val ogg = OpusEncoder.encode(wav)
+            return if (ogg != null) InputPart.Audio(ogg, "audio/ogg")
+            else InputPart.Audio(wav, "audio/wav")
+        }
+
+        suspend fun run(backend: TranscriptionProvider): TranscriptionResult {
+            val (parts, hints) = requestInputs(backend)
+            val payload = parts + audioPart()
+            val deadline = StallHedge.deadlineMillis(WavRecorder.durationSeconds(wav))
+            return StallHedge.race(
+                deadlineMillis = deadline,
+                onHedge = {
+                    log.info(
+                        mapOf("dictation" to id, "provider" to backend.name),
+                    ) { "request stalled; sending a second one" }
+                },
+            ) { backend.transcribe(instruction, payload, Settings.fidelity, hints) }
+        }
+
+        val fallbackClient = Settings.fallbackProvider
+            ?.let { kind -> Settings.keyFor(kind)?.takeIf(String::isNotEmpty)?.let { kind to it } }
+            ?.let { (kind, fallbackKey) ->
+                ProviderFactory.create(kind, fallbackKey, Settings.modelFor(kind))
+            }
+        return FallbackTranscriber(
+            primary = { run(client) },
+            secondary = fallbackClient?.let { backend ->
+                FallbackTranscriber.Transcriber { run(backend) }
+            },
+            hedgeAfterMillis = Settings.fallbackAfterSeconds * 1_000L,
+        ).transcribe(
+            client.name, client.model,
+            fallbackClient?.name.orEmpty(), fallbackClient?.model.orEmpty(),
+        )
+    }
+
+    private fun combine(
+        outcomes: List<FallbackTranscriber.Outcome>,
+    ): FallbackTranscriber.Outcome {
+        val results = outcomes.map { it.result }
+        return FallbackTranscriber.Outcome(
+            TranscriptionResult(
+                Transcript(
+                    AudioChunker.stitch(results.map { it.transcript.transcript }),
+                    results.firstOrNull()?.transcript?.language.orEmpty(),
+                ),
+                results.fold(TokenUsage()) { total, piece -> TokenUsage.add(total, piece.usage) },
+                results.joinToString("\n") { it.rawOutput },
+            ),
+            FallbackTranscriber.Attribution(
+                outcomes.map { it.attribution.provider }.distinct().joinToString(" + "),
+                outcomes.map { it.attribution.model }.distinct().joinToString(" + "),
+                outcomes.any { it.attribution.wasFallback },
+            ),
+        )
     }
 
     /**

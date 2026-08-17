@@ -32,6 +32,8 @@ final class DictationController {
     private let insertions = InsertionTracker()
 
     private var levelTimer: Timer?
+    private var livePipeline: LiveAudioPipeline?
+    private var pendingContextTask: Task<ScreenContext?, Never>?
     private var transcriptionTask: Task<Void, Never>?
     /// The in-flight dictation's id, from the key press to the insertion.
     private var pendingID = UUID()
@@ -143,6 +145,19 @@ final class DictationController {
         }
 
         do {
+            // Construct the request machinery before capture so the first PCM sample enters both
+            // the recovery WAV and the live segmenter. Missing configuration still follows the
+            // established post-release error path.
+            if let coordinator = makeCoordinator() {
+                let session = LiveTranscriptionSession(
+                    transcriber: makeTranscriber(primary: coordinator.service), context: nil)
+                let pipeline = LiveAudioPipeline(session: session)
+                livePipeline = pipeline
+                recorder.onPCM = { [weak pipeline] pcm in pipeline?.append(pcm: pcm) }
+            } else {
+                livePipeline = nil
+                recorder.onPCM = nil
+            }
             recorder.preferredDeviceUID = Settings.shared.microphoneUID
             try recorder.start()
             state = .recording
@@ -172,6 +187,13 @@ final class DictationController {
             // Phase 2 of the capture: the expensive accessibility walk runs while the user is
             // still speaking, so grounding costs no perceived latency.
             grounding.beginCapture()
+            let contextTask = Task { [grounding] in await grounding.finishCapture() }
+            pendingContextTask = contextTask
+            if let session = livePipeline?.session {
+                Task {
+                    await session.setContext(await contextTask.value)
+                }
+            }
 
             // The same trick, for the network. Opening a connection costs about a second, and
             // whether the pooled one is still alive cannot be known without using it — so both
@@ -183,6 +205,10 @@ final class DictationController {
             overlay.show(phase: .recording, hint: Settings.shared.hotkeyMode.overlayHint)
             startLevelUpdates()
         } catch {
+            recorder.cancel()
+            livePipeline?.cancel()
+            livePipeline = nil
+            recorder.onPCM = nil
             log.error(
                 "could not start recording",
                 [
@@ -198,6 +224,11 @@ final class DictationController {
         guard state == .recording else { return }
         log.info("recording cancelled", ["dictation": Self.short(pendingID)])
         recorder.cancel()
+        recorder.onPCM = nil
+        livePipeline?.cancel()
+        livePipeline = nil
+        pendingContextTask?.cancel()
+        pendingContextTask = nil
         grounding.cancel()
         stopLevelUpdates()
         overlay.hide()
@@ -210,6 +241,7 @@ final class DictationController {
             cancelRecording()
         case .transcribing:
             log.info("transcription cancellation requested", ["dictation": Self.short(pendingID)])
+            // The task's cancellation handler also stops live segment requests and context capture.
             grounding.cancel()
             transcriptionTask?.cancel()
             overlay.hide()
@@ -243,32 +275,37 @@ final class DictationController {
         let audio: AudioFile
         do {
             audio = try recorder.stop()
+            recorder.onPCM = nil
         } catch AudioRecorder.RecorderError.tooShort {
             // A tap rather than a hold. Silently return to idle; not worth interrupting anyone —
             // but logged, because "I pressed the key and nothing happened" is a real report and
             // this is the most common innocent explanation for it.
             log.info("recording too short to send", ["dictation": Self.short(pendingID)])
+            livePipeline?.cancel()
+            livePipeline = nil
+            pendingContextTask?.cancel()
+            pendingContextTask = nil
             grounding.cancel()
             overlay.hide()
             state = .idle
             return
         } catch {
+            livePipeline?.cancel()
+            livePipeline = nil
+            pendingContextTask?.cancel()
+            pendingContextTask = nil
             grounding.cancel()
             fail(error.localizedDescription)
             return
         }
 
-        // Nothing without speech in it is ever sent. A model handed room tone does not reliably
-        // return silence — it returns a plausible sentence, and a dictation tool that types words
-        // nobody said has done the one thing this project exists to prevent. `PROMPT.md` rule 7
-        // asks for an empty transcript, but it only reaches model providers: a speech recogniser
-        // has no system instruction, so for Deepgram, xAI and Voxtral the rule is never sent at
-        // all. Not transmitting the audio is the only defence that holds for every backend.
         let activity = SpeechActivity.measure(wav: audio.data)
-        guard activity.hasSpeech else {
+        guard livePipeline != nil || activity.hasSpeech else {
             log.info(
                 "nothing was said, so nothing was sent",
                 ["dictation": Self.short(pendingID), "audio": activity.summary])
+            pendingContextTask?.cancel()
+            pendingContextTask = nil
             grounding.cancel()
             overlay.hide()
             state = .idle
@@ -290,22 +327,33 @@ final class DictationController {
         // Started here, not at the request: the wait the user experiences includes the screen
         // context read and any fallback, and a figure that skipped those would flatter the app.
         let releasedAt = Date()
+        let pipeline = livePipeline
+        livePipeline = nil
+        let contextTask = pendingContextTask
+        pendingContextTask = nil
         transcriptionTask = Task { [weak self] in
             guard let self else { return }
             defer { transcriptionTask = nil }
-            let context = await grounding.finishCapture()
-            guard !Task.isCancelled else {
-                try? FileManager.default.removeItem(at: audio.url)
-                transcriptionCancelled()
-                return
+            await withTaskCancellationHandler {
+                let context = await contextTask?.value
+                guard !Task.isCancelled else {
+                    try? FileManager.default.removeItem(at: audio.url)
+                    transcriptionCancelled()
+                    return
+                }
+                if let session = pipeline?.session { await session.setContext(context) }
+                await transcribe(
+                    audio: audio, context: context, releasedAt: releasedAt, livePipeline: pipeline)
+            } onCancel: {
+                contextTask?.cancel()
+                pipeline?.cancel()
             }
-            await transcribe(
-                audio: audio, context: context, releasedAt: releasedAt)
         }
     }
 
     private func transcribe(
-        audio: AudioFile, context: ScreenContext?, releasedAt: Date = Date()
+        audio: AudioFile, context: ScreenContext?, releasedAt: Date = Date(),
+        livePipeline: LiveAudioPipeline? = nil
     ) async {
         defer { try? FileManager.default.removeItem(at: audio.url) }
 
@@ -371,11 +419,16 @@ final class DictationController {
             // dictation — take the single-request path unchanged.
             // Hedged when a fallback backend is configured: the primary gets the whole delay to
             // itself, and only a stalled one is ever raced. See FallbackTranscriber.
-            let outcome = try await makeTranscriber(primary: coordinator.service).transcribe(
-                audio: audio, context: context
-            ) { [weak self] done, total in
-                Task { @MainActor in
-                    self?.overlay.update(phase: .transcribingChunk(done: done, of: total))
+            let outcome: FallbackTranscriber.Outcome
+            if let livePipeline {
+                outcome = try await livePipeline.finish()
+            } else {
+                outcome = try await makeTranscriber(primary: coordinator.service).transcribe(
+                    audio: audio, context: context
+                ) { [weak self] done, total in
+                    Task { @MainActor in
+                        self?.overlay.update(phase: .transcribingChunk(done: done, of: total))
+                    }
                 }
             }
             let result = outcome.result
