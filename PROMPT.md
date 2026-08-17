@@ -98,9 +98,10 @@ Two things follow, and both are deliberate:
 ## Fidelity clauses
 
 Exactly one of [`prompt/fidelity/`](prompt/fidelity/) is substituted into `{{FIDELITY_RULE}}` per
-request. `raw` keeps every audible word and filler. The default `light` removes only empty fillers,
-stutters, and abandoned starts; meaningful discourse markers stay. `tidy` adds standard casing and
-punctuation without rephrasing.
+request. `raw` keeps every audible word and filler. The default `light` removes empty fillers,
+repetitions, stutters, abandoned starts, and superseded self-corrections; meaningful discourse
+markers and the final correction stay. `tidy` adds standard casing and punctuation without
+rephrasing.
 
 ## Changelog
 
@@ -111,6 +112,7 @@ screen context broke it. That is the failure this contract exists to prevent, an
 
 | Date | Change | Provider / model | runs | matched | improved | regressed |
 |------|--------|------------------|------|---------|----------|-----------|
+| 2026-08-17 | Light self-correction cleanup | **gemini** · gemini-3.5-flash | 48 | 35 | 7 | **2** |
 | 2026-08-17 | Concise contracts and filler cleanup | **gemini** · gemini-3.5-flash | 48 | 38 | 12 | **2** |
 | 2026-08-17 | Pre-change 972-word control | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
 | 2026-08-09 | Initial contract | **gemini** · gemini-3.6-flash | 15 | 15 | 0 | **0** |
@@ -118,9 +120,11 @@ screen context broke it. That is the failure this contract exists to prevent, an
 
 ### 2026-08-17 — concise contracts and measurable filler removal
 
-All twelve prompt parts were tightened from **972 to 448 words**; the transcription contract fell
-from **413 to 102 words** before its fidelity clause. Tests now cap assembled transcription,
-rewrite, and summary instructions at 160, 100, and 90 words respectively.
+The first round tightened all twelve prompt parts from **972 to 448 words**; the transcription
+contract fell from **413 to 102 words** before its fidelity clause. Explicit self-correction rules
+bring the current total to **477 words**. Tests cap assembled transcription, rewrite, and summary
+instructions at 160, 100, and 90 words respectively; the current default instructions are 157 and
+97 words for light transcription and formal rewrite.
 
 The required near-miss run did not clear the zero-regression gate. Across 16 cases and three passes,
 gemini-3.5-flash matched 38/48, improved a wrong baseline 12 times, left 8 wrong, and regressed 2.
@@ -135,6 +139,23 @@ draft kept the empty word "basically" in 2/15 concise and 3/15 bullet rewrites. 
 shared cleanup rule closed those failures. The final run preserved every required fact and removed
 every marked filler in **15/15 formal, 15/15 concise, and 15/15 bullet rewrites** (45/45 total),
 with no request errors.
+
+The follow-up adds the same correction behavior to light dictation: remove repetitions and the
+superseded half of a self-correction, but keep the final wording. On a synthesized correction clip,
+both light requests returned only Friday and Marcus and removed Thursday, Priya, two "um" fillers,
+and the repeated "I will". Raw fidelity preserved the full correction trail in both requests. This
+is a prompt smoke test on clear synthesized speech, not a general accuracy result.
+
+The rewrite evaluator now includes day, name, and number corrections plus a contrast control where
+both numbers must remain. Across all styles it removed every marked filler or superseded correction
+in 72/72 outputs and preserved required content in 71/72; the one failure inserted spaces inside
+hedge words. A formal-only rerun preserved content and removed marked speech in 24/24. The explicit
+self-correction cases passed 27/27 across formal, concise, and bullet styles.
+
+Changing light fidelity required another near-miss run. It matched 35/48, improved 7 wrong
+baselines, left 11 wrong, and regressed 2. Its per-pass effect ranges overlap the preceding concise
+run, so the difference is not evidence that correction cleanup changed grounding. The
+zero-regression gate remains failed.
 
 Notes on the first measurement:
 

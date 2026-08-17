@@ -274,8 +274,9 @@ for masking before the first request, and anything else key-shaped is caught by 
   verbatim transcript is always kept. Not `Ctrl+Z`, which belongs to whatever you are typing into.
 - **Audio** — pin a microphone rather than following the system default; start/stop tones are on
   by default and can be disabled.
-- **Fidelity** — `raw` keeps every filler; `light` (default) removes empty fillers and false starts;
-  `tidy` also applies standard casing and punctuation without rephrasing.
+- **Fidelity** — `raw` keeps every filler and correction; `light` (default) removes empty fillers,
+  repetitions, false starts, and superseded corrections; `tidy` also applies standard casing and
+  punctuation without rephrasing.
 - **Grounding** — on/off, screenshot fallback, and two blocklists evaluated *before* capture.
 - **History** — search, filters, per-item retry and delete, retention policy, per-dictation
   timings, and a **Context Inspector** showing exactly what was sent with any dictation.

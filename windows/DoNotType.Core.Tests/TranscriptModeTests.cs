@@ -98,7 +98,8 @@ public sealed class TranscriptModeTests
                  {
                      "vocal fillers", "\"um\"", "\"ah\"", "\"actually\"", "\"basically\"",
                      "false starts",
-                     "repetition", "clear, concise, professional prose",
+                     "repetition", "self-corrections", "final wording", "superseded wording",
+                     "clear, concise, professional prose",
                  })
             Assert.Contains(phrase, rewrite);
     }

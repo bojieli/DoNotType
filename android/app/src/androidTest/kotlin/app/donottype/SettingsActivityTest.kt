@@ -233,13 +233,19 @@ class SettingsActivityTest {
                         instruction.trim().split(Regex("\\s+")).size <= 160)
                 }
 
+                val light = PromptAssets.systemInstruction(activity, Fidelity.LIGHT)
+                for (phrase in listOf(
+                    "vocal fillers", "repetitions", "self-corrections", "final wording",
+                    "superseded wording"))
+                    assertTrue("the default dictation lost $phrase", light.contains(phrase))
+
                 val rewrite = PromptAssets.secondStageInstruction(
                     activity, TranscriptMode.Rewrite(RewriteStyle.FORMAL))!!
                 assertTrue(
                     "the default rewrite prompt grew", rewrite.split(Regex("\\s+")).size <= 100)
                 for (phrase in listOf(
                     "vocal fillers", "\"um\"", "\"ah\"", "\"actually\"", "\"basically\"",
-                    "concise"))
+                    "self-corrections", "final wording", "superseded wording", "concise"))
                     assertTrue("the default rewrite lost $phrase", rewrite.contains(phrase))
 
                 val summary = PromptAssets.secondStageInstruction(

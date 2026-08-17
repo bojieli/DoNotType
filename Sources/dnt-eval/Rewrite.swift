@@ -32,7 +32,7 @@ struct Rewrite: AsyncParsableCommand {
         let transcript: String
         /// Every token that must survive verbatim.
         let mustKeep: [String]
-        /// Semantically empty speech that a rewrite must remove.
+        /// Filler or superseded correction that a rewrite must remove.
         let mustRemove: [String]
     }
 
@@ -73,6 +73,21 @@ struct Rewrite: AsyncParsableCommand {
             // A rewriter that "improves" this into a commitment has changed its meaning.
             mustKeep: ["probably", "not certain", "maybe"],
             mustRemove: []),
+        Case(
+            id: "correction-day",
+            transcript: "please send the revised draft on Thursday, sorry, Friday morning",
+            mustKeep: ["Friday", "morning"],
+            mustRemove: ["Thursday", "sorry"]),
+        Case(
+            id: "correction-name",
+            transcript: "send the draft to Priya, no, to Marcus, and ask him to sign off",
+            mustKeep: ["Marcus", "sign off"],
+            mustRemove: ["Priya"]),
+        Case(
+            id: "correction-number",
+            transcript: "set the timeout to 500 milliseconds, correction, 750 milliseconds",
+            mustKeep: ["750", "milliseconds"],
+            mustRemove: ["500", "correction"]),
     ]
 
     mutating func run() async throws {
@@ -89,14 +104,14 @@ struct Rewrite: AsyncParsableCommand {
 
         print("provider \(kind.rawValue) · model \(runner.model) · \(trials) runs per case\n")
 
-        var totals: [RewriteStyle: (kept: Int, lost: Int, clean: Int, dirty: Int, empty: Int)] = [:]
+        var totals: [RewriteStyle: (kept: Int, lost: Int, clean: Int, retained: Int, empty: Int)] = [:]
 
         for style in selected {
             let instruction = try builder.rewriteInstruction(style: style)
             var kept = 0
             var lost = 0
             var clean = 0
-            var dirty = 0
+            var retained = 0
             var empty = 0
             var examples: [String] = []
 
@@ -129,29 +144,29 @@ struct Rewrite: AsyncParsableCommand {
                         }
                     }
 
-                    let retained = testCase.mustRemove.filter { rewritten.containsWholePhrase($0) }
-                    if retained.isEmpty {
+                    let unwanted = testCase.mustRemove.filter { rewritten.containsWholePhrase($0) }
+                    if unwanted.isEmpty {
                         clean += 1
                     } else {
-                        dirty += 1
+                        retained += 1
                         if examples.count < 3 {
-                            examples.append("\(testCase.id): retained \(retained) → \(rewritten.prefix(90))")
+                            examples.append("\(testCase.id): retained \(unwanted) → \(rewritten.prefix(90))")
                         }
                     }
                 }
             }
 
-            totals[style] = (kept, lost, clean, dirty, empty)
+            totals[style] = (kept, lost, clean, retained, empty)
             let judged = kept + lost
             let rate = judged == 0 ? "n/a" : String(format: "%.0f%%", Double(lost) / Double(judged) * 100)
             print(
                 "\(style.rawValue): lost content in \(lost)/\(judged) (\(rate)); "
-                    + "retained filler in \(dirty)/\(clean + dirty)")
+                    + "retained removable speech in \(retained)/\(clean + retained)")
             for example in examples { print("  \(example)") }
         }
 
         print("\n────────────────────────────────────────────")
-        print("style      preserved  lost  clean  filler   error   loss rate")
+        print("style      preserved  lost  clean  retained  error   loss rate")
         for style in selected {
             guard let total = totals[style] else { continue }
             let judged = total.kept + total.lost
@@ -160,14 +175,14 @@ struct Rewrite: AsyncParsableCommand {
             print(
                 style.rawValue.padding(toLength: 11, withPad: " ", startingAt: 0)
                     + String(
-                        format: "%9d  %4d  %5d  %6d  %6d  ", total.kept, total.lost,
-                        total.clean, total.dirty, total.empty)
+                        format: "%9d  %4d  %5d  %8d  %5d  ", total.kept, total.lost,
+                        total.clean, total.retained, total.empty)
                     + rate)
         }
         print("\nLoss rate is the number that matters: a rewrite may change how it reads,")
-        print("never what it says. Filler must also be zero for every rewrite style.")
+        print("never what it says. Fillers and superseded corrections must also be zero.")
 
-        let anyFailure = totals.values.contains { $0.lost > 0 || $0.dirty > 0 }
+        let anyFailure = totals.values.contains { $0.lost > 0 || $0.retained > 0 }
         if anyFailure { throw ExitCode.failure }
     }
 }

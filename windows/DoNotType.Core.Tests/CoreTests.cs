@@ -154,16 +154,21 @@ public class PromptBuilderTests
     }
 
     [Fact]
-    public void DefaultTranscriptionRemovesEmptyFillers()
+    public void DefaultTranscriptionRemovesDisfluencies()
     {
         if (Shipped() is not { } builder) return;
         var instruction = builder.SystemInstruction(Fidelity.Light);
         foreach (var phrase in new[]
                  {
                      "vocal fillers", "\"um\"", "\"ah\"", "\"actually\"", "\"basically\"",
+                     "repetitions", "self-corrections", "final wording", "superseded wording",
                      "when they add no meaning",
                  })
             Assert.Contains(phrase, instruction);
+
+        var raw = builder.SystemInstruction(Fidelity.Raw);
+        Assert.DoesNotContain("self-corrections", raw);
+        Assert.DoesNotContain("superseded wording", raw);
     }
 
     /// <summary>

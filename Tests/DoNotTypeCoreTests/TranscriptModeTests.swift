@@ -83,7 +83,7 @@ final class TranscriptModeTests: XCTestCase {
         let rewrite = try prompt.rewriteInstruction(style: .formal)
         for phrase in [
             "vocal fillers", "\"um\"", "\"ah\"", "\"actually\"", "\"basically\"", "false starts",
-            "repetition",
+            "repetition", "self-corrections", "final wording", "superseded wording",
             "clear, concise, professional prose",
         ] {
             XCTAssertTrue(rewrite.contains(phrase), "default rewrite lost: \(phrase)")

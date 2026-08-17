@@ -48,14 +48,19 @@ final class PromptBuilderTests: XCTestCase {
         }
     }
 
-    func testDefaultTranscriptionRemovesEmptyFillers() throws {
+    func testDefaultTranscriptionRemovesDisfluencies() throws {
         let instruction = try shipped().systemInstruction(fidelity: .light)
         for phrase in [
             "vocal fillers", "\"um\"", "\"ah\"", "\"actually\"", "\"basically\"",
+            "repetitions", "self-corrections", "final wording", "superseded wording",
             "when they add no meaning",
         ] {
             XCTAssertTrue(instruction.contains(phrase), "LIGHT lost its cleanup rule: \(phrase)")
         }
+
+        let raw = try shipped().systemInstruction(fidelity: .raw)
+        XCTAssertFalse(raw.contains("self-corrections"), "RAW must keep the correction trail")
+        XCTAssertFalse(raw.contains("superseded wording"), "RAW must not resolve corrections")
     }
 
     /// The regression test for the bug the split ended: the assembled instruction must be the
