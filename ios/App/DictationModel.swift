@@ -449,6 +449,18 @@ final class DictationModel {
             return
         }
 
+        // The connection, opened while the user is still speaking. It costs about a second and
+        // whether the pooled one is still alive cannot be known without using it, so both happen
+        // here rather than after they stop with somebody watching. On a phone this matters more
+        // than anywhere: the screen goes off between dictations and the connection rots. Silent on
+        // failure by design — nothing has been asked for yet. See `ProviderTransport`.
+        if !apiKey.isEmpty,
+            let backend = try? ProviderFactory.make(provider, apiKey: apiKey),
+            let origin = backend.endpointOrigin
+        {
+            Task { await ProviderTransport.shared.warmUp(origin) }
+        }
+
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])

@@ -98,11 +98,27 @@ dictate into, so the fallback has not been needed; it is a gap rather than an im
 | Copy a diagnostic report | ✅ | ✅ | ✅ | ✅ |
 | Guided permissions | ✅ | ✅ ⁹ | ✅ | ✅ |
 | Command line | ✅ `dnt` | ✅ `dnt.exe` | — ¹⁰ | — ¹⁰ |
+| Stop trusting an idle connection | ✅ | ✅ | ✅ | ✅ |
+| Open the connection while recording | ✅ | ✅ | ✅ | ✅ |
+| Hedge and retry on their own connection | ✅ | ✅ | — ¹¹ | ✅ |
+| Only type where the dictation started | ✅ | ✅ | ✅ | n/a ¹² |
 
 ⁹ Windows has no permission prompt for the microphone at all — access is a Settings toggle — so
 what it does instead is open the privacy page when recording is refused.
 
 ¹⁰ There is no shell to run one in. The equivalent is the app.
+
+¹¹ `HttpURLConnection` exposes no way to demand a connection that has never been used — the pool is
+OkHttp's, inside the platform, and picking from it is not the caller's decision. Android gets the
+other three rows, and what stands in for this one is that a failed exchange evicts its own
+connection. The gap is real and the row says so rather than being marked met.
+
+¹² The iOS keyboard reads transcripts out of the shared container the app writes them into; there is
+no cross-app focus to lose in between, so there is nothing here to get wrong.
+
+The four connection rows exist because the tail they fix was worth 24% of dictations taking between
+20 and 69 seconds while the model was answering in 2.1. Measured on macOS and described in
+`ProviderTransport`; ported by hand, so the table is the thing that says whether the port happened.
 
 Retrying with the original context is listed separately because it was silently wrong on two
 clients until recently: Windows and Android re-ran the request *ungrounded*, which made a retry a
