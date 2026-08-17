@@ -346,7 +346,9 @@ private struct QRExportSheet: View {
                     Label("This QR code contains API keys.", systemImage: "lock.open.fill")
                         .foregroundStyle(.orange)
                 }
-                Text("Keep the entire square and its white border visible to the camera.")
+                Text(
+                    "Keep the entire square and its white border visible to the camera. "
+                        + "If it fills the viewfinder, move farther away.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -493,7 +495,7 @@ private struct CameraQRScanner: UIViewRepresentable {
                 guard let self else { return }
                 if configured {
                     if !session.isRunning { session.startRunning() }
-                    updateState(.scanning)
+                    updateState(session.isRunning ? .scanning : .failed)
                     return
                 }
                 guard let camera = AVCaptureDevice.default(
@@ -537,7 +539,7 @@ private struct CameraQRScanner: UIViewRepresentable {
 
                 configured = true
                 session.startRunning()
-                updateState(.scanning)
+                updateState(session.isRunning ? .scanning : .failed)
             }
         }
 

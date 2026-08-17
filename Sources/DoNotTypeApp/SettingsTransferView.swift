@@ -278,7 +278,9 @@ private struct QRExportSheet: View {
                 Label("This QR code contains API keys.", systemImage: "lock.open.fill")
                     .foregroundStyle(.orange)
             }
-            Text("Keep the entire square and its white border visible to the phone camera.")
+            Text(
+                "Keep the entire square and its white border visible to the phone camera. "
+                    + "If it fills the viewfinder, move the phone farther away.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
