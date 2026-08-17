@@ -68,8 +68,15 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     ///
     /// | configuration | near-miss | regressed |
     /// |---|---|---|
-    /// | **google · gemini-3.6-flash · grounded** | **43 / 48** | 2 |
+    /// | **google · gemini-3.5-flash · grounded** | not yet golden-scored | — |
     /// | xai · grok-stt | 15 / 48 | 0 |
+    ///
+    /// The older golden near-miss campaign still favours 3.6 (43–44 / 48 versus 31–35 / 48 for
+    /// 3.5). The default moved after a newer seven-clip sweep of the maintainer's actual technical
+    /// dictation: 3.5 retained names and commands more consistently and returned in 2.54 s median,
+    /// while 3.6 took 10.54 s and was not consistently better. Those clips do not have human
+    /// references yet, so this is a product recommendation for the current jargon-heavy workload,
+    /// not a claim that the historical accuracy result reversed.
     ///
     /// This is bought with latency, and the price is real. On the 100-clip ordinary-dictation
     /// corpus — real speech, nothing on screen contradicting it — a recogniser is several times
@@ -149,8 +156,8 @@ public enum ProviderKind: String, CaseIterable, Sendable {
 
     public var defaultModel: String {
         switch self {
-        case .openrouter: "google/gemini-3.6-flash"
-        case .google: "gemini-3.6-flash"
+        case .openrouter: "google/gemini-3.5-flash"
+        case .google: "gemini-3.5-flash"
         // Whatever the server was started with; overridden by --model in practice.
         case .local: ProcessInfo.processInfo.environment["DNT_LOCAL_MODEL"] ?? "local-model"
         // nova-3 is the only Deepgram model with keyterm biasing, which is this backend's sole
@@ -289,9 +296,10 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     public var recommendationNote: String? {
         switch self {
         case .google:
-            "Recommended for accuracy. It reads the screen, so it spells the names and versions "
-                + "already in front of you: 44 of 48 on the near-miss suite against xAI's 15. You "
-                + "pay in latency, and unevenly — one three-second clip took 5 s and the next 61 s."
+            "Recommended for technical dictation. On seven recent jargon-heavy recordings, "
+                + "Gemini 3.5 retained names and commands more consistently than 3.6; no human "
+                + "goldens exist for those clips yet. It reads the screen for spelling context. "
+                + "The older near-miss goldens still favour 3.6."
         case .xai:
             "Recommended for speed. About 1 s for a short clip, 2.8 s for two minutes of speech, "
                 + "and no tail. It cannot see the screen, so an unfamiliar name or a version "
@@ -313,10 +321,10 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     public var ungroundedRecommendationNote: String? {
         switch self {
         case .google:
-            "Recommended for accuracy. No app on iOS can read another's screen, so this one is "
-                + "working from the audio alone — and still spells unfamiliar names and versions "
-                + "far better for it: 41 of 48 on the near-miss suite against xAI's 15. You pay "
-                + "in latency, and unevenly — one three-second clip took 5 s and the next 61 s."
+            "Recommended for technical dictation. On seven recent jargon-heavy recordings, "
+                + "Gemini 3.5 retained names and commands more consistently than 3.6; no human "
+                + "goldens exist for those clips yet. On iOS it works from the audio alone. The "
+                + "older near-miss goldens still favour 3.6."
         case .xai:
             "Recommended for speed. About 1 s for a short clip, 2.8 s for two minutes of speech, "
                 + "and no tail. An unfamiliar name or a version number is transcribed by ear "

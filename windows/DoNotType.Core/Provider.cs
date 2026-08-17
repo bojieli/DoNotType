@@ -106,28 +106,22 @@ public enum ProviderKind
 public static class ProviderFactory
 {
     /// <summary>
-    /// What a fresh install uses. A recogniser rather than a model, measured on the 100-clip
-    /// ordinary-dictation corpus: xAI is the fastest backend tested (0.98 s median against the
-    /// model's 5.44 s) and the only recogniser that does not fall over on non-English speech —
-    /// Deepgram failed 44 of 68 Chinese clips outright. See docs/EVALUATION.md.
-    /// </summary>
-    /// <summary>
     /// What a fresh install uses. A model, because a recogniser cannot see the screen and screen
-    /// grounding is the entire point of this project: on the near-miss suite Gemini grounded
-    /// scores 43/48 against xAI's 15/48. It is bought with latency — a recogniser is 0.98 s median
-    /// on the ordinary-dictation corpus against several seconds for a model — and the exact
-    /// first-party figure is unmeasured, so it is not quoted here. See docs/EVALUATION.md.
+    /// grounding is the entire point of this project. The current 3.5 recommendation comes from a
+    /// seven-clip technical-dictation sweep: it retained the current jargon more consistently than
+    /// 3.6 and returned faster, though those clips have no human goldens. The older adversarial
+    /// near-miss goldens still favour 3.6. See docs/EVALUATION.md.
     /// </summary>
     public const ProviderKind DefaultForNewInstalls = ProviderKind.Gemini;
 
     public static string DefaultModel(this ProviderKind kind) => kind switch
     {
-        ProviderKind.Gemini => "gemini-3.6-flash",
+        ProviderKind.Gemini => "gemini-3.5-flash",
         // nova-3 is the only Deepgram model with keyterm biasing, its sole grounding channel.
         ProviderKind.Deepgram => "nova-3",
         ProviderKind.Mistral => "voxtral-mini-latest",
         ProviderKind.XAI => "grok-stt",
-        _ => "google/gemini-3.6-flash",
+        _ => "google/gemini-3.5-flash",
     };
 
     public static string ApiKeyEnvVar(this ProviderKind kind) => kind switch
@@ -224,9 +218,10 @@ public static class ProviderFactory
     public static string RecommendationNote(this ProviderKind kind) => kind switch
     {
         ProviderKind.Gemini =>
-            "Recommended for accuracy. It reads the screen, so it spells the names and versions "
-            + "already in front of you: 44 of 48 on the near-miss suite against xAI's 15. You pay "
-            + "in latency, and unevenly — one three-second clip took 5 s and the next 61 s.",
+            "Recommended for technical dictation. On seven recent jargon-heavy recordings, "
+            + "Gemini 3.5 retained names and commands more consistently than 3.6; no human "
+            + "goldens exist for those clips yet. It reads the screen for spelling context. "
+            + "The older near-miss goldens still favour 3.6.",
         ProviderKind.XAI =>
             "Recommended for speed. About 1 s for a short clip, 2.8 s for two minutes of speech, "
             + "and no tail. It cannot see the screen, so an unfamiliar name or a version number "

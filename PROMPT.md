@@ -229,9 +229,11 @@ versus "unified sauce" versus "verified source"). The older models cannot be sco
 substitution on this case at all, because they do not produce either the spoken or the decoy value
 — they simply mis-hear it.
 
-So `gemini-3.6-flash` stays the default, and the substitution numbers above are specific to it.
-Re-run the sweep on any model bump: multimodal quality moves between releases, and this is the
-only measurement in the project that would notice.
+That result made `gemini-3.6-flash` the default at the time, and the substitution numbers above
+remain specific to it. On 2026-08-17 the product default moved to `gemini-3.5-flash` after a newer
+seven-clip technical-dictation sweep, which has no human goldens and therefore does not replace
+this historical accuracy result. Re-run both workloads on any model bump: multimodal quality moves
+between releases, and these are the measurements in the project that would notice.
 
 ### 2026-08-16 — the markers were sending the documentation
 

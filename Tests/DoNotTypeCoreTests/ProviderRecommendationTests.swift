@@ -42,6 +42,7 @@ final class ProviderRecommendationTests: XCTestCase {
     /// settings window is arguing with the installer.
     func testTheDefaultForNewInstallsIsRecommended() {
         XCTAssertTrue(ProviderKind.defaultForNewInstalls.isRecommended)
+        XCTAssertEqual(ProviderKind.defaultForNewInstalls.defaultModel, "gemini-3.5-flash")
     }
 
     /// `displayName` names what ran, and it is written into history rows, log lines and connection
@@ -65,5 +66,7 @@ final class ProviderRecommendationTests: XCTestCase {
         // And the grounded one must, since that is the entire claim being made for it.
         let grounded = try XCTUnwrap(ProviderKind.google.recommendationNote)
         XCTAssertTrue(grounded.contains("reads the screen"))
+        XCTAssertTrue(grounded.contains("seven recent jargon-heavy recordings"))
+        XCTAssertTrue(grounded.contains("no human goldens"))
     }
 }

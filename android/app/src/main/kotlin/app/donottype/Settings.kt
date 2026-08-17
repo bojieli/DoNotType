@@ -91,7 +91,7 @@ object Settings {
 
     /**
      * The model for the selected provider, defaulting to that provider's own default rather than
-     * to Gemini's — otherwise choosing Deepgram would send `gemini-3.6-flash` to `/v1/listen`.
+     * to Gemini's — otherwise choosing Deepgram would send `gemini-3.5-flash` to `/v1/listen`.
      */
     var model: String
         get() {

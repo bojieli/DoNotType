@@ -1069,12 +1069,10 @@ You are a transcription engine. Output only what the speaker said.
   <section>
     <h2>Model choice and what it costs you</h2>
     <p>
-      <strong>Default to <code>gemini-3.6-flash</code></strong> — the current workhorse tier, shipped
-      July 2026. Gemini 3 Flash is prior-generation. Both take audio and images natively, but this
-      app is judged on getting hard words right, and the whole design now rests on the model
-      following a subtle instruction — correct spelling, never content — under pressure from context
-      that contains a plausible wrong answer. That is an instruction-following problem, and it is
-      worth paying the better tier for. Pricing is a setting, not a design constraint.
+      <strong>Default to <code>gemini-3.5-flash</code></strong>. In the newest real technical-
+      dictation sweep it retained the current names and commands more consistently than 3.6 and
+      returned faster. Those seven recordings do not have human goldens, while the older adversarial
+      near-miss suite still favours 3.6, so keep the model editable and keep both in the evaluation.
     </p>
 
     <div class="scroll">
@@ -1084,17 +1082,17 @@ You are a transcription engine. Output only what the speaker said.
         </thead>
         <tbody>
           <tr>
-            <td class="k">gemini-3.6-flash <span class="pill">default</span></td>
+            <td class="k">gemini-3.5-flash <span class="pill">default</span></td>
             <td>$1.50 all modalities</td>
-            <td>$7.50</td>
-            <td class="num">≈ $0.0071</td>
-            <td class="num">≈ $12.00</td>
+            <td>$9.00</td>
+            <td class="num">≈ $0.0073</td>
+            <td class="num">≈ $12.30</td>
           </tr>
           <tr>
             <td class="k">↳ image path (thin AX)</td>
             <td>image instead of text</td>
             <td>—</td>
-            <td class="num">≈ $0.0053</td>
+            <td class="num">≈ $0.0055</td>
             <td class="num">—</td>
           </tr>
           <tr>
@@ -1114,7 +1112,8 @@ You are a transcription engine. Output only what the speaker said.
       1,690 dictations and 15.6 hours a month. At 32 tokens per audio-second a mean dictation is
       ~1,066 audio tokens, ~120 out, and the context is the new variable: ~2,500 tokens for 10,000
       characters of visible text, ~500 for the caret window, or ~1,300 for a 1024 px screenshot on
-      the thin-AX path. <strong>Twelve dollars a month is not a reason to ship the weaker model.</strong>
+      the thin-AX path. <strong>About twelve dollars a month is not a reason to ignore the measured
+      workload.</strong>
       Keep the model a setting so the cost-sensitive can drop down, and keep both in the eval so the
       gap is a measured number rather than an assumption.
     </p>

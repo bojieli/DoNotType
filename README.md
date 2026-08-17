@@ -241,7 +241,7 @@ for masking before the first request, and anything else key-shaped is caught by 
 ## Settings
 
 - **Providers and keys** — the provider is who serves the request and the model is what runs it,
-  so they are two fields and the window states the pair: *gemini-3.6-flash via Google*. Google,
+  so they are two fields and the window states the pair: *gemini-3.5-flash via Google*. Google,
   OpenRouter, a server you run yourself (vLLM, llama.cpp), or a speech recognition service
   (xAI, Deepgram, Mistral Voxtral), with a live connection test. Keys **and models are stored per
   provider**, so switching backends to compare them is one dropdown rather than a re-typing
@@ -299,12 +299,11 @@ swift run dnt-eval ablate                     # compare designs on fidelity and 
 ./eval/model-sweep.sh                         # compare model versions
 ```
 
-Historical runs found `gemini-3.6-flash` strongest on the reference clip, while older Gemini models
-misheard its version number and `openai/gpt-audio` sometimes replied conversationally instead of
-transcribing. The exact real-speech fixtures are not present in this checkout, so those figures are
-handoff context rather than a currently reproducible benchmark; the ignored synthetic stand-ins are
-not valid replacements. Current downloaded-checkpoint tests use separately labeled public real
-audio. Full status in [docs/MODELS.md](docs/MODELS.md); method in
+Historical golden runs found `gemini-3.6-flash` strongest on the adversarial near-miss suite. A
+newer seven-clip sweep of real technical dictation found `gemini-3.5-flash` retained the current
+names and commands more consistently and returned faster, so 3.5 is now the default. Those newer
+clips do not have human references yet: this is a workload recommendation, not a claim that 3.5
+reversed the older golden result. Full status in [docs/MODELS.md](docs/MODELS.md); method in
 [docs/EVALUATION.md](docs/EVALUATION.md).
 
 ## Privacy

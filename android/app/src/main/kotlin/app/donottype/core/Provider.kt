@@ -72,7 +72,7 @@ enum class ProviderKind(
     val defaultModel: String,
     val isSpeechRecognition: Boolean,
 ) {
-    GEMINI("gemini", "Gemini", "gemini-3.6-flash", false),
+    GEMINI("gemini", "Gemini", "gemini-3.5-flash", false),
 
     /**
      * Any model through OpenRouter. Verified to forward audio, and the way to reach models Google
@@ -84,7 +84,7 @@ enum class ProviderKind(
     OPENROUTER(
         "openrouter",
         "OpenRouter (gateway — prefer Gemini for Gemini models)",
-        "google/gemini-3.6-flash",
+        "google/gemini-3.5-flash",
         false,
     ),
     DEEPGRAM("deepgram", "Deepgram (transcription only)", "nova-3", true),
@@ -146,10 +146,10 @@ enum class ProviderKind(
     val recommendationNote: String
         get() = when (this) {
             GEMINI ->
-                "Recommended for accuracy. It reads the screen, so it spells the names and " +
-                    "versions already in front of you: 44 of 48 on the near-miss suite against " +
-                    "xAI's 15. You pay in latency, and unevenly — one three-second clip took 5 s " +
-                    "and the next 61 s."
+                "Recommended for technical dictation. On seven recent jargon-heavy recordings, " +
+                    "Gemini 3.5 retained names and commands more consistently than 3.6; no human " +
+                    "goldens exist for those clips yet. It reads the screen for spelling context. " +
+                    "The older near-miss goldens still favour 3.6."
             XAI ->
                 "Recommended for speed. About 1 s for a short clip, 2.8 s for two minutes of " +
                     "speech, and no tail. It cannot see the screen, so an unfamiliar name or a " +
@@ -184,9 +184,10 @@ enum class ProviderKind(
          * What a fresh install uses.
          *
          * A model rather than a recogniser, because a recogniser cannot see the screen and screen
-         * grounding is the entire point of this project. On the adversarial near-miss suite the
-         * two shipping configurations are not close: Gemini grounded scores 43/48 against xAI's
-         * 15/48.
+         * grounding is the entire point of this project. The current 3.5 recommendation comes
+         * from a seven-clip technical-dictation sweep: it retained the current jargon more
+         * consistently than 3.6 and returned faster, though those clips have no human goldens.
+         * The older adversarial near-miss goldens still favour 3.6.
          *
          * It is bought with latency. On the 100-clip ordinary-dictation corpus a recogniser is
          * far faster — xAI 0.98 s median — while a model is several seconds. The exact figure for

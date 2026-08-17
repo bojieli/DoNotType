@@ -114,7 +114,7 @@ class ProviderException(
  */
 class GeminiClient(
     private val apiKey: String,
-    override val model: String = "gemini-3.6-flash",
+    override val model: String = "gemini-3.5-flash",
     private val endpoint: String = "https://generativelanguage.googleapis.com/v1beta/interactions",
     private val thinkingLevel: String? = null,
 ) : TranscriptionProvider {

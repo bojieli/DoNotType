@@ -278,6 +278,14 @@ deliberate:
 
 ### Changed
 
+- **Gemini 3.5 Flash replaces 3.6 as the recommended Google model.** Seven recent retained
+  technical-dictation recordings — 5m48s covering product names, shell commands, networking terms
+  and Mandarin/English switching — gave 3.5 the strongest qualitative terminology retention among
+  the hosted models tested, at 2.54 s median against 10.54 s for 3.6. The clips have no human
+  goldens, so this is explicitly a workload recommendation rather than an accuracy score; the
+  older golden near-miss campaign still favours 3.6. Fresh installs and unset Google/OpenRouter
+  model fields now use `gemini-3.5-flash`; an explicitly stored 3.6 selection is preserved.
+
 - **The recording pill shows how loud you are, rather than that sound exists.** The meter was five
   bars driven by `min(1, rms * 6)` and animated by a travelling sine wave. Measured across every
   speech fixture in `eval/audio/`, that scale spent 4–77% of the frames somebody was actually

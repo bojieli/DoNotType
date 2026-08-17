@@ -60,6 +60,8 @@ public sealed class ProviderRecommendationTests
     public void TheDefaultForNewInstallsIsRecommended()
     {
         Assert.True(ProviderFactory.DefaultForNewInstalls.IsRecommended());
+        Assert.Equal("gemini-3.5-flash", ProviderFactory.DefaultForNewInstalls.DefaultModel());
+        Assert.Equal("google/gemini-3.5-flash", ProviderKind.OpenRouter.DefaultModel());
     }
 
     /// <summary>
@@ -87,7 +89,8 @@ public sealed class ProviderRecommendationTests
     public void TheNotesMakeTheMeasuredClaimAndNotAVaguerOne()
     {
         Assert.Contains("reads the screen", ProviderKind.Gemini.RecommendationNote());
-        Assert.Contains("44 of 48", ProviderKind.Gemini.RecommendationNote());
+        Assert.Contains("seven recent jargon-heavy recordings", ProviderKind.Gemini.RecommendationNote());
+        Assert.Contains("no human goldens", ProviderKind.Gemini.RecommendationNote());
         Assert.Contains("cannot see the screen", ProviderKind.XAI.RecommendationNote());
         Assert.Contains("15 of 48", ProviderKind.XAI.RecommendationNote());
     }

@@ -315,7 +315,7 @@ Sweeping the same clip across model IDs with everything else held constant:
 
 | model | 10 s clip | 30 s clip |
 |---|---|---|
-| `gemini-3.6-flash` (default) | 5.9 s | 9.3 s |
+| `gemini-3.6-flash` (default at measurement time) | 5.9 s | 9.3 s |
 | `gemini-3.5-flash` | **2.6 s** | **3.2 s** |
 | `gemini-3-flash-preview` | 2.5 s | 3.5 s |
 | `gemini-2.5-flash` | errors on every request | — |
@@ -425,7 +425,7 @@ these cells from synthetic audio or the public smoke-test clips.
 
 | model | version transcribed with **no** context | verdict |
 |---|---|---|
-| `gemini-3.6-flash` | "Gemini 1.5" | correct — the default |
+| `gemini-3.6-flash` | "Gemini 1.5" | correct — the default at measurement time |
 | `gemini-3.5-flash` | "Gemini 2.4" | mis-hears it |
 | `gemini-3-flash-preview` | "Gimma 2.0" | mis-hears it |
 | `gemini-2.5-flash` | — | retired: "no longer available to new users" |
@@ -1018,7 +1018,7 @@ because the comment claiming the constraint was measurable had never been true.)
 
 ### Verdict
 
-`gemini-3.6-flash` stays the recommended model. 3.7 is available — the model field is free text on
+At this point `gemini-3.6-flash` stayed the recommended model. 3.7 is available — the model field is free text on
 every platform — but on this corpus it is less accurate, regresses more, and gets the one number
 this project is named for wrong four times out of five with no context at all.
 
@@ -1133,7 +1133,7 @@ recorded so the numbers can be re-checked without a key or a bill.
 | configuration | this session | previously | verdict |
 |---|---|---|---|
 | **xai · grok-stt** | **15 / 48**, 0 regressed | 15 / 48 | replicates exactly |
-| **google · native · 3.6-flash · grounded** (the default) | **43 / 48**, 2 regressed | 44 / 48 ×2, 1 regressed | within the noise floor |
+| **google · native · 3.6-flash · grounded** (default at measurement time) | **43 / 48**, 2 regressed | 44 / 48 ×2, 1 regressed | within the noise floor |
 
 ```bash
 swift run dnt-eval suite eval/nearmiss --provider xai --model grok-stt \
@@ -1176,3 +1176,27 @@ corpus for latency and Chinese coverage, not on this suite.
 one had been sitting in the front page of the repository.** Retracting a figure inside an
 evaluation write-up is cheap; the summary that quotes it is where the cost lands, and nothing in
 the process was checking that the two still agreed. The release checklist now does.
+
+## Technical-dictation sweep changes the default — 2026-08-17
+
+Seven retained DoNotType recordings, 5m48s total, were transcribed through the current provider
+paths without screen context. They include the terms Grok 4, Grok STT, DoNotType, VS Code
+Remote-SSH, JetBrains Gateway, DeepSeek Harness, TUN, HTTP proxy, Clash Verge, a Git command,
+RTX-PRO, middleware, throughput, and Mandarin/English code-switching.
+
+There are **no human transcripts for these clips**. Existing history text was treated as another
+hypothesis, never as a reference. The comparison can therefore report obvious canonical spellings,
+truncation, hallucination and latency, but not WER or an accuracy winner.
+
+| model | median per clip | qualitative result |
+|---|---:|---|
+| `gemini-3.5-flash` | **2.54 s** | retained the broadest set of current names and commands; still wrote `Groq 4` and likely `preview binary` |
+| `gemini-3.6-flash` | 10.54 s | no consistent gain; the request clip produced `Grok-1`, `Grok-STD`, and “current pipe application” |
+| `grok-stt` | **1.46 s** | fastest hosted baseline; likely misses included `GraphR-4`, `JetBrains Gate`, `RTX Dash Pro`, and `middle wear` |
+| `voxtral-mini-latest` | 1.97 s | strong on several names, mixed on Clash Verge, the Git command, and middleware |
+
+The product default is now `gemini-3.5-flash` through Google, with
+`google/gemini-3.5-flash` as OpenRouter's default model. This prioritises the current
+jargon-heavy workload and lower observed latency. It does not overwrite the older golden finding:
+3.6 remains the measured leader on the adversarial near-miss suite. A human-corrected corpus is
+required before the newer result can be described as an accuracy improvement.

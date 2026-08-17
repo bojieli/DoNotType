@@ -205,7 +205,7 @@ final class Settings {
 
     /// Stored per provider, like the Keychain entry above.
     ///
-    /// A single shared field would send `gemini-3.6-flash` to Deepgram's `/v1/listen` the moment
+    /// A single shared field would send `gemini-3.5-flash` to Deepgram's `/v1/listen` the moment
     /// someone switched backend to compare them — which is the whole reason there is more than
     /// one. The legacy flat value is read as Gemini's so an existing install keeps its choice.
     var model: String {

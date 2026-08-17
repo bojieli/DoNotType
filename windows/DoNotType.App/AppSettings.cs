@@ -248,7 +248,7 @@ public sealed class AppSettings
 
     /// <summary>
     /// The model for one provider, defaulting to that provider's own default rather than to
-    /// Gemini's — otherwise choosing Deepgram would send <c>gemini-3.6-flash</c> to /v1/listen.
+    /// Gemini's — otherwise choosing Deepgram would send <c>gemini-3.5-flash</c> to /v1/listen.
     /// </summary>
     public string ModelFor(ProviderKind kind)
     {

@@ -93,7 +93,12 @@ final class ProviderIdentityTests: XCTestCase {
             ProviderKind.google.label(forModel: "gemini-3.6-flash"),
             "gemini-3.6-flash via Google")
         // An unset model field still describes the configuration truthfully.
-        XCTAssertEqual(ProviderKind.google.label(forModel: "  "), "gemini-3.6-flash via Google")
+        XCTAssertEqual(ProviderKind.google.label(forModel: "  "), "gemini-3.5-flash via Google")
+    }
+
+    func testRecommendedGeminiDefaultsToTheTechnicalDictationWinner() {
+        XCTAssertEqual(ProviderKind.google.defaultModel, "gemini-3.5-flash")
+        XCTAssertEqual(ProviderKind.openrouter.defaultModel, "google/gemini-3.5-flash")
     }
 
     /// The rename must not read as a factory reset to anyone who had configured a backend.

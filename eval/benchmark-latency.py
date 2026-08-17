@@ -45,8 +45,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BINARY = ROOT / ".build/release/dnt"
 
-# The Gemini Flash family as shipped: 3.6 is the default, 3.7 its successor, 3.5 and the 3
-# preview its predecessors. Same provider for all four so the transport is not a variable.
+# The Gemini Flash family under comparison: 3.6 was the default when this campaign was written,
+# 3.7 its successor, and 3.5 is the current product default. Same provider for all four so the
+# transport is not a variable.
 DEFAULT_MODELS = [
     "gemini-3.6-flash",
     "gemini-3.7-flash",

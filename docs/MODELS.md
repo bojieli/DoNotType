@@ -66,7 +66,7 @@ The same clip, no screen context. What each model heard where the speaker said "
 | `openai/gpt-audio-mini` | "Gemini 2." ❌ | no punctuation at all; "the **L I M** processing speed" |
 
 Only `gemini-3.6-flash` transcribes the number correctly, and its general transcription is visibly
-better on the same audio. **`gemini-3.6-flash` is the default for this reason.**
+better on the same audio. **`gemini-3.6-flash` became the default at the time for this reason.**
 
 ### Substitution under hostile context
 
@@ -692,11 +692,16 @@ are whatever is on screen — on `real-acronym` that is `GRPO, PPO` while the sp
 
 ## Recommendation
 
-**`gemini-3.6-flash` on the native Gemini API**, still, and now against a wider field: it beats
-its own successor, its two predecessors, and every speech recognition backend measured. The
-uploaded exact fixture now shows that Qwen3-Omni, Voxtral Small, and Gemma 4 all fail the no-context `Gemini 1.5` gate, so none
-can currently replace that hosted path on this workload. OpenRouter remains a working fallback and
-useful for models Google does not serve directly.
+**`gemini-3.5-flash` on the native Gemini API** for the current technical-dictation workload. On
+2026-08-17 it retained names and canonical commands more consistently than 3.6 across seven recent
+real recordings and returned in 2.54 s median against 10.54 s for 3.6. That sweep has no human
+goldens, so it is qualitative evidence rather than an accuracy score.
+
+This does **not** erase the older golden result below: on the adversarial near-miss suite 3.6 still
+scores 43–44 / 48 against 31–35 / 48 for 3.5. The product recommendation now prioritises the
+maintainer's current jargon-heavy dictation; the historical suite continues to report the grounding
+trade-off it actually measured. OpenRouter remains a working fallback and useful for models Google
+does not serve directly.
 
 ### What the settings window recommends
 
@@ -707,7 +712,7 @@ single question:
 
 | pick | for | measured |
 |---|---|---|
-| **Google** (`gemini-3.6-flash`) | accuracy | 44 / 48 on the near-miss suite; 5–60 s, bimodal |
+| **Google** (`gemini-3.5-flash`) | technical dictation | best qualitative term retention on 7 recent real clips; no human goldens; 2.54 s median |
 | **xAI** (`grok-stt`) | latency | 15 / 48 (25 with keyterms); ~1 s a clip, no tail |
 
 The other four stay in the list unlabelled, each for the narrower question it answers: OpenRouter
@@ -730,7 +735,7 @@ Reproduce with `eval/benchmark-latency.py`; raw per-trial seconds in `eval/resul
 
 | model | think | short (3.0 s) median / p90 / max | long (22.0 s) median / p90 / max | Δ length |
 |---|---|---|---|---|
-| **`gemini-3.6-flash`** (default) | minimal | 4.39 s / 10.59 s / **39.06 s** | 7.00 s / 11.61 s / **33.53 s** | +2.61 s |
+| **`gemini-3.6-flash`** (default at measurement time) | minimal | 4.39 s / 10.59 s / **39.06 s** | 7.00 s / 11.61 s / **33.53 s** | +2.61 s |
 | `gemini-3.7-flash` | low | 3.79 s / 15.53 s / **26.34 s** | 6.57 s / 11.91 s / 16.63 s | +2.78 s |
 | `gemini-3.5-flash` | minimal | **1.34 s** / 1.62 s / 1.93 s | **1.95 s** / 2.14 s / 2.59 s | +0.61 s |
 | `gemini-3-flash-preview` | minimal | 2.06 s / 2.41 s / 2.73 s | 1.97 s / 2.28 s / 2.56 s | **−0.09 s** |

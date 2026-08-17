@@ -55,6 +55,8 @@ class ProviderRecommendationTest {
     @Test
     fun `the default for new installs is recommended`() {
         assertTrue(ProviderKind.DEFAULT.isRecommended)
+        assertEquals("gemini-3.5-flash", ProviderKind.DEFAULT.defaultModel)
+        assertEquals("google/gemini-3.5-flash", ProviderKind.OPENROUTER.defaultModel)
     }
 
     /**
@@ -78,7 +80,8 @@ class ProviderRecommendationTest {
     @Test
     fun `the notes make the measured claim and not a vaguer one`() {
         assertTrue(ProviderKind.GEMINI.recommendationNote.contains("reads the screen"))
-        assertTrue(ProviderKind.GEMINI.recommendationNote.contains("44 of 48"))
+        assertTrue(ProviderKind.GEMINI.recommendationNote.contains("seven recent jargon-heavy recordings"))
+        assertTrue(ProviderKind.GEMINI.recommendationNote.contains("no human goldens"))
         assertTrue(ProviderKind.XAI.recommendationNote.contains("cannot see the screen"))
         assertTrue(ProviderKind.XAI.recommendationNote.contains("15 of 48"))
     }
