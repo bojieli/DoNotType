@@ -11,7 +11,9 @@ import app.donottype.core.NoSpeechException
 import app.donottype.core.Log as DntLog
 import app.donottype.core.RewriteAvailability
 import app.donottype.core.RewriteStyle
+import app.donottype.core.ProviderFactory
 import app.donottype.core.ProviderKind
+import app.donottype.core.ProviderTransport
 import app.donottype.core.ScreenContext
 import android.Manifest
 import android.content.Intent
@@ -79,6 +81,9 @@ class DoNotTypeIME : InputMethodService() {
 
     /** Captured at press, before focus can move. */
     private var pendingContext: ScreenContext? = null
+
+    /** Which field was focused when the key went down: its app, and the editor's id within it. */
+    private var pendingTarget: Pair<String?, Int>? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -355,6 +360,37 @@ class DoNotTypeIME : InputMethodService() {
 
     // MARK: - Dictation
 
+    /**
+     * Opens the connection the dictation about to be recorded will need.
+     *
+     * Silent on failure by design: nothing has been asked for yet, so there is nothing to report.
+     * A dead connection found here is replaced and the user never learns it happened.
+     */
+    private fun warmUpConnection() {
+        val key = Settings.apiKey
+        if (key.isNullOrBlank()) return
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                ProviderFactory.create(Settings.provider, key, Settings.model).endpointOrigin
+            }.getOrNull()?.let { ProviderTransport.warmUp(it) }
+        }
+    }
+
+    /**
+     * Puts the transcript on the clipboard when it must not be typed.
+     *
+     * The words have been recorded, sent and paid for by then, and the difference between "paste
+     * it" and "nothing happened" is the difference between one gesture and an app that looks broken.
+     */
+    private fun copyForManualPaste(text: String) {
+        runCatching {
+            val clipboard = getSystemService(android.content.ClipboardManager::class.java)
+            clipboard?.setPrimaryClip(
+                android.content.ClipData.newPlainText("DoNotType transcript", text),
+            )
+        }
+    }
+
     private fun beginRecording() {
         if (state != State.IDLE) return
 
@@ -380,6 +416,15 @@ class DoNotTypeIME : InputMethodService() {
                 "package" to (currentInputEditorInfo?.packageName ?: "?"),
             ),
         ) { "recording started" }
+
+        // Which field the words are meant for, decided now rather than when they arrive.
+        pendingTarget = currentInputEditorInfo?.let { it.packageName to it.fieldId }
+
+        // The same trick as the screen capture below, for the network. Opening a connection costs
+        // about a second, and whether the pooled one is still alive cannot be known without using
+        // it — so both happen here, against speech the user was going to produce anyway, rather
+        // than after they stop with somebody watching. See ProviderTransport.
+        warmUpConnection()
 
         // Phase 1 equivalent: snapshot the screen at press, while the field being dictated into is
         // still the focused one.
@@ -431,6 +476,31 @@ class DoNotTypeIME : InputMethodService() {
                 onSuccess = { record ->
                     // The rewrite when there is one, the transcript when there is not.
                     val delivered = record.styledText ?: record.text
+                    // Where the user was looking when they spoke, not where they are looking now.
+                    //
+                    // commitText goes to whatever field holds focus at the moment it fires, which
+                    // is the right answer only while that is still the same field. It stopped
+                    // being the same field every time a dictation took a minute: the user gave up
+                    // waiting and moved on, and the transcript arrived in whatever they had moved
+                    // on to. On desktop, where this was found, that typed 292 characters of speech
+                    // into the app's own settings window.
+                    //
+                    // Nothing is lost when this fires: the transcript is in the history and on the
+                    // clipboard, one paste from where it was going.
+                    val focusedNow = currentInputEditorInfo?.let { it.packageName to it.fieldId }
+                    val movedOn = pendingTarget != null && focusedNow != pendingTarget
+                    if (delivered.isNotEmpty() && movedOn) {
+                        copyForManualPaste(delivered)
+                        log.warn(
+                            mapOf(
+                                "spokeInto" to (pendingTarget?.first ?: "?"),
+                                "nowFocused" to (focusedNow?.first ?: "none"),
+                            ),
+                        ) { "focus moved while transcribing; not typing into a field the user did not dictate into" }
+                        showStatus("Copied — paste it where you want it")
+                        state = State.ERROR
+                        return@fold
+                    }
                     if (delivered.isNotEmpty()) {
                         currentInputConnection?.commitText(delivered, 1)
                     }

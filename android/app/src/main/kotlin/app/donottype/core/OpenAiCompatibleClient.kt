@@ -1,5 +1,6 @@
 package app.donottype.core
 
+import app.donottype.core.ProviderTransport.applyPolicy
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -32,6 +33,8 @@ class OpenAiCompatibleClient(
 ) : TranscriptionProvider {
 
     override fun grounding(): GroundingSupport = GroundingSupport.Multimodal
+
+    override val endpointOrigin: String? get() = ProviderTransport.origin(endpoint)
 
     /**
      * `fidelity` and `keyterms` are ignored, and that is not an oversight: fidelity already reached
@@ -85,8 +88,7 @@ class OpenAiCompatibleClient(
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
-            connectTimeout = 15_000
-            readTimeout = 120_000
+            applyPolicy(endpoint)
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("Authorization", "Bearer $apiKey")
             extraHeaders.forEach { (key, value) -> setRequestProperty(key, value) }

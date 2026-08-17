@@ -1,5 +1,6 @@
 package app.donottype.core
 
+import app.donottype.core.ProviderTransport.applyPolicy
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -122,6 +123,8 @@ class GeminiClient(
     /** A multimodal model: it reads the instruction, the labelled screen text and the screenshot. */
     override fun grounding(): GroundingSupport = GroundingSupport.Multimodal
 
+    override val endpointOrigin: String? get() = ProviderTransport.origin(endpoint)
+
     /**
      * `fidelity` and `keyterms` are ignored here, and that is not an oversight. Fidelity already
      * reached this backend inside [systemInstruction], and keyterms exist only for endpoints with
@@ -157,8 +160,7 @@ class GeminiClient(
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
-            connectTimeout = 15_000
-            readTimeout = 120_000
+            applyPolicy(endpoint)
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("x-goog-api-key", apiKey)
         }

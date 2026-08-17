@@ -41,6 +41,16 @@ interface TranscriptionProvider {
      */
     fun grounding(): GroundingSupport
 
+    /**
+     * Where a dictation will be sent, so the connection can be opened while the user is still
+     * speaking rather than after they stop. Null disables warm-up for this backend.
+     *
+     * The origin rather than the endpoint: any answer from the host proves the connection, and a
+     * GET to the API path would be a real call with a real bill.
+     */
+    val endpointOrigin: String?
+        get() = null
+
     suspend fun transcribe(
         systemInstruction: String,
         parts: List<InputPart>,

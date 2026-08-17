@@ -1,5 +1,6 @@
 package app.donottype.core
 
+import app.donottype.core.ProviderTransport.applyPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -89,6 +90,8 @@ class DeepgramClient(
 ) : TranscriptionProvider {
     override val name = "deepgram"
 
+    override val endpointOrigin: String? get() = ProviderTransport.origin(endpoint)
+
     override fun grounding(): GroundingSupport =
         if (model.startsWith(KEYTERM_CAPABLE_PREFIX)) {
             GroundingSupport.Keyterms(MAX_KEYTERMS, MAX_KEYTERM_CHARS)
@@ -126,8 +129,7 @@ class DeepgramClient(
         val connection = (URL(endpoint + query).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
-            connectTimeout = 15_000
-            readTimeout = 120_000
+            applyPolicy(endpoint)
             setRequestProperty("Authorization", "Token $apiKey")
             setRequestProperty("Content-Type", audio.mimeType)
         }
@@ -216,6 +218,8 @@ class MistralClient(
 
     override fun grounding(): GroundingSupport = GroundingSupport.None
 
+    override val endpointOrigin: String? get() = ProviderTransport.origin(endpoint)
+
     override suspend fun transcribe(
         systemInstruction: String,
         parts: List<InputPart>,
@@ -241,8 +245,7 @@ class MistralClient(
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
-            connectTimeout = 15_000
-            readTimeout = 120_000
+            applyPolicy(endpoint)
             setRequestProperty("Authorization", "Bearer $apiKey")
             setRequestProperty("Content-Type", "multipart/form-data; boundary=${body.boundary}")
         }
@@ -326,6 +329,8 @@ class XAISpeechClient(
 ) : TranscriptionProvider {
     override val name = "xai"
 
+    override val endpointOrigin: String? get() = ProviderTransport.origin(endpoint)
+
     override fun grounding(): GroundingSupport =
         GroundingSupport.Keyterms(MAX_KEYTERMS, MAX_KEYTERM_CHARS)
 
@@ -358,8 +363,7 @@ class XAISpeechClient(
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
-            connectTimeout = 15_000
-            readTimeout = 120_000
+            applyPolicy(endpoint)
             setRequestProperty("Authorization", "Bearer $apiKey")
             setRequestProperty("Content-Type", "multipart/form-data; boundary=${body.boundary}")
         }
