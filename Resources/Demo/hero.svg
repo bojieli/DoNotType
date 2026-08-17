@@ -42,7 +42,7 @@
   <line x1="430" y1="24" x2="430" y2="236" class="rule"/>
 
   <!-- The two outcomes -->
-  <text x="466" y="34" class="label">A tool that learns your vocabulary</text>
+  <text x="466" y="34" class="label">An opaque vocabulary prior</text>
   <rect x="466" y="46" width="386" height="44" rx="6" class="panel"/>
   <text x="482" y="74" class="mono" fill="#d1d5db">switch to Gemini <tspan class="bad">3</tspan> Flash</text>
   <text x="466" y="108" font-size="12" class="dim">the screen won, and you cannot see that it did</text>

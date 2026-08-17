@@ -132,6 +132,7 @@ final class OverlayState {
         /// Brief confirmation that words were inserted, so success is visible rather than a
         /// silent disappearance the user has to infer from the text appearing.
         case inserted(Int, rewriteFailed: Bool)
+        case learned(String)
         case failed(String)
     }
 
@@ -214,6 +215,12 @@ private struct OverlayView: View {
                         + (rewriteFailed ? " — not rewritten" : ""))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
+            case .learned(let message):
+                Image(systemName: "character.book.closed.fill")
+                    .foregroundStyle(.blue)
+                Text(message)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
             case .failed(let message):
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)

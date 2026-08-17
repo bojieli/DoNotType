@@ -18,6 +18,18 @@ struct AccessibilityReader: Sendable {
         var deadline: Duration = .milliseconds(500)
     }
 
+    /// Enough of the focused field to recognise an edit to text the app just inserted. Locations
+    /// are UTF-16 offsets because that is what the macOS accessibility API reports.
+    struct FocusedTextSnapshot: Sendable, Equatable {
+        let pid: pid_t
+        /// Stable identity for the focused accessibility object. A process can have several text
+        /// fields with similar contents; correction learning must not follow focus into another.
+        let elementToken: UInt
+        let value: String
+        let selectionLocation: Int
+        let selectionLength: Int
+    }
+
     static var isTrusted: Bool { AXIsProcessTrusted() }
 
     /// Prompts for Accessibility access, which macOS only shows once per app signature.
@@ -75,6 +87,47 @@ struct AccessibilityReader: Sendable {
             }
             return first ?? captureIdentity()
         }
+    }
+
+    /// Reads only the focused editable value, for optional dictionary learning.
+    ///
+    /// This remains separate from screen grounding: it runs only after insertion, keeps no field
+    /// text, and returns nothing unless the focused element exposes a collapsed caret.
+    static func focusedTextSnapshot(deadline: Duration = .milliseconds(300)) async
+        -> FocusedTextSnapshot?
+    {
+        await withTaskGroup(of: FocusedTextSnapshot?.self) { group in
+            group.addTask { readFocusedTextSnapshot() }
+            group.addTask {
+                try? await Task.sleep(for: deadline)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
+    private static func readFocusedTextSnapshot() -> FocusedTextSnapshot? {
+        guard isTrusted, let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        guard let focused: AXUIElement = copy(appElement, kAXFocusedUIElementAttribute),
+            let role: String = copy(focused, kAXRoleAttribute), isEditableRole(role),
+            let value: String = copy(focused, kAXValueAttribute)
+        else { return nil }
+
+        var rangeValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            focused, kAXSelectedTextRangeAttribute as CFString, &rangeValue) == .success,
+            let rangeValue, CFGetTypeID(rangeValue) == AXValueGetTypeID()
+        else { return nil }
+        var range = CFRange()
+        guard AXValueGetValue(rangeValue as! AXValue, .cfRange, &range), range.location >= 0,
+            range.length >= 0
+        else { return nil }
+        return FocusedTextSnapshot(
+            pid: app.processIdentifier, elementToken: CFHash(focused), value: value,
+            selectionLocation: range.location, selectionLength: range.length)
     }
 
     private static func readEverything(limits: Limits) -> ScreenContext {

@@ -43,13 +43,14 @@ final class GroundingRoutingTests: XCTestCase {
         textBeforeCaret: "Ask Kaelith about ")
 
     private func service(
-        _ grounding: GroundingSupport, keytermBiasing: Bool = false
+        _ grounding: GroundingSupport, keytermBiasing: Bool = false,
+        personalDictionary: [String] = []
     ) -> (TranscriptionService, RecordingProvider) {
         let provider = RecordingProvider(grounding: grounding)
         return (
             TranscriptionService(
                 provider: provider, model: "m", systemInstruction: "instruction",
-                keytermBiasing: keytermBiasing),
+                keytermBiasing: keytermBiasing, personalDictionary: personalDictionary),
             provider
         )
     }
@@ -96,6 +97,42 @@ final class GroundingRoutingTests: XCTestCase {
             .keyterms(maxTerms: 1, maxCharsPerTerm: 50), keytermBiasing: true)
         _ = try await service.transcribe(audio: audio, context: context)
         XCTAssertEqual(provider.lastRequest?.keyterms.count, 1)
+    }
+
+    func testPersonalDictionaryReachesAModelAsAReferenceOnlyPart() async throws {
+        let (service, provider) = service(
+            .multimodal, personalDictionary: ["Kaelith", "GPT-5"])
+        _ = try await service.transcribe(audio: audio, context: nil)
+
+        XCTAssertEqual(provider.lastRequest?.systemInstruction, "instruction")
+        let parts = try XCTUnwrap(provider.lastRequest?.parts)
+        let text = parts.compactMap { if case .text(let value) = $0 { value } else { nil } }
+        XCTAssertEqual(parts.count, 2)
+        XCTAssertEqual(text.count, 1)
+        XCTAssertTrue(text[0].contains("PERSONAL DICTIONARY"))
+        XCTAssertTrue(text[0].contains("Kaelith"))
+        XCTAssertTrue(text[0].contains("GPT-5"))
+        guard let last = parts.last, case .audio = last else {
+            return XCTFail("audio must remain the last part")
+        }
+    }
+
+    func testPersonalDictionaryReachesARecognizerWithoutEnablingScreenBiasing() async throws {
+        let (service, provider) = service(
+            .keyterms(maxTerms: 2, maxCharsPerTerm: 50),
+            personalDictionary: ["Kaelith", "GPT-5", "SwiftUI"])
+        _ = try await service.transcribe(audio: audio, context: context)
+
+        XCTAssertEqual(provider.lastRequest?.keyterms, ["Kaelith", "SwiftUI"])
+    }
+
+    func testDictionaryTakesPriorityOverOptionalScreenTerms() async throws {
+        let (service, provider) = service(
+            .keyterms(maxTerms: 2, maxCharsPerTerm: 50), keytermBiasing: true,
+            personalDictionary: ["UserChosen", "Kaelith"])
+        _ = try await service.transcribe(audio: audio, context: context)
+
+        XCTAssertEqual(provider.lastRequest?.keyterms, ["UserChosen", "Kaelith"])
     }
 
     func testProviderWithNoBiasingChannelGetsNeitherTextNorTerms() async throws {

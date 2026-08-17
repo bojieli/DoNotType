@@ -78,6 +78,11 @@ public struct TranscriptionService: Sendable {
     /// emit anything containing a digit for that reason, but the residual risk on names is real.
     /// Measured in `docs/EVALUATION.md`.
     public var keytermBiasing: Bool
+    /// Spellings the user deliberately supplied. Unlike `keytermBiasing`, this never derives a
+    /// prior from whatever happened to be on screen and is therefore useful even with grounding
+    /// off. Model providers receive a reference-only request part; recognition providers receive
+    /// the subset safe for their bare keyterm channel.
+    public var personalDictionary: [String]
     /// Whether a request that has stalled is joined by a second identical one, the faster of the
     /// two winning. See `StallHedge` for what counts as stalled and why this is not a timeout.
     ///
@@ -93,6 +98,7 @@ public struct TranscriptionService: Sendable {
         encoder: ContextEncoder = ContextEncoder(),
         fidelity: Fidelity = .default,
         keytermBiasing: Bool = false,
+        personalDictionary: [String] = [],
         hedgeStalledRequests: Bool = true
     ) {
         self.provider = provider
@@ -101,6 +107,7 @@ public struct TranscriptionService: Sendable {
         self.encoder = encoder
         self.fidelity = fidelity
         self.keytermBiasing = keytermBiasing
+        self.personalDictionary = PersonalDictionary.sanitized(personalDictionary)
         self.hedgeStalledRequests = hedgeStalledRequests
     }
 
@@ -121,14 +128,21 @@ public struct TranscriptionService: Sendable {
         // put a "grounded" request in the history for a transcript produced without grounding.
         switch provider.grounding(forModel: model) {
         case .multimodal:
+            if let dictionary = PersonalDictionary.referenceBlock(terms: personalDictionary) {
+                parts.append(.text(dictionary))
+            }
             if let context, !context.isEmpty {
                 parts.append(contentsOf: encoder.encode(context))
             }
         case .keyterms(let maxTerms, let maxCharsPerTerm):
+            var derived: [String] = []
             if keytermBiasing, let context, !context.isEmpty {
-                keyterms = Keyterms.derive(
+                derived = Keyterms.derive(
                     from: context, maxTerms: maxTerms, maxCharsPerTerm: maxCharsPerTerm)
             }
+            keyterms = PersonalDictionary.mergingKeyterms(
+                dictionary: personalDictionary, derived: derived, maxTerms: maxTerms,
+                maxCharactersPerTerm: maxCharsPerTerm)
         case .none:
             break
         }
@@ -147,6 +161,7 @@ public struct TranscriptionService: Sendable {
                 "provider": provider.name, "model": model,
                 "grounding": describe(provider.grounding(forModel: model)),
                 "context": context?.isEmpty == false ? "yes" : "no",
+                "dictionary": "\(personalDictionary.count)",
                 "keyterms": "\(keyterms.count)",
                 "fidelity": fidelity.rawValue,
                 "audio": payload.description,

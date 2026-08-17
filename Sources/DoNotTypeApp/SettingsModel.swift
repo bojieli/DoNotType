@@ -285,6 +285,127 @@ final class SettingsModel {
         didSet { Settings.shared.blockedURLPrefixes = blockedURLPrefixes }
     }
 
+    // MARK: - Dictionary
+
+    enum DictionarySource: String, Sendable {
+        case manual
+        case learned
+    }
+
+    struct DictionaryEntry: Identifiable, Equatable, Sendable {
+        let term: String
+        let source: DictionarySource
+
+        var id: String { "\(source.rawValue):\(term.lowercased())" }
+    }
+
+    var learnDictionaryFromEdits: Bool {
+        didSet { Settings.shared.learnDictionaryFromEdits = learnDictionaryFromEdits }
+    }
+    private(set) var dictionaryTerms: [String]
+    private(set) var learnedDictionaryTerms: [String]
+    private(set) var dictionaryStatus: String?
+    private(set) var dictionaryStatusIsError = false
+
+    var dictionaryEntries: [DictionaryEntry] {
+        dictionaryTerms.map { DictionaryEntry(term: $0, source: .manual) }
+            + learnedDictionaryTerms.map { DictionaryEntry(term: $0, source: .learned) }
+    }
+
+    var dictionaryCount: Int { dictionaryEntries.count }
+
+    /// Re-read after the background correction watcher learns something while Settings is open.
+    func refreshDictionary() {
+        dictionaryTerms = Settings.shared.dictionaryTerms
+        learnedDictionaryTerms = Settings.shared.learnedDictionaryTerms
+    }
+
+    func addDictionaryTerm(_ raw: String) -> Bool {
+        do {
+            let all = try PersonalDictionary.adding(
+                raw, to: dictionaryTerms + learnedDictionaryTerms)
+            guard let term = all.last else { return false }
+            dictionaryTerms.append(term)
+            Settings.shared.dictionaryTerms = dictionaryTerms
+            setDictionaryStatus("Added “\(term)”.")
+            return true
+        } catch {
+            setDictionaryStatus(error.localizedDescription, isError: true)
+            return false
+        }
+    }
+
+    func updateDictionaryEntry(_ entry: DictionaryEntry, to raw: String) -> Bool {
+        do {
+            let all = dictionaryTerms + learnedDictionaryTerms
+            let updated = try PersonalDictionary.replacing(entry.term, with: raw, in: all)
+            guard let index = all.firstIndex(of: entry.term) else { return false }
+            let term = updated[index]
+            switch entry.source {
+            case .manual:
+                guard let sourceIndex = dictionaryTerms.firstIndex(of: entry.term) else {
+                    return false
+                }
+                dictionaryTerms[sourceIndex] = term
+                Settings.shared.dictionaryTerms = dictionaryTerms
+            case .learned:
+                guard let sourceIndex = learnedDictionaryTerms.firstIndex(of: entry.term) else {
+                    return false
+                }
+                learnedDictionaryTerms[sourceIndex] = term
+                Settings.shared.learnedDictionaryTerms = learnedDictionaryTerms
+            }
+            setDictionaryStatus("Updated “\(term)”.")
+            return true
+        } catch {
+            setDictionaryStatus(error.localizedDescription, isError: true)
+            return false
+        }
+    }
+
+    func removeDictionaryEntry(_ entry: DictionaryEntry) {
+        switch entry.source {
+        case .manual:
+            dictionaryTerms.removeAll { $0 == entry.term }
+            Settings.shared.dictionaryTerms = dictionaryTerms
+        case .learned:
+            learnedDictionaryTerms.removeAll { $0 == entry.term }
+            Settings.shared.learnedDictionaryTerms = learnedDictionaryTerms
+        }
+        setDictionaryStatus("Removed “\(entry.term)”.")
+    }
+
+    func importDictionary(from url: URL) {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+
+        do {
+            let values = try url.resourceValues(forKeys: [.fileSizeKey])
+            if let bytes = values.fileSize, bytes > 5 * 1_024 * 1_024 {
+                setDictionaryStatus("The CSV file is larger than 5 MB.", isError: true)
+                return
+            }
+            let imported = try PersonalDictionary.entries(fromCSV: Data(contentsOf: url))
+            let before = dictionaryTerms + learnedDictionaryTerms
+            let merged = try PersonalDictionary.importing(imported, into: before)
+            let keys = Set(before.map { $0.lowercased() })
+            let added = merged.filter { !keys.contains($0.lowercased()) }
+            dictionaryTerms.append(contentsOf: added)
+            Settings.shared.dictionaryTerms = dictionaryTerms
+            setDictionaryStatus(
+                added.isEmpty
+                    ? "No new entries in \(url.lastPathComponent)."
+                    : "Imported \(added.count) entr\(added.count == 1 ? "y" : "ies").")
+        } catch {
+            setDictionaryStatus(error.localizedDescription, isError: true)
+        }
+    }
+
+    private func setDictionaryStatus(_ value: String, isError: Bool = false) {
+        dictionaryStatus = value
+        dictionaryStatusIsError = isError
+    }
+
     // MARK: - History
 
     var retention: RetentionPolicy {
@@ -422,6 +543,9 @@ final class SettingsModel {
         screenshotEnabled = settings.screenshotEnabled
         blockedBundleIDs = settings.blockedBundleIDs
         blockedURLPrefixes = settings.blockedURLPrefixes
+        learnDictionaryFromEdits = settings.learnDictionaryFromEdits
+        dictionaryTerms = settings.dictionaryTerms
+        learnedDictionaryTerms = settings.learnedDictionaryTerms
         retention = settings.retention
         keepAudio = settings.keepAudio
         loadPrompt()
@@ -647,7 +771,8 @@ final class SettingsModel {
         return RetryCoordinator(
             service: TranscriptionService(
                 provider: provider, model: model, systemInstruction: instruction,
-                fidelity: fidelity, keytermBiasing: keytermBiasing),
+                fidelity: fidelity, keytermBiasing: keytermBiasing,
+                personalDictionary: Settings.shared.personalDictionaryTerms),
             store: store)
     }
 }

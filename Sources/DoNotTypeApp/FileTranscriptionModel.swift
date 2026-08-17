@@ -257,7 +257,8 @@ final class FileTranscriptionModel {
 
         let service = TranscriptionService(
             provider: provider, model: settings.model, systemInstruction: instruction,
-            fidelity: settings.fidelity, keytermBiasing: settings.keytermBiasing)
+            fidelity: settings.fidelity, keytermBiasing: settings.keytermBiasing,
+            personalDictionary: settings.personalDictionaryTerms)
 
         return FileTranscriber(
             service: service, prompt: builder, fidelity: settings.fidelity,

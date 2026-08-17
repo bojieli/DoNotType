@@ -10,6 +10,26 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **A local personal dictionary, including optional learning from corrections (macOS).** Typeless's
+  useful incentive is real: people correct a misspelling while it is in front of them and rarely
+  stop work to populate a settings list in advance. DoNotType now accepts direct entries and a
+  Typeless-compatible one-column CSV, with search, edit and delete in a dedicated Dictionary tab.
+  The list is local, capped visibly at 100 entries, and has no account or sync service behind it.
+
+  Correction learning is opt-in. For 60 seconds after an insertion, the app reads the still-focused
+  field to isolate the span it inserted, immediately discards the surrounding snapshot, waits for
+  the edit to be stable twice, and runs the before/after span through the existing transcript-diff
+  classifier. Changing fields stops observation. Spelling and capitalisation fixes are learned;
+  insertions, deletions, ordinary rewording and number changes are not. Learned entries carry their
+  source in the UI, trigger a visible notice, and the newest batch has an Undo item in the menu.
+
+  Model backends receive a delimited spelling-only reference that says an entry is not evidence it
+  was spoken. Recognition backends receive safe entries through their keyterm channel even when
+  screen-derived biasing is off; entries containing digits are withheld because those endpoints
+  have nowhere to attach the audio-wins rule. Manual and learned entries are both opt-in state, so
+  the default empty dictionary leaves the measured request byte-for-byte unchanged. The remaining
+  clients are recorded as parity gaps rather than marked complete.
+
 - **A stalled transcription is re-sent instead of waited out.** Latency here is bimodal rather
   than slow: six sequential requests for one three-second clip took 4.9, 61.6, 50.5, 5.8, 5.9 and
   30.2 seconds, with zero thought tokens throughout, so the sixty-second draws are queueing rather

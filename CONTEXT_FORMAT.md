@@ -5,19 +5,44 @@ the reference implementation.
 
 ## Principle
 
-Send the screen **as it is**. No term extraction, no summarisation, no vocabulary list, no
-dictionary, no prior transcripts. A multimodal model was chosen precisely so that raw context
-could be used directly; distilling it first throws away the information it was chosen for.
+Send the screen **as it is**. No term extraction, no summarisation and no prior transcripts. A
+multimodal model was chosen precisely so that raw context could be used directly; distilling it
+first throws away the information it was chosen for.
 
-Two mechanisms are permanently excluded, for the same reason:
+Two automatic mechanisms remain excluded, for the same reason:
 
-- **A user dictionary / vocabulary list.** A stored list of "correct" strings is a prior that
-  beats clear audio. It is what turns "Gemini 3.5 Flash" into "Gemini 3 Flash", and a
-  correction-fed dictionary makes the failure self-reinforcing.
+- **Vocabulary inferred from the screen or previous transcripts.** A stored list of strings the
+  model happened to emit is a prior that can beat clear audio. It is what turns one plausible
+  mistake into the input to the next request.
 - **Recent transcript history.** A prior built from the model's own previous guesses, including
   its previous errors.
 
-Corrections are still valuable — they go to `eval/` as test cases, never into a request.
+The personal dictionary is separate from screen context. It contains explicit user entries and,
+when the user opts in, spelling corrections made to the exact text the app just inserted. Those
+corrections are classified before storage; insertions, deletions, content changes and every number
+change are rejected. Learned entries remain distinguishable and removable.
+
+## Personal dictionary
+
+The list is local, case-insensitively deduplicated, and capped at 100 entries of 50 characters —
+the smallest ceiling among supported recognition providers. The interface states the cap rather
+than silently truncating it and imports Typeless-compatible UTF-8, one-column CSV files.
+
+For a model provider, the entries are JSON-encoded into a strongly delimited request part before
+the screen context. That block repeats three rules: an entry is only a possible spelling, it is not
+evidence the word was spoken, and digits still come from audio. The versioned base system prompt is
+not changed behind the prompt editor.
+
+For a speech-recognition provider, there is no system instruction to carry those rules. Entries are
+therefore sent as keyterms only when the endpoint has such a channel, and anything containing a
+digit is withheld. User entries consume the provider's budget before optional screen-derived terms.
+Voxtral has no hint channel, so the interface says the stored dictionary cannot affect it.
+
+Correction learning is off by default. On macOS it watches the inserted span for 60 seconds,
+requires the same correction in two consecutive observations, and feeds the before/after text to
+`TranscriptDiff`. Only `spelling-fixed` spans and capitalisation fixes become entries. The text
+field's value has to be read to locate that span, but the surrounding snapshot is immediately
+discarded and never stored as dictionary data. Moving focus to another field stops observation.
 
 ## Part order
 
@@ -31,6 +56,9 @@ input[1]  text    visible screen text          (omitted when thin — see below)
 input[2]  text    caret window + closing delimiter
 input[3]  audio   the recording
 ```
+
+When the personal dictionary is non-empty, its spelling-only text block is inserted before
+`input[0]`; the audio remains last.
 
 ## Block format
 

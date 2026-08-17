@@ -36,6 +36,9 @@ final class Settings {
         static let logContent = "logContent"
         static let fileMode = "fileMode"
         static let endpoint = "endpoint"
+        static let dictionaryTerms = "dictionaryTerms"
+        static let learnedDictionaryTerms = "learnedDictionaryTerms"
+        static let learnDictionaryFromEdits = "learnDictionaryFromEdits"
     }
 
     /// Shipped non-empty. A blocklist that starts empty is a blocklist nobody ever fills in, and
@@ -343,6 +346,70 @@ final class Settings {
     var keytermBiasing: Bool {
         get { defaults.bool(forKey: Key.keytermBiasing) }
         set { defaults.set(newValue, forKey: Key.keytermBiasing) }
+    }
+
+    /// Terms the user entered or imported. Stored locally in preferences; there is no account or
+    /// sync service involved.
+    var dictionaryTerms: [String] {
+        get { PersonalDictionary.sanitized(defaults.stringArray(forKey: Key.dictionaryTerms) ?? []) }
+        set { defaults.set(PersonalDictionary.sanitized(newValue), forKey: Key.dictionaryTerms) }
+    }
+
+    /// Terms inferred from explicit spelling corrections, kept separately so the dictionary UI
+    /// can say where each prior came from and remove learned entries without touching manual ones.
+    var learnedDictionaryTerms: [String] {
+        get {
+            let manual = dictionaryTerms
+            let manualKeys = Set(manual.map { $0.lowercased() })
+            let remaining = max(0, PersonalDictionary.maxTerms - manual.count)
+            return PersonalDictionary.sanitized(
+                defaults.stringArray(forKey: Key.learnedDictionaryTerms) ?? []
+            ).filter { !manualKeys.contains($0.lowercased()) }.prefix(remaining).map { $0 }
+        }
+        set {
+            let manual = dictionaryTerms
+            let manualKeys = Set(manual.map { $0.lowercased() })
+            let remaining = max(0, PersonalDictionary.maxTerms - manual.count)
+            let values = PersonalDictionary.sanitized(newValue)
+                .filter { !manualKeys.contains($0.lowercased()) }.prefix(remaining).map { $0 }
+            defaults.set(values, forKey: Key.learnedDictionaryTerms)
+        }
+    }
+
+    var personalDictionaryTerms: [String] {
+        PersonalDictionary.sanitized(dictionaryTerms + learnedDictionaryTerms)
+    }
+
+    /// Opt-in because learning is a convenience with a real failure mode, not a neutral default.
+    /// Only spelling fixes classified by `PersonalDictionary.learnedCandidates` reach the list.
+    var learnDictionaryFromEdits: Bool {
+        get { defaults.bool(forKey: Key.learnDictionaryFromEdits) }
+        set { defaults.set(newValue, forKey: Key.learnDictionaryFromEdits) }
+    }
+
+    /// Adds new learned spellings and returns only the entries that were actually stored.
+    @discardableResult
+    func learnDictionaryTerms(_ candidates: [String]) -> [String] {
+        guard learnDictionaryFromEdits else { return [] }
+        var learned = learnedDictionaryTerms
+        var all = personalDictionaryTerms
+        var added: [String] = []
+        for candidate in candidates {
+            guard let term = try? PersonalDictionary.normalize(candidate),
+                !all.contains(where: { $0.caseInsensitiveCompare(term) == .orderedSame }),
+                all.count < PersonalDictionary.maxTerms
+            else { continue }
+            learned.append(term)
+            all.append(term)
+            added.append(term)
+        }
+        learnedDictionaryTerms = learned
+        return added
+    }
+
+    func forgetLearnedDictionaryTerms(_ terms: [String]) {
+        let keys = Set(terms.map { $0.lowercased() })
+        learnedDictionaryTerms.removeAll { keys.contains($0.lowercased()) }
     }
 
     var keepAudio: Bool {

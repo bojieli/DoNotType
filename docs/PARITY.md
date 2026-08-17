@@ -64,8 +64,8 @@ summary:brief`. The wall is in the type system rather than in a convention — t
 
 ⁷ **Not possible.** An iOS app cannot read another app's screen; the sandbox has no equivalent of
 the accessibility APIs the other three use, and no screenshot of anything it does not own. This is
-the one real capability difference between the clients, and it is the platform's decision rather
-than ours. Everything downstream of grounding — the blocklist, keyterms — is
+the one platform-imposed capability difference between the clients, rather than a feature that has
+simply not been ported. Everything downstream of grounding — the blocklist, keyterms — is
 therefore absent too, because there is nothing for them to act on.
 
 ⁸ macOS falls back to a screenshot when an app exposes no readable text — Figma, a GPU-rendered
@@ -96,6 +96,8 @@ dictate into, so the fallback has not been needed; it is a gap rather than an im
 | Log viewer, level, content toggle | ✅ | ✅ | ✅ | ✅ |
 | Performance statistics | ✅ | ✅ | ✅ | ✅ |
 | Copy a diagnostic report | ✅ | ✅ | ✅ | ✅ |
+| Personal dictionary (manual + CSV) | ✅ | — ¹³ | — ¹³ | — ¹³ |
+| Opt-in learning from spelling corrections | ✅ | — ¹³ | — ¹³ | — ¹³ |
 | Guided permissions | ✅ | ✅ ⁹ | ✅ | ✅ |
 | Command line | ✅ `dnt` | ✅ `dnt.exe` | — ¹⁰ | — ¹⁰ |
 | Stop trusting an idle connection | ✅ | ✅ | ✅ | ✅ |
@@ -115,6 +117,11 @@ connection. The gap is real and the row says so rather than being marked met.
 
 ¹² The iOS keyboard reads transcripts out of the shared container the app writes them into; there is
 no cross-app focus to lose in between, so there is nothing here to get wrong.
+
+¹³ A current parity gap, not a platform limitation. The shared Swift core already owns the entry
+validation, CSV format, prompt framing and keyterm routing, but only the macOS client exposes and
+persists the dictionary so far. Correction observation needs a platform-specific focused-field
+implementation on the other three clients.
 
 The four connection rows exist because the tail they fix was worth 24% of dictations taking between
 20 and 69 seconds while the model was answering in 2.1. Measured on macOS and described in

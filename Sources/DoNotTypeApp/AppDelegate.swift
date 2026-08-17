@@ -39,6 +39,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await settingsModel.refresh() }
             rebuildMenu()
         }
+        dictation.onDictionaryChange = { [weak self] _ in
+            guard let self else { return }
+            settingsModel.refreshDictionary()
+            rebuildMenu()
+        }
         rebuildMenu()
 
         Task { await requestPermissionsAndStart() }
@@ -228,6 +233,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        if dictation.canUndoDictionaryLearning {
+            let learned = NSMenuItem(
+                title: "Undo last learned spelling",
+                action: #selector(undoDictionaryLearning), keyEquivalent: "")
+            learned.target = self
+            menu.addItem(learned)
+        }
+
         menu.addItem(.separator())
         if let latest = settingsModel.records.first(where: { $0.status == .completed }) {
             menu.addItem(disabled(String(latest.text.prefix(60))))
@@ -286,11 +299,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // entire settings UI was one unlabelled `»` button. `contentMinSize` is the actual fix —
         // the width can no longer be dragged below the point where the tabs disappear.
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 840, height: 600),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         window.title = "DoNotType Settings"
-        window.contentMinSize = NSSize(width: 700, height: 460)
+        window.contentMinSize = NSSize(width: 780, height: 500)
         window.contentView = NSHostingView(rootView: SettingsView(model: settingsModel))
         window.center()
         window.isReleasedWhenClosed = false
@@ -298,6 +311,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func undoDictionaryLearning() {
+        dictation.undoLastDictionaryLearning()
     }
 
     /// The offline path: transcribe, rewrite or summarise a recording that already exists.

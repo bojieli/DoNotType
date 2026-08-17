@@ -1,5 +1,6 @@
 import DoNotTypeCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The settings window: providers and keys, the hotkey, grounding, and the history with retry.
 struct SettingsView: View {
@@ -14,6 +15,8 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             GroundingTab(model: model)
                 .tabItem { Label("Grounding", systemImage: "text.viewfinder") }
+            DictionaryTab(model: model)
+                .tabItem { Label("Dictionary", systemImage: "character.book.closed") }
             HistoryTab(model: model)
                 .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
             StatsView(records: model.allRecords)
@@ -25,7 +28,7 @@ struct SettingsView: View {
         }
         // A minimum rather than a fixed size: pinning the content to an exact width left the
         // window unable to grow past the point where the tab bar fits, which is what hid it.
-        .frame(minWidth: 700, minHeight: 460)
+        .frame(minWidth: 780, minHeight: 500)
         .task {
             await model.refresh()
             // Only when the launch check never ran — the window opens before the permissions
@@ -33,6 +36,181 @@ struct SettingsView: View {
             // whole check exists to remove.
             if model.keyStatus == .unchecked { await model.checkConnection() }
         }
+    }
+}
+
+// MARK: - Dictionary
+
+private struct DictionaryTab: View {
+    @Bindable var model: SettingsModel
+
+    @State private var draft = ""
+    @State private var search = ""
+    @State private var isImporting = false
+    @State private var editing: SettingsModel.DictionaryEntry?
+
+    private var filtered: [SettingsModel.DictionaryEntry] {
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return model.dictionaryEntries }
+        return model.dictionaryEntries.filter {
+            $0.term.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    TextField("New word, name, or phrase", text: $draft)
+                        .onSubmit(add)
+                    Button("Add", action: add)
+                        .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button("Import CSV…") { isImporting = true }
+                }
+
+                Toggle("Learn spellings from my corrections", isOn: $model.learnDictionaryFromEdits)
+                Text(
+                    "Optional. For up to 60 seconds after insertion, DoNotType briefly reads the "
+                        + "focused field to detect spelling corrections inside the text it added; "
+                        + "surrounding text is discarded. Number changes, added or deleted words, "
+                        + "and ordinary rewording are ignored."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+                TextField("Search dictionary", text: $search)
+                    .textFieldStyle(.roundedBorder)
+            }
+            .padding(20)
+
+            Divider()
+
+            if filtered.isEmpty {
+                ContentUnavailableView(
+                    search.isEmpty ? "No dictionary entries" : "No matching entries",
+                    systemImage: search.isEmpty ? "character.book.closed" : "magnifyingglass",
+                    description: Text(
+                        search.isEmpty
+                            ? "Add a spelling, import a one-column CSV, or enable learning."
+                            : "Try a different search."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(filtered) { entry in
+                    HStack(spacing: 12) {
+                        Text(entry.term)
+                            .textSelection(.enabled)
+                        Spacer()
+                        Label(
+                            entry.source == .learned ? "Learned" : "Manual",
+                            systemImage: entry.source == .learned ? "sparkles" : "person.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button { editing = entry } label: {
+                            Image(systemName: "pencil")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Edit \(entry.term)")
+                        Button { model.removeDictionaryEntry(entry) } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Remove \(entry.term)")
+                    }
+                }
+                .listStyle(.inset)
+            }
+
+            Divider()
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text("\(model.dictionaryCount) of \(PersonalDictionary.maxTerms) entries")
+                    Spacer()
+                    if let status = model.dictionaryStatus {
+                        Text(status)
+                            .foregroundStyle(model.dictionaryStatusIsError ? .red : .secondary)
+                    }
+                }
+                .font(.footnote)
+
+                Text(routingNote)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(
+                    "Stored only on this Mac. CSV import accepts UTF-8 with one entry per row "
+                        + "and ignores duplicates."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+            .padding(16)
+        }
+        .fileImporter(
+            isPresented: $isImporting, allowedContentTypes: [.commaSeparatedText, .plainText]
+        ) { result in
+            if case .success(let url) = result { model.importDictionary(from: url) }
+        }
+        .sheet(item: $editing) { entry in
+            DictionaryEditSheet(entry: entry, model: model)
+        }
+    }
+
+    private var routingNote: String {
+        switch model.grounding {
+        case .multimodal:
+            "Model requests receive these entries as a spelling-only reference. An entry is not "
+                + "evidence that it was spoken, and numbers still come from audio."
+        case .keyterms:
+            "This recognition service receives dictionary entries as keyterms. Entries containing "
+                + "digits are withheld because its keyterm channel cannot be told that numbers "
+                + "must come from audio."
+        case .none:
+            "The selected recognition service has no spelling-hint channel, so dictionary entries "
+                + "are stored but cannot affect its transcripts."
+        }
+    }
+
+    private func add() {
+        if model.addDictionaryTerm(draft) { draft = "" }
+    }
+}
+
+private struct DictionaryEditSheet: View {
+    let entry: SettingsModel.DictionaryEntry
+    @Bindable var model: SettingsModel
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: String
+
+    init(entry: SettingsModel.DictionaryEntry, model: SettingsModel) {
+        self.entry = entry
+        self.model = model
+        _draft = State(initialValue: entry.term)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Edit dictionary entry").font(.headline)
+            TextField("Word, name, or phrase", text: $draft)
+                .onSubmit(save)
+            if let status = model.dictionaryStatus, model.dictionaryStatusIsError {
+                Text(status).font(.footnote).foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                Button("Save", action: save)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
+    }
+
+    private func save() {
+        if model.updateDictionaryEntry(entry, to: draft) { dismiss() }
     }
 }
 
@@ -370,8 +548,9 @@ private struct GroundingTab: View {
                     .disabled(!model.groundingEnabled)
 
                 Text(
-                    "Screen text is sent as-is — no vocabulary list, no dictionary, no previous "
-                        + "transcripts. It may correct spelling, never the words you said."
+                    "Screen text is sent as-is — no extracted vocabulary and no previous "
+                        + "transcripts. The separate personal dictionary is under its own tab. "
+                        + "Context may correct spelling, never the words you said."
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)

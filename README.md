@@ -14,7 +14,7 @@ macOS · Windows · Android · iOS. Open source, your own API key, no server in 
                         so "koffi" stays koffi and 3.5 stays 3.5
 ```
 
-<img src="Resources/Demo/hero.svg" alt="You say 'switch to Gemini three point five Flash' while the screen shows 'Gemini 3 Flash' five times. A tool that learns your vocabulary types 'Gemini 3 Flash'. DoNotType types 'Gemini 3.5 Flash'." width="880">
+<img src="Resources/Demo/hero.svg" alt="You say 'switch to Gemini three point five Flash' while the screen shows 'Gemini 3 Flash' five times. An opaque vocabulary prior types 'Gemini 3 Flash'. DoNotType types 'Gemini 3.5 Flash'." width="880">
 
 That is the rule, drawn. Whether it *holds* is a separate question with a measured answer, and the
 honest one is below: it holds for words and fails for digits, which is why a second screen-blind
@@ -29,14 +29,18 @@ there is no setting to turn it off and no raw transcript kept anywhere. In the t
 was built to replace, the only stored field is `refined_text` — going back through every schema
 version, what you actually said was never saved.
 
-**Their grounding overrules you.** A stored vocabulary of "correct" terms becomes a prior that
+**Their grounding overrules you.** An opaque vocabulary of "correct" terms can become a prior that
 beats clear audio: say "Gemini 3.5 Flash" and get "Gemini 3 Flash", because that string is the one
-the system already knows. Worse, a correction-fed dictionary makes it self-reinforcing.
+the system already knows. A correction-fed dictionary can make that failure self-reinforcing when
+mistakes are learned silently and cannot be inspected or undone.
 
 DoNotType inverts both. The prompt is a directory of versioned files you can read, edit and measure
 ([`prompt/`](prompt/), one part per file, argued for in [`PROMPT.md`](PROMPT.md)). Screen context is
-sent **raw** — no term extraction, no dictionary, no prior transcripts — and its authority is scoped
-to spelling, never content.
+sent **raw** — no term extraction and no prior transcripts — and its authority is scoped to
+spelling, never content. The separate personal dictionary is local, visible and optional: entries
+can be added directly or imported from a one-column CSV, and correction learning is opt-in. Learned
+entries are labelled and removable. Number-bearing entries are never sent through a recogniser's
+bare keyterm channel, where the app cannot attach the rule that audio wins.
 
 ## Status, honestly
 
@@ -90,16 +94,16 @@ hour's work rather than a project.
 
 ## Platforms
 
-| | Dictation | Screen grounding | WAV·MP3·M4A·Opus | CLI | Build |
-|---|---|---|---|---|---|
-| **macOS** | menu-bar app, hold Right ⌘ | ✅ accessibility tree + screenshot fallback | ✅ | `dnt` | `make app` |
-| **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | ✅ | `dnt.exe` | `cd windows && dotnet build` |
-| **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | ✅ | — | `cd android && gradle assembleDebug` |
-| **iOS** | containing app; keyboard inserts | ❌ not possible in the sandbox | ✅ | — | `cd ios && xcodegen generate` |
+| | Dictation | Screen grounding | Personal dictionary | WAV·MP3·M4A·Opus | CLI | Build |
+|---|---|---|---|---|---|---|
+| **macOS** | menu-bar app, hold Right ⌘ | ✅ accessibility tree + screenshot fallback | ✅ manual, CSV, optional learning | ✅ | `dnt` | `make app` |
+| **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | — | ✅ | `dnt.exe` | `cd windows && dotnet build` |
+| **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | — | ✅ | — | `cd android && gradle assembleDebug` |
+| **iOS** | containing app; keyboard inserts | ❌ not possible in the sandbox | — | ✅ | — | `cd ios && xcodegen generate` |
 
-Feature by feature, with the reason for every gap: [docs/PARITY.md](docs/PARITY.md). The one real
-capability difference is screen grounding on iOS, which the sandbox forbids rather than nobody
-having built it.
+Feature by feature, with the reason for every gap: [docs/PARITY.md](docs/PARITY.md). The only
+platform-imposed gap is screen grounding on iOS; the dictionary rows are marked honestly as work
+that has not yet been ported.
 
 All four send the **same** `prompt/`, copied into each bundle at build time rather than
 duplicated, so no platform can quietly drift from what the evaluation measures. All four also
@@ -328,10 +332,13 @@ building the thing and measuring it.
 first, and recoverable — under a rewrite, under a summary, on every platform. A mode that transcribed
 and polished in one request would have no verbatim output to keep, so there isn't one.
 
-**Learn a vocabulary from your corrections.** A stored list of "correct" terms becomes a prior that
-beats clear audio, and a correction-fed one is self-reinforcing: that is the specific failure this
-project was built against. The one feature of that shape — keyterm biasing — was implemented,
-measured, found to regress three cases per run, and taken out of the settings.
+**Silently turn every edit into vocabulary.** The optional learner tracks the text DoNotType just
+inserted inside the still-focused field, discards each surrounding field snapshot, waits for the
+edit to stabilise, and accepts only changes the same regression classifier calls a spelling fix.
+Moving to another field stops it. Added or deleted words, rewording and number changes are ignored.
+Learned entries are visibly labelled and the latest batch can be undone from the menu. The broader
+screen-derived keyterm feature was implemented, measured, found to regress three cases per run, and
+remains out of the settings.
 
 **Put a server in the middle.** No account, no sign-in, no subscription, no telemetry, no analytics,
 no crash reporting. Your key, your machine, the provider's API. That also means no server-side

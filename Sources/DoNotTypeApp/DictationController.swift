@@ -19,6 +19,8 @@ final class DictationController {
     var onStateChange: ((State) -> Void)?
     /// Fires after a dictation is stored, so an open settings window can refresh.
     var onHistoryChange: (() -> Void)?
+    /// Fires when opt-in correction learning changes the local dictionary.
+    var onDictionaryChange: (([String]) -> Void)?
 
     let store: HistoryStore
 
@@ -39,6 +41,7 @@ final class DictationController {
 
     /// Which key started the in-flight recording decides whether it is rewritten.
     private var pendingStyle: RewriteStyle = .verbatim
+    private(set) var lastLearnedTerms: [String] = []
 
     /// Who was focused when the key went down, so the transcript cannot be typed somewhere else.
     ///
@@ -469,6 +472,11 @@ final class DictationController {
 
             await TextInjector.insert(delivered, dictation: Self.short(pendingID))
             insertions.record(recordID: record.id, delivered: delivered, verbatim: text)
+            if settings.learnDictionaryFromEdits {
+                insertions.watchForCorrections(to: delivered) { [weak self] candidates in
+                    self?.learn(candidates)
+                }
+            }
             log.info(
                 "dictation complete",
                 [
@@ -510,6 +518,17 @@ final class DictationController {
 
     var canUndo: Bool { insertions.canUndo }
     var canRevertToVerbatim: Bool { insertions.canRevertToVerbatim }
+    var canUndoDictionaryLearning: Bool { !lastLearnedTerms.isEmpty }
+
+    func undoLastDictionaryLearning() {
+        guard !lastLearnedTerms.isEmpty else { return }
+        let removed = lastLearnedTerms
+        Settings.shared.forgetLearnedDictionaryTerms(removed)
+        lastLearnedTerms = []
+        onDictionaryChange?([])
+        overlay.show(phase: .learned("Removed learned spelling"), hint: "")
+        overlay.hide(after: .milliseconds(1_500))
+    }
 
     func undoLastInsertion(revertToVerbatim: Bool) async {
         guard insertions.canUndo else { return }
@@ -521,6 +540,19 @@ final class DictationController {
             hint: revertToVerbatim ? "Reverted to what you said" : "Removed")
         overlay.update(phase: .failed(revertToVerbatim ? "Reverted to verbatim" : "Insertion removed"))
         overlay.hide(after: .milliseconds(1_200))
+    }
+
+    private func learn(_ candidates: [String]) {
+        let added = Settings.shared.learnDictionaryTerms(candidates)
+        guard !added.isEmpty else { return }
+        lastLearnedTerms = added
+        onDictionaryChange?(added)
+        let message = added.count == 1
+            ? "Learned “\(added[0])” · undo from the menu"
+            : "Learned \(added.count) spellings · undo from the menu"
+        log.info("learned dictionary spelling", ["count": "\(added.count)"])
+        overlay.show(phase: .learned(message), hint: "")
+        overlay.hide(after: .seconds(3))
     }
 
     private func rewriteInstruction(for style: RewriteStyle) -> String? {
@@ -556,7 +588,8 @@ final class DictationController {
             secondary: TranscriptionService(
                 provider: backend, model: settings.model(for: kind),
                 systemInstruction: instruction, fidelity: settings.fidelity,
-                keytermBiasing: settings.keytermBiasing),
+                keytermBiasing: settings.keytermBiasing,
+                personalDictionary: settings.personalDictionaryTerms),
             hedgeAfter: .seconds(settings.fallbackAfterSeconds))
     }
 
@@ -592,7 +625,8 @@ final class DictationController {
         return RetryCoordinator(
             service: TranscriptionService(
                 provider: provider, model: settings.model, systemInstruction: instruction,
-                fidelity: settings.fidelity, keytermBiasing: settings.keytermBiasing),
+                fidelity: settings.fidelity, keytermBiasing: settings.keytermBiasing,
+                personalDictionary: settings.personalDictionaryTerms),
             store: store)
     }
 
