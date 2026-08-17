@@ -299,7 +299,19 @@ final class DictationController {
             return
         }
 
-        let activity = SpeechActivity.measure(wav: audio.data)
+        let activity: SpeechActivity.Reading
+        do {
+            activity = try SpeechActivity.measure(wav: audio.data)
+        } catch {
+            livePipeline?.cancel()
+            livePipeline = nil
+            pendingContextTask?.cancel()
+            pendingContextTask = nil
+            grounding.cancel()
+            try? FileManager.default.removeItem(at: audio.url)
+            fail(error.localizedDescription)
+            return
+        }
         guard livePipeline != nil || activity.hasSpeech else {
             log.info(
                 "nothing was said, so nothing was sent",
@@ -307,6 +319,7 @@ final class DictationController {
             pendingContextTask?.cancel()
             pendingContextTask = nil
             grounding.cancel()
+            try? FileManager.default.removeItem(at: audio.url)
             overlay.hide()
             state = .idle
             return

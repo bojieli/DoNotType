@@ -5,7 +5,7 @@ import Foundation
 /// `SpeechActivity` refuses to send silence, and it is the better defence because it costs nothing
 /// and works for every backend. It is not sufficient. Measured on real dictations from this app: a
 /// 0.68-second recording of room tone — a stray tap in a quiet room, 380 ms of transient 25 dB
-/// above a −63 dB floor — passed the activity gate, and `gemini-3-flash-preview` answered it with
+/// above a −63 dB floor — passed the original activity gate, and `gemini-3-flash-preview` answered it with
 /// 876 characters of fluent, topically-plausible prose that the user had never said. It was not
 /// copied off the screen either: the longest verbatim run shared with the screen context was nine
 /// words. The model wrote an essay about what the screen appeared to be discussing.

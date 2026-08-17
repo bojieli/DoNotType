@@ -262,20 +262,35 @@ Two things made this worth attacking rather than assuming:
 ### The defence does not rely on the model
 
 `SpeechActivity` checks the audio before the request, on every client, and a backend cannot
-hallucinate audio it never received. It keys on modulation rather than loudness — speech has
-syllables and pauses, a fan does not — because gating on volume would discard somebody dictating
-quietly, which is a worse failure than the one being prevented.
+hallucinate audio it never received. It runs the official Silero VAD v6.2.1 ONNX model locally;
+macOS, iOS, Windows and Android all package the same model bytes. Inference follows Silero's
+16 kHz path: 512-sample windows, 64 samples of carried context and recurrent state. Segment
+finalisation uses the upstream defaults — 0.5 to begin speech, 0.35 to end it, 100 ms of silence to
+close a segment and a minimum speech duration greater than 250 ms.
+
+This matters beyond implementation fashion. The detector it replaced inferred a threshold from
+the quietest tenth of each recording. Continuous speech processed by aggressive microphone gain
+control may contain no quiet tenth, so the detector treated part of the voice as its own noise
+floor and discarded the utterance. Companding the shared real-speech fixture to reproduce that
+narrow dynamic range gives 0 ms in the old detector and 1,404 ms in Silero.
 
 Measured against `eval/audio/silence/`:
 
-| audio | detected as speech |
-|---|---|
-| digital silence, room tone, steady noise, 50 Hz hum | 0 ms |
-| one keyboard click | 20 ms |
-| real speech | 1160 ms |
-| real speech at −46 dB | 800 ms |
+| audio | highest Silero probability | finalised speech |
+|---|---:|---:|
+| digital silence | 0.009 | 0 ms |
+| room tone | 0.120 | 0 ms |
+| steady noise | 0.032 | 0 ms |
+| 50 Hz hum | 0.012 | 0 ms |
+| keyboard click | 0.009 | 0 ms |
+| real mouse click in a quiet room | 0.131 | 0 ms |
+| one-word “Yes” fixture | 1.000 | 481 ms |
+| real speech | 1.000 | 1,500 ms |
+| real speech at −46 dB | 0.993 | 1,020 ms |
+| real speech at −52 dB | 0.832 | 700 ms |
 
-The threshold is 200 ms — ten times the loudest non-speech, a quarter of barely-audible speech.
+There is no recording-relative noise floor or project-specific aggregate threshold now. The only
+thresholds are the standard Silero segment defaults above.
 
 ### Measuring what the gate protects against
 

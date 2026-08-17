@@ -171,7 +171,7 @@ public struct FileTranscriber: Sendable {
         // rather than a silent no-op, because somebody who pointed at a file and pressed go is
         // owed an answer — and "there is no speech in this recording" is a better one than a
         // paragraph the model made up.
-        let activity = SpeechActivity.measure(wav: audio.data)
+        let activity = try SpeechActivity.measure(wav: audio.data)
         guard activity.hasSpeech else {
             log.info("no speech in the recording", ["file": name, "audio": activity.summary])
             throw FileTranscriptionError.noSpeech(name: name)

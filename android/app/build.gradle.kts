@@ -74,6 +74,14 @@ android {
 // in the APK, and a part deleted from the repo would keep shipping from a stale local build.
 val syncContract by tasks.registering(Sync::class) {
     from(rootProject.file("../prompt")) { into("prompt") }
+    // The exact same Silero model used by Swift and .NET. Keeping one checked-in copy makes a
+    // platform drift visible as a build edit rather than as a different dependency's internals.
+    from(rootProject.file("../Sources/DoNotTypeCore/Resources/silero_vad.onnx")) {
+        into("models")
+    }
+    from(rootProject.file("../Sources/DoNotTypeCore/Resources/SILERO-VAD-NOTICE.txt")) {
+        into("third-party")
+    }
     into(layout.buildDirectory.dir("generated/assets"))
 }
 
@@ -82,9 +90,12 @@ tasks.named("preBuild") { dependsOn(syncContract) }
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.24.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.json:json:20240303")
     testImplementation("junit:junit:4.13.2")
+    // Local JVM tests need the desktop native library; production still packages the Android AAR.
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.24.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:rules:1.6.1")

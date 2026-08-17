@@ -26,6 +26,9 @@ class DictationService(private val context: Context) {
 
     /** Everything a dictation does, under one category so a log filter finds all of it. */
     private val log = Log("dictate")
+    private val speechActivity by lazy {
+        SpeechActivity(context.assets.open("models/silero_vad.onnx"))
+    }
 
     val history: HistoryStore by lazy {
         HistoryStore(File(context.filesDir, "history")).also {
@@ -42,6 +45,10 @@ class DictationService(private val context: Context) {
      * reached from a unit test; that one can.
      */
     fun isTransient(error: Throwable): Boolean = FailureAdvice.isTransient(error)
+
+    /** Shares the process-lifetime Silero session with live and file transcription. */
+    internal fun measureSpeech(wav: ByteArray): SpeechActivity.Reading =
+        speechActivity.measureWav(wav)
 
     /** Transcribes, storing the outcome either way so a failure stays retryable. */
     suspend fun transcribe(
@@ -74,9 +81,20 @@ class DictationService(private val context: Context) {
         // for an empty transcript, but it only reaches model providers: a speech recogniser has no
         // system instruction, so for Deepgram, xAI and Voxtral the rule is never sent at all. Not
         // transmitting the audio is the only defence that holds for every backend.
-        val activity = SpeechActivity.measureWav(wav)
-        if (!activity.hasSpeech) {
+        val activity = try {
+            measureSpeech(wav)
+        } catch (error: Exception) {
             liveSession?.cancel()
+            log.error(mapOf("detail" to FailureAdvice.detail(error))) {
+                "speech detector failed"
+            }
+            return Result.failure(
+                ProviderException("Speech detector failed: ${error.localizedMessage}"),
+            )
+        }
+        // Live chunks have each passed this same Silero gate already. Do not throw away a result
+        // that may already be in flight because a second, whole-recording pass disagreed.
+        if (liveSession == null && !activity.hasSpeech) {
             log.info(
                 mapOf("audio" to activity.summary),
             ) { "nothing was said, so nothing was sent" }
@@ -260,7 +278,9 @@ class DictationService(private val context: Context) {
         val key = Settings.apiKey?.takeIf { it.isNotBlank() } ?: return null
         return runCatching {
             val primary = ProviderFactory.create(Settings.provider, key, Settings.model)
-            LiveTranscriptionSession(primary.name, primary.model, screenContext) { wav, context ->
+            LiveTranscriptionSession(
+                primary.name, primary.model, screenContext, speechActivity,
+            ) { wav, context ->
                 transcribePart(wav, context, "live")
             }
         }.getOrNull()

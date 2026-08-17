@@ -41,7 +41,7 @@ public static class AudioChunker
     public readonly record struct Chunk(int Index, byte[] Data, double StartSeconds, double DurationSeconds);
 
     /// <summary>Splits 16-bit PCM WAV data, or returns one chunk when it is short enough.</summary>
-    /// <remarks>A cut is made only in a VAD-qualified pause. No pause means no split.</remarks>
+    /// <remarks>A cut is made only in an energy-qualified pause. No pause means no split.</remarks>
     public static IReadOnlyList<Chunk> Split(byte[] wav, BoundaryPolicy? policy = null)
     {
         var boundaries = policy ?? DefaultPolicy;
@@ -87,7 +87,7 @@ public static class AudioChunker
         return chunks;
     }
 
-    /// <summary>Incremental VAD segmenter used by live microphone capture.</summary>
+    /// <summary>Incremental pause segmenter used by live microphone capture.</summary>
     public sealed class StreamingSegmenter(BoundaryPolicy? policy = null)
     {
         private readonly BoundaryPolicy _policy = policy ?? DefaultPolicy;
@@ -156,7 +156,10 @@ public static class AudioChunker
     private readonly record struct PauseCandidate(
         int Cut, double Seconds, double Duration, double Depth);
 
-    /// <summary>Returns the best VAD-qualified pause, or null rather than cutting speech.</summary>
+    /// <summary>
+    /// Returns the best energy-qualified pause, or null rather than cutting speech. This only
+    /// chooses a split point; <see cref="SpeechActivity"/> uses Silero to decide whether to send it.
+    /// </summary>
     internal static int? BestBoundary(byte[] body, BoundaryPolicy? policy = null)
     {
         var boundaries = policy ?? DefaultPolicy;

@@ -20,10 +20,24 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
+        // Silero VAD ships as ONNX so the same model and thresholds run on every platform.
+        // Pinned exactly: inference runtimes are part of the product, not build-time tooling.
+        .package(
+            url: "https://github.com/microsoft/onnxruntime-swift-package-manager",
+            exact: "1.24.2"),
     ],
     targets: [
         // Pure logic. Deliberately free of AppKit so the eval harness runs headless in CI.
-        .target(name: "DoNotTypeCore"),
+        .target(
+            name: "DoNotTypeCore",
+            dependencies: [
+                .product(
+                    name: "onnxruntime", package: "onnxruntime-swift-package-manager"),
+            ],
+            resources: [
+                .copy("Resources/silero_vad.onnx"),
+                .copy("Resources/SILERO-VAD-NOTICE.txt"),
+            ]),
         .executableTarget(
             name: "dnt",
             dependencies: [

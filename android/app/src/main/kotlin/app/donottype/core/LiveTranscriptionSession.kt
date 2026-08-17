@@ -11,11 +11,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
-/** Segments PCM and transcribes complete VAD parts while capture continues. */
+/** Transcribes pause-finalised, Silero-qualified parts while capture continues. */
 class LiveTranscriptionSession(
     private val primaryName: String,
     private val primaryModel: String,
     context: ScreenContext?,
+    private val speechActivity: SpeechActivity,
     private val transcribe: suspend (ByteArray, ScreenContext?) -> FallbackTranscriber.Outcome,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -76,7 +77,7 @@ class LiveTranscriptionSession(
     private fun submit(chunk: AudioChunker.Chunk) {
         val context = currentContext
         tasks[chunk.index] = scope.async {
-            if (!SpeechActivity.measureWav(chunk.data).hasSpeech) return@async null
+            if (!speechActivity.measureWav(chunk.data).hasSpeech) return@async null
             permits.withPermit { transcribe(chunk.data, context) }
         }
     }

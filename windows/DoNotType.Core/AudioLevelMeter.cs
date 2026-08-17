@@ -79,7 +79,7 @@ public sealed class AudioLevelMeter
     /// </summary>
     public const int RailSamplesPerFrame = 8;
 
-    /// <summary>Matches <see cref="SpeechActivity"/>, so the two agree about what a frame is.</summary>
+    /// <summary>Twenty milliseconds resolves syllables without making the meter twitch.</summary>
     public const int FrameMilliseconds = 20;
 
     /// <summary>
@@ -152,8 +152,7 @@ public sealed class AudioLevelMeter
             _frameSamples += 1;
             if (_frameSamples < _frameLength) continue;
 
-            // The same epsilon as SpeechActivity: digital silence is a number rather than negative
-            // infinity, and the number it is is −120 dBFS.
+            // The epsilon makes digital silence a number rather than negative infinity: −120 dBFS.
             var decibels = 10 * Math.Log10(_frameEnergy / _frameLength + 1e-12);
             var clipped = _frameRailSamples >= RailSamplesPerFrame;
             _frameEnergy = 0;

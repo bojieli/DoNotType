@@ -84,7 +84,7 @@ class AudioLevelMeter(sampleRate: Int = 16_000) {
          */
         const val RAIL_SAMPLES_PER_FRAME = 8
 
-        /** Matches [SpeechActivity], so the two agree about what a frame is. */
+        /** Twenty milliseconds resolves syllables without making the meter twitch. */
         const val FRAME_MILLISECONDS = 20
 
         /**
@@ -150,8 +150,7 @@ class AudioLevelMeter(sampleRate: Int = 16_000) {
             frameSamples += 1
             if (frameSamples < frameLength) continue
 
-            // The same epsilon as SpeechActivity: digital silence is a number rather than negative
-            // infinity, and the number it is is −120 dBFS.
+            // The epsilon makes digital silence a number rather than negative infinity: −120 dBFS.
             val decibels = 10 * log10(frameEnergy / frameLength + 1e-12)
             val clipped = frameRailSamples >= RAIL_SAMPLES_PER_FRAME
             frameEnergy = 0.0

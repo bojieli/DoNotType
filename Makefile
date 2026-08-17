@@ -55,6 +55,10 @@ app: build
 	@# prompt/ one directory up in Resources without needing a checkout.
 	@cp "$(BUILD_DIR)/dnt" "$(CONTENTS)/MacOS/dnt"
 	@cp Resources/Info.plist "$(CONTENTS)/Info.plist"
+	@# SwiftPM keeps target resources in a sibling bundle. Bundle.module looks for that bundle in
+	@# Contents/Resources once the executable is wrapped as an app, so it must cross that boundary
+	@# with the binary. This carries the local Silero model and its licence notice.
+	@cp -R "$(BUILD_DIR)/DoNotType_DoNotTypeCore.bundle" "$(CONTENTS)/Resources/"
 	@# The contract ships inside the bundle so the app does not depend on the source tree. The
 	@# directory layout is preserved, because a part is found by its path under prompt/.
 	@cp -R prompt "$(CONTENTS)/Resources/prompt"

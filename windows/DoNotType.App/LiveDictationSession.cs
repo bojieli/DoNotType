@@ -3,7 +3,7 @@ using DoNotType.Core;
 
 namespace DoNotType.App;
 
-/// <summary>Segments PCM and transcribes complete VAD parts while capture continues.</summary>
+/// <summary>Transcribes pause-finalised, Silero-qualified parts while capture continues.</summary>
 internal sealed class LiveDictationSession : IDisposable
 {
     private readonly Channel<byte[]> _audio = Channel.CreateUnbounded<byte[]>(

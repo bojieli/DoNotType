@@ -37,33 +37,32 @@ All are 16 kHz mono 16-bit, the format everything downstream assumes. Rebuild th
 
 ## What they measure
 
-`SpeechActivity` keys on *modulation* rather than loudness — speech has syllables and pauses, a fan
-does not — and counts how much audio sits clearly above the recording's own noise floor:
+`SpeechActivity` runs the official Silero VAD v6.2.1 ONNX model locally. Each client uses the same
+checked-in model bytes, 512-sample windows, 64 samples of carried context and recurrent state.
+Segment finalisation uses Silero's defaults: 0.5 to begin speech, 0.35 to end it, 100 ms of silence
+to close a segment and a minimum speech duration greater than 250 ms.
 
-| audio | detected as speech |
-|---|---|
-| digital silence | 0 ms |
-| room tone | 0 ms |
-| steady noise | 0 ms |
-| hum | 0 ms |
-| click | 20 ms |
-| **mouse click, quiet room** | **380 ms** — past the threshold |
-| **real speech** | **1160 ms** |
-| real speech at −32 dB | 1160 ms |
-| real speech at −46 dB | 800 ms |
-| real speech at −52 dB | 240 ms |
+| audio | highest Silero probability | finalised speech |
+|---|---:|---:|
+| digital silence | 0.009 | 0 ms |
+| room tone | 0.120 | 0 ms |
+| steady noise | 0.032 | 0 ms |
+| 50 Hz hum | 0.012 | 0 ms |
+| keyboard click | 0.009 | 0 ms |
+| **mouse click, quiet room** | **0.131** | **0 ms** |
+| **one-word “Yes” fixture** | **1.000** | **481 ms** |
+| **real speech** | **1.000** | **1,500 ms** |
+| real speech at −32 dB | 1.000 | 1,404 ms |
+| real speech at −46 dB | 0.993 | 1,020 ms |
+| real speech at −52 dB | 0.832 | 700 ms |
 
-The threshold is 200 ms. That is ten times the loudest thing here that is not speech, and a quarter
-of speech attenuated until it is barely audible.
-
-**The asymmetry is deliberate.** A stray "Thank you." typed into a document is annoying; dropping a
-sentence somebody actually said is unforgivable. Where the two risks trade off, the gate errs
-towards sending — which is why the `hum` case is in the table above. It is *louder* than quiet
-speech and still correctly rejected, because level was never the signal.
+The `hum` fixture is louder than the quiet-speech cases, which is why an absolute volume gate would
+be wrong. Silero distinguishes their speech structure without deriving a threshold from the
+recording itself.
 
 ## Using them
 
-The same six files are read by the Swift, C# and Kotlin test suites, so all four clients are held to
+The same seven files are read by the Swift, C# and Kotlin test suites, so all four clients are held to
 the same numbers.
 
 They are also the audio for the `silence` evaluation cases, which ask a real provider to transcribe
@@ -78,7 +77,7 @@ dnt-eval silence --provider deepgram   # the interesting one: it never sees the 
 ## The one that got through
 
 `mouse-click-quiet-room.wav` is not synthesised. It is a real recording this app stored, and it
-defeated the gate as originally written: 380 ms above the floor, comfortably past the 200 ms
+defeated the original recording-relative gate: 380 ms above the floor, comfortably past its 200 ms
 threshold, because the room was quiet enough (−63 dB) that a −37 dB click sat 26 dB above it. In a
 silent room *any* sound clears a relative margin.
 
@@ -87,14 +86,15 @@ characters of fluent prose about what the screen appeared to be discussing. Nine
 appeared on screen; the rest was invented. That is the failure this whole corpus exists to prevent,
 happening in production.
 
-Nothing structural separates it from a real one-word answer — compare `../short-word.wav`:
+The hand-built detector needed a special spectral rule to separate it from a real one-word answer.
+Silero makes that distinction directly:
 
-| | this click | "Yes." |
-|---|---|---|
-| detected | 380 ms | 320 ms |
-| separate bursts | 1 | 1 |
-| energy at/below 250 Hz | 23% | 50% |
+| | this click | “Yes.” |
+|---|---:|---:|
+| old detector | 380 ms | 320 ms |
+| highest Silero probability | 0.131 | 1.000 |
+| Silero-finalised speech | 0 ms | 481 ms |
 
-Only the last row differs, which is why `SpeechActivity` ends with a spectral test and why that
-test only runs on clips too short to settle on duration alone. A change that makes this file pass
-has reintroduced the bug; a change that makes `../short-word.wav` fail has broken one-word answers.
+A change that sends the click has reintroduced the bug; a change that rejects
+`../short-word.wav` has broken one-word answers. Both therefore run through the real ONNX model in
+every platform's unit suite.

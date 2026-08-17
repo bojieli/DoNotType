@@ -18,7 +18,7 @@ public enum AudioChunker {
     /// Boundary policy shared by finished files and the live recorder.
     ///
     /// `horizon` is deliberately not a maximum. It is the end of the preferred search interval;
-    /// when there is no VAD-qualified pause by then, the chunk grows until one appears. A latency
+    /// when there is no safe pause by then, the chunk grows until one appears. A latency
     /// optimisation is never allowed to manufacture a mid-word cut.
     public struct BoundaryPolicy: Sendable, Equatable {
         public var minimum: TimeInterval
@@ -67,7 +67,7 @@ public enum AudioChunker {
 
     /// Splits 16-bit PCM WAV data, or returns a single chunk when it is short enough.
     ///
-    /// A cut is made only in a VAD-qualified pause. If the recording contains no such pause it is
+    /// A cut is made only in an energy-qualified pause. If the recording contains no such pause it is
     /// returned whole, however long it is.
     public static func split(
         wav: Data,
@@ -100,7 +100,7 @@ public enum AudioChunker {
 
             let tail = body.subdata(in: start..<body.count)
             guard let relativeCut = bestBoundary(in: tail, format: format, policy: policy) else {
-                // No VAD pause means no safe boundary. One large request is slower; a cut through
+                // No safe pause means no safe boundary. One large request is slower; a cut through
                 // speech is incorrect.
                 chunks.append(
                     makeChunk(
@@ -185,7 +185,7 @@ public enum AudioChunker {
             return pendingDurationSeconds >= policy.target
         }
 
-        /// Re-running VAD for every 85 ms microphone tap would repeatedly scan the same minute of
+        /// Re-running pause analysis for every 85 ms microphone tap would scan the same minute of
         /// samples. Two hundred milliseconds is still below the minimum pause and bounds the extra
         /// latency while keeping capture work negligible.
         private var shouldAnalyse: Bool {
@@ -224,11 +224,12 @@ public enum AudioChunker {
         let depth: Double
     }
 
-    /// Returns the best safe boundary, or nil when the audio has no VAD-qualified pause.
+    /// Returns the best safe boundary, or nil when the audio has no energy-qualified pause.
     ///
-    /// VAD uses the recording's own low-percentile floor, so a train and a quiet office are judged
-    /// relative to themselves. The second percentile is intentional: ordinary speech can contain
-    /// less than ten percent pause, while a boundary detector only needs one sustained quiet run.
+    /// This is deliberately only a pause finder; Silero makes every decision about whether a chunk
+    /// contains speech. The pause finder uses a low-percentile energy floor so a train and a quiet
+    /// office are judged relative to themselves. The second percentile is intentional: ordinary
+    /// speech can contain less than ten percent pause, while splitting only needs one quiet run.
     /// A run counts as a boundary only when
     /// it is surrounded by speech; uniform noise therefore cannot masquerade as one enormous
     /// pause. The middle leaves acoustic context on both sides without duplicating samples.

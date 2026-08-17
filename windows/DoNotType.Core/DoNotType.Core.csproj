@@ -34,4 +34,17 @@
     <InternalsVisibleTo Include="dnt" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Silero's official ONNX model is embedded so a single-file Windows release cannot leave
+         its speech gate behind. Swift and Android consume this same checked-in byte sequence. -->
+    <EmbeddedResource Include="..\..\Sources\DoNotTypeCore\Resources\silero_vad.onnx"
+                      LogicalName="DoNotType.Core.silero_vad.onnx" />
+    <EmbeddedResource Include="..\..\Sources\DoNotTypeCore\Resources\SILERO-VAD-NOTICE.txt"
+                      LogicalName="DoNotType.Core.SILERO-VAD-NOTICE.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.24.2" />
+  </ItemGroup>
+
 </Project>

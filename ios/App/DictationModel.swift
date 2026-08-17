@@ -602,7 +602,16 @@ final class DictationModel {
         // speech recogniser has no system instruction, so for Deepgram, xAI and Voxtral the rule
         // is never sent at all. Not transmitting the audio is the only defence for every backend.
         if let recorded = try? Data(contentsOf: url) {
-            let activity = SpeechActivity.measure(wav: recorded)
+            let activity: SpeechActivity.Reading
+            do {
+                activity = try SpeechActivity.measure(wav: recorded)
+            } catch {
+                livePipeline?.cancel()
+                livePipeline = nil
+                try? FileManager.default.removeItem(at: url)
+                state = .failed(error.localizedDescription)
+                return
+            }
             guard livePipeline != nil || activity.hasSpeech else {
                 log.info(
                     "nothing was said, so nothing was sent",

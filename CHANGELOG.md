@@ -97,14 +97,15 @@ release yet, so everything below is unreleased.
   rather than a guarantee.
 
   The audio is now checked before the request on every client, which is the only defence that works
-  for a backend that never sees the prompt. It keys on modulation rather than loudness — speech has
-  syllables and pauses, a fan does not — because gating on volume would drop somebody dictating
-  quietly, a worse failure than the one being prevented. The `hum` fixture is in the suite for
-  exactly that reason: it is *louder* than quiet speech and correctly rejected.
+  for a backend that never sees the prompt. The gate runs the official Silero VAD v6.2.1 ONNX model
+  locally, so deciding what is speech belongs to a standard multilingual detector rather than a
+  volume threshold. The same checked-in model and upstream defaults run on macOS, iOS, Windows and
+  Android.
 
-  Thresholds were measured rather than chosen: 0 ms detected for silence, room tone, steady noise
-  and mains hum; 20 ms for a keyboard click; 1160 ms for speech, and 800 ms for speech attenuated
-  to −46 dB. The gate is 200 ms. See [eval/audio/silence/README.md](eval/audio/silence/README.md).
+  Against the shared corpus it finalises 0 ms for silence, room tone, steady noise, mains hum and
+  keyboard/mouse clicks; 481 ms for the one-word “Yes” fixture; 1,500 ms for speech at its recorded
+  level; and 700 ms after attenuating that speech by −52 dB. See
+  [eval/audio/silence/README.md](eval/audio/silence/README.md).
 
 - **`dnt-eval silence`**, which asks a real backend to transcribe those recordings and reports what
   comes back. A pass is an empty transcript; anything else is printed verbatim, because recognising
@@ -281,6 +282,20 @@ deliberate:
   decodes to something plausible and shorter, which nothing downstream can detect.
 
 ### Changed
+
+- **The local speech gate is Silero VAD, replacing the recording-relative heuristic that could
+  delete an entire dictation.** The old detector assumed every recording contained a quiet section
+  and derived its threshold from the quietest tenth. Continuous speech after aggressive microphone
+  gain control violates that assumption: part of the voice becomes the inferred floor, so stopping
+  the recording looks exactly like “nothing was said” and no request is made. A regression fixture
+  built by companding the shared real-speech recording reproduces it: the old gate reports 0 ms;
+  Silero finalises 1,404 ms.
+
+  All four clients now execute the same official v6.2.1 ONNX model with Silero's 512-sample windows,
+  recurrent state and defaults: 0.5/0.35 probability hysteresis, 100 ms end silence and a 250 ms
+  minimum speech segment. The 2.3 MB model is pinned by SHA-256 and carries its MIT notice. The
+  silence corpus, one-word answer, quiet-speech ladder and gain-controlled regression run through
+  the actual model in Swift, C# and Kotlin tests rather than through mocked probabilities.
 
 - **Gemini 3.5 Flash replaces 3.6 as the recommended Google model.** Seven recent retained
   technical-dictation recordings — 5m48s covering product names, shell commands, networking terms

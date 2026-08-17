@@ -55,7 +55,7 @@ object AudioChunker {
     /**
      * Splits 16-bit PCM WAV data, or returns a single chunk when it is short enough.
      *
-     * A cut is made only in a VAD-qualified pause. No pause means no split.
+     * A cut is made only in an energy-qualified pause. No pause means no split.
      */
     fun split(wav: ByteArray, policy: BoundaryPolicy = defaultPolicy): List<Chunk> {
         val body = pcmBody(wav) ?: return listOf(Chunk(0, wav, 0.0, 0.0))
@@ -87,7 +87,7 @@ object AudioChunker {
         return chunks
     }
 
-    /** Incremental VAD segmenter used by live microphone capture. */
+    /** Incremental pause segmenter used by live microphone capture. */
     class StreamingSegmenter(private val policy: BoundaryPolicy = defaultPolicy) {
         private var pending = ByteArray(0)
         private var totalBytes = 0L
@@ -157,7 +157,10 @@ object AudioChunker {
         val depth: Double,
     )
 
-    /** Returns the best VAD-qualified pause, or null rather than cutting speech. */
+    /**
+     * Returns the best energy-qualified pause, or null rather than cutting speech. This only
+     * chooses a split point; [SpeechActivity] uses Silero to decide whether to send it.
+     */
     internal fun bestBoundary(body: ByteArray, policy: BoundaryPolicy = defaultPolicy): Int? {
         val frameMilliseconds = 20
         val frameBytes = BYTES_PER_SECOND * frameMilliseconds / 1_000

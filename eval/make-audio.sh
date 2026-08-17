@@ -43,10 +43,10 @@ synth git-command      "Let's just do git commit dash dash amend and move on."
 # substitution, where clean pronunciation removes the ambiguity the failure needs. It does not
 # apply here: an unknown name is equally unknown however clearly it is spoken, so what is being
 # measured survives synthesis intact.
-# The shortest thing anybody dictates, and the case that constrains the speech gate. A one-word
-# answer is a single 320 ms burst — the same shape as the mouse click in eval/audio/silence/, which
-# is why SpeechActivity cannot separate them on duration or burst count and asks about the spectrum
-# instead. If a change to that gate drops this file, it drops "Yes" as an answer to a question.
+# The shortest thing anybody dictates, and the case that constrains the speech gate. It used to be
+# indistinguishable from the retained mouse-click failure by duration and burst count; Silero gives
+# the click 0.131 probability and this word 1.000. If the gate drops this file, it drops "Yes" as an
+# answer to a question.
 synth short-word       "Yes."
 
 synth novel-name       "Ask Kaelith to review the merge before standup."

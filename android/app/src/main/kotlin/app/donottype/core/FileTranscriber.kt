@@ -116,6 +116,16 @@ class FileTranscriber(
             val wav = AudioDecoder.decodeToWav(context, uri)
             val decodeMillis = System.currentTimeMillis() - decodeStart
 
+            // A selected file deserves an explicit answer rather than the keyboard's silent no-op,
+            // but it gets the same local Silero gate before any bytes leave the device.
+            val activity = service.measureSpeech(wav)
+            if (!activity.hasSpeech) {
+                log.info(
+                    mapOf("file" to fileName, "audio" to activity.summary),
+                ) { "no speech in the recording" }
+                throw NoSpeechException()
+            }
+
             val instruction = PromptAssets.systemInstruction(context, Settings.fidelity)
             val client = ProviderFactory.create(Settings.provider, key, Settings.model)
 

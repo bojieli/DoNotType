@@ -104,7 +104,7 @@ public struct AudioLevelMeter: Sendable {
     /// seconds on audio nobody would call clipped, which is how a warning stops being read.
     public static let railSamplesPerFrame = 8
 
-    /// Matches `SpeechActivity`, so the two agree about what a frame is.
+    /// Twenty milliseconds resolves syllables without making the meter twitch at sample rate.
     public static let frameMilliseconds = 20
     /// 60 ms a bar. Long enough that a full meter is a second and a half of speech rather than
     /// half a second of it, short enough to resolve individual syllables.
@@ -146,8 +146,7 @@ public struct AudioLevelMeter: Sendable {
             frameSamples += 1
             guard frameSamples == frameLength else { continue }
 
-            // The same epsilon as `SpeechActivity`: digital silence is a number rather than
-            // negative infinity, and the number it is is −120 dBFS.
+            // The epsilon makes digital silence a number rather than negative infinity: −120 dBFS.
             let decibels = 10 * log10(frameEnergy / Double(frameLength) + 1e-12)
             let clipped = frameRailSamples >= Self.railSamplesPerFrame
             frameEnergy = 0

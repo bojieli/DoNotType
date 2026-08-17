@@ -401,7 +401,26 @@ public sealed class DictationController : IDisposable
         // for an empty transcript, but it only reaches model providers: a speech recogniser has no
         // system instruction, so for Deepgram, xAI and Voxtral the rule is never sent at all. Not
         // transmitting the audio is the only defence that holds for every backend.
-        var activity = SpeechActivity.MeasureWav(wav);
+        SpeechActivity.Reading activity;
+        try
+        {
+            activity = SpeechActivity.MeasureWav(wav);
+        }
+        catch (Exception error)
+        {
+            _groundingCts?.Cancel();
+            _liveSession?.Cancel();
+            _liveSession = null;
+            DictationLog.Error(
+                () => "speech detector failed",
+                new Dictionary<string, string>
+                {
+                    ["dictation"] = Short(_pendingId),
+                    ["detail"] = error.Message,
+                });
+            Fail($"Speech detector failed: {error.Message}");
+            return;
+        }
         if (_liveSession is null && !activity.HasSpeech)
         {
             DictationLog.Info(

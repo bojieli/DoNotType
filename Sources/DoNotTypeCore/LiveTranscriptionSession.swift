@@ -1,6 +1,6 @@
 import Foundation
 
-/// Transcribes VAD-finalised parts while their recording is still being captured.
+/// Transcribes pause-finalised, Silero-qualified parts while capture is still running.
 ///
 /// `LiveAudioPipeline` is the synchronous edge used by real-time audio callbacks. Its unbounded
 /// stream preserves every PCM buffer and one worker feeds them, in order, to the actor. The actor
@@ -114,7 +114,7 @@ public actor LiveTranscriptionSession {
         let context = self.context
         let permits = self.permits
         tasks[chunk.index] = Task {
-            let activity = SpeechActivity.measure(wav: chunk.data)
+            let activity = try SpeechActivity.measure(wav: chunk.data)
             guard activity.hasSpeech else { return nil }
 
             await permits.acquire()

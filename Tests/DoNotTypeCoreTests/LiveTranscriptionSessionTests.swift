@@ -15,7 +15,7 @@ final class LiveTranscriptionSessionTests: XCTestCase {
         let session = LiveTranscriptionSession(
             transcriber: FallbackTranscriber(primary: service), context: nil)
         let pipeline = LiveAudioPipeline(session: session)
-        let body = pcm(segments: [(55, 4), (35, 0)])
+        let body = try pcm(segments: [(55, 4), (35, 0)])
 
         pipeline.append(pcm: body.subdata(in: 0..<(90 * format.bytesPerSecond)))
         pipeline.append(pcm: body.subdata(in: (90 * format.bytesPerSecond)..<body.count))
@@ -31,25 +31,34 @@ final class LiveTranscriptionSessionTests: XCTestCase {
         XCTAssertEqual(outcome.result.chunkCount, 2)
     }
 
-    private func pcm(segments: [(Double, Double)]) -> Data {
+    private func pcm(segments: [(Double, Double)]) throws -> Data {
+        let speech = try speechPCM()
         var pcm = Data()
-        var phase = 0.0
-        var sampleNumber = 0
-        for (loud, silence) in segments {
-            for _ in 0..<Int(loud * Double(format.sampleRate)) {
-                phase += 2 * Double.pi * 220 / Double(format.sampleRate)
-                // Real speech is modulated. Alternating levels also keeps the whole-recording
-                // speech guard from mistaking a laboratory tone for steady background noise.
-                let amplitude = (sampleNumber / (format.sampleRate / 4)).isMultiple(of: 2)
-                    ? 12_000.0 : 2_000.0
-                let sample = Int16(sin(phase) * amplitude)
-                pcm.append(UInt8(truncatingIfNeeded: sample))
-                pcm.append(UInt8(truncatingIfNeeded: sample >> 8))
-                sampleNumber += 1
+        for (spoken, silence) in segments {
+            // Repeat a real voice recording to make a long stream. The old amplitude-modulated
+            // carrier was a fixture for the retired heuristic, not evidence of human speech.
+            var bytesRemaining = Int(spoken * Double(format.bytesPerSecond))
+            while bytesRemaining > 0 {
+                let count = min(bytesRemaining, speech.count)
+                pcm.append(speech.prefix(count))
+                bytesRemaining -= count
             }
             pcm.append(Data(count: Int(silence * Double(format.bytesPerSecond))))
         }
         return pcm
+    }
+
+    private func speechPCM() throws -> Data {
+        var directory = URL(fileURLWithPath: #filePath)
+        for _ in 0..<6 {
+            directory.deleteLastPathComponent()
+            let candidate = directory.appendingPathComponent("eval/audio/formats/speech.wav")
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                let wav = try Data(contentsOf: candidate)
+                return try XCTUnwrap(AudioChunker.pcmBody(of: wav))
+            }
+        }
+        throw XCTSkip("speech fixture not found")
     }
 
     private func waitUntil(
