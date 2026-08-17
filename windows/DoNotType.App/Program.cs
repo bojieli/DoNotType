@@ -71,6 +71,11 @@ internal sealed class TrayApplication : ApplicationContext
             ShowOverlay(RecordingOverlay.Phase.Notice, message);
             _ = HideOverlayAfter(TimeSpan.FromSeconds(3));
         });
+        _settings.SaveFailed += message => BeginInvokeOnTray(() =>
+        {
+            ShowOverlay(RecordingOverlay.Phase.Failed, message);
+            _ = HideOverlayAfter(TimeSpan.FromSeconds(7));
+        });
         _controller.Inserted += insertion => BeginInvokeOnTray(() =>
         {
             var plural = insertion.Characters == 1 ? string.Empty : "s";

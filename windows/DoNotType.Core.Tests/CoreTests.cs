@@ -1,4 +1,5 @@
 using DoNotType.Core;
+using System.Text.Json;
 using Xunit;
 
 namespace DoNotType.Core.Tests;
@@ -563,6 +564,7 @@ public class HistoryStoreTests : IDisposable
 
         store.Insert(Record(DictationStatus.Completed), [1, 2, 3]);
 
+        Assert.Empty(store.All());
         Assert.False(File.Exists(Path.Combine(_directory, "history.json")));
     }
 
@@ -594,6 +596,70 @@ public class HistoryStoreTests : IDisposable
         Assert.Null(store.AudioFor(record));
         store.Delete(record.Id);
         Assert.True(File.Exists(outside));
+    }
+
+    [Fact]
+    public void FailedIndexReplacementDoesNotDeleteRetryAudio()
+    {
+        var store = new HistoryStore(_directory);
+        store.Configure(RetentionPolicy.Forever, keepAudioForCompleted: false);
+        var record = store.Insert(Record(DictationStatus.Failed), [1, 2, 3]);
+        Assert.NotNull(store.AudioFor(record));
+
+        // A directory at the temporary filename deterministically makes the replacement fail.
+        Directory.CreateDirectory(Path.Combine(_directory, "history.json.tmp"));
+        store.Delete(record.Id);
+
+        Assert.NotNull(store.AudioFor(record));
+        Assert.Single(store.All());
+        Assert.Single(new HistoryStore(_directory).All());
+    }
+
+    [Fact]
+    public void RecordsCannotMutateTheStoreWithoutAnUpdate()
+    {
+        var store = new HistoryStore(_directory);
+        var returned = store.Insert(
+            new DictationRecord
+            {
+                Status = DictationStatus.Completed,
+                Text = "durable",
+                Model = "test",
+            },
+            null);
+
+        returned.Text = "changed outside";
+        var fromList = store.All().Single();
+        fromList.Text = "also changed outside";
+
+        Assert.Equal("durable", store.All().Single().Text);
+        Assert.Equal("durable", new HistoryStore(_directory).All().Single().Text);
+    }
+}
+
+public class AtomicFileTests : IDisposable
+{
+    private readonly string _directory =
+        Path.Combine(Path.GetTempPath(), $"dnt-atomic-{Guid.NewGuid()}");
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
+        GC.SuppressFinalize(this);
+    }
+
+    [Fact]
+    public void RepeatedReplacementsAreCompleteAndLeaveNoTemporaryFiles()
+    {
+        var path = Path.Combine(_directory, "settings.json");
+        for (var index = 0; index < 40; index++)
+        {
+            AtomicFile.ReplaceText(path, JsonSerializer.Serialize(new { index }));
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            Assert.Equal(index, document.RootElement.GetProperty("index").GetInt32());
+        }
+
+        Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
     }
 }
 

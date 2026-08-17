@@ -230,38 +230,55 @@ class HistoryStore(private val directory: File) {
     }
 
     @Synchronized
-    fun all(): List<DictationRecord> = loaded().toList()
+    fun all(): List<DictationRecord> = loaded().map { it.copy() }
 
     @Synchronized
-    fun retryable(): List<DictationRecord> = loaded().filter { it.canRetry }.sortedBy { it.createdAt }
+    fun retryable(): List<DictationRecord> = loaded()
+        .filter { it.canRetry }
+        .sortedBy { it.createdAt }
+        .map { it.copy() }
 
     @Synchronized
     fun insert(record: DictationRecord, audio: ByteArray?): DictationRecord {
         val list = loaded()
+        val stored = record.copy(audioFileName = null)
+
+        // A privacy setting must apply to the live process too, not only after the next launch.
+        if (retention == RetentionPolicy.NEVER) {
+            persist()
+            return stored
+        }
 
         // Kept whenever the entry might still need retrying, regardless of the completed-audio
         // setting: without it, Retry cannot work.
         val needsAudio = record.status.isRetryable || keepAudioForCompleted
-        if (audio != null && needsAudio && retention != RetentionPolicy.NEVER) {
-            audioDirectory.mkdirs()
+        var writtenAudio: File? = null
+        if (audio != null && needsAudio) {
             val name = "${record.id}.wav"
-            audioFile(name)!!.writeBytes(audio)
-            record.audioFileName = name
-        } else {
-            record.audioFileName = null
+            val destination = audioFile(name)!!
+            if (writeAudio(destination, audio)) {
+                stored.audioFileName = name
+                writtenAudio = destination
+            }
         }
 
-        list.add(0, record)
-        persist()
+        list.add(0, stored)
+        val persisted = persist()
+        if (!persisted) {
+            list.removeAt(0)
+            writtenAudio?.delete()
+            stored.audioFileName = null
+        }
         log.debug(
             mapOf(
-                "status" to record.status.id,
-                "mode" to record.resolvedMode.id,
-                "audio" to if (record.audioFileName == null) "discarded" else "kept",
-                "source" to (record.sourceFileName ?: "microphone"),
+                "status" to stored.status.id,
+                "mode" to stored.resolvedMode.id,
+                "audio" to if (stored.audioFileName == null) "discarded" else "kept",
+                "persisted" to if (persisted) "yes" else "no",
+                "source" to (stored.sourceFileName ?: "microphone"),
             ),
         ) { "stored" }
-        return record
+        return stored.copy()
     }
 
     @Synchronized
@@ -269,29 +286,47 @@ class HistoryStore(private val directory: File) {
         val list = loaded()
         val index = list.indexOfFirst { it.id == record.id }
         if (index < 0) return
+        val previous = list[index]
+        val updated = record.copy()
+        val audioNameToRemove = previous.audioFileName
+        val shouldReleaseAudio =
+            updated.status == DictationRecord.Status.COMPLETED && !keepAudioForCompleted
 
         // A successful retry releases the recording it was holding.
-        if (record.status == DictationRecord.Status.COMPLETED && !keepAudioForCompleted) {
-            record.audioFileName?.let { audioFile(it)?.delete() }
-            record.audioFileName = null
+        if (shouldReleaseAudio) {
+            updated.audioFileName = null
         }
-        list[index] = record
-        persist()
+        list[index] = updated
+        if (persist()) {
+            if (shouldReleaseAudio) audioNameToRemove?.let { audioFile(it)?.delete() }
+        } else {
+            list[index] = previous
+        }
     }
 
     @Synchronized
     fun delete(id: String) {
         val list = loaded()
-        list.firstOrNull { it.id == id }?.let(::removeAudio)
-        list.removeAll { it.id == id }
-        persist()
+        val index = list.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val removed = list.removeAt(index)
+        if (persist()) {
+            removeAudio(removed)
+        } else {
+            list.add(index, removed)
+        }
     }
 
     @Synchronized
     fun deleteAll() {
-        loaded().forEach(::removeAudio)
-        loaded().clear()
-        persist()
+        val list = loaded()
+        val removed = list.toList()
+        list.clear()
+        if (persist()) {
+            removed.forEach(::removeAudio)
+        } else {
+            list.addAll(removed)
+        }
     }
 
     @Synchronized
@@ -335,38 +370,56 @@ class HistoryStore(private val directory: File) {
         val list = records ?: return
 
         if (maxAge == 0L) {
-            list.forEach(::removeAudio)
+            val removed = list.toList()
             list.clear()
-            persist()
+            if (persist()) {
+                removed.forEach(::removeAudio)
+            } else {
+                list.addAll(removed)
+            }
             return
         }
         val cutoff = System.currentTimeMillis() - maxAge
         val expired = list.filter { it.createdAt < cutoff }
         if (expired.isEmpty()) return
+        val previous = list.toList()
 
         // Deleting the user's transcripts is worth a line even when they asked for it: "where did
         // my history go" has a retention policy as its answer, and nothing else records the moment.
-        log.info(
-            mapOf("removed" to expired.size.toString(), "policy" to retention.id),
-        ) { "retention pruned history" }
-        expired.forEach(::removeAudio)
         list.removeAll { it.createdAt < cutoff }
-        persist()
+        if (persist()) {
+            expired.forEach(::removeAudio)
+            log.info(
+                mapOf("removed" to expired.size.toString(), "policy" to retention.id),
+            ) { "retention pruned history" }
+        } else {
+            list.clear()
+            list.addAll(previous)
+        }
     }
 
     private fun removeAudio(record: DictationRecord) {
         record.audioFileName?.let { audioFile(it)?.delete() }
     }
 
-    private fun persist() {
+    private fun persist(): Boolean {
         if (retention == RetentionPolicy.NEVER) {
-            indexFile.delete()
-            temporaryIndexFile.delete()
-            return
+            return runCatching {
+                if (indexFile.exists() && !indexFile.delete()) {
+                    throw IOException("the history index could not be removed")
+                }
+                if (temporaryIndexFile.exists() && !temporaryIndexFile.delete()) {
+                    throw IOException("the temporary history index could not be removed")
+                }
+            }.onFailure { error ->
+                log.error(
+                    mapOf("type" to error.javaClass.simpleName),
+                ) { "could not remove disabled history" }
+            }.isSuccess
         }
         val array = JSONArray()
         records?.forEach { array.put(it.toJson()) }
-        runCatching {
+        return runCatching {
             if (!directory.exists() && !directory.mkdirs()) {
                 throw IOException("the history directory could not be created")
             }
@@ -395,8 +448,25 @@ class HistoryStore(private val directory: File) {
             log.error(
                 mapOf("type" to error.javaClass.simpleName),
             ) { "could not persist history; the previous index is still intact" }
-        }
+        }.isSuccess
     }
+
+    /** Flush retry audio before the index advertises it, and never leave a partial named file. */
+    private fun writeAudio(destination: File, audio: ByteArray): Boolean = runCatching {
+        if (!audioDirectory.exists() && !audioDirectory.mkdirs()) {
+            throw IOException("the history audio directory could not be created")
+        }
+        FileOutputStream(destination).use { output ->
+            output.write(audio)
+            output.flush()
+            output.fd.sync()
+        }
+    }.onFailure { error ->
+        destination.delete()
+        log.error(
+            mapOf("type" to error.javaClass.simpleName),
+        ) { "could not persist retry audio" }
+    }.isSuccess
 
     /** A history file is data, not authority to read or delete an arbitrary path. */
     private fun audioFile(name: String): File? {

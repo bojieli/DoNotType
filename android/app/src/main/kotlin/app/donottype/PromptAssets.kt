@@ -6,6 +6,12 @@ import app.donottype.core.RewriteStyle
 import app.donottype.core.SummaryStyle
 import app.donottype.core.TranscriptMode
 import java.io.File
+import java.io.FileOutputStream
+import java.nio.charset.StandardCharsets
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.util.UUID
 
 /**
  * One file in `prompt/`.
@@ -172,8 +178,7 @@ object PromptAssets {
     fun saveCustomPrompt(context: Context, template: String, part: PromptPart) {
         validate(template, part)
         val destination = overrideFile(context, part)
-        destination.parentFile?.mkdirs()
-        destination.writeText(template.trim() + "\n")
+        writeAtomically(destination, template.trim() + "\n")
         cache.remove(part.id)
     }
 
@@ -264,6 +269,39 @@ object PromptAssets {
         val body = text(context, host)
         val placeholder = host.placeholder ?: return body
         return body.replace(placeholder, text(context, clause))
+    }
+
+    /** A crash while saving a prompt must leave the previous, valid contract in force. */
+    private fun writeAtomically(destination: File, text: String) {
+        val parent = destination.parentFile
+            ?: throw IllegalArgumentException("a prompt part needs a parent directory")
+        if (!parent.exists() && !parent.mkdirs()) {
+            throw java.io.IOException("the prompt directory could not be created")
+        }
+        val temporary = File(
+            parent,
+            ".${destination.name}.${android.os.Process.myPid()}.${UUID.randomUUID()}.tmp",
+        )
+        try {
+            FileOutputStream(temporary).use { output ->
+                output.write(text.toByteArray(StandardCharsets.UTF_8))
+                output.flush()
+                output.fd.sync()
+            }
+            try {
+                Files.move(
+                    temporary.toPath(), destination.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(
+                    temporary.toPath(), destination.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            }
+        } finally {
+            temporary.delete()
+        }
     }
 }
 

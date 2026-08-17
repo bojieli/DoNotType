@@ -15,6 +15,9 @@ namespace DoNotType.App;
 /// </summary>
 public sealed class AppSettings
 {
+    /// <summary>Raised when a change remains in memory but could not reach durable storage.</summary>
+    public event Action<string>? SaveFailed;
+
     public ProviderKind Provider { get; set; } = ProviderFactory.DefaultForNewInstalls;
     public string Model { get; set; } = ProviderFactory.DefaultForNewInstalls.DefaultModel();
     public Fidelity Fidelity { get; set; } = Fidelity.Light;
@@ -258,13 +261,27 @@ public sealed class AppSettings
         return new AppSettings();
     }
 
-    public void Save()
+    public bool Save()
     {
         lock (this)
         {
-            NormalizeDictionary();
-            System.IO.Directory.CreateDirectory(Directory);
-            File.WriteAllText(Path, JsonSerializer.Serialize(this, Options));
+            try
+            {
+                NormalizeDictionary();
+                AtomicFile.ReplaceText(Path, JsonSerializer.Serialize(this, Options));
+                return true;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                const string message =
+                    "Settings could not be saved. Check that the DoNotType data folder is writable.";
+                new Log("settings").Error(() => message, new Dictionary<string, string>
+                {
+                    ["type"] = error.GetType().Name,
+                });
+                SaveFailed?.Invoke(message);
+                return false;
+            }
         }
     }
 

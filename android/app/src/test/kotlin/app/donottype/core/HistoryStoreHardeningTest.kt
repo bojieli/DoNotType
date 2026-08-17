@@ -59,4 +59,60 @@ class HistoryStoreHardeningTest {
         store.delete(loaded.id)
         assertTrue("history deletion escaped its audio directory", outside.exists())
     }
+
+    @Test
+    fun `failed index replacement does not delete retry audio`() {
+        val store = HistoryStore(directory)
+        store.configure(RetentionPolicy.FOREVER, keepAudioForCompleted = false)
+        val stored = store.insert(
+            DictationRecord(status = DictationRecord.Status.FAILED, model = "test"),
+            byteArrayOf(1, 2, 3),
+        )
+        assertTrue(store.audioFor(stored)!!.isNotEmpty())
+
+        // A directory at the temporary filename deterministically makes the next replacement fail.
+        assertTrue(File(directory, "history.json.tmp").mkdir())
+        store.delete(stored.id)
+
+        assertTrue(
+            "audio must outlive an index that still refers to it",
+            store.audioFor(stored)!!.isNotEmpty(),
+        )
+        assertEquals(1, store.all().size)
+        assertEquals(1, HistoryStore(directory).all().size)
+    }
+
+    @Test
+    fun `never retention is empty before the process exits`() {
+        val store = HistoryStore(directory)
+        store.configure(RetentionPolicy.NEVER, keepAudioForCompleted = true)
+
+        store.insert(
+            DictationRecord(status = DictationRecord.Status.COMPLETED, model = "test"),
+            byteArrayOf(1, 2, 3),
+        )
+
+        assertTrue(store.all().isEmpty())
+        assertFalse(File(directory, "history.json").exists())
+    }
+
+    @Test
+    fun `records cannot mutate the store without an update`() {
+        val store = HistoryStore(directory)
+        val returned = store.insert(
+            DictationRecord(
+                status = DictationRecord.Status.COMPLETED,
+                text = "durable",
+                model = "test",
+            ),
+            audio = null,
+        )
+
+        returned.text = "changed outside"
+        val fromList = store.all().single()
+        fromList.text = "also changed outside"
+
+        assertEquals("durable", store.all().single().text)
+        assertEquals("durable", HistoryStore(directory).all().single().text)
+    }
 }

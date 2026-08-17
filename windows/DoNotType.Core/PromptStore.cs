@@ -44,8 +44,7 @@ public sealed class PromptStore(string directory)
     {
         Validate(text, part);
         var destination = PathFor(part);
-        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        File.WriteAllText(destination, text.Trim() + "\n");
+        AtomicFile.ReplaceText(destination, text.Trim() + "\n");
     }
 
     public void Restore(PromptPart part)

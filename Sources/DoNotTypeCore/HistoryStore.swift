@@ -75,27 +75,53 @@ public actor HistoryStore {
         loadIfNeeded()
         var stored = record
 
+        // "Don't keep history" also means this process must not keep an in-memory list until it
+        // quits. The caller still receives its outcome, but the history view remains empty.
+        guard retention != .never else {
+            stored.audioFileName = nil
+            _ = persist()
+            return stored
+        }
+
         // Audio is kept whenever the entry might still need retrying, regardless of the
         // completed-audio setting: without it, "Retry" is a button that cannot work.
         let needsAudio = record.status.isRetryable || keepAudioForCompleted
-        if let audio, needsAudio, retention != .never {
+        var writtenAudioURL: URL?
+        if let audio, needsAudio {
             let name = "\(record.id.uuidString).wav"
-            try? FileManager.default.createDirectory(
-                at: audioDirectory, withIntermediateDirectories: true)
-            try? audio.write(to: audioDirectory.appendingPathComponent(name))
-            stored.audioFileName = name
+            let url = audioDirectory.appendingPathComponent(name)
+            do {
+                try FileManager.default.createDirectory(
+                    at: audioDirectory, withIntermediateDirectories: true)
+                // The recording must be complete before an index can promise that Retry works.
+                try audio.write(to: url, options: .atomic)
+                stored.audioFileName = name
+                writtenAudioURL = url
+            } catch {
+                try? FileManager.default.removeItem(at: url)
+                stored.audioFileName = nil
+                log.error(
+                    "could not persist retry audio",
+                    ["type": String(describing: type(of: error))])
+            }
         } else {
             stored.audioFileName = nil
         }
 
         records.insert(stored, at: 0)
-        persist()
+        let persisted = persist()
+        if !persisted {
+            records.removeFirst()
+            if let writtenAudioURL { try? FileManager.default.removeItem(at: writtenAudioURL) }
+            stored.audioFileName = nil
+        }
         log.debug(
             "stored",
             [
                 "id": stored.id.uuidString, "status": stored.status.rawValue,
                 "mode": stored.resolvedMode.rawValue,
                 "audio": stored.audioFileName == nil ? "discarded" : "kept",
+                "persisted": persisted ? "yes" : "no",
                 "source": stored.sourceFileName ?? "microphone",
             ])
         return stored
@@ -104,33 +130,44 @@ public actor HistoryStore {
     public func update(_ record: DictationRecord) {
         loadIfNeeded()
         guard let index = records.firstIndex(where: { $0.id == record.id }) else { return }
+        let previous = records[index]
         var updated = record
+        var audioToRemove: URL?
 
         // A successful retry releases the audio unless the user asked to keep it.
         if updated.status == .completed, !keepAudioForCompleted {
-            if let name = updated.audioFileName, let url = safeAudioURL(named: name) {
-                try? FileManager.default.removeItem(at: url)
-            }
+            if let name = previous.audioFileName { audioToRemove = safeAudioURL(named: name) }
             updated.audioFileName = nil
         }
 
         records[index] = updated
-        persist()
+        if persist() {
+            if let audioToRemove { try? FileManager.default.removeItem(at: audioToRemove) }
+        } else {
+            records[index] = previous
+        }
     }
 
     public func delete(id: UUID) {
         loadIfNeeded()
         guard let index = records.firstIndex(where: { $0.id == id }) else { return }
-        removeAudio(for: records[index])
-        records.remove(at: index)
-        persist()
+        let removed = records.remove(at: index)
+        if persist() {
+            removeAudio(for: removed)
+        } else {
+            records.insert(removed, at: index)
+        }
     }
 
     public func deleteAll() {
         loadIfNeeded()
-        records.forEach(removeAudio)
+        let removed = records
         records.removeAll()
-        persist()
+        if persist() {
+            removed.forEach(removeAudio)
+        } else {
+            records = removed
+        }
     }
 
     /// Bytes of retained audio, so the settings screen can show what history actually costs.
@@ -177,9 +214,13 @@ public actor HistoryStore {
     private func applyRetention() {
         guard let maximumAge = retention.maximumAge else { return }
         guard maximumAge > 0 else {
-            records.forEach(removeAudio)
+            let removed = records
             records.removeAll()
-            persist()
+            if persist() {
+                removed.forEach(removeAudio)
+            } else {
+                records = removed
+            }
             return
         }
 
@@ -188,12 +229,16 @@ public actor HistoryStore {
         guard !expired.isEmpty else { return }
         // Deleting the user's transcripts is worth a line, even when they asked for it: "where did
         // my history go" has a retention policy as its answer, and nothing else records the moment.
-        log.info(
-            "retention pruned history",
-            ["removed": "\(expired.count)", "policy": retention.rawValue])
-        expired.forEach(removeAudio)
+        let previous = records
         records.removeAll { $0.createdAt < cutoff }
-        persist()
+        if persist() {
+            expired.forEach(removeAudio)
+            log.info(
+                "retention pruned history",
+                ["removed": "\(expired.count)", "policy": retention.rawValue])
+        } else {
+            records = previous
+        }
     }
 
     private func removeAudio(for record: DictationRecord) {
@@ -213,15 +258,33 @@ public actor HistoryStore {
         return audioDirectory.appendingPathComponent(name)
     }
 
-    private func persist() {
+    @discardableResult
+    private func persist() -> Bool {
         guard retention != .never else {
-            try? FileManager.default.removeItem(at: indexURL)
-            return
+            do {
+                if FileManager.default.fileExists(atPath: indexURL.path) {
+                    try FileManager.default.removeItem(at: indexURL)
+                }
+                return true
+            } catch {
+                log.error(
+                    "could not remove disabled history",
+                    ["type": String(describing: type(of: error))])
+                return false
+            }
         }
-        try? FileManager.default.createDirectory(
-            at: directory, withIntermediateDirectories: true)
-        guard let data = try? JSONEncoder.history.encode(records) else { return }
-        try? data.write(to: indexURL, options: .atomic)
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true)
+            let data = try JSONEncoder.history.encode(records)
+            try data.write(to: indexURL, options: .atomic)
+            return true
+        } catch {
+            log.error(
+                "could not persist history; the previous index is still intact",
+                ["type": String(describing: type(of: error))])
+            return false
+        }
     }
 }
 

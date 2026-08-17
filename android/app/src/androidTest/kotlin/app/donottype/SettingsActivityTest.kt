@@ -18,6 +18,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -236,6 +237,28 @@ class SettingsActivityTest {
                 assertTrue(
                     "the prompt editor should be populated from the bundled prompt/system.md",
                     prompt.contains("SPELLING"))
+            }
+        }
+    }
+
+    @Test
+    fun editedPromptReplacementIsCompleteAndLeavesNoTemporaryFile() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val part = PromptPart.of(Fidelity.LIGHT)
+                try {
+                    repeat(20) { index ->
+                        PromptAssets.saveCustomPrompt(activity, "Fidelity is CUSTOM $index.", part)
+                        assertEquals(
+                            "Fidelity is CUSTOM $index.",
+                            PromptAssets.editableText(activity, part),
+                        )
+                    }
+                    val directory = File(activity.filesDir, "prompt/fidelity")
+                    assertTrue(directory.listFiles().orEmpty().none { it.name.endsWith(".tmp") })
+                } finally {
+                    PromptAssets.restoreDefault(activity, part)
+                }
             }
         }
     }

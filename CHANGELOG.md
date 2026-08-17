@@ -72,7 +72,15 @@ release yet, so everything below is unreleased.
   shutdown during persistence leaves the previous history readable rather than a half-written
   file. Unreadable indexes are diagnosed without being overwritten merely by launch. All three
   shared history stores treat retained audio filenames as untrusted data and refuse paths that
-  could read or delete outside the history audio directory.
+  could read or delete outside the history audio directory. Retry recordings are now flushed
+  before an index advertises them and are removed only after the replacement index commits; an
+  I/O failure can therefore no longer leave a visible failed row whose audio disappeared during a
+  retry, delete, or retention prune. Failed persistence rolls the live list back to the durable
+  view, while orphan audio from a failed insert is cleaned up. “Don't keep history” also keeps the
+  current process empty immediately instead of retaining a session-only list until relaunch.
+  Android prompt overrides and Windows prompt/settings files now use the same flushed sibling-and-
+  replace discipline, so interrupted edits keep the prior valid configuration; a Windows settings
+  write failure is contained and shown instead of escaping a UI event and terminating the tray app.
 
 - **Optional one-key finish and send on macOS and Windows.** Pressing Return/Enter while recording
   can now stop capture, wait for transcription, insert the result, and then emit Return/Enter or

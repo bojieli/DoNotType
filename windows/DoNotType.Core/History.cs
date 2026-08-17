@@ -208,13 +208,16 @@ public sealed class HistoryStore(string directory)
 
     public IReadOnlyList<DictationRecord> All()
     {
-        lock (_gate) return Loaded().ToList();
+        lock (_gate) return Loaded().Select(Copy).ToList();
     }
 
     /// <summary>Everything that failed or never got sent, oldest first — the order to retry in.</summary>
     public IReadOnlyList<DictationRecord> Retryable()
     {
-        lock (_gate) return Loaded().Where(r => r.CanRetry).OrderBy(r => r.CreatedAt).ToList();
+        lock (_gate)
+        {
+            return Loaded().Where(r => r.CanRetry).OrderBy(r => r.CreatedAt).Select(Copy).ToList();
+        }
     }
 
     public DictationRecord Insert(DictationRecord record, byte[]? audio)
@@ -222,32 +225,48 @@ public sealed class HistoryStore(string directory)
         lock (_gate)
         {
             var records = Loaded();
+            var stored = Copy(record);
+
+            // Privacy applies immediately. Keeping a session-only list until exit would make the
+            // history view contradict "Don't keep history" even though disk happened to be empty.
+            if (_retention == RetentionPolicy.Never)
+            {
+                Persist();
+                return stored;
+            }
 
             // Kept whenever the entry might still need retrying, regardless of the
             // completed-audio setting: without it, Retry cannot work.
             var needsAudio = record.IsRetryable || _keepAudioForCompleted;
-            if (audio is not null && needsAudio && _retention != RetentionPolicy.Never)
+            string? writtenAudio = null;
+            if (audio is not null && needsAudio)
             {
-                Directory.CreateDirectory(_audioDirectory);
-                var name = $"{record.Id}.wav";
-                File.WriteAllBytes(AudioPath(name)!, audio);
-                record.AudioFileName = name;
-            }
-            else
-            {
-                record.AudioFileName = null;
+                var name = $"{stored.Id}.wav";
+                var destination = AudioPath(name)!;
+                if (WriteAudio(destination, audio))
+                {
+                    stored.AudioFileName = name;
+                    writtenAudio = destination;
+                }
             }
 
-            records.Insert(0, record);
-            Persist();
+            records.Insert(0, stored);
+            var persisted = Persist();
+            if (!persisted)
+            {
+                records.RemoveAt(0);
+                if (writtenAudio is not null) File.Delete(writtenAudio);
+                stored.AudioFileName = null;
+            }
             Log.Debug(() => "stored", new Dictionary<string, string>
             {
-                ["status"] = record.Status.ToString().ToLowerInvariant(),
-                ["mode"] = record.ResolvedMode.Id,
-                ["audio"] = record.AudioFileName is null ? "discarded" : "kept",
-                ["source"] = record.SourceFileName ?? "microphone",
+                ["status"] = stored.Status.ToString().ToLowerInvariant(),
+                ["mode"] = stored.ResolvedMode.Id,
+                ["audio"] = stored.AudioFileName is null ? "discarded" : "kept",
+                ["persisted"] = persisted ? "yes" : "no",
+                ["source"] = stored.SourceFileName ?? "microphone",
             });
-            return record;
+            return Copy(stored);
         }
     }
 
@@ -258,15 +277,29 @@ public sealed class HistoryStore(string directory)
             var records = Loaded();
             var index = records.FindIndex(r => r.Id == record.Id);
             if (index < 0) return;
+            var previous = records[index];
+            var updated = Copy(record);
+            var audioNameToRemove = previous.AudioFileName;
+            var shouldReleaseAudio =
+                updated.Status == DictationStatus.Completed && !_keepAudioForCompleted;
 
             // A successful retry releases the recording it was holding.
-            if (record.Status == DictationStatus.Completed && !_keepAudioForCompleted)
+            if (shouldReleaseAudio)
             {
-                RemoveAudio(record);
-                record.AudioFileName = null;
+                updated.AudioFileName = null;
             }
-            records[index] = record;
-            Persist();
+            records[index] = updated;
+            if (Persist())
+            {
+                if (shouldReleaseAudio && audioNameToRemove is not null)
+                {
+                    RemoveAudio(new DictationRecord { AudioFileName = audioNameToRemove });
+                }
+            }
+            else
+            {
+                records[index] = previous;
+            }
         }
     }
 
@@ -275,12 +308,19 @@ public sealed class HistoryStore(string directory)
         lock (_gate)
         {
             var records = Loaded();
-            var record = records.FirstOrDefault(r => r.Id == id);
-            if (record is null) return;
+            var index = records.FindIndex(r => r.Id == id);
+            if (index < 0) return;
+            var record = records[index];
 
-            RemoveAudio(record);
-            records.Remove(record);
-            Persist();
+            records.RemoveAt(index);
+            if (Persist())
+            {
+                RemoveAudio(record);
+            }
+            else
+            {
+                records.Insert(index, record);
+            }
         }
     }
 
@@ -289,9 +329,16 @@ public sealed class HistoryStore(string directory)
         lock (_gate)
         {
             var records = Loaded();
-            foreach (var record in records) RemoveAudio(record);
+            var removed = records.ToList();
             records.Clear();
-            Persist();
+            if (Persist())
+            {
+                foreach (var record in removed) RemoveAudio(record);
+            }
+            else
+            {
+                records.AddRange(removed);
+            }
         }
     }
 
@@ -318,6 +365,11 @@ public sealed class HistoryStore(string directory)
     }
 
     // MARK: - Private
+
+    /// <summary>History owns its rows; UI code must call <see cref="Update"/> to mutate one.</summary>
+    private static DictationRecord Copy(DictationRecord record) =>
+        JsonSerializer.Deserialize<DictationRecord>(
+            JsonSerializer.Serialize(record, Options), Options)!;
 
     private List<DictationRecord> Loaded()
     {
@@ -349,27 +401,40 @@ public sealed class HistoryStore(string directory)
 
         if (maximumAge == TimeSpan.Zero)
         {
-            foreach (var record in _records) RemoveAudio(record);
+            var removed = _records.ToList();
             _records.Clear();
-            Persist();
+            if (Persist())
+            {
+                foreach (var record in removed) RemoveAudio(record);
+            }
+            else
+            {
+                _records.AddRange(removed);
+            }
             return;
         }
 
         var cutoff = DateTimeOffset.Now - maximumAge;
         var expired = _records.Where(r => r.CreatedAt < cutoff).ToList();
         if (expired.Count == 0) return;
+        var previous = _records.ToList();
 
-        // Deleting the user's transcripts is worth a line even when they asked for it: "where did
-        // my history go" has a retention policy as its answer, and nothing else records the moment.
-        Log.Info(() => "retention pruned history", new Dictionary<string, string>
-        {
-            ["removed"] = expired.Count.ToString(),
-            ["policy"] = _retention.ToString().ToLowerInvariant(),
-        });
-
-        foreach (var record in expired) RemoveAudio(record);
         _records.RemoveAll(r => r.CreatedAt < cutoff);
-        Persist();
+        if (Persist())
+        {
+            foreach (var record in expired) RemoveAudio(record);
+            // Deleting transcripts is worth a line even when requested: it answers where they went.
+            Log.Info(() => "retention pruned history", new Dictionary<string, string>
+            {
+                ["removed"] = expired.Count.ToString(),
+                ["policy"] = _retention.ToString().ToLowerInvariant(),
+            });
+        }
+        else
+        {
+            _records.Clear();
+            _records.AddRange(previous);
+        }
     }
 
     private void RemoveAudio(DictationRecord record)
@@ -380,13 +445,22 @@ public sealed class HistoryStore(string directory)
         if (File.Exists(path)) File.Delete(path);
     }
 
-    private void Persist()
+    private bool Persist()
     {
         if (_retention == RetentionPolicy.Never)
         {
-            if (File.Exists(_indexPath)) File.Delete(_indexPath);
-            if (File.Exists(_temporaryIndexPath)) File.Delete(_temporaryIndexPath);
-            return;
+            try
+            {
+                if (File.Exists(_indexPath)) File.Delete(_indexPath);
+                if (File.Exists(_temporaryIndexPath)) File.Delete(_temporaryIndexPath);
+                return true;
+            }
+            catch (Exception error)
+            {
+                Log.Error(() => "could not remove disabled history",
+                    new Dictionary<string, string> { ["type"] = error.GetType().Name });
+                return false;
+            }
         }
         try
         {
@@ -408,12 +482,36 @@ public sealed class HistoryStore(string directory)
                 stream.Flush(flushToDisk: true);
             }
             File.Move(_temporaryIndexPath, _indexPath, overwrite: true);
+            return true;
         }
         catch (Exception error)
         {
             try { File.Delete(_temporaryIndexPath); } catch (Exception) { }
             Log.Error(() => "could not persist history; the previous index is still intact",
                 new Dictionary<string, string> { ["type"] = error.GetType().Name });
+            return false;
+        }
+    }
+
+    /// <summary>Flushes retry audio before the index advertises it.</summary>
+    private bool WriteAudio(string destination, byte[] audio)
+    {
+        try
+        {
+            Directory.CreateDirectory(_audioDirectory);
+            using var stream = new FileStream(
+                destination, FileMode.Create, FileAccess.Write, FileShare.None,
+                bufferSize: 4096, FileOptions.WriteThrough);
+            stream.Write(audio);
+            stream.Flush(flushToDisk: true);
+            return true;
+        }
+        catch (Exception error)
+        {
+            try { File.Delete(destination); } catch (Exception) { }
+            Log.Error(() => "could not persist retry audio",
+                new Dictionary<string, string> { ["type"] = error.GetType().Name });
+            return false;
         }
     }
 

@@ -91,6 +91,8 @@ final class HistoryStoreTests: XCTestCase {
 
         await store.insert(makeRecord(status: .completed), audio: Data([1, 2, 3]))
 
+        let visible = await store.all()
+        XCTAssertTrue(visible.isEmpty)
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: directory.appendingPathComponent("history.json").path))
@@ -137,6 +139,34 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertNil(escaped)
         await store.delete(id: record.id)
         XCTAssertTrue(FileManager.default.fileExists(atPath: outside.path))
+    }
+
+    func testFailedIndexReplacementDoesNotDeleteRetryAudio() async throws {
+        let store = HistoryStore(directory: directory)
+        await store.configure(retention: .forever, keepAudioForCompleted: false)
+        let record = await store.insert(makeRecord(status: .failed), audio: Data([1, 2, 3]))
+        let originalAudio = await store.audioURL(for: record)
+        XCTAssertNotNil(originalAudio)
+
+        // Removing directory write permission makes the next atomic replacement fail while the
+        // existing index and recording remain readable.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o500], ofItemAtPath: directory.path)
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        }
+        await store.delete(id: record.id)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: directory.path)
+
+        let retainedAudio = await store.audioURL(for: record)
+        let inMemoryCount = await store.all().count
+        XCTAssertNotNil(retainedAudio)
+        XCTAssertEqual(inMemoryCount, 1)
+        let restored = HistoryStore(directory: directory)
+        let restoredCount = await restored.all().count
+        XCTAssertEqual(restoredCount, 1)
     }
 }
 
