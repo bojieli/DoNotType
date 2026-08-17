@@ -107,10 +107,10 @@ public actor HistoryStore {
         var updated = record
 
         // A successful retry releases the audio unless the user asked to keep it.
-        if updated.status == .completed, !keepAudioForCompleted,
-            let name = updated.audioFileName
-        {
-            try? FileManager.default.removeItem(at: audioDirectory.appendingPathComponent(name))
+        if updated.status == .completed, !keepAudioForCompleted {
+            if let name = updated.audioFileName, let url = safeAudioURL(named: name) {
+                try? FileManager.default.removeItem(at: url)
+            }
             updated.audioFileName = nil
         }
 
@@ -137,7 +137,7 @@ public actor HistoryStore {
     public func audioBytes() -> Int64 {
         loadIfNeeded()
         return records.compactMap(\.audioFileName).reduce(into: Int64(0)) { total, name in
-            let url = audioDirectory.appendingPathComponent(name)
+            guard let url = safeAudioURL(named: name) else { return }
             let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? Int64
             total += size ?? 0
         }
@@ -145,7 +145,7 @@ public actor HistoryStore {
 
     public func audioURL(for record: DictationRecord) -> URL? {
         guard let name = record.audioFileName else { return nil }
-        let url = audioDirectory.appendingPathComponent(name)
+        guard let url = safeAudioURL(named: name) else { return nil }
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
@@ -161,10 +161,15 @@ public actor HistoryStore {
         guard !loaded else { return }
         loaded = true
 
-        if let data = try? Data(contentsOf: indexURL),
-            let decoded = try? JSONDecoder.history.decode([DictationRecord].self, from: data)
-        {
-            records = decoded
+        if FileManager.default.fileExists(atPath: indexURL.path) {
+            do {
+                let data = try Data(contentsOf: indexURL)
+                records = try JSONDecoder.history.decode([DictationRecord].self, from: data)
+            } catch {
+                log.error(
+                    "history index is unreadable; leaving it untouched",
+                    ["type": String(describing: type(of: error))])
+            }
         }
         applyRetention()
     }
@@ -193,7 +198,19 @@ public actor HistoryStore {
 
     private func removeAudio(for record: DictationRecord) {
         guard let name = record.audioFileName else { return }
-        try? FileManager.default.removeItem(at: audioDirectory.appendingPathComponent(name))
+        guard let url = safeAudioURL(named: name) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    /// A persisted record is data, not permission to inspect or delete outside History/audio.
+    private func safeAudioURL(named name: String) -> URL? {
+        guard !name.isEmpty, !name.contains("/"), !name.contains("\\"),
+            URL(fileURLWithPath: name).lastPathComponent == name
+        else {
+            log.warning("ignored an unsafe audio filename in history")
+            return nil
+        }
+        return audioDirectory.appendingPathComponent(name)
     }
 
     private func persist() {

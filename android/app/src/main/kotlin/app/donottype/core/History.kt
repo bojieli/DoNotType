@@ -3,6 +3,13 @@ package app.donottype.core
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.io.OutputStreamWriter
+import java.nio.charset.StandardCharsets
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.UUID
 
 /**
@@ -208,12 +215,14 @@ class HistoryStore(private val directory: File) {
 
     private val log = Log("history")
     private val indexFile = File(directory, "history.json")
+    private val temporaryIndexFile = File(directory, "history.json.tmp")
     private val audioDirectory = File(directory, "audio")
 
     private var records: MutableList<DictationRecord>? = null
     private var retention: RetentionPolicy = RetentionPolicy.FOREVER
     private var keepAudioForCompleted: Boolean = false
 
+    @Synchronized
     fun configure(retention: RetentionPolicy, keepAudioForCompleted: Boolean) {
         this.retention = retention
         this.keepAudioForCompleted = keepAudioForCompleted
@@ -236,7 +245,7 @@ class HistoryStore(private val directory: File) {
         if (audio != null && needsAudio && retention != RetentionPolicy.NEVER) {
             audioDirectory.mkdirs()
             val name = "${record.id}.wav"
-            File(audioDirectory, name).writeBytes(audio)
+            audioFile(name)!!.writeBytes(audio)
             record.audioFileName = name
         } else {
             record.audioFileName = null
@@ -263,7 +272,7 @@ class HistoryStore(private val directory: File) {
 
         // A successful retry releases the recording it was holding.
         if (record.status == DictationRecord.Status.COMPLETED && !keepAudioForCompleted) {
-            record.audioFileName?.let { File(audioDirectory, it).delete() }
+            record.audioFileName?.let { audioFile(it)?.delete() }
             record.audioFileName = null
         }
         list[index] = record
@@ -287,11 +296,11 @@ class HistoryStore(private val directory: File) {
 
     @Synchronized
     fun audioBytes(): Long =
-        loaded().mapNotNull { it.audioFileName }.sumOf { File(audioDirectory, it).length() }
+        loaded().mapNotNull { it.audioFileName?.let(::audioFile) }.sumOf(File::length)
 
     fun audioFor(record: DictationRecord): ByteArray? {
         val name = record.audioFileName ?: return null
-        val file = File(audioDirectory, name)
+        val file = audioFile(name) ?: return null
         return if (file.exists()) file.readBytes() else null
     }
 
@@ -302,16 +311,23 @@ class HistoryStore(private val directory: File) {
 
         val list = mutableListOf<DictationRecord>()
         if (indexFile.exists()) {
-            runCatching {
+            val parsed = runCatching {
                 val array = JSONArray(indexFile.readText())
+                val decoded = mutableListOf<DictationRecord>()
                 for (i in 0 until array.length()) {
-                    array.optJSONObject(i)?.let { list += DictationRecord.fromJson(it) }
+                    array.optJSONObject(i)?.let { decoded += DictationRecord.fromJson(it) }
                 }
-            }
+                decoded
+            }.onFailure { error ->
+                log.error(
+                    mapOf("type" to error.javaClass.simpleName),
+                ) { "history index is unreadable; leaving it untouched" }
+            }.getOrNull()
+            if (parsed != null) list += parsed
         }
         records = list
         applyRetention()
-        return records!!
+        return list
     }
 
     private fun applyRetention() {
@@ -339,17 +355,57 @@ class HistoryStore(private val directory: File) {
     }
 
     private fun removeAudio(record: DictationRecord) {
-        record.audioFileName?.let { File(audioDirectory, it).delete() }
+        record.audioFileName?.let { audioFile(it)?.delete() }
     }
 
     private fun persist() {
         if (retention == RetentionPolicy.NEVER) {
             indexFile.delete()
+            temporaryIndexFile.delete()
             return
         }
-        directory.mkdirs()
         val array = JSONArray()
         records?.forEach { array.put(it.toJson()) }
-        runCatching { indexFile.writeText(array.toString()) }
+        runCatching {
+            if (!directory.exists() && !directory.mkdirs()) {
+                throw IOException("the history directory could not be created")
+            }
+
+            // Flush a complete sibling first, then replace the index in one filesystem operation.
+            // An interrupted in-place write used to turn every history row into invalid JSON.
+            FileOutputStream(temporaryIndexFile).use { output ->
+                val writer = OutputStreamWriter(output, StandardCharsets.UTF_8)
+                writer.write(array.toString())
+                writer.flush()
+                output.fd.sync()
+            }
+            try {
+                Files.move(
+                    temporaryIndexFile.toPath(), indexFile.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(
+                    temporaryIndexFile.toPath(), indexFile.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            }
+        }.onFailure { error ->
+            temporaryIndexFile.delete()
+            log.error(
+                mapOf("type" to error.javaClass.simpleName),
+            ) { "could not persist history; the previous index is still intact" }
+        }
+    }
+
+    /** A history file is data, not authority to read or delete an arbitrary path. */
+    private fun audioFile(name: String): File? {
+        if (name.isBlank() || File(name).isAbsolute || File(name).name != name ||
+            name.contains('/') || name.contains('\\')
+        ) {
+            log.warn { "ignored an unsafe audio filename in history" }
+            return null
+        }
+        return File(audioDirectory, name)
     }
 }

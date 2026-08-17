@@ -67,6 +67,13 @@ release yet, so everything below is unreleased.
   than treating its first temporarily empty poll as completion, and a device test now exercises
   the full app WAV → Opus → WAV path and checks its duration and signal.
 
+- **History writes survive interruption and stay inside their data directory.** Android and
+  Windows now flush a complete sibling index and replace the live JSON atomically, so a crash or
+  shutdown during persistence leaves the previous history readable rather than a half-written
+  file. Unreadable indexes are diagnosed without being overwritten merely by launch. All three
+  shared history stores treat retained audio filenames as untrusted data and refuse paths that
+  could read or delete outside the history audio directory.
+
 - **Optional one-key finish and send on macOS and Windows.** Pressing Return/Enter while recording
   can now stop capture, wait for transcription, insert the result, and then emit Return/Enter or
   the configured `⌘ Return` / `Ctrl+Enter`. It is off by default. The key is captured only during

@@ -121,6 +121,23 @@ final class HistoryStoreTests: XCTestCase {
         let restored = await second.all()
         XCTAssertEqual(restored.count, 1)
     }
+
+    func testPersistedAudioNamesCannotEscapeTheHistoryDirectory() async throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let outside = directory.appendingPathComponent("outside.wav")
+        try Data([1, 2, 3]).write(to: outside)
+
+        let store = HistoryStore(directory: directory)
+        await store.configure(retention: .forever, keepAudioForCompleted: true)
+        var record = await store.insert(makeRecord(status: .failed), audio: Data([4, 5, 6]))
+        record.audioFileName = "../outside.wav"
+        await store.update(record)
+
+        let escaped = await store.audioURL(for: record)
+        XCTAssertNil(escaped)
+        await store.delete(id: record.id)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: outside.path))
+    }
 }
 
 final class RetryClassificationTests: XCTestCase {

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -184,6 +185,7 @@ public sealed class HistoryStore(string directory)
     private static readonly Log Log = new("history");
 
     private readonly string _indexPath = Path.Combine(directory, "history.json");
+    private readonly string _temporaryIndexPath = Path.Combine(directory, "history.json.tmp");
     private readonly string _audioDirectory = Path.Combine(directory, "audio");
     private readonly Lock _gate = new();
 
@@ -228,7 +230,7 @@ public sealed class HistoryStore(string directory)
             {
                 Directory.CreateDirectory(_audioDirectory);
                 var name = $"{record.Id}.wav";
-                File.WriteAllBytes(Path.Combine(_audioDirectory, name), audio);
+                File.WriteAllBytes(AudioPath(name)!, audio);
                 record.AudioFileName = name;
             }
             else
@@ -299,7 +301,9 @@ public sealed class HistoryStore(string directory)
         {
             return Loaded()
                 .Where(r => r.AudioFileName is not null)
-                .Select(r => new FileInfo(Path.Combine(_audioDirectory, r.AudioFileName!)))
+                .Select(r => AudioPath(r.AudioFileName!))
+                .Where(path => path is not null)
+                .Select(path => new FileInfo(path!))
                 .Where(f => f.Exists)
                 .Sum(f => f.Length);
         }
@@ -308,7 +312,8 @@ public sealed class HistoryStore(string directory)
     public byte[]? AudioFor(DictationRecord record)
     {
         if (record.AudioFileName is null) return null;
-        var path = Path.Combine(_audioDirectory, record.AudioFileName);
+        var path = AudioPath(record.AudioFileName);
+        if (path is null) return null;
         return File.Exists(path) ? File.ReadAllBytes(path) : null;
     }
 
@@ -326,10 +331,12 @@ public sealed class HistoryStore(string directory)
                 _records = JsonSerializer.Deserialize<List<DictationRecord>>(
                     File.ReadAllText(_indexPath), Options) ?? [];
             }
-            catch (Exception e) when (e is JsonException or IOException)
+            catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
             {
                 // A corrupt index should not stop the app from dictating; it starts fresh.
                 _records = [];
+                Log.Error(() => "history index is unreadable; leaving it untouched",
+                    new Dictionary<string, string> { ["type"] = e.GetType().Name });
             }
         }
         ApplyRetention();
@@ -368,7 +375,8 @@ public sealed class HistoryStore(string directory)
     private void RemoveAudio(DictationRecord record)
     {
         if (record.AudioFileName is null) return;
-        var path = Path.Combine(_audioDirectory, record.AudioFileName);
+        var path = AudioPath(record.AudioFileName);
+        if (path is null) return;
         if (File.Exists(path)) File.Delete(path);
     }
 
@@ -377,9 +385,47 @@ public sealed class HistoryStore(string directory)
         if (_retention == RetentionPolicy.Never)
         {
             if (File.Exists(_indexPath)) File.Delete(_indexPath);
+            if (File.Exists(_temporaryIndexPath)) File.Delete(_temporaryIndexPath);
             return;
         }
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(_indexPath, JsonSerializer.Serialize(_records, Options));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var json = JsonSerializer.Serialize(_records, Options);
+            // A complete, flushed sibling replaces the live index in one filesystem operation.
+            // If the process or machine stops first, the previous JSON remains readable.
+            using (var stream = new FileStream(
+                _temporaryIndexPath, FileMode.Create, FileAccess.Write, FileShare.None,
+                bufferSize: 4096, FileOptions.WriteThrough))
+            {
+                using (var writer = new StreamWriter(
+                    stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                    bufferSize: 1024, leaveOpen: true))
+                {
+                    writer.Write(json);
+                    writer.Flush();
+                }
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(_temporaryIndexPath, _indexPath, overwrite: true);
+        }
+        catch (Exception error)
+        {
+            try { File.Delete(_temporaryIndexPath); } catch (Exception) { }
+            Log.Error(() => "could not persist history; the previous index is still intact",
+                new Dictionary<string, string> { ["type"] = error.GetType().Name });
+        }
+    }
+
+    /// <summary>A persisted record cannot grant itself authority outside the audio directory.</summary>
+    private string? AudioPath(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || Path.IsPathRooted(name)
+            || name.IndexOfAny(['/', '\\']) >= 0 || Path.GetFileName(name) != name)
+        {
+            Log.Warn(() => "ignored an unsafe audio filename in history");
+            return null;
+        }
+        return Path.Combine(_audioDirectory, name);
     }
 }

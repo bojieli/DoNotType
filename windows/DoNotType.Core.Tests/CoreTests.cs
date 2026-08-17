@@ -541,11 +541,13 @@ public class HistoryStoreTests : IDisposable
 
         var older = new DictationRecord
         {
-            CreatedAt = DateTimeOffset.Now.AddHours(-2), Status = DictationStatus.Failed,
+            CreatedAt = DateTimeOffset.Now.AddHours(-2),
+            Status = DictationStatus.Failed,
         };
         var newer = new DictationRecord
         {
-            CreatedAt = DateTimeOffset.Now, Status = DictationStatus.Pending,
+            CreatedAt = DateTimeOffset.Now,
+            Status = DictationStatus.Pending,
         };
         store.Insert(newer, [1]);
         store.Insert(older, [1]);
@@ -574,6 +576,24 @@ public class HistoryStoreTests : IDisposable
         var second = new HistoryStore(_directory);
         second.Configure(RetentionPolicy.Forever, keepAudioForCompleted: false);
         Assert.Single(second.All());
+        Assert.False(File.Exists(Path.Combine(_directory, "history.json.tmp")));
+    }
+
+    [Fact]
+    public void PersistedAudioNamesCannotEscapeTheHistoryDirectory()
+    {
+        Directory.CreateDirectory(_directory);
+        var outside = Path.Combine(_directory, "outside.wav");
+        File.WriteAllBytes(outside, [1, 2, 3]);
+        var store = new HistoryStore(_directory);
+        store.Configure(RetentionPolicy.Forever, keepAudioForCompleted: true);
+        var record = store.Insert(Record(DictationStatus.Failed), [4, 5, 6]);
+        record.AudioFileName = "../outside.wav";
+        store.Update(record);
+
+        Assert.Null(store.AudioFor(record));
+        store.Delete(record.Id);
+        Assert.True(File.Exists(outside));
     }
 }
 
