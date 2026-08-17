@@ -165,6 +165,24 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         }
     }
 
+    /// The URL this backend posts to when nobody has said otherwise.
+    ///
+    /// Public so the settings panel can show it as the placeholder in the field that overrides it.
+    /// An empty override means "use this", and a user who wants to know what they are overriding
+    /// should not have to read the source to find out.
+    public var defaultEndpoint: String {
+        switch self {
+        case .google: "https://generativelanguage.googleapis.com/v1beta/interactions"
+        case .openrouter: "https://openrouter.ai/api/v1/chat/completions"
+        case .local:
+            ProcessInfo.processInfo.environment["DNT_LOCAL_BASE_URL"]
+                ?? "http://localhost:8000/v1/chat/completions"
+        case .deepgram: "https://api.deepgram.com/v1/listen"
+        case .xai: "https://api.x.ai/v1/stt"
+        case .mistral: "https://api.mistral.ai/v1/audio/transcriptions"
+        }
+    }
+
     /// The model this backend runs the second stage on — rewriting and summarising — when that
     /// is not the model that transcribes.
     ///
@@ -323,6 +341,7 @@ public enum ProviderFactory {
     public static func make(
         _ kind: ProviderKind,
         apiKey: String,
+        endpoint: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) throws -> any TranscriptionProvider {
         var merged = environment
@@ -330,7 +349,7 @@ public enum ProviderFactory {
         // lookup that the canonical one would have satisfied.
         for name in kind.apiKeyEnvVars { merged[name] = nil }
         merged[kind.apiKeyEnvVar] = apiKey
-        return try make(kind, environment: merged)
+        return try make(kind, endpoint: endpoint, environment: merged)
     }
 
     /// A backend for the second stage — rewriting, summarising — or nil when there is none.
@@ -340,14 +359,19 @@ public enum ProviderFactory {
     /// `/v1/chat/completions` and a Grok chat model, rather than `/v1/stt` and `grok-stt`.
     /// Deepgram and Mistral sell recognition alone and return nil, which is what stops the UI
     /// offering a rewrite that could only fail.
+    ///
+    /// - Parameter endpoint: honoured only for a language model, where the second stage is the
+    ///   same backend on the same URL. A recogniser's override points at its audio endpoint, and
+    ///   sending a chat request there would fail for a reason nobody could read off the setting.
     public static func makeTextProvider(
         _ kind: ProviderKind,
         apiKey: String,
+        endpoint: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) throws -> (any TranscriptionProvider)? {
         guard kind.supportsTextGeneration else { return nil }
         guard kind.isSpeechRecognition else {
-            return try make(kind, apiKey: apiKey, environment: environment)
+            return try make(kind, apiKey: apiKey, endpoint: endpoint, environment: environment)
         }
         switch kind {
         case .xai:
@@ -368,12 +392,28 @@ public enum ProviderFactory {
     /// - Parameters:
     ///   - appURL: OpenRouter attribution header; ignored elsewhere.
     ///   - appTitle: OpenRouter attribution header; ignored elsewhere.
+    /// - Parameter endpoint: a URL to post to instead of the backend's own.
+    ///
+    ///   Every backend takes one, not just `.local`. A user pointing this at a compatible service
+    ///   somebody else runs — a proxy, a regional mirror, a gateway that fronts several models —
+    ///   is the case this exists for, and it was previously reachable only for `.local` and only
+    ///   through an environment variable an app opened from Finder never sees. An empty or
+    ///   unparseable value falls back to the built-in URL rather than failing the dictation: a
+    ///   half-typed setting must not be able to cost somebody their words.
     public static func make(
         _ kind: ProviderKind,
+        endpoint: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         appURL: String = "https://github.com/donottype/donottype",
         appTitle: String = "DoNotType"
     ) throws -> any TranscriptionProvider {
+        // Scheme and host both required. `URL(string:)` accepts "not a url at all" as a relative
+        // reference and hands back something with no host, which would post the audio nowhere and
+        // fail for a reason nobody could read off the setting that caused it. A field somebody is
+        // halfway through typing must fall back to the built-in URL, not break the dictation.
+        let override = endpoint?.trimmed.nilIfEmpty
+            .flatMap { URL(string: $0) }
+            .flatMap { $0.scheme != nil && $0.host != nil ? $0 : nil }
         // Every spelling is tried before giving up, so a shell that already has the key under a
         // different name does not look like a missing key.
         var key = ""
@@ -391,7 +431,8 @@ public enum ProviderFactory {
         case .openrouter:
             return OpenAICompatibleProvider(
                 name: "openrouter",
-                baseURL: URL(string: "https://openrouter.ai/api/v1/chat/completions")!,
+                baseURL: override
+                    ?? URL(string: "https://openrouter.ai/api/v1/chat/completions")!,
                 apiKey: key,
                 extraHeaders: ["HTTP-Referer": appURL, "X-Title": appTitle]
             )
@@ -402,12 +443,14 @@ public enum ProviderFactory {
             // "Here is the transcript:" is broken.
             return GeminiProvider(
                 apiKey: key,
+                endpoint: override
+                    ?? URL(string: "https://generativelanguage.googleapis.com/v1beta/interactions")!,
                 usesStructuredOutput: environment["DNT_NO_SCHEMA"] == nil)
 
         case .local:
             let base = environment["DNT_LOCAL_BASE_URL"]
                 ?? "http://localhost:8000/v1/chat/completions"
-            guard let url = URL(string: base) else {
+            guard let url = override ?? URL(string: base) else {
                 throw ProviderError.malformedResponse(
                     "DNT_LOCAL_BASE_URL is not a valid URL: \(base)")
             }
@@ -422,17 +465,24 @@ public enum ProviderFactory {
             // Absent means detect per request, which is what a code-switching user wants and what
             // the near-miss suite's Mandarin and mixed cases need.
             return DeepgramProvider(
-                apiKey: key, language: environment["DNT_DEEPGRAM_LANGUAGE"]?.trimmed.nilIfEmpty)
+                apiKey: key,
+                endpoint: override ?? URL(string: "https://api.deepgram.com/v1/listen")!,
+                language: environment["DNT_DEEPGRAM_LANGUAGE"]?.trimmed.nilIfEmpty)
 
         case .xai:
             return XAISpeechProvider(
-                apiKey: key, language: environment["DNT_XAI_LANGUAGE"]?.trimmed.nilIfEmpty)
+                apiKey: key,
+                endpoint: override ?? URL(string: "https://api.x.ai/v1/stt")!,
+                language: environment["DNT_XAI_LANGUAGE"]?.trimmed.nilIfEmpty)
 
         case .mistral:
             // Absent by design: Voxtral's own detection is what makes the code-switching case
             // work, so pinning a language here would remove the reason to choose it.
             return MistralProvider(
-                apiKey: key, language: environment["DNT_MISTRAL_LANGUAGE"]?.trimmed.nilIfEmpty)
+                apiKey: key,
+                endpoint: override
+                    ?? URL(string: "https://api.mistral.ai/v1/audio/transcriptions")!,
+                language: environment["DNT_MISTRAL_LANGUAGE"]?.trimmed.nilIfEmpty)
         }
     }
 }

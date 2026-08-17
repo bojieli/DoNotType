@@ -17,6 +17,7 @@ final class SettingsModel {
             apiKey = Settings.shared.apiKey ?? ""
             model = Settings.shared.model
             textModel = Settings.shared.textModel ?? ""
+            endpoint = Settings.shared.endpoint
             scheduleKeyCheck()
         }
     }
@@ -24,6 +25,15 @@ final class SettingsModel {
     var apiKey: String {
         didSet {
             Settings.shared.apiKey = apiKey
+            scheduleKeyCheck()
+        }
+    }
+
+    /// A URL to post to instead of the backend's own, for a compatible service somebody else runs.
+    /// Empty means the built-in one.
+    var endpoint: String {
+        didSet {
+            Settings.shared.endpoint = endpoint
             scheduleKeyCheck()
         }
     }
@@ -60,6 +70,9 @@ final class SettingsModel {
             Settings.shared.fallbackProvider = fallbackProvider
             fallbackAPIKey = fallbackProvider.map { Settings.shared.resolvedAPIKey(for: $0) ?? "" }
                 ?? ""
+            fallbackModel = fallbackProvider.map { Settings.shared.model(for: $0) } ?? ""
+            fallbackEndpoint = fallbackProvider.map { Settings.shared.endpoint(for: $0) } ?? ""
+            fallbackConnectionStatus = nil
         }
     }
 
@@ -71,6 +84,28 @@ final class SettingsModel {
             // guard beyond having somewhere to store it.
             guard let kind = fallbackProvider else { return }
             Keychain.write(fallbackAPIKey, account: kind.rawValue)
+        }
+    }
+
+    /// The fallback's model.
+    ///
+    /// Stored per backend, exactly like the primary's, and it always was — what was missing was
+    /// any way to set it. The only route to the fallback's model used to be selecting that backend
+    /// as the *primary*, typing the model, and switching back, which is not a thing anybody would
+    /// guess. A fallback silently running a backend's default model is the kind of setting that
+    /// looks configured and is not.
+    var fallbackModel: String = "" {
+        didSet {
+            guard let kind = fallbackProvider, !fallbackModel.trimmed.isEmpty else { return }
+            Settings.shared.setModel(fallbackModel, for: kind)
+        }
+    }
+
+    /// The fallback's endpoint override. Empty means the backend's own.
+    var fallbackEndpoint: String = "" {
+        didSet {
+            guard let kind = fallbackProvider else { return }
+            Settings.shared.setEndpoint(fallbackEndpoint, for: kind)
         }
     }
 
@@ -306,8 +341,55 @@ final class SettingsModel {
     var onKeyStatusChange: (() -> Void)?
 
     /// Live connection check, so "it isn't working" has an answer in the UI.
+    ///
+    /// This one is the *primary*'s, and always was. The button used to sit under the Fallback
+    /// heading, which made it read as testing the fallback — so a user with a broken second key
+    /// could press it, see a tick, and still lose every dictation the fallback served. There is a
+    /// button per backend now, and each says which one it checked.
     var connectionStatus: String? { keyStatus.summary(provider: provider) }
     var isCheckingConnection: Bool { keyStatus == .checking }
+
+    /// The fallback's own check, which nothing was previously able to run.
+    private(set) var fallbackConnectionStatus: String?
+    private(set) var isCheckingFallbackConnection = false
+    private var fallbackCheckTask: Task<Void, Never>?
+
+    /// Probes the fallback backend with its own key, model and endpoint.
+    func checkFallbackConnection() async {
+        fallbackCheckTask?.cancel()
+        let task = Task { await performFallbackCheck() }
+        fallbackCheckTask = task
+        await task.value
+    }
+
+    private func performFallbackCheck() async {
+        guard let kind = fallbackProvider else {
+            fallbackConnectionStatus = nil
+            return
+        }
+        isCheckingFallbackConnection = true
+        defer { isCheckingFallbackConnection = false }
+
+        let key = Settings.shared.resolvedAPIKey(for: kind) ?? ""
+        guard !key.isEmpty else {
+            fallbackConnectionStatus = "✗ No API key set for \(kind.displayName)."
+            return
+        }
+        guard let client = try? Settings.shared.makeProvider(kind, apiKey: key) else {
+            fallbackConnectionStatus = "✗ Could not configure \(kind.displayName)."
+            return
+        }
+
+        let model = Settings.shared.model(for: kind)
+        let status: APIKeyStatus
+        switch await ProviderProbe.check(client, model: model) {
+        case .accepted: status = .valid
+        case .rejected(let message): status = .rejected(message)
+        case .inconclusive(let message): status = .unverified(message)
+        }
+        guard !Task.isCancelled else { return }
+        fallbackConnectionStatus = status.summary(provider: kind)
+    }
 
     let store: HistoryStore
     let prompts: PromptStore
@@ -320,12 +402,15 @@ final class SettingsModel {
         apiKey = settings.apiKey ?? ""
         model = settings.model
         textModel = settings.textModel ?? ""
+        endpoint = settings.endpoint
         fidelity = settings.fidelity
         keytermBiasing = settings.keytermBiasing
         fallbackProvider = settings.fallbackProvider
         fallbackAfterSeconds = settings.fallbackAfterSeconds
         fallbackAPIKey = settings.fallbackProvider
             .map { settings.resolvedAPIKey(for: $0) ?? "" } ?? ""
+        fallbackModel = settings.fallbackProvider.map { settings.model(for: $0) } ?? ""
+        fallbackEndpoint = settings.fallbackProvider.map { settings.endpoint(for: $0) } ?? ""
         trigger = settings.trigger
         hotkeyMode = settings.hotkeyMode
         secondaryTrigger = settings.secondaryTrigger
@@ -487,7 +572,7 @@ final class SettingsModel {
             return settle(.missing)
         }
         guard
-            let client = try? ProviderFactory.make(provider, apiKey: key)
+            let client = try? Settings.shared.makeProvider(provider, apiKey: key)
         else {
             return settle(.rejected("Could not configure \(provider.displayName)."))
         }
@@ -553,7 +638,7 @@ final class SettingsModel {
 
     private func makeCoordinator() -> RetryCoordinator? {
         guard let key = Settings.shared.resolvedAPIKey(), !key.isEmpty,
-            let provider = try? ProviderFactory.make(provider, apiKey: key),
+            let provider = try? Settings.shared.makeProvider(provider, apiKey: key),
             let promptURL = Self.bundledPromptURL(),
             let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(fidelity: fidelity)

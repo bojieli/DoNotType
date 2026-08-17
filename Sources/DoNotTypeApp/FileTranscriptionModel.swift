@@ -246,7 +246,7 @@ final class FileTranscriptionModel {
     private func makeTranscriber() -> FileTranscriber? {
         let settings = Settings.shared
         guard let key = settings.resolvedAPIKey(), !key.isEmpty,
-            let provider = try? ProviderFactory.make(settings.provider, apiKey: key),
+            let provider = try? settings.makeProvider(settings.provider, apiKey: key),
             let promptURL = SettingsModel.bundledPromptURL()
         else { return nil }
 

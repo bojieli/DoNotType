@@ -69,6 +69,14 @@ private struct GeneralTab: View {
                 // thing worth reading at the moment the field is empty. A provider key is not a
                 // credential any password manager has, so the panel costs the instructions and
                 // offers nothing back. `SecureField` masks the value regardless.
+                // Empty means the backend's own URL, which is what the placeholder shows. Every
+                // backend takes one, because "I want to use a third-party service that speaks this
+                // API" is not a wish specific to any of them — and until now it was reachable only
+                // for the self-hosted entry, and only through an environment variable that an app
+                // opened from Finder never sees.
+                TextField("API endpoint", text: $model.endpoint, prompt: Text(model.provider.defaultEndpoint))
+                    .autocorrectionDisabled()
+
                 SecureField("API key", text: $model.apiKey)
                     .focused($keyFieldFocused)
                     .onChange(of: model.keyStatus, initial: true) {
@@ -122,6 +130,15 @@ private struct GeneralTab: View {
                 LabeledContent("Key source") {
                     Text(model.resolvedKeySource).foregroundStyle(.secondary)
                 }
+
+                // In this section, because it checks *this* backend. It used to live under the
+                // Fallback heading while testing the primary, so a tick here said nothing at all
+                // about the second backend a user had just configured.
+                connectionCheck(
+                    title: "Test \(model.provider.displayName)",
+                    isChecking: model.isCheckingConnection,
+                    status: model.connectionStatus,
+                    run: { await model.checkConnection() })
             }
 
             // A second backend, for a primary whose latency has a tail. Its own section because it
@@ -136,7 +153,23 @@ private struct GeneralTab: View {
                     }
                 }
 
-                if model.fallbackProvider != nil {
+                if let fallbackKind = model.fallbackProvider {
+                    // The fallback has always had its own model — stored per backend, like the
+                    // primary's — and no way to set it. Reaching it meant selecting this backend
+                    // as the primary, typing the model, and switching back. So a fallback ran its
+                    // backend's default model while the panel showed nothing about it.
+                    TextField(
+                        "Second provider model", text: $model.fallbackModel,
+                        prompt: Text(fallbackKind.defaultModel)
+                    )
+                    .autocorrectionDisabled()
+
+                    TextField(
+                        "Second provider endpoint", text: $model.fallbackEndpoint,
+                        prompt: Text(fallbackKind.defaultEndpoint)
+                    )
+                    .autocorrectionDisabled()
+
                     SecureField("Second provider API key", text: $model.fallbackAPIKey)
                         .textContentType(.password)
 
@@ -168,37 +201,15 @@ private struct GeneralTab: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
 
-                HStack {
-                    Button("Test connection") {
-                        Task { await model.checkConnection() }
-                    }
-                    .disabled(model.isCheckingConnection)
-
-                    if model.isCheckingConnection {
-                        ProgressView().controlSize(.small)
-                    } else if let status = model.connectionStatus {
-                        // Selectable, unclipped, and copyable in one click. A failure here is the
-                        // one message a user most needs to read in full and most likely wants to
-                        // paste into a search or an issue; truncating it to two lines defeated the
-                        // entire purpose of showing it.
-                        Text(status)
-                            .font(.callout)
-                            .foregroundStyle(status.hasPrefix("✓") ? .green : .red)
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        if !status.hasPrefix("✓") {
-                            Button {
-                                Diagnostics.copyToPasteboard(status)
-                                model.note("Error copied")
-                            } label: {
-                                Image(systemName: "doc.on.doc")
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Copy the full error")
-                        }
-                    }
+                if let fallbackKind = model.fallbackProvider {
+                    // Its own button, checking its own key, model and endpoint. Until now there
+                    // was no way to find out whether the second backend worked except to wait for
+                    // the primary to stall and see what came back.
+                    connectionCheck(
+                        title: "Test \(fallbackKind.displayName)",
+                        isChecking: model.isCheckingFallbackConnection,
+                        status: model.fallbackConnectionStatus,
+                        run: { await model.checkFallbackConnection() })
                 }
 
                 HStack {
@@ -298,6 +309,51 @@ private struct GeneralTab: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// One backend's "does this actually work?" button, with room for the answer.
+    ///
+    /// Shared by the two backends rather than written twice, because the thing that went wrong
+    /// here was one control standing for two things: the button tested the primary while sitting
+    /// under the Fallback heading, so a user with a dead second key got a green tick and lost every
+    /// dictation the fallback served. Two buttons, each naming the backend it checked.
+    @ViewBuilder
+    private func connectionCheck(
+        title: String,
+        isChecking: Bool,
+        status: String?,
+        run: @escaping () async -> Void
+    ) -> some View {
+        HStack {
+            Button(title) { Task { await run() } }
+                .disabled(isChecking)
+
+            if isChecking {
+                ProgressView().controlSize(.small)
+            } else if let status {
+                // Selectable, unclipped, and copyable in one click. A failure here is the one
+                // message a user most needs to read in full and most likely wants to paste into a
+                // search or an issue; truncating it to two lines defeated the entire purpose of
+                // showing it.
+                Text(status)
+                    .font(.callout)
+                    .foregroundStyle(status.hasPrefix("✓") ? .green : .red)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if !status.hasPrefix("✓") {
+                    Button {
+                        Diagnostics.copyToPasteboard(status)
+                        model.note("Error copied")
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Copy the full error")
+                }
+            }
+        }
     }
 }
 

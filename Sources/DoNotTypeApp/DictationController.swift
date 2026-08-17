@@ -538,7 +538,7 @@ final class DictationController {
         let settings = Settings.shared
         guard let kind = settings.fallbackProvider,
             let key = settings.resolvedAPIKey(for: kind), !key.isEmpty,
-            let backend = try? ProviderFactory.make(kind, apiKey: key),
+            let backend = try? settings.makeProvider(kind, apiKey: key),
             let promptURL = SettingsModel.bundledPromptURL(),
             // Through the store, not the bundle: a fallback that sent the shipped contract while
             // the primary sent an edited one would make the two disagree about the only files
@@ -571,7 +571,7 @@ final class DictationController {
     private func warmUpConnection() {
         let settings = Settings.shared
         guard let key = settings.resolvedAPIKey(), !key.isEmpty,
-            let provider = try? ProviderFactory.make(settings.provider, apiKey: key),
+            let provider = try? settings.makeProvider(settings.provider, apiKey: key),
             let origin = provider.endpointOrigin
         else { return }
         Task { await ProviderTransport.shared.warmUp(origin) }
@@ -580,7 +580,7 @@ final class DictationController {
     private func makeCoordinator() -> RetryCoordinator? {
         let settings = Settings.shared
         guard let key = settings.resolvedAPIKey(), !key.isEmpty,
-            let provider = try? ProviderFactory.make(settings.provider, apiKey: key),
+            let provider = try? settings.makeProvider(settings.provider, apiKey: key),
             let promptURL = SettingsModel.bundledPromptURL(),
             // Same reason as the fallback above: a retry has to reproduce the request, and a
             // request built from a different prompt is not the same request.

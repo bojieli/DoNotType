@@ -35,6 +35,7 @@ final class Settings {
         static let logLevel = "logLevel"
         static let logContent = "logContent"
         static let fileMode = "fileMode"
+        static let endpoint = "endpoint"
     }
 
     /// Shipped non-empty. A blocklist that starts empty is a blocklist nobody ever fills in, and
@@ -228,6 +229,34 @@ final class Settings {
 
     private func modelKey(for kind: ProviderKind) -> String { "\(Key.model)-\(kind.rawValue)" }
 
+    private func endpointKey(for kind: ProviderKind) -> String {
+        "\(Key.endpoint)-\(kind.rawValue)"
+    }
+
+    /// The URL this backend posts to, or empty for its own.
+    ///
+    /// Per backend rather than one global setting, for the same reason the key and the model are:
+    /// somebody who points OpenRouter at a mirror and then switches to Google for a week must not
+    /// come back to find their mirror gone, or worse, still being used by the wrong backend.
+    var endpoint: String {
+        get { endpoint(for: provider) }
+        set { setEndpoint(newValue, for: provider) }
+    }
+
+    /// The endpoint for a backend that is not the current selection. See `resolvedAPIKey(for:)`.
+    func endpoint(for kind: ProviderKind) -> String {
+        defaults.string(forKey: endpointKey(for: kind))?.trimmed ?? ""
+    }
+
+    func setEndpoint(_ value: String, for kind: ProviderKind) {
+        defaults.set(value.trimmed, forKey: endpointKey(for: kind))
+    }
+
+    /// The model for a backend that is not the current selection — the fallback's, in practice.
+    func setModel(_ value: String, for kind: ProviderKind) {
+        defaults.set(value.trimmed, forKey: modelKey(for: kind))
+    }
+
     /// The model the second stage runs on, when the provider serves text from a different model
     /// than it transcribes with. Nil for every backend where one model does both, so the two
     /// cannot drift apart in the one case where a single field would have been enough.
@@ -395,6 +424,23 @@ final class Settings {
             return stored
         }
         return kind.defaultModel
+    }
+
+    /// Builds a backend with everything the user configured for it.
+    ///
+    /// The one place the app turns a `ProviderKind` into a provider, so a setting added here
+    /// reaches every caller — dictation, the fallback, the rewrite, file transcription, the
+    /// connection test and the warm-up — rather than the subset somebody remembered. The endpoint
+    /// override was previously reachable only through an environment variable, which an app opened
+    /// from Finder does not have, and only for one backend.
+    ///
+    /// - Parameter apiKey: the key to use, for callers that have already resolved one. Resolved
+    ///   from the Keychain and the environment otherwise.
+    func makeProvider(
+        _ kind: ProviderKind, apiKey: String? = nil
+    ) throws -> any TranscriptionProvider {
+        let key = apiKey ?? resolvedAPIKey(for: kind) ?? ""
+        return try ProviderFactory.make(kind, apiKey: key, endpoint: endpoint(for: kind))
     }
 
     /// The name the key was actually found under, for the settings window to report.

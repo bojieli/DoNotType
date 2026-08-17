@@ -23,7 +23,8 @@ enum TextStage {
 
         if let model = settings.textModel, let key = settings.resolvedAPIKey(), !key.isEmpty,
             // `makeTextProvider` is itself optional, so a `try?` produces a nested one.
-            let backend = (try? ProviderFactory.makeTextProvider(settings.provider, apiKey: key))
+            let backend = (try? ProviderFactory.makeTextProvider(
+                settings.provider, apiKey: key, endpoint: settings.endpoint))
                 ?? nil
         {
             return TranscriptionService(
@@ -33,7 +34,7 @@ enum TextStage {
 
         for kind in ProviderKind.allCases where !kind.isSpeechRecognition {
             guard let key = settings.resolvedAPIKey(for: kind), !key.isEmpty,
-                let backend = try? ProviderFactory.make(kind, apiKey: key)
+                let backend = try? settings.makeProvider(kind, apiKey: key)
             else { continue }
             return TranscriptionService(
                 provider: backend, model: settings.model(for: kind),
