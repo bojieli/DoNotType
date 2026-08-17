@@ -8,6 +8,7 @@ import app.donottype.core.HistoryQuery
 import app.donottype.core.GroundingSupport
 import app.donottype.core.InputPart
 import app.donottype.core.PerformanceStats
+import app.donottype.core.PersonalDictionary
 import app.donottype.core.ProviderFactory
 import app.donottype.core.ProviderKind
 import app.donottype.core.RetentionPolicy
@@ -38,6 +39,7 @@ import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -71,9 +73,31 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var historyContainer: LinearLayout
     private lateinit var historySummary: TextView
     private lateinit var searchField: EditText
+    private lateinit var dictionaryContainer: LinearLayout
+    private lateinit var dictionaryEntry: EditText
+    private lateinit var dictionaryStatus: TextView
     private var query = HistoryQuery()
 
     private val service by lazy { DictationService(this) }
+    private val dictionaryPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        dictionaryStatus.text = runCatching {
+            val data = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: error("Could not read that file.")
+            val imported = PersonalDictionary.entriesFromCsv(data)
+            val current = Settings.personalDictionaryTerms()
+            val seen = current.mapTo(mutableSetOf()) { it.lowercase() }
+            val additions = imported.filter { seen.add(it.lowercase()) }
+            if (current.size + additions.size > PersonalDictionary.MAX_TERMS) {
+                throw PersonalDictionary.ValidationException(
+                    "The dictionary can contain at most ${PersonalDictionary.MAX_TERMS} entries.",
+                )
+            }
+            Settings.dictionaryTerms = Settings.dictionaryTerms + additions
+            refreshDictionary()
+            "Imported ${additions.size} new entries."
+        }.getOrElse { it.message ?: "That dictionary could not be imported." }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,6 +120,7 @@ class SettingsActivity : AppCompatActivity() {
         refreshProviderNotes()
         refreshStatus()
         refreshHistory()
+        if (::dictionaryContainer.isInitialized) refreshDictionary()
     }
 
     private fun buildLayout(): ScrollView {
@@ -245,10 +270,49 @@ class SettingsActivity : AppCompatActivity() {
         )
         column.addView(
             body(
-                "Read only while you dictate, never stored. Sent as-is — no vocabulary list, no "
-                    + "dictionary. It may correct spelling, never the words you said."
+                "Read only while you dictate, never stored. Screen context stays separate from "
+                    + "your explicit dictionary. It may correct spelling, never the words you said."
             )
         )
+
+        // ---- Dictionary ----
+        column.addView(sectionTitle("Personal dictionary"))
+        column.addView(
+            body(
+                "Names, jargon and preferred capitalisation. The same bounded list is sent to "
+                    + "every compatible backend; number-bearing entries never enter a bare "
+                    + "speech-recognition hint channel.",
+            ),
+        )
+        column.addView(
+            Switch(this).apply {
+                text = "Learn spelling corrections after dictation"
+                isChecked = Settings.learnDictionaryFromEdits
+                setOnCheckedChangeListener { _, checked ->
+                    Settings.learnDictionaryFromEdits = checked
+                }
+            },
+        )
+        column.addView(
+            body(
+                "Optional. For one minute after insertion, the keyboard watches only that same "
+                    + "editor. Password fields, additions, deletions, numbers and ordinary "
+                    + "rewrites are ignored; learned entries are labelled below and removable.",
+            ),
+        )
+        dictionaryEntry = EditText(this).apply { hint = "Word or phrase" }
+        column.addView(dictionaryEntry)
+        column.addView(button("Add entry") { addDictionaryEntry() })
+        column.addView(
+            button("Import CSV…") {
+                dictionaryPicker.launch(arrayOf("text/csv", "text/plain", "application/csv"))
+            },
+        )
+        dictionaryStatus = body("")
+        column.addView(dictionaryStatus)
+        dictionaryContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        column.addView(dictionaryContainer)
+        refreshDictionary()
 
         // ---- History ----
         column.addView(sectionTitle("History"))
@@ -446,6 +510,61 @@ class SettingsActivity : AppCompatActivity() {
                 insets
             }
         }
+    }
+
+    private fun addDictionaryEntry() {
+        dictionaryStatus.text = runCatching {
+            val term = PersonalDictionary.normalize(dictionaryEntry.text.toString())
+            val current = Settings.personalDictionaryTerms()
+            if (current.any { it.equals(term, ignoreCase = true) }) {
+                throw PersonalDictionary.ValidationException("“$term” is already in the dictionary.")
+            }
+            if (current.size >= PersonalDictionary.MAX_TERMS) {
+                throw PersonalDictionary.ValidationException(
+                    "The dictionary can contain at most ${PersonalDictionary.MAX_TERMS} entries.",
+                )
+            }
+            Settings.dictionaryTerms = Settings.dictionaryTerms + term
+            dictionaryEntry.text.clear()
+            refreshDictionary()
+            "Added “$term”."
+        }.getOrElse { it.message ?: "That entry could not be added." }
+    }
+
+    private fun refreshDictionary() {
+        if (!::dictionaryContainer.isInitialized) return
+        dictionaryContainer.removeAllViews()
+        fun addRow(term: String, learned: Boolean) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, 8, 0, 16)
+            }
+            val editor = EditText(this).apply {
+                setText(term)
+                contentDescription = "dictionary-${if (learned) "learned" else "added"}-$term"
+            }
+            row.addView(editor)
+            row.addView(body(if (learned) "Learned from an edit" else "Added by you"))
+            val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            actions.addView(button("Save") {
+                dictionaryStatus.text = runCatching {
+                    Settings.replaceDictionaryTerm(term, editor.text.toString(), learned)
+                    refreshDictionary()
+                    "Saved."
+                }.getOrElse { it.message ?: "That entry could not be saved." }
+            })
+            actions.addView(button("Remove") {
+                Settings.removeDictionaryTerm(term, learned)
+                refreshDictionary()
+                dictionaryStatus.text = "Removed “$term”."
+            })
+            row.addView(actions)
+            dictionaryContainer.addView(row)
+        }
+        Settings.dictionaryTerms.forEach { addRow(it, false) }
+        Settings.learnedDictionaryTerms.forEach { addRow(it, true) }
+        dictionaryStatus.text =
+            "${Settings.personalDictionaryTerms().size} of ${PersonalDictionary.MAX_TERMS} entries"
     }
 
     // MARK: - Sections

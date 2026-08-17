@@ -290,24 +290,30 @@ class DictationService(private val context: Context) {
         val client = ProviderFactory.create(Settings.provider, key, Settings.model)
 
         fun requestInputs(backend: TranscriptionProvider): Pair<List<InputPart>, List<String>> {
-            var keyterms = emptyList<String>()
-            val parts = buildList {
-                val grounding = backend.grounding()
-                if (screenContext == null || screenContext.isEmpty) return@buildList
-                when (grounding) {
-                    is GroundingSupport.Multimodal -> addAll(ContextEncoder().encode(screenContext))
-                    is GroundingSupport.Keyterms ->
-                        if (Settings.keytermBiasing) {
-                            keyterms = Keyterms.derive(
-                                screenContext,
-                                grounding.maxTerms,
-                                grounding.maxCharsPerTerm,
-                            )
-                        }
-                    is GroundingSupport.None -> Unit
+            val dictionary = Settings.personalDictionaryTerms()
+            return when (val grounding = backend.grounding()) {
+                is GroundingSupport.Multimodal -> buildList {
+                    PersonalDictionary.referenceBlock(dictionary)?.let { add(InputPart.Text(it)) }
+                    if (screenContext != null && !screenContext.isEmpty) {
+                        addAll(ContextEncoder().encode(screenContext))
+                    }
+                } to emptyList()
+                is GroundingSupport.Keyterms -> {
+                    val derived = if (Settings.keytermBiasing
+                        && screenContext != null && !screenContext.isEmpty
+                    ) {
+                        Keyterms.derive(
+                            screenContext,
+                            grounding.maxTerms,
+                            grounding.maxCharsPerTerm,
+                        )
+                    } else emptyList()
+                    emptyList<InputPart>() to PersonalDictionary.mergeKeyterms(
+                        dictionary, derived, grounding.maxTerms, grounding.maxCharsPerTerm,
+                    )
                 }
+                is GroundingSupport.None -> emptyList<InputPart>() to emptyList()
             }
-            return parts to keyterms
         }
 
         fun audioPart(): InputPart {
@@ -403,15 +409,30 @@ class DictationService(private val context: Context) {
             // question. Null for rows written before contexts were stored, and for dictations that
             // were never grounded, which is the same thing as far as the request is concerned.
             val client = ProviderFactory.create(Settings.provider, key, Settings.model)
-            val contextParts = record.context
-                ?.takeIf { !it.isEmpty && client.grounding() is GroundingSupport.Multimodal }
-                ?.let { ContextEncoder().encode(it) }
-                .orEmpty()
+            val dictionary = Settings.personalDictionaryTerms()
+            val (contextParts, keyterms) = when (val grounding = client.grounding()) {
+                is GroundingSupport.Multimodal -> buildList {
+                    PersonalDictionary.referenceBlock(dictionary)?.let { add(InputPart.Text(it)) }
+                    record.context?.takeIf { !it.isEmpty }?.let { addAll(ContextEncoder().encode(it)) }
+                } to emptyList()
+                is GroundingSupport.Keyterms -> {
+                    val derived = if (Settings.keytermBiasing) {
+                        record.context?.takeIf { !it.isEmpty }?.let {
+                            Keyterms.derive(it, grounding.maxTerms, grounding.maxCharsPerTerm)
+                        }.orEmpty()
+                    } else emptyList()
+                    emptyList<InputPart>() to PersonalDictionary.mergeKeyterms(
+                        dictionary, derived, grounding.maxTerms, grounding.maxCharsPerTerm,
+                    )
+                }
+                is GroundingSupport.None -> emptyList<InputPart>() to emptyList()
+            }
 
             val result = client.transcribe(
                 PromptAssets.systemInstruction(context, record.fidelity),
                 contextParts + InputPart.Audio(wav, "audio/wav"),
                 record.fidelity,
+                keyterms,
             )
             record.status = DictationRecord.Status.COMPLETED
             record.text = result.transcript.transcript.trim()

@@ -205,6 +205,17 @@ class FileTranscriber(
         val chunks = AudioChunker.split(wav)
         onProgress(Progress.Transcribing(0, chunks.size))
 
+        val dictionary = Settings.personalDictionaryTerms()
+        val (referenceParts, keyterms) = when (val grounding = client.grounding()) {
+            is GroundingSupport.Multimodal -> buildList {
+                PersonalDictionary.referenceBlock(dictionary)?.let { add(InputPart.Text(it)) }
+            } to emptyList()
+            is GroundingSupport.Keyterms -> emptyList<InputPart>() to PersonalDictionary.keyterms(
+                dictionary, grounding.maxTerms, grounding.maxCharsPerTerm,
+            )
+            is GroundingSupport.None -> emptyList<InputPart>() to emptyList()
+        }
+
         fun audioPart(pcm: ByteArray): InputPart {
             val ogg = OpusEncoder.encode(pcm)
             return if (ogg != null) InputPart.Audio(ogg, "audio/ogg") else InputPart.Audio(pcm, "audio/wav")
@@ -212,7 +223,7 @@ class FileTranscriber(
 
         if (chunks.size == 1) {
             val single = client.transcribe(
-                instruction, listOf(audioPart(wav)), Settings.fidelity,
+                instruction, referenceParts + audioPart(wav), Settings.fidelity, keyterms,
             )
             onProgress(Progress.Transcribing(1, 1))
             return Transcribed(single, 1)
@@ -228,7 +239,8 @@ class FileTranscriber(
                 async {
                     gate.withPermit {
                         client.transcribe(
-                            instruction, listOf(audioPart(chunk.data)), Settings.fidelity,
+                            instruction, referenceParts + audioPart(chunk.data),
+                            Settings.fidelity, keyterms,
                         ).also {
                             synchronized(this@FileTranscriber) {
                                 finished += 1

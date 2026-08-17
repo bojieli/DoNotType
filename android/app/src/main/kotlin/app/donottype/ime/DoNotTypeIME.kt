@@ -15,6 +15,7 @@ import app.donottype.core.RewriteStyle
 import app.donottype.core.ProviderFactory
 import app.donottype.core.ProviderKind
 import app.donottype.core.ProviderTransport
+import app.donottype.core.PersonalDictionary
 import app.donottype.core.ScreenContext
 import android.Manifest
 import android.content.Intent
@@ -26,6 +27,9 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.ExtractedTextRequest
+import android.view.inputmethod.EditorInfo
+import android.text.InputType
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -37,6 +41,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -86,6 +92,16 @@ class DoNotTypeIME : InputMethodService() {
 
     /** Which field was focused when the key went down: its app, and the editor's id within it. */
     private var pendingTarget: Pair<String?, Int>? = null
+    private var correctionWatch: Job? = null
+    private var lastLearnedTerms: List<String> = emptyList()
+
+    private data class EditableSnapshot(
+        val target: Pair<String?, Int>,
+        val connectionIdentity: Int,
+        val value: String,
+        val selectionStart: Int,
+        val selectionEnd: Int,
+    )
 
     override fun onCreate() {
         super.onCreate()
@@ -94,6 +110,7 @@ class DoNotTypeIME : InputMethodService() {
 
     override fun onDestroy() {
         scope.cancel()
+        correctionWatch?.cancel()
         stopLevelUpdates()
         holdRunnable?.let { handler.removeCallbacks(it) }
         recorder.cancel()
@@ -104,6 +121,7 @@ class DoNotTypeIME : InputMethodService() {
 
     override fun onStartInputView(info: android.view.inputmethod.EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        correctionWatch?.cancel()
         // Anything that failed while offline goes out when the keyboard next opens.
         scope.launch { withContext(Dispatchers.IO) { service.retryAll() } }
         // The provider may have changed in the app since this keyboard was last shown, and with it
@@ -140,7 +158,12 @@ class DoNotTypeIME : InputMethodService() {
             // cannot request a runtime permission or hold an API key, so every one of its dead ends
             // is "go to the app" — and telling somebody to go somewhere is not the same as taking
             // them there, especially on a phone where the app is behind a home-screen search.
-            setOnClickListener { if (openAppOnTap) openTheApp() }
+            setOnClickListener {
+                when {
+                    undoLearningOnTap -> undoLastLearning()
+                    openAppOnTap -> openTheApp()
+                }
+            }
         }
 
         styleRow = buildStyleRow()
@@ -522,7 +545,13 @@ class DoNotTypeIME : InputMethodService() {
                         return@fold
                     }
                     if (delivered.isNotEmpty()) {
+                        val insertionTarget = if (Settings.learnDictionaryFromEdits) {
+                            captureEditableSnapshot()
+                        } else {
+                            null
+                        }
                         currentInputConnection?.commitText(delivered, 1)
+                        insertionTarget?.let { watchForCorrection(it, delivered) }
                     }
                     if (record.rewriteFailed) {
                         // The words landed either way, but somebody who chose Formal and got their
@@ -556,11 +585,91 @@ class DoNotTypeIME : InputMethodService() {
     /// Whether tapping the status label should open the app. Only when it is showing something
     /// the app can fix, so an ordinary status line is not a surprise button.
     private var openAppOnTap = false
+    private var undoLearningOnTap = false
 
     /// Says what is wrong and makes the label the way to fix it.
     private fun showFixInTheApp(message: String) {
         statusLabel.text = message
         openAppOnTap = true
+        undoLearningOnTap = false
+    }
+
+    private fun captureEditableSnapshot(): EditableSnapshot? {
+        val info = currentInputEditorInfo ?: return null
+        if (isPasswordField(info.inputType)) return null
+        val target = info.packageName to info.fieldId
+        val connection = currentInputConnection ?: return null
+        val extracted = connection.getExtractedText(ExtractedTextRequest(), 0) ?: return null
+        val value = extracted.text?.toString() ?: return null
+        // ExtractedText selection offsets are relative to `text`; startOffset locates that text
+        // in the host's full document and must not be subtracted again.
+        val start = extracted.selectionStart
+        val end = extracted.selectionEnd
+        if (start !in 0..value.length || end !in start..value.length) return null
+        return EditableSnapshot(target, System.identityHashCode(connection), value, start, end)
+    }
+
+    /** Watches only the same active editor, briefly, for a stable spelling correction. */
+    private fun watchForCorrection(before: EditableSnapshot, inserted: String) {
+        correctionWatch?.cancel()
+        val prefix = before.value.substring(0, before.selectionStart)
+        val suffix = before.value.substring(before.selectionEnd)
+        val target = before.target
+        val connectionIdentity = before.connectionIdentity
+        correctionWatch = scope.launch {
+            var prior: String? = null
+            var stableReads = 0
+            repeat(80) { // 60 seconds at 750 ms.
+                delay(750)
+                val current = captureEditableSnapshot() ?: return@launch
+                if (current.target != target
+                    || current.connectionIdentity != connectionIdentity
+                    || !current.value.startsWith(prefix)
+                    || !current.value.endsWith(suffix)
+                ) return@launch
+                val end = current.value.length - suffix.length
+                if (end < prefix.length) return@launch
+                val edited = current.value.substring(prefix.length, end)
+                if (edited == inserted) {
+                    prior = null
+                    stableReads = 0
+                    return@repeat
+                }
+                if (edited == prior) stableReads++ else {
+                    prior = edited
+                    stableReads = 1
+                }
+                if (stableReads < 2) return@repeat
+                val candidates = PersonalDictionary.learnedCandidates(inserted, edited)
+                val added = Settings.learnDictionaryTerms(candidates)
+                if (added.isNotEmpty()) {
+                    lastLearnedTerms = added
+                    openAppOnTap = false
+                    undoLearningOnTap = true
+                    statusLabel.text = "Learned ${added.joinToString()} — tap to undo"
+                }
+                return@launch
+            }
+        }
+    }
+
+    private fun undoLastLearning() {
+        if (lastLearnedTerms.isEmpty()) return
+        Settings.forgetLearnedDictionaryTerms(lastLearnedTerms)
+        lastLearnedTerms = emptyList()
+        undoLearningOnTap = false
+        showStatus("Removed learned spelling")
+    }
+
+    private fun isPasswordField(inputType: Int): Boolean {
+        val variation = inputType and InputType.TYPE_MASK_VARIATION
+        return when (inputType and InputType.TYPE_MASK_CLASS) {
+            InputType.TYPE_CLASS_TEXT -> variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+            InputType.TYPE_CLASS_NUMBER -> variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            else -> false
+        }
     }
 
     /// Every other status goes through here, so the label stops being a button the moment it stops
@@ -569,6 +678,7 @@ class DoNotTypeIME : InputMethodService() {
     private fun showStatus(message: String) {
         statusLabel.text = message
         openAppOnTap = false
+        undoLearningOnTap = false
     }
 
     private fun openTheApp() {

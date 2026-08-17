@@ -5,11 +5,13 @@ import app.donottype.core.Log
 import app.donottype.core.LogLevel
 import app.donottype.core.LogRouter
 import app.donottype.core.ProviderKind
+import app.donottype.core.PersonalDictionary
 import app.donottype.core.RewriteStyle
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.TranscriptMode
 import android.content.Context
 import android.content.SharedPreferences
+import org.json.JSONArray
 
 /**
  * Preferences and the API key.
@@ -35,6 +37,9 @@ object Settings {
     private const val KEY_LOG_LEVEL = "logLevel"
     private const val KEY_LOG_CONTENT = "logContent"
     private const val KEY_FILE_MODE = "fileMode"
+    private const val KEY_DICTIONARY = "personalDictionary"
+    private const val KEY_LEARNED_DICTIONARY = "learnedPersonalDictionary"
+    private const val KEY_LEARN_FROM_EDITS = "learnDictionaryFromEdits"
 
     /**
      * Shipped non-empty. A blocklist that starts empty is one nobody ever fills in, and this app
@@ -165,6 +170,81 @@ object Settings {
     var keytermBiasing: Boolean
         get() = ready && prefs.getBoolean(KEY_KEYTERMS, false)
         set(value) { if (ready) prefs.edit().putBoolean(KEY_KEYTERMS, value).apply() }
+
+    var dictionaryTerms: List<String>
+        @Synchronized get() = PersonalDictionary.sanitize(readStringList(KEY_DICTIONARY))
+        @Synchronized set(value) {
+            if (ready) writeStringList(KEY_DICTIONARY, PersonalDictionary.sanitize(value))
+        }
+
+    var learnedDictionaryTerms: List<String>
+        @Synchronized get() {
+            val manual = dictionaryTerms.mapTo(mutableSetOf()) { it.lowercase() }
+            return PersonalDictionary.sanitize(readStringList(KEY_LEARNED_DICTIONARY))
+                .filter { it.lowercase() !in manual }
+                .take(PersonalDictionary.MAX_TERMS - manual.size)
+        }
+        @Synchronized set(value) {
+            if (ready) writeStringList(KEY_LEARNED_DICTIONARY, PersonalDictionary.sanitize(value))
+        }
+
+    var learnDictionaryFromEdits: Boolean
+        get() = ready && prefs.getBoolean(KEY_LEARN_FROM_EDITS, false)
+        set(value) { if (ready) prefs.edit().putBoolean(KEY_LEARN_FROM_EDITS, value).apply() }
+
+    @Synchronized fun personalDictionaryTerms(): List<String> =
+        PersonalDictionary.sanitize(dictionaryTerms + learnedDictionaryTerms)
+
+    /** Stores only newly learned spellings and returns them for the keyboard's undo affordance. */
+    @Synchronized fun learnDictionaryTerms(candidates: Iterable<String>): List<String> {
+        val combined = personalDictionaryTerms().toMutableList()
+        val learned = learnedDictionaryTerms.toMutableList()
+        val seen = combined.mapTo(mutableSetOf()) { it.lowercase() }
+        val added = mutableListOf<String>()
+        for (raw in candidates) {
+            val term = runCatching { PersonalDictionary.normalize(raw) }.getOrNull() ?: continue
+            if (combined.size >= PersonalDictionary.MAX_TERMS || !seen.add(term.lowercase())) continue
+            combined.add(term)
+            learned.add(term)
+            added.add(term)
+        }
+        if (added.isNotEmpty()) learnedDictionaryTerms = learned
+        return added
+    }
+
+    @Synchronized fun forgetLearnedDictionaryTerms(terms: Iterable<String>) {
+        val removed = terms.mapTo(mutableSetOf()) { it.lowercase() }
+        learnedDictionaryTerms = learnedDictionaryTerms.filter { it.lowercase() !in removed }
+    }
+
+    @Synchronized fun replaceDictionaryTerm(original: String, replacement: String, learned: Boolean) {
+        val normalized = PersonalDictionary.normalize(replacement)
+        if (personalDictionaryTerms().any {
+                !it.equals(original, ignoreCase = true) && it.equals(normalized, ignoreCase = true)
+            }
+        ) throw PersonalDictionary.ValidationException("“$normalized” is already in the dictionary.")
+        val terms = (if (learned) learnedDictionaryTerms else dictionaryTerms).toMutableList()
+        val index = terms.indexOf(original)
+        if (index >= 0) terms[index] = normalized
+        if (learned) learnedDictionaryTerms = terms else dictionaryTerms = terms
+    }
+
+    @Synchronized fun removeDictionaryTerm(term: String, learned: Boolean) {
+        if (learned) learnedDictionaryTerms = learnedDictionaryTerms.filterNot { it == term }
+        else dictionaryTerms = dictionaryTerms.filterNot { it == term }
+    }
+
+    private fun readStringList(key: String): List<String> {
+        if (!ready) return emptyList()
+        return runCatching {
+            val json = JSONArray(prefs.getString(key, "[]") ?: "[]")
+            List(json.length()) { json.getString(it) }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun writeStringList(key: String, values: Iterable<String>) {
+        prefs.edit().putString(key, JSONArray(values.toList()).toString()).apply()
+    }
 
     var fidelity: Fidelity
         get() = if (ready) Fidelity.from(prefs.getString(KEY_FIDELITY, null)) else Fidelity.DEFAULT
