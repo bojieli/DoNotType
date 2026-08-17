@@ -115,4 +115,37 @@ class HistoryStoreHardeningTest {
         assertEquals("durable", store.all().single().text)
         assertEquals("durable", HistoryStore(directory).all().single().text)
     }
+
+    @Test
+    fun `restart removes only unreferenced managed audio`() {
+        val first = HistoryStore(directory)
+        val retained = first.insert(
+            DictationRecord(status = DictationRecord.Status.FAILED, model = "test"),
+            byteArrayOf(1, 2, 3),
+        )
+        val audioDirectory = File(directory, "audio")
+        val orphan = File(audioDirectory, "${java.util.UUID.randomUUID()}.wav")
+            .apply { writeBytes(byteArrayOf(4, 5, 6)) }
+        val unrelated = File(audioDirectory, "notes.wav")
+            .apply { writeBytes(byteArrayOf(7, 8, 9)) }
+
+        val restarted = HistoryStore(directory)
+        restarted.all()
+
+        assertTrue(restarted.audioFor(retained)!!.isNotEmpty())
+        assertFalse(orphan.exists())
+        assertTrue(unrelated.exists())
+    }
+
+    @Test
+    fun `unreadable index preserves unreferenced audio for recovery`() {
+        val audioDirectory = File(directory, "audio").apply { mkdirs() }
+        val recoverable = File(audioDirectory, "${java.util.UUID.randomUUID()}.wav")
+            .apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        File(directory, "history.json").writeText("not json")
+
+        HistoryStore(directory).all()
+
+        assertTrue(recoverable.exists())
+    }
 }

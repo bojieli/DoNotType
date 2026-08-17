@@ -16,7 +16,8 @@ When you dictate, it may send to your chosen model provider:
 - personal-dictionary entries, when you have added or learned any, as a spelling-only reference.
 
 It does **not** send: anything from unfocused windows, anything while you are not dictating,
-anything from an app or URL on the blocklist, or any stored history.
+anything from an app or URL on the blocklist, any password/secure control contents, or any stored
+history. Dictation into a password field is still possible, but it runs without screen grounding.
 
 If correction learning is enabled, the app also reads the exact editable target where it just
 inserted text for up to one minute. This is local observation, not another provider request.
@@ -41,11 +42,10 @@ switch rather than storing the surrounding document.
 | macOS | Keychain (`app.donottype`) |
 | iOS | Keychain |
 | Windows | DPAPI, scoped to your Windows account |
-| Android | app-private `SharedPreferences` |
+| Android | AES-GCM ciphertext; key is non-exportable in Android Keystore |
 
-Android is the weakest of these and it is worth saying so: there is no Keychain equivalent an IME
-can reach without a foreground activity. The file is readable only by this app's UID, which is
-weaker than the others and stronger than a plaintext config file.
+Android migrates the old app-private plaintext preference in place after the first successful
+Keystore write. It never falls back to plaintext for a new key if secure storage is unavailable.
 
 Keys are never written to the settings file in plaintext, never logged, and never included in an
 error message.

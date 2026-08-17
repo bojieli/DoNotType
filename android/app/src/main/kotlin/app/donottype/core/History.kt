@@ -345,6 +345,7 @@ class HistoryStore(private val directory: File) {
         records?.let { return it }
 
         val list = mutableListOf<DictationRecord>()
+        var indexReadable = true
         if (indexFile.exists()) {
             val parsed = runCatching {
                 val array = JSONArray(indexFile.readText())
@@ -354,6 +355,7 @@ class HistoryStore(private val directory: File) {
                 }
                 decoded
             }.onFailure { error ->
+                indexReadable = false
                 log.error(
                     mapOf("type" to error.javaClass.simpleName),
                 ) { "history index is unreadable; leaving it untouched" }
@@ -361,6 +363,7 @@ class HistoryStore(private val directory: File) {
             if (parsed != null) list += parsed
         }
         records = list
+        if (indexReadable) removeOrphanedAudio(list)
         applyRetention()
         return list
     }
@@ -400,6 +403,20 @@ class HistoryStore(private val directory: File) {
 
     private fun removeAudio(record: DictationRecord) {
         record.audioFileName?.let { audioFile(it)?.delete() }
+    }
+
+    /** Finishes a transaction interrupted on either side of the atomic index replacement. */
+    private fun removeOrphanedAudio(records: List<DictationRecord>) {
+        val referenced = records.mapNotNullTo(mutableSetOf()) { it.audioFileName }
+        var removed = 0
+        audioDirectory.listFiles().orEmpty().forEach { file ->
+            val managed = file.extension.equals("wav", ignoreCase = true) &&
+                runCatching { UUID.fromString(file.nameWithoutExtension) }.isSuccess
+            if (managed && file.name !in referenced && file.delete()) removed++
+        }
+        if (removed > 0) {
+            log.info(mapOf("files" to removed.toString())) { "removed orphaned history audio" }
+        }
     }
 
     private fun persist(): Boolean {

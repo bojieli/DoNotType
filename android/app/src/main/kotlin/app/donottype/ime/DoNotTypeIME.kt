@@ -492,7 +492,8 @@ class DoNotTypeIME : InputMethodService() {
 
         // Phase 1 equivalent: snapshot the screen at press, while the field being dictated into is
         // still the focused one.
-        pendingContext = if (Settings.groundingEnabled) {
+        val passwordField = currentInputEditorInfo?.let { isPasswordField(it.inputType) } == true
+        pendingContext = if (Settings.groundingEnabled && !passwordField) {
             ScreenReaderService.instance?.capture()
         } else {
             null

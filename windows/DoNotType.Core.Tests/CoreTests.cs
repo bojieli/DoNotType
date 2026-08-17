@@ -635,6 +635,39 @@ public class HistoryStoreTests : IDisposable
         Assert.Equal("durable", store.All().Single().Text);
         Assert.Equal("durable", new HistoryStore(_directory).All().Single().Text);
     }
+
+    [Fact]
+    public void RestartRemovesOnlyUnreferencedManagedAudio()
+    {
+        var first = new HistoryStore(_directory);
+        var retained = first.Insert(Record(DictationStatus.Failed), [1, 2, 3]);
+        var audioDirectory = Path.Combine(_directory, "audio");
+        var orphan = Path.Combine(audioDirectory, $"{Guid.NewGuid()}.wav");
+        var unrelated = Path.Combine(audioDirectory, "notes.wav");
+        File.WriteAllBytes(orphan, [4, 5, 6]);
+        File.WriteAllBytes(unrelated, [7, 8, 9]);
+
+        var restarted = new HistoryStore(_directory);
+        _ = restarted.All();
+
+        Assert.NotNull(restarted.AudioFor(retained));
+        Assert.False(File.Exists(orphan));
+        Assert.True(File.Exists(unrelated));
+    }
+
+    [Fact]
+    public void UnreadableIndexPreservesUnreferencedAudioForRecovery()
+    {
+        var audioDirectory = Path.Combine(_directory, "audio");
+        Directory.CreateDirectory(audioDirectory);
+        var recoverable = Path.Combine(audioDirectory, $"{Guid.NewGuid()}.wav");
+        File.WriteAllBytes(recoverable, [1, 2, 3]);
+        File.WriteAllText(Path.Combine(_directory, "history.json"), "not json");
+
+        _ = new HistoryStore(_directory).All();
+
+        Assert.True(File.Exists(recoverable));
+    }
 }
 
 public class AtomicFileTests : IDisposable

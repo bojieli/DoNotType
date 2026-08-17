@@ -13,11 +13,28 @@ internal static class Program
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
-        using var context = new TrayApplication();
-        Application.Run(context);
-        // The file sink appends through the filesystem; flushing on the way out means the last few
-        // lines before a quit — usually the interesting ones — actually reach the disk.
-        LogRouter.Flush();
+        using var singleInstance = new Mutex(
+            initiallyOwned: true, @"Local\app.donottype", out var isFirstInstance);
+        if (!isFirstInstance)
+        {
+            MessageBox.Show(
+                "DoNotType is already running in the notification area.",
+                "DoNotType", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        try
+        {
+            using var context = new TrayApplication();
+            Application.Run(context);
+            // The file sink appends through the filesystem; flushing on exit means the last few
+            // lines before a quit — usually the interesting ones — actually reach the disk.
+            LogRouter.Flush();
+        }
+        finally
+        {
+            singleInstance.ReleaseMutex();
+        }
     }
 }
 

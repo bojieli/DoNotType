@@ -376,6 +376,7 @@ public sealed class HistoryStore(string directory)
         if (_records is not null) return _records;
 
         _records = [];
+        var indexReadable = true;
         if (File.Exists(_indexPath))
         {
             try
@@ -385,12 +386,14 @@ public sealed class HistoryStore(string directory)
             }
             catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
             {
+                indexReadable = false;
                 // A corrupt index should not stop the app from dictating; it starts fresh.
                 _records = [];
                 Log.Error(() => "history index is unreadable; leaving it untouched",
                     new Dictionary<string, string> { ["type"] = e.GetType().Name });
             }
         }
+        if (indexReadable) RemoveOrphanedAudio();
         ApplyRetention();
         return _records;
     }
@@ -443,6 +446,48 @@ public sealed class HistoryStore(string directory)
         var path = AudioPath(record.AudioFileName);
         if (path is null) return;
         if (File.Exists(path)) File.Delete(path);
+    }
+
+    /// <summary>Finishes a transaction interrupted on either side of the index replacement.</summary>
+    private void RemoveOrphanedAudio()
+    {
+        if (!Directory.Exists(_audioDirectory) || _records is null) return;
+        var referenced = _records
+            .Where(record => record.AudioFileName is not null)
+            .Select(record => record.AudioFileName!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        string[] files;
+        try
+        {
+            files = Directory.GetFiles(_audioDirectory, "*.wav");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn(() => "could not inspect history audio",
+                new Dictionary<string, string> { ["type"] = error.GetType().Name });
+            return;
+        }
+        var removed = 0;
+        foreach (var path in files)
+        {
+            if (!Guid.TryParse(Path.GetFileNameWithoutExtension(path), out _)
+                || referenced.Contains(Path.GetFileName(path))) continue;
+            try
+            {
+                File.Delete(path);
+                removed++;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                Log.Warn(() => "could not remove orphaned history audio",
+                    new Dictionary<string, string> { ["type"] = error.GetType().Name });
+            }
+        }
+        if (removed > 0)
+        {
+            Log.Info(() => "removed orphaned history audio",
+                new Dictionary<string, string> { ["files"] = removed.ToString() });
+        }
     }
 
     private bool Persist()

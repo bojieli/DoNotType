@@ -168,6 +168,38 @@ final class HistoryStoreTests: XCTestCase {
         let restoredCount = await restored.all().count
         XCTAssertEqual(restoredCount, 1)
     }
+
+    func testRestartRemovesOnlyUnreferencedManagedAudio() async throws {
+        let first = HistoryStore(directory: directory)
+        await first.configure(retention: .forever, keepAudioForCompleted: false)
+        let retained = await first.insert(makeRecord(status: .failed), audio: Data([1, 2, 3]))
+
+        let audioDirectory = directory.appendingPathComponent("audio")
+        let orphan = audioDirectory.appendingPathComponent("\(UUID().uuidString).wav")
+        let unrelated = audioDirectory.appendingPathComponent("notes.wav")
+        try Data([4, 5, 6]).write(to: orphan)
+        try Data([7, 8, 9]).write(to: unrelated)
+
+        let restarted = HistoryStore(directory: directory)
+        _ = await restarted.all()
+
+        let retainedURL = await restarted.audioURL(for: retained)
+        XCTAssertNotNil(retainedURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path))
+    }
+
+    func testUnreadableIndexPreservesUnreferencedAudioForRecovery() async throws {
+        let audioDirectory = directory.appendingPathComponent("audio")
+        try FileManager.default.createDirectory(at: audioDirectory, withIntermediateDirectories: true)
+        let recoverable = audioDirectory.appendingPathComponent("\(UUID().uuidString).wav")
+        try Data([1, 2, 3]).write(to: recoverable)
+        try Data("not json".utf8).write(to: directory.appendingPathComponent("history.json"))
+
+        _ = await HistoryStore(directory: directory).all()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: recoverable.path))
+    }
 }
 
 final class RetryClassificationTests: XCTestCase {

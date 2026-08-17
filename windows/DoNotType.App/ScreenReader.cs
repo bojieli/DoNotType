@@ -46,7 +46,7 @@ public sealed class ScreenReader
                 context.Role = focused.Current.ControlType.ProgrammaticName?.Replace("ControlType.", string.Empty);
                 context.IsEditable = focused.Current.ControlType == ControlType.Edit
                     || focused.Current.ControlType == ControlType.Document;
-                context.SelectedText = SelectedText(focused);
+                if (!focused.Current.IsPassword) context.SelectedText = SelectedText(focused);
             }
         }
         catch (Exception e) when (e is ElementNotAvailableException or COMException or InvalidOperationException)
@@ -74,6 +74,9 @@ public sealed class ScreenReader
             var focused = AutomationElement.FocusedElement;
             if (focused is not null)
             {
+                // Audio may still be dictated into a password field, but no surrounding login
+                // screen or field contents become grounding material.
+                if (focused.Current.IsPassword) return context;
                 var (before, after) = CaretWindow(focused);
                 context.TextBeforeCaret = before;
                 context.TextAfterCaret = after;
@@ -181,6 +184,9 @@ public sealed class ScreenReader
 
             try
             {
+                // A custom password widget may render its characters as child elements. Treat the
+                // protected element as opaque and never enqueue that subtree.
+                if (element.Current.IsPassword) continue;
                 if (!element.Current.IsOffscreen)
                 {
                     Append(builder, element.Current.Name);
@@ -219,6 +225,7 @@ public sealed class ScreenReader
     {
         try
         {
+            if (element.Current.IsPassword) return (null, null);
             if (!element.TryGetCurrentPattern(TextPattern.Pattern, out var raw)
                 || raw is not TextPattern pattern)
             {
@@ -247,6 +254,7 @@ public sealed class ScreenReader
     {
         try
         {
+            if (element.Current.IsPassword) return null;
             if (element.TryGetCurrentPattern(TextPattern.Pattern, out var raw) && raw is TextPattern pattern)
             {
                 var selection = pattern.GetSelection();

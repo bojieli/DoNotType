@@ -75,6 +75,9 @@ class ScreenReaderService : AccessibilityService() {
             val node = stack.removeLast()
             nodes++
 
+            // Custom password widgets can expose rendered characters through child nodes, so the
+            // protected control is an opaque subtree rather than merely a value we do not append.
+            if (node.isPassword) continue
             if (node.isFocused && node.isEditable) focused = node
 
             if (node.isVisibleToUser) {

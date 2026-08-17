@@ -197,17 +197,20 @@ public actor HistoryStore {
     private func loadIfNeeded() {
         guard !loaded else { return }
         loaded = true
+        var indexReadable = true
 
         if FileManager.default.fileExists(atPath: indexURL.path) {
             do {
                 let data = try Data(contentsOf: indexURL)
                 records = try JSONDecoder.history.decode([DictationRecord].self, from: data)
             } catch {
+                indexReadable = false
                 log.error(
                     "history index is unreadable; leaving it untouched",
                     ["type": String(describing: type(of: error))])
             }
         }
+        if indexReadable { removeOrphanedAudio() }
         applyRetention()
     }
 
@@ -245,6 +248,33 @@ public actor HistoryStore {
         guard let name = record.audioFileName else { return }
         guard let url = safeAudioURL(named: name) else { return }
         try? FileManager.default.removeItem(at: url)
+    }
+
+    /// Completes a transaction interrupted after its index commit or before an insert commit.
+    /// An unreadable index deliberately skips this: those files may be the only recoverable copy.
+    private func removeOrphanedAudio() {
+        let referenced = Set(records.compactMap(\.audioFileName))
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: audioDirectory, includingPropertiesForKeys: nil)
+        else { return }
+
+        var removed = 0
+        for file in files {
+            let name = file.lastPathComponent
+            guard file.pathExtension.lowercased() == "wav",
+                UUID(uuidString: file.deletingPathExtension().lastPathComponent) != nil,
+                !referenced.contains(name)
+            else { continue }
+            do {
+                try FileManager.default.removeItem(at: file)
+                removed += 1
+            } catch {
+                log.warning(
+                    "could not remove orphaned history audio",
+                    ["type": String(describing: type(of: error))])
+            }
+        }
+        if removed > 0 { log.info("removed orphaned history audio", ["files": "\(removed)"]) }
     }
 
     /// A persisted record is data, not permission to inspect or delete outside History/audio.

@@ -30,6 +30,14 @@ release yet, so everything below is unreleased.
   previous audio route promptly. Both recorder teardowns now fully unblock and remove their input
   hooks before returning, so a failed start or fast retry cannot inherit half-open capture state.
 
+- **Screen grounding has a bounded, password-safe failure boundary.** macOS now applies the
+  Accessibility API's native IPC timeout and observes task cancellation between attribute reads;
+  the advertised 500 ms walk can no longer wait indefinitely for a hung target application. Its
+  traversal prefers visible children, skips hidden controls, validates selection ranges, and uses
+  AX's UTF-16 caret offsets correctly after emoji. macOS, Windows, and Android all refuse password
+  controls as grounding, correction-learning, and delayed-submit sources while still allowing the
+  user to dictate into those fields without screen context.
+
 - **Android API keys are encrypted at rest.** Existing private SharedPreferences keys migrate in
   place to AES-GCM values protected by a non-exportable Android Keystore key. New secrets never
   fall back to plaintext when secure storage fails, the settings screen reports that failure, and
@@ -49,7 +57,8 @@ release yet, so everything below is unreleased.
   local recording. Cancelled live segments now finish unwinding before their cancellation and
   concurrency handles are released, so repeated escape/retry cycles neither accumulate resources
   nor race an HTTP completion during shutdown; a late completion also cannot clear the live
-  session belonging to a newer recording.
+  session belonging to a newer recording. A per-session mutex now prevents a second tray process
+  from installing the same hook and recording or inserting every dictation twice.
 
 - **The iOS UI suite now waits for actionable controls, not merely allocated rows.** SwiftUI can
   expose a lazy Form row just outside the viewport, where XCUITest reports that it exists but a tap
@@ -78,6 +87,8 @@ release yet, so everything below is unreleased.
   retry, delete, or retention prune. Failed persistence rolls the live list back to the durable
   view, while orphan audio from a failed insert is cleaned up. “Don't keep history” also keeps the
   current process empty immediately instead of retaining a session-only list until relaunch.
+  Startup finishes interrupted transactions by deleting unreferenced app-named recordings, but
+  preserves every file when the index is unreadable so recovery never destroys its own evidence.
   Android prompt overrides and Windows prompt/settings files now use the same flushed sibling-and-
   replace discipline, so interrupted edits keep the prior valid configuration; a Windows settings
   write failure is contained and shown instead of escaping a UI event and terminating the tray app.

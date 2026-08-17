@@ -5,11 +5,21 @@ import Foundation
 
 /// Reads the focused app's text out of the accessibility tree.
 ///
-/// Everything here runs off the main thread with a hard deadline. An unresponsive target app will
-/// block an `AXUIElementCopyAttributeValue` call indefinitely, and a dictation tool that hangs
-/// because Slack is busy is worse than one that grounds on nothing.
+/// Everything here runs off the main thread with a hard deadline and a native per-message timeout.
+/// A dictation tool that hangs because a target app is unresponsive is worse than one that grounds
+/// on nothing.
 struct AccessibilityReader: Sendable {
     private static let log = Log("ax")
+
+    /// AX calls are synchronous IPC into another process. The task-level deadline below limits a
+    /// walk, while this native timeout bounds the one call that may already be in progress when
+    /// cancellation arrives. Apple applies a system-wide element's timeout to this whole process.
+    private static let messagingTimeoutConfigured: Void = {
+        let error = AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.1)
+        if error != .success {
+            log.warning("could not bound accessibility IPC", ["error": "\(error.rawValue)"])
+        }
+    }()
 
     /// Character budgets, matching the ones Typeless arrived at.
     struct Limits: Sendable {
@@ -52,7 +62,8 @@ struct AccessibilityReader: Sendable {
         guard isTrusted, let app = NSWorkspace.shared.frontmostApplication else { return nil }
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         guard let focused: AXUIElement = copy(appElement, kAXFocusedUIElementAttribute),
-            let role: String = copy(focused, kAXRoleAttribute), isEditableRole(role)
+            let role: String = copy(focused, kAXRoleAttribute), isEditableRole(role),
+            !isSecure(focused)
         else { return nil }
         return FocusedElementIdentity(pid: app.processIdentifier, elementToken: CFHash(focused))
     }
@@ -75,7 +86,9 @@ struct AccessibilityReader: Sendable {
         if let focused: AXUIElement = copy(appElement, kAXFocusedUIElementAttribute) {
             context.role = copy(focused, kAXRoleAttribute)
             context.isEditable = context.role.map(isEditableRole) ?? false
-            context.selectedText = copy(focused, kAXSelectedTextAttribute)
+            if !isSecure(focused) {
+                context.selectedText = copy(focused, kAXSelectedTextAttribute)
+            }
         }
         return context
     }
@@ -130,6 +143,7 @@ struct AccessibilityReader: Sendable {
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         guard let focused: AXUIElement = copy(appElement, kAXFocusedUIElementAttribute),
             let role: String = copy(focused, kAXRoleAttribute), isEditableRole(role),
+            !isSecure(focused),
             let value: String = copy(focused, kAXValueAttribute)
         else { return nil }
 
@@ -149,18 +163,25 @@ struct AccessibilityReader: Sendable {
 
     private static func readEverything(limits: Limits) -> ScreenContext {
         var context = captureIdentity()
-        guard isTrusted, let app = NSWorkspace.shared.frontmostApplication else { return context }
+        guard !Task.isCancelled, isTrusted,
+            let app = NSWorkspace.shared.frontmostApplication
+        else { return context }
 
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
 
         // Chromium and Electron apps withhold their tree until this is set. Toggling it is the
         // difference between grounding in VS Code and grounding on nothing there.
-        AXUIElementSetAttributeValue(
-            appElement, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        if !Task.isCancelled {
+            AXUIElementSetAttributeValue(
+                appElement, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        }
 
         let window: AXUIElement? = copy(appElement, kAXFocusedWindowAttribute)
         let focused: AXUIElement? = copy(appElement, kAXFocusedUIElementAttribute)
 
+        // Dictation itself still works in a password field, but the login screen is not grounding
+        // material and the delayed finish-and-send identity above deliberately refuses the field.
+        if let focused, isSecure(focused) { return context }
         if let focused {
             (context.textBeforeCaret, context.textAfterCaret) = caretWindow(
                 focused, budget: limits.caretWindow)
@@ -186,21 +207,27 @@ struct AccessibilityReader: Sendable {
         var visited = 0
         var stack = [root]
 
-        while let element = stack.popLast(), characters < budget, visited < 4_000 {
+        while !Task.isCancelled, let element = stack.popLast(), characters < budget,
+            visited < 4_000
+        {
             visited += 1
 
-            if let role: String = copy(element, kAXRoleAttribute), role == "AXWindow" || true {
-                for attribute in [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute] {
-                    guard let text: String = copy(element, attribute) else { continue }
-                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    // Single characters are almost always chrome (separators, icon labels).
-                    guard trimmed.count > 1 else { continue }
-                    collected.append(trimmed)
-                    characters += trimmed.count
-                }
+            let hidden: Bool = copy(element, kAXHiddenAttribute) ?? false
+            // Treat a secure control as an opaque subtree. Some custom password widgets expose
+            // their rendered characters through descendants even when the parent is protected.
+            if hidden || isSecure(element) { continue }
+            for attribute in [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute] {
+                guard let text: String = copy(element, attribute) else { continue }
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Single characters are almost always chrome (separators, icon labels).
+                guard trimmed.count > 1 else { continue }
+                collected.append(trimmed)
+                characters += trimmed.count
             }
 
-            if let children: [AXUIElement] = copy(element, kAXChildrenAttribute) {
+            let children: [AXUIElement]? = copy(element, kAXVisibleChildrenAttribute)
+                ?? copy(element, kAXChildrenAttribute)
+            if let children {
                 stack.append(contentsOf: children.reversed())
             }
         }
@@ -224,6 +251,7 @@ struct AccessibilityReader: Sendable {
 
     /// Text either side of the insertion point.
     private static func caretWindow(_ element: AXUIElement, budget: Int) -> (String?, String?) {
+        guard !isSecure(element) else { return (nil, nil) }
         guard let value: String = copy(element, kAXValueAttribute) else { return (nil, nil) }
 
         var rangeValue: CFTypeRef?
@@ -238,12 +266,17 @@ struct AccessibilityReader: Sendable {
         }
 
         var range = CFRange()
-        AXValueGetValue(axValue as! AXValue, .cfRange, &range)
+        guard AXValueGetValue(axValue as! AXValue, .cfRange, &range) else {
+            return (TokenBudget.clipKeepingTail(value, maxChars: budget), nil)
+        }
 
-        let characters = Array(value)
-        let caret = max(0, min(range.location, characters.count))
-        let before = String(characters[..<caret])
-        let after = String(characters[min(caret + max(0, range.length), characters.count)...])
+        // AX ranges are CFRange/UTF-16 offsets. Applying them to Swift Character indices shifts the
+        // caret after emoji and other surrogate pairs, grounding on the wrong side of the cursor.
+        let characters = value as NSString
+        let caret = max(0, min(range.location, characters.length))
+        let selectionEnd = max(caret, min(caret + max(0, range.length), characters.length))
+        let before = characters.substring(to: caret)
+        let after = characters.substring(from: selectionEnd)
 
         return (
             TokenBudget.clipKeepingTail(before, maxChars: budget),
@@ -255,7 +288,7 @@ struct AccessibilityReader: Sendable {
     private static func webURL(in window: AXUIElement) -> String? {
         var stack = [window]
         var visited = 0
-        while let element = stack.popLast(), visited < 200 {
+        while !Task.isCancelled, let element = stack.popLast(), visited < 200 {
             visited += 1
             if let role: String = copy(element, kAXRoleAttribute), role == "AXWebArea" {
                 if let url: NSURL = copy(element, kAXURLAttribute) { return url.absoluteString }
@@ -272,9 +305,17 @@ struct AccessibilityReader: Sendable {
         ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"].contains(role)
     }
 
+    /// Password fields are insertion targets, not context sources or correction-learning inputs.
+    private static func isSecure(_ element: AXUIElement) -> Bool {
+        let subrole: String? = copy(element, kAXSubroleAttribute)
+        return subrole == (kAXSecureTextFieldSubrole as String)
+    }
+
     // MARK: - Attribute plumbing
 
     private static func copy<T>(_ element: AXUIElement, _ attribute: String) -> T? {
+        _ = messagingTimeoutConfigured
+        guard !Task.isCancelled else { return nil }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success
         else { return nil }
