@@ -281,6 +281,10 @@ final class Settings {
         defaults.set(value.trimmed, forKey: modelKey(for: kind))
     }
 
+    func setTextModel(_ value: String?, for kind: ProviderKind) {
+        defaults.set(value?.trimmed ?? "", forKey: textModelKey(for: kind))
+    }
+
     /// The model the second stage runs on, when the provider serves text from a different model
     /// than it transcribes with. Nil for every backend where one model does both, so the two
     /// cannot drift apart in the one case where a single field would have been enough.
@@ -452,17 +456,21 @@ final class Settings {
 
     var apiKey: String? {
         get { Self.keychainKey(for: provider) }
-        set {
-            if let newValue, !newValue.isEmpty {
-                Keychain.write(newValue, account: provider.rawValue)
-            } else {
-                Keychain.delete(account: provider.rawValue)
-                // The entry under the pre-rename name too, or the getter's fallback would
-                // resurrect a key the user has just cleared.
-                if let renamed = provider.legacyPersistedValue {
-                    Keychain.delete(account: renamed)
-                }
-            }
+        set { setAPIKey(newValue, for: provider) }
+    }
+
+    /// The stored credential only, never an environment fallback. A settings export must not
+    /// quietly copy a secret inherited from somebody's shell or launch agent.
+    func storedAPIKey(for kind: ProviderKind) -> String? { Self.keychainKey(for: kind) }
+
+    func setAPIKey(_ value: String?, for kind: ProviderKind) {
+        if let value, !value.isEmpty {
+            Keychain.write(value, account: kind.rawValue)
+        } else {
+            Keychain.delete(account: kind.rawValue)
+            // The entry under the pre-rename name too, or the getter's fallback would resurrect a
+            // key that an imported profile deliberately cleared.
+            if let renamed = kind.legacyPersistedValue { Keychain.delete(account: renamed) }
         }
     }
 

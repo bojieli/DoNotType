@@ -577,6 +577,202 @@ final class SettingsModel {
         migrateLegacyPromptIfNeeded()
     }
 
+    // MARK: - Settings transfer
+
+    func settingsTransferDocument() -> SettingsTransferDocument {
+        let settings = Settings.shared
+        let providers = Dictionary(uniqueKeysWithValues: ProviderKind.allCases.map { kind in
+            (
+                kind.rawValue,
+                SettingsTransferDocument.Provider(
+                    model: settings.model(for: kind),
+                    textModel: settings.textModel(for: kind),
+                    endpoint: settings.endpoint(for: kind).trimmed.isEmpty
+                        ? nil : settings.endpoint(for: kind).trimmed,
+                    apiKey: settings.storedAPIKey(for: kind))
+            )
+        })
+        return SettingsTransferDocument(
+            selectedProvider: settings.provider.rawValue,
+            providers: providers,
+            fidelity: settings.fidelity.rawValue,
+            fallback: settings.fallbackProvider.map {
+                .init(provider: $0.rawValue, afterSeconds: settings.fallbackAfterSeconds)
+            },
+            retention: settings.retention.rawValue,
+            keepAudio: settings.keepAudio,
+            dictionary: .init(
+                manual: settings.dictionaryTerms,
+                learned: settings.learnedDictionaryTerms,
+                learnsFromEdits: settings.learnDictionaryFromEdits),
+            desktop: .init(
+                trigger: settings.trigger.rawValue,
+                hotkeyMode: settings.hotkeyMode.rawValue,
+                cancelShortcut: settings.cancelShortcut.rawValue,
+                finishAndSendAction: settings.finishAndSendAction.rawValue,
+                secondaryTrigger: settings.secondaryTrigger?.rawValue,
+                secondaryStyle: settings.secondaryStyle.rawValue,
+                interactionSounds: settings.interactionSounds,
+                launchAtLogin: LaunchAtLogin.isEnabled,
+                groundingEnabled: settings.groundingEnabled,
+                screenshotEnabled: settings.screenshotEnabled,
+                keytermBiasing: settings.keytermBiasing,
+                blockedBundleIDs: settings.blockedBundleIDs,
+                blockedURLPrefixes: settings.blockedURLPrefixes,
+                logLevel: settings.logLevel.name,
+                logContent: settings.logContent,
+                fileMode: settings.fileMode.rawValue))
+    }
+
+    /// Replaces portable preferences after validating every enum reference up front. Validation
+    /// before the first write prevents a malformed hand-edited document from half-applying.
+    func importSettingsTransfer(_ document: SettingsTransferDocument) async throws {
+        try document.validate()
+        guard let selected = ProviderKind(persistedValue: document.selectedProvider) else {
+            throw SettingsTransferApplyError.unsupportedValue(
+                field: "selectedProvider", value: document.selectedProvider)
+        }
+        let importedProviders: [(ProviderKind, SettingsTransferDocument.Provider)] = document
+            .providers.compactMap { raw, value in
+                guard let kind = ProviderKind(persistedValue: raw) else { return nil }
+                return (kind, value)
+            }
+        guard let importedFidelity = Fidelity(rawValue: document.fidelity) else {
+            throw SettingsTransferApplyError.unsupportedValue(
+                field: "fidelity", value: document.fidelity)
+        }
+        guard let importedRetention = RetentionPolicy(rawValue: document.retention) else {
+            throw SettingsTransferApplyError.unsupportedValue(
+                field: "retention", value: document.retention)
+        }
+        let importedFallback: ProviderKind? = try document.fallback.map { fallback in
+            guard let kind = ProviderKind(persistedValue: fallback.provider) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "fallback.provider", value: fallback.provider)
+            }
+            return kind
+        }
+
+        var desktopValues: (
+            HotkeyMonitor.Trigger, HotkeyMonitor.Mode, CancelShortcut, FinishAndSendAction,
+            HotkeyMonitor.Trigger?, RewriteStyle, LogLevel, TranscriptMode
+        )?
+        if let desktop = document.desktop {
+            guard let trigger = HotkeyMonitor.Trigger(rawValue: desktop.trigger) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "desktop.trigger", value: desktop.trigger)
+            }
+            guard let mode = HotkeyMonitor.Mode(rawValue: desktop.hotkeyMode) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "desktop.hotkeyMode", value: desktop.hotkeyMode)
+            }
+            guard let cancel = CancelShortcut(rawValue: desktop.cancelShortcut) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "desktop.cancelShortcut", value: desktop.cancelShortcut)
+            }
+            guard let finish = FinishAndSendAction(rawValue: desktop.finishAndSendAction) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "desktop.finishAndSendAction", value: desktop.finishAndSendAction)
+            }
+            let secondaryTrigger: HotkeyMonitor.Trigger? = try desktop.secondaryTrigger.map { raw in
+                guard let value = HotkeyMonitor.Trigger(rawValue: raw) else {
+                    throw SettingsTransferApplyError.unsupportedValue(
+                        field: "desktop.secondaryTrigger", value: raw)
+                }
+                return value
+            }
+            guard let secondaryStyle = RewriteStyle(rawValue: desktop.secondaryStyle) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "desktop.secondaryStyle", value: desktop.secondaryStyle)
+            }
+            guard let logLevel = LogLevel(name: desktop.logLevel) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "desktop.logLevel", value: desktop.logLevel)
+            }
+            guard let fileMode = TranscriptMode(rawValue: desktop.fileMode) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "desktop.fileMode", value: desktop.fileMode)
+            }
+            desktopValues = (
+                trigger, mode, cancel, finish, secondaryTrigger, secondaryStyle, logLevel, fileMode)
+        }
+
+        let settings = Settings.shared
+        for (kind, imported) in importedProviders {
+            settings.setModel(
+                imported.model.trimmed.isEmpty ? kind.defaultModel : imported.model, for: kind)
+            settings.setTextModel(imported.textModel, for: kind)
+            settings.setEndpoint(imported.endpoint ?? "", for: kind)
+            settings.setAPIKey(imported.apiKey, for: kind)
+        }
+        settings.provider = selected
+        settings.fidelity = importedFidelity
+        settings.fallbackProvider = importedFallback
+        settings.fallbackAfterSeconds = document.fallback?.afterSeconds ?? 8
+        settings.retention = importedRetention
+        settings.keepAudio = document.keepAudio
+        settings.dictionaryTerms = document.dictionary.manual
+        settings.learnedDictionaryTerms = document.dictionary.learned
+        settings.learnDictionaryFromEdits = document.dictionary.learnsFromEdits
+
+        if let desktop = document.desktop, let values = desktopValues {
+            settings.trigger = values.0
+            settings.hotkeyMode = values.1
+            settings.cancelShortcut = values.2
+            settings.finishAndSendAction = values.3
+            settings.secondaryTrigger = values.4
+            settings.secondaryStyle = values.5
+            settings.interactionSounds = desktop.interactionSounds
+            LaunchAtLogin.set(desktop.launchAtLogin)
+            settings.groundingEnabled = desktop.groundingEnabled
+            settings.screenshotEnabled = desktop.screenshotEnabled
+            settings.keytermBiasing = desktop.keytermBiasing
+            settings.blockedBundleIDs = desktop.blockedBundleIDs
+            settings.blockedURLPrefixes = desktop.blockedURLPrefixes
+            settings.logLevel = values.6
+            settings.logContent = desktop.logContent
+            settings.fileMode = values.7
+        }
+
+        reloadTransferredSettings()
+        onHotkeyChange?()
+        await reconfigureStore()
+        scheduleKeyCheck()
+    }
+
+    private func reloadTransferredSettings() {
+        let settings = Settings.shared
+        provider = settings.provider
+        apiKey = settings.apiKey ?? ""
+        model = settings.model
+        textModel = settings.textModel ?? ""
+        endpoint = settings.endpoint
+        fidelity = settings.fidelity
+        keytermBiasing = settings.keytermBiasing
+        fallbackProvider = settings.fallbackProvider
+        fallbackAfterSeconds = settings.fallbackAfterSeconds
+        fallbackAPIKey = settings.fallbackProvider
+            .map { settings.storedAPIKey(for: $0) ?? "" } ?? ""
+        fallbackModel = settings.fallbackProvider.map { settings.model(for: $0) } ?? ""
+        fallbackEndpoint = settings.fallbackProvider.map { settings.endpoint(for: $0) } ?? ""
+        trigger = settings.trigger
+        hotkeyMode = settings.hotkeyMode
+        cancelShortcut = settings.cancelShortcut
+        finishAndSendAction = settings.finishAndSendAction
+        secondaryTrigger = settings.secondaryTrigger
+        secondaryStyle = settings.secondaryStyle
+        interactionSounds = settings.interactionSounds
+        launchAtLogin = LaunchAtLogin.isEnabled
+        groundingEnabled = settings.groundingEnabled
+        screenshotEnabled = settings.screenshotEnabled
+        blockedBundleIDs = settings.blockedBundleIDs
+        blockedURLPrefixes = settings.blockedURLPrefixes
+        learnDictionaryFromEdits = settings.learnDictionaryFromEdits
+        refreshDictionary()
+        retention = settings.retention
+        keepAudio = settings.keepAudio
+    }
+
     // MARK: - Prompt editing
 
     static func bundledPromptURL() -> URL? {

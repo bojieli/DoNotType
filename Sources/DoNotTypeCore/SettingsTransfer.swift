@@ -1,0 +1,239 @@
+import Foundation
+
+/// The portable settings document shared by the Apple clients and intended for the other clients
+/// to adopt as well. Values that belong to an enum are stored as strings: an older client can
+/// ignore a platform block it does not understand, while the client applying the document can
+/// validate the values against the cases it actually supports.
+public struct SettingsTransferDocument: Codable, Equatable, Sendable {
+    public static let formatIdentifier = "app.donottype.settings"
+    public static let currentVersion = 1
+    public static let maximumBytes = 1_048_576
+
+    public struct Provider: Codable, Equatable, Sendable {
+        public var model: String
+        public var textModel: String?
+        public var endpoint: String?
+        public var apiKey: String?
+
+        public init(
+            model: String, textModel: String? = nil, endpoint: String? = nil,
+            apiKey: String? = nil
+        ) {
+            self.model = model
+            self.textModel = textModel
+            self.endpoint = endpoint
+            self.apiKey = apiKey
+        }
+    }
+
+    public struct Fallback: Codable, Equatable, Sendable {
+        public var provider: String
+        public var afterSeconds: Double
+
+        public init(provider: String, afterSeconds: Double) {
+            self.provider = provider
+            self.afterSeconds = afterSeconds
+        }
+    }
+
+    public struct Dictionary: Codable, Equatable, Sendable {
+        public var manual: [String]
+        public var learned: [String]
+        public var learnsFromEdits: Bool
+
+        public init(manual: [String], learned: [String], learnsFromEdits: Bool) {
+            self.manual = manual
+            self.learned = learned
+            self.learnsFromEdits = learnsFromEdits
+        }
+    }
+
+    /// Preferences that have no iOS equivalent. Other clients leave this block untouched.
+    public struct Desktop: Codable, Equatable, Sendable {
+        public var trigger: String
+        public var hotkeyMode: String
+        public var cancelShortcut: String
+        public var finishAndSendAction: String
+        public var secondaryTrigger: String?
+        public var secondaryStyle: String
+        public var interactionSounds: Bool
+        public var launchAtLogin: Bool
+        public var groundingEnabled: Bool
+        public var screenshotEnabled: Bool
+        public var keytermBiasing: Bool
+        public var blockedBundleIDs: [String]
+        public var blockedURLPrefixes: [String]
+        public var logLevel: String
+        public var logContent: Bool
+        public var fileMode: String
+
+        public init(
+            trigger: String, hotkeyMode: String, cancelShortcut: String,
+            finishAndSendAction: String, secondaryTrigger: String?, secondaryStyle: String,
+            interactionSounds: Bool, launchAtLogin: Bool, groundingEnabled: Bool,
+            screenshotEnabled: Bool, keytermBiasing: Bool, blockedBundleIDs: [String],
+            blockedURLPrefixes: [String], logLevel: String, logContent: Bool, fileMode: String
+        ) {
+            self.trigger = trigger
+            self.hotkeyMode = hotkeyMode
+            self.cancelShortcut = cancelShortcut
+            self.finishAndSendAction = finishAndSendAction
+            self.secondaryTrigger = secondaryTrigger
+            self.secondaryStyle = secondaryStyle
+            self.interactionSounds = interactionSounds
+            self.launchAtLogin = launchAtLogin
+            self.groundingEnabled = groundingEnabled
+            self.screenshotEnabled = screenshotEnabled
+            self.keytermBiasing = keytermBiasing
+            self.blockedBundleIDs = blockedBundleIDs
+            self.blockedURLPrefixes = blockedURLPrefixes
+            self.logLevel = logLevel
+            self.logContent = logContent
+            self.fileMode = fileMode
+        }
+    }
+
+    /// The phone chooses a rewrite style in the UI; desktop chooses it with a second hotkey.
+    public struct IOS: Codable, Equatable, Sendable {
+        public var liveStyle: String
+
+        public init(liveStyle: String) { self.liveStyle = liveStyle }
+    }
+
+    public var format: String
+    public var version: Int
+    public var selectedProvider: String
+    public var providers: [String: Provider]
+    public var fidelity: String
+    public var fallback: Fallback?
+    public var retention: String
+    public var keepAudio: Bool
+    public var dictionary: Dictionary
+    public var desktop: Desktop?
+    public var iOS: IOS?
+
+    public init(
+        selectedProvider: String, providers: [String: Provider], fidelity: String,
+        fallback: Fallback?, retention: String, keepAudio: Bool, dictionary: Dictionary,
+        desktop: Desktop? = nil, iOS: IOS? = nil
+    ) {
+        format = Self.formatIdentifier
+        version = Self.currentVersion
+        self.selectedProvider = selectedProvider
+        self.providers = providers
+        self.fidelity = fidelity
+        self.fallback = fallback
+        self.retention = retention
+        self.keepAudio = keepAudio
+        self.dictionary = dictionary
+        self.desktop = desktop
+        self.iOS = iOS
+    }
+
+    public var containsSecrets: Bool {
+        providers.values.contains { !($0.apiKey ?? "").isEmpty }
+    }
+
+    public func encoded(prettyPrinted: Bool = true) throws -> Data {
+        try validate()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = prettyPrinted
+            ? [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+            : [.sortedKeys, .withoutEscapingSlashes]
+        return try encoder.encode(self)
+    }
+
+    public func jsonString(prettyPrinted: Bool = true) throws -> String {
+        guard let value = String(data: try encoded(prettyPrinted: prettyPrinted), encoding: .utf8)
+        else { throw SettingsTransferError.invalidUTF8 }
+        return value
+    }
+
+    public static func decode(_ data: Data) throws -> Self {
+        guard data.count <= maximumBytes else {
+            throw SettingsTransferError.tooLarge(maximumBytes: maximumBytes)
+        }
+        let document: Self
+        do {
+            document = try JSONDecoder().decode(Self.self, from: data)
+        } catch {
+            throw SettingsTransferError.invalidJSON(error.localizedDescription)
+        }
+        try document.validate()
+        return document
+    }
+
+    public static func decode(_ json: String) throws -> Self {
+        try decode(Data(json.utf8))
+    }
+
+    public func validate() throws {
+        guard format == Self.formatIdentifier else {
+            throw SettingsTransferError.wrongFormat(format)
+        }
+        guard version == Self.currentVersion else {
+            throw SettingsTransferError.unsupportedVersion(version)
+        }
+        guard !selectedProvider.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            providers[selectedProvider] != nil
+        else { throw SettingsTransferError.missingSelectedProvider }
+        if let fallback {
+            guard providers[fallback.provider] != nil else {
+                throw SettingsTransferError.missingFallbackProvider(fallback.provider)
+            }
+            guard fallback.provider != selectedProvider else {
+                throw SettingsTransferError.fallbackMatchesPrimary
+            }
+            guard fallback.afterSeconds.isFinite else {
+                throw SettingsTransferError.invalidFallbackDelay
+            }
+        }
+    }
+}
+
+public enum SettingsTransferError: Error, LocalizedError, Equatable, Sendable {
+    case tooLarge(maximumBytes: Int)
+    case invalidUTF8
+    case invalidJSON(String)
+    case wrongFormat(String)
+    case unsupportedVersion(Int)
+    case missingSelectedProvider
+    case missingFallbackProvider(String)
+    case fallbackMatchesPrimary
+    case invalidFallbackDelay
+
+    public var errorDescription: String? {
+        switch self {
+        case .tooLarge(let maximumBytes):
+            "The settings file is larger than the \(maximumBytes / 1_048_576) MB limit."
+        case .invalidUTF8:
+            "The settings document is not valid UTF-8 text."
+        case .invalidJSON(let detail):
+            "This is not a valid DoNotType settings document: \(detail)"
+        case .wrongFormat(let value):
+            "This JSON has format “\(value)”, not DoNotType settings."
+        case .unsupportedVersion(let version):
+            "Settings format version \(version) is not supported by this version of DoNotType."
+        case .missingSelectedProvider:
+            "The selected provider is missing from the provider settings."
+        case .missingFallbackProvider(let provider):
+            "The fallback provider “\(provider)” is missing from the provider settings."
+        case .fallbackMatchesPrimary:
+            "The fallback provider cannot be the selected provider."
+        case .invalidFallbackDelay:
+            "The fallback delay is not a finite number."
+        }
+    }
+}
+
+/// A syntactically valid transfer can still name a value a particular client does not support.
+public enum SettingsTransferApplyError: Error, LocalizedError, Equatable, Sendable {
+    case unsupportedValue(field: String, value: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unsupportedValue(let field, let value):
+            "This version does not support “\(value)” for \(field)."
+        }
+    }
+}

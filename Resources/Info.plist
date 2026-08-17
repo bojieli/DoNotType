@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>DoNotType reads the focused text field so it can spell names and terminology the way they appear on your screen.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>DoNotType uses the camera only while you scan a settings QR code.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>DoNotType records your voice only while you hold the dictation key, and sends it to the model you configured using your own API key.</string>
 	<key>NSScreenCaptureUsageDescription</key>

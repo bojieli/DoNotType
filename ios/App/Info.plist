@@ -37,5 +37,7 @@
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>DoNotType records your voice while you dictate and sends it to the model you configured using your own API key.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>DoNotType uses the camera only while you scan a settings QR code.</string>
 </dict>
 </plist>

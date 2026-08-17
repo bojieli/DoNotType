@@ -25,6 +25,8 @@ struct SettingsView: View {
                 .tabItem { Label("Prompt", systemImage: "text.quote") }
             LogsTab(model: logs)
                 .tabItem { Label("Logs", systemImage: "list.bullet.rectangle") }
+            SettingsTransferView(model: model)
+                .tabItem { Label("Transfer", systemImage: "arrow.left.arrow.right") }
         }
         // A minimum rather than a fixed size: pinning the content to an exact width left the
         // window unable to grow past the point where the tab bar fits, which is what hid it.

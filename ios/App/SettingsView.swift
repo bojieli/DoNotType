@@ -26,6 +26,7 @@ struct SettingsView: View {
             historySection
             promptSection
             logsSection
+            transferSection
             aboutSection
         }
         .navigationTitle("Settings")
@@ -99,6 +100,15 @@ struct SettingsView: View {
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("model")
 
+            TextField(
+                "API endpoint", text: $model.endpoint,
+                prompt: Text(model.provider.defaultEndpoint)
+            )
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .keyboardType(.URL)
+            .accessibilityIdentifier("endpoint")
+
             LabeledContent("Key") { Text(model.keySource).foregroundStyle(.secondary) }
 
             Picker("Fallback", selection: $model.fallbackProvider) {
@@ -110,6 +120,15 @@ struct SettingsView: View {
             .accessibilityIdentifier("fallback-provider")
 
             if model.fallbackProvider != nil {
+                TextField("Fallback model", text: $model.fallbackModel)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+
+                TextField("Fallback endpoint", text: $model.fallbackEndpoint)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+
                 SecureField("Fallback API key", text: $model.fallbackAPIKey)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -269,6 +288,17 @@ struct SettingsView: View {
                 "Every request, retry and failure, with a share button. Transcripts are left out "
                     + "unless you turn them on there."
             )
+        }
+    }
+
+    private var transferSection: some View {
+        Section("Transfer") {
+            NavigationLink {
+                SettingsTransferView(model: model)
+            } label: {
+                Label("Import or export settings", systemImage: "arrow.left.arrow.right")
+            }
+            .accessibilityIdentifier("open-settings-transfer")
         }
     }
 

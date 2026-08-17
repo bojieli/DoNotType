@@ -67,6 +67,7 @@ final class DictationModel {
             // one backend's settings into another's fields.
             apiKey = KeychainStore.read(account: provider.rawValue) ?? ""
             model = Self.storedModel(for: provider)
+            endpoint = Self.storedEndpoint(for: provider)
         }
     }
 
@@ -82,6 +83,9 @@ final class DictationModel {
     }
     var model: String {
         didSet { UserDefaults.standard.set(model, forKey: "model-\(provider.rawValue)") }
+    }
+    var endpoint: String {
+        didSet { UserDefaults.standard.set(endpoint, forKey: "endpoint-\(provider.rawValue)") }
     }
 
     /// What a dictation produces: the transcript, or a rewrite of it.
@@ -154,7 +158,9 @@ final class DictationModel {
         didSet {
             UserDefaults.standard.set(fallbackProvider?.rawValue ?? "", forKey: "fallbackProvider")
             fallbackAPIKey = fallbackProvider
-                .map { KeychainStore.read(account: $0.rawValue) ?? "" } ?? ""
+                .map { Self.storedKey(for: $0) ?? "" } ?? ""
+            fallbackModel = fallbackProvider.map { Self.storedModel(for: $0) } ?? ""
+            fallbackEndpoint = fallbackProvider.map { Self.storedEndpoint(for: $0) } ?? ""
         }
     }
 
@@ -164,6 +170,20 @@ final class DictationModel {
         didSet {
             guard let kind = fallbackProvider else { return }
             KeychainStore.write(fallbackAPIKey, account: kind.rawValue)
+        }
+    }
+
+    var fallbackModel: String = "" {
+        didSet {
+            guard let kind = fallbackProvider, !fallbackModel.trimmed.isEmpty else { return }
+            UserDefaults.standard.set(fallbackModel.trimmed, forKey: "model-\(kind.rawValue)")
+        }
+    }
+
+    var fallbackEndpoint: String = "" {
+        didSet {
+            guard let kind = fallbackProvider else { return }
+            UserDefaults.standard.set(fallbackEndpoint.trimmed, forKey: "endpoint-\(kind.rawValue)")
         }
     }
 
@@ -210,6 +230,10 @@ final class DictationModel {
         // The pre-provider-choice install stored one flat model, and it was Gemini's.
         if provider == .google, let model = stored("model") { return model }
         return provider.defaultModel
+    }
+
+    static func storedEndpoint(for provider: ProviderKind) -> String {
+        UserDefaults.standard.string(forKey: "endpoint-\(provider.rawValue)")?.trimmed ?? ""
     }
     var fidelity: Fidelity {
         didSet { UserDefaults.standard.set(fidelity.rawValue, forKey: "fidelity") }
@@ -258,7 +282,7 @@ final class DictationModel {
     var isPromptCustom: Bool { customParts.contains(selectedPart) }
 
     private let transcriptStore = TranscriptStore()
-    private let dictionaryStore = DictionaryStore()
+    private let dictionaryStore: DictionaryStore
     private let prompts: PromptStore
     private let history: HistoryStore
     private let recorder = StreamingAudioRecorder()
@@ -273,11 +297,14 @@ final class DictationModel {
         provider = kind
         apiKey = Self.storedKey(for: kind) ?? ""
         model = Self.storedModel(for: kind)
+        endpoint = Self.storedEndpoint(for: kind)
         let fallbackRaw = defaults.string(forKey: "fallbackProvider") ?? ""
         let fallbackKind = ProviderKind(persistedValue: fallbackRaw)
             .flatMap { $0 == kind ? nil : $0 }
         fallbackProvider = fallbackKind
         fallbackAPIKey = fallbackKind.map { Self.storedKey(for: $0) ?? "" } ?? ""
+        fallbackModel = fallbackKind.map { Self.storedModel(for: $0) } ?? ""
+        fallbackEndpoint = fallbackKind.map { Self.storedEndpoint(for: $0) } ?? ""
         fallbackAfterSeconds = Self.storedFallbackSeconds()
         fidelity = Fidelity(rawValue: defaults.string(forKey: "fidelity") ?? "") ?? .default
         liveStyle = RewriteStyle(rawValue: defaults.string(forKey: "liveStyle") ?? "") ?? .verbatim
@@ -288,6 +315,10 @@ final class DictationModel {
         // Inside the App Group so the keyboard could read it too if that ever becomes useful.
         let directory = TranscriptStore.containerURL
             ?? HistoryStore.defaultDirectory()
+        // A correctly signed install uses the App Group so the keyboard sees the same terms. The
+        // fallback keeps the app usable if that entitlement is temporarily unavailable (including
+        // unsigned simulator/UI-test builds), matching the history and prompt stores below.
+        dictionaryStore = DictionaryStore(directory: directory)
         history = HistoryStore(directory: directory.appendingPathComponent("History"))
         prompts = PromptStore(directory: directory.appendingPathComponent("Prompt"))
         applyDictionary(dictionaryStore.load())
@@ -310,6 +341,108 @@ final class DictationModel {
         #endif
     }
 
+    // MARK: - Settings transfer
+
+    func settingsTransferDocument() -> SettingsTransferDocument {
+        let providers = Dictionary(uniqueKeysWithValues: ProviderKind.allCases.map { kind in
+            let storedEndpoint = Self.storedEndpoint(for: kind)
+            return (
+                kind.rawValue,
+                SettingsTransferDocument.Provider(
+                    model: Self.storedModel(for: kind),
+                    endpoint: storedEndpoint.isEmpty ? nil : storedEndpoint,
+                    apiKey: Self.storedKey(for: kind))
+            )
+        })
+        return SettingsTransferDocument(
+            selectedProvider: provider.rawValue,
+            providers: providers,
+            fidelity: fidelity.rawValue,
+            fallback: fallbackProvider.map {
+                .init(provider: $0.rawValue, afterSeconds: fallbackAfterSeconds)
+            },
+            retention: retention.rawValue,
+            keepAudio: keepAudio,
+            dictionary: .init(
+                manual: dictionaryTerms,
+                learned: learnedDictionaryTerms,
+                learnsFromEdits: learnDictionaryFromEdits),
+            iOS: .init(liveStyle: liveStyle.rawValue))
+    }
+
+    func importSettingsTransfer(_ document: SettingsTransferDocument) async throws {
+        try document.validate()
+        guard let selected = ProviderKind(persistedValue: document.selectedProvider) else {
+            throw SettingsTransferApplyError.unsupportedValue(
+                field: "selectedProvider", value: document.selectedProvider)
+        }
+        guard let importedFidelity = Fidelity(rawValue: document.fidelity) else {
+            throw SettingsTransferApplyError.unsupportedValue(
+                field: "fidelity", value: document.fidelity)
+        }
+        guard let importedRetention = RetentionPolicy(rawValue: document.retention) else {
+            throw SettingsTransferApplyError.unsupportedValue(
+                field: "retention", value: document.retention)
+        }
+        let importedFallback: ProviderKind? = try document.fallback.map { fallback in
+            guard let kind = ProviderKind(persistedValue: fallback.provider) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "fallback.provider", value: fallback.provider)
+            }
+            return kind
+        }
+        let importedStyle: RewriteStyle? = try document.iOS.map { values in
+            guard let style = RewriteStyle(rawValue: values.liveStyle) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "iOS.liveStyle", value: values.liveStyle)
+            }
+            return style
+        }
+
+        let defaults = UserDefaults.standard
+        for (raw, imported) in document.providers {
+            guard let kind = ProviderKind(persistedValue: raw) else { continue }
+            defaults.set(
+                imported.model.trimmed.isEmpty ? kind.defaultModel : imported.model.trimmed,
+                forKey: "model-\(kind.rawValue)")
+            defaults.set(imported.endpoint?.trimmed ?? "", forKey: "endpoint-\(kind.rawValue)")
+            KeychainStore.write(imported.apiKey ?? "", account: kind.rawValue)
+            if (imported.apiKey ?? "").isEmpty, let renamed = kind.legacyPersistedValue {
+                KeychainStore.write("", account: renamed)
+            }
+        }
+        defaults.set(selected.rawValue, forKey: "provider")
+        defaults.set(importedFidelity.rawValue, forKey: "fidelity")
+        defaults.set(importedFallback?.rawValue ?? "", forKey: "fallbackProvider")
+        defaults.set(
+            min(max(document.fallback?.afterSeconds ?? 8, 1), 120),
+            forKey: "fallbackAfterSeconds")
+        defaults.set(importedRetention.rawValue, forKey: "retention")
+        defaults.set(document.keepAudio, forKey: "keepAudio")
+        if let importedStyle { defaults.set(importedStyle.rawValue, forKey: "liveStyle") }
+
+        let snapshot = try dictionaryStore.replace(with: .init(
+            manual: document.dictionary.manual,
+            learned: document.dictionary.learned,
+            learnsFromEdits: document.dictionary.learnsFromEdits))
+
+        provider = selected
+        apiKey = Self.storedKey(for: selected) ?? ""
+        model = Self.storedModel(for: selected)
+        endpoint = Self.storedEndpoint(for: selected)
+        fallbackProvider = importedFallback
+        fallbackAPIKey = importedFallback.map { Self.storedKey(for: $0) ?? "" } ?? ""
+        fallbackModel = importedFallback.map { Self.storedModel(for: $0) } ?? ""
+        fallbackEndpoint = importedFallback.map { Self.storedEndpoint(for: $0) } ?? ""
+        fallbackAfterSeconds = Self.storedFallbackSeconds()
+        fidelity = importedFidelity
+        retention = importedRetention
+        keepAudio = document.keepAudio
+        if let importedStyle { liveStyle = importedStyle }
+        applyDictionary(snapshot)
+        await refresh()
+    }
+
     // MARK: - Files
 
     /// Builds the offline transcriber for the file screen, from the same settings a dictation uses.
@@ -319,7 +452,8 @@ final class DictationModel {
     func makeFileTranscriber(secondStage: ProviderKind? = nil) -> FileTranscriber? {
         guard !apiKey.isEmpty,
             let promptURL = Self.bundledPromptURL,
-            let backend = try? ProviderFactory.make(provider, apiKey: apiKey)
+            let backend = try? ProviderFactory.make(
+                provider, apiKey: apiKey, endpoint: endpoint)
         else { return nil }
 
         let builder = prompts.builder(bundled: promptURL)
@@ -332,7 +466,9 @@ final class DictationModel {
 
         var helper: TranscriptionService?
         if let secondStage, let key = KeychainStore.read(account: secondStage.rawValue),
-            !key.isEmpty, let backend = try? ProviderFactory.make(secondStage, apiKey: key)
+            !key.isEmpty,
+            let backend = try? ProviderFactory.make(
+                secondStage, apiKey: key, endpoint: Self.storedEndpoint(for: secondStage))
         {
             helper = TranscriptionService(
                 provider: backend, model: Self.storedModel(for: secondStage),
@@ -531,7 +667,8 @@ final class DictationModel {
         // than anywhere: the screen goes off between dictations and the connection rots. Silent on
         // failure by design — nothing has been asked for yet. See `ProviderTransport`.
         if !apiKey.isEmpty,
-            let backend = try? ProviderFactory.make(provider, apiKey: apiKey),
+            let backend = try? ProviderFactory.make(
+                provider, apiKey: apiKey, endpoint: endpoint),
             let origin = backend.endpointOrigin
         {
             Task { await ProviderTransport.shared.warmUp(origin) }
@@ -724,7 +861,8 @@ final class DictationModel {
         if !provider.isSpeechRecognition { return makeCoordinator()?.service }
         guard let kind = secondStageBackend,
             let key = KeychainStore.read(account: kind.rawValue), !key.isEmpty,
-            let backend = try? ProviderFactory.make(kind, apiKey: key)
+            let backend = try? ProviderFactory.make(
+                kind, apiKey: key, endpoint: Self.storedEndpoint(for: kind))
         else { return nil }
 
         return TranscriptionService(
@@ -952,7 +1090,8 @@ final class DictationModel {
             return
         }
         do {
-            let backend = try ProviderFactory.make(provider, apiKey: apiKey)
+            let backend = try ProviderFactory.make(
+                provider, apiKey: apiKey, endpoint: endpoint)
             // A recognition backend rejects a text-only request by design, so probing one with the
             // text round trip would report a working key as broken. It gets a fraction of a second
             // of silence instead — enough to exercise auth, the URL and the response shape.
@@ -981,7 +1120,8 @@ final class DictationModel {
     private func makeTranscriber(primary: TranscriptionService) -> FallbackTranscriber {
         guard let kind = fallbackProvider,
             let key = KeychainStore.read(account: kind.rawValue), !key.isEmpty,
-            let backend = try? ProviderFactory.make(kind, apiKey: key),
+            let backend = try? ProviderFactory.make(
+                kind, apiKey: key, endpoint: Self.storedEndpoint(for: kind)),
             let promptURL = Self.bundledPromptURL,
             let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(fidelity: fidelity)
@@ -1003,7 +1143,8 @@ final class DictationModel {
                 .systemInstruction(fidelity: fidelity)
         else { return nil }
 
-        guard let backend = try? ProviderFactory.make(provider, apiKey: apiKey)
+        guard let backend = try? ProviderFactory.make(
+            provider, apiKey: apiKey, endpoint: endpoint)
         else { return nil }
 
         return RetryCoordinator(

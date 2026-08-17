@@ -1,0 +1,71 @@
+import Foundation
+import Testing
+
+@testable import DoNotTypeCore
+
+struct SettingsTransferTests {
+    private func document() -> SettingsTransferDocument {
+        SettingsTransferDocument(
+            selectedProvider: "google",
+            providers: [
+                "google": .init(
+                    model: "gemini-test", endpoint: "https://example.test/v1",
+                    apiKey: "secret"),
+                "xai": .init(model: "grok-stt"),
+            ],
+            fidelity: "light",
+            fallback: .init(provider: "xai", afterSeconds: 8),
+            retention: "oneWeek",
+            keepAudio: false,
+            dictionary: .init(
+                manual: ["DoNotType"], learned: ["MLX"], learnsFromEdits: true),
+            iOS: .init(liveStyle: "verbatim"))
+    }
+
+    @Test func roundTripsPrettyAndCompactJSON() throws {
+        let expected = document()
+
+        #expect(try SettingsTransferDocument.decode(expected.encoded()) == expected)
+        #expect(
+            try SettingsTransferDocument.decode(expected.encoded(prettyPrinted: false)) == expected)
+        #expect(expected.containsSecrets)
+    }
+
+    @Test func rejectsWrongFormatAndUnknownVersion() throws {
+        var wrongFormat = document()
+        wrongFormat.format = "some.other.application"
+        #expect(throws: SettingsTransferError.wrongFormat("some.other.application")) {
+            try wrongFormat.encoded()
+        }
+
+        var future = document()
+        future.version = 99
+        #expect(throws: SettingsTransferError.unsupportedVersion(99)) {
+            try future.encoded()
+        }
+    }
+
+    @Test func rejectsIncompleteProviderReferences() throws {
+        var missingPrimary = document()
+        missingPrimary.selectedProvider = "missing"
+        #expect(throws: SettingsTransferError.missingSelectedProvider) {
+            try missingPrimary.validate()
+        }
+
+        var sameFallback = document()
+        sameFallback.fallback = .init(provider: "google", afterSeconds: 8)
+        #expect(throws: SettingsTransferError.fallbackMatchesPrimary) {
+            try sameFallback.validate()
+        }
+    }
+
+    @Test func decoderHasSizeLimit() {
+        let oversized = Data(repeating: 0, count: SettingsTransferDocument.maximumBytes + 1)
+        #expect(
+            throws: SettingsTransferError.tooLarge(
+                maximumBytes: SettingsTransferDocument.maximumBytes)
+        ) {
+            try SettingsTransferDocument.decode(oversized)
+        }
+    }
+}

@@ -34,6 +34,14 @@ public struct DictionaryStore: Sendable {
         try update { $0.learnsFromEdits = enabled }
     }
 
+    /// Replaces the portable dictionary as one atomic operation during settings import.
+    @discardableResult
+    public func replace(with snapshot: Snapshot) throws -> Snapshot {
+        let snapshot = sanitized(snapshot)
+        try write(snapshot)
+        return snapshot
+    }
+
     @discardableResult
     public func add(_ raw: String) throws -> Snapshot {
         try update { snapshot in

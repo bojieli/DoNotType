@@ -133,6 +133,39 @@ final class DoNotTypeUITests: XCTestCase {
         }
     }
 
+    /// Covers the complete safe round trip without changing a preference: Settings exports the
+    /// current profile into the editor first, QR generation accepts those exact bytes, and import
+    /// applies only after the explicit button is pressed.
+    func testSettingsTransferStagesExportsAndImports() {
+        let app = launch()
+        app.buttons["open-settings"].tap()
+
+        let transfer = app.descendants(matching: .any)["open-settings-transfer"].firstMatch
+        XCTAssertTrue(reveal(transfer, in: app), "the transfer row should be reachable")
+        transfer.tap()
+        XCTAssertTrue(app.navigationBars["Settings transfer"].waitForExistence(timeout: 10))
+
+        let editor = app.descendants(matching: .any)["settings-transfer-json"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        let json = (editor.value as? String) ?? ""
+        XCTAssertTrue(json.contains("\"format\" : \"app.donottype.settings\""))
+        XCTAssertTrue(json.contains("\"version\" : 1"))
+        XCTAssertTrue(json.contains("\"selectedProvider\""))
+
+        let showQR = app.buttons["Show QR code"]
+        XCTAssertTrue(reveal(showQR, in: app), "QR export should be reachable")
+        showQR.tap()
+        XCTAssertTrue(app.images["Settings QR code"].waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
+
+        let importSettings = app.buttons["Import settings"]
+        XCTAssertTrue(reveal(importSettings, in: app), "the explicit import step should be reachable")
+        importSettings.tap()
+        XCTAssertTrue(
+            app.staticTexts["Settings imported. API keys were stored in Keychain."]
+                .waitForExistence(timeout: 5))
+    }
+
     /// Typing a key and leaving the screen has to persist it. This is the setting without which
     /// the app cannot do anything at all, so "it looked like it saved" is not good enough.
     func testAPIKeySurvivesLeavingSettings() {
