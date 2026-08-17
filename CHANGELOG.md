@@ -58,6 +58,15 @@ release yet, so everything below is unreleased.
   now retains the complete Xcode result bundle on failure, including the screenshots and
   accessibility hierarchy that console output omits.
 
+- **Android file import rejects incomplete audio instead of transcribing a plausible fragment.**
+  The Ogg reader now verifies every page checksum, stream and sequence number, continuation, Opus
+  header, channel mapping, and end marker; a partial download can no longer return its readable
+  first half as a complete recording. Platform codecs validate their actual PCM format and buffer
+  bounds, release partial startup state, and turn a 15-second decoder/encoder stall into actionable
+  failure or the original WAV fallback. The Opus upload encoder waits for a real end marker rather
+  than treating its first temporarily empty poll as completion, and a device test now exercises
+  the full app WAV → Opus → WAV path and checks its duration and signal.
+
 - **Optional one-key finish and send on macOS and Windows.** Pressing Return/Enter while recording
   can now stop capture, wait for transcription, insert the result, and then emit Return/Enter or
   the configured `⌘ Return` / `Ctrl+Enter`. It is off by default. The key is captured only during

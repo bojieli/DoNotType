@@ -1,8 +1,10 @@
 package app.donottype.audio
 
+import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaFormat
 import app.donottype.core.Log
+import app.donottype.core.OggOpusWriter
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -63,9 +65,22 @@ object OggOpusReader {
         var channels = 1
         var sawHead = false
         var headersSeen = 0
+        var sawEnd = false
+        var serial: Int? = null
+        var expectedSequence: Int? = null
         var offset = 0
 
-        while (offset + 27 <= bytes.size) {
+        while (offset < bytes.size) {
+            if (sawEnd) {
+                throw AudioDecoder.DecodeException(
+                    "This Ogg recording has data after its end marker and may be corrupt.",
+                )
+            }
+            if (bytes.size - offset < PAGE_HEADER_BYTES) {
+                throw AudioDecoder.DecodeException(
+                    "This Ogg recording ends inside a page header and is truncated.",
+                )
+            }
             if (bytes[offset] != 'O'.code.toByte() || bytes[offset + 1] != 'g'.code.toByte() ||
                 bytes[offset + 2] != 'g'.code.toByte() || bytes[offset + 3] != 'S'.code.toByte()
             ) {
@@ -74,16 +89,57 @@ object OggOpusReader {
                         "It may be truncated.",
                 )
             }
+            if (bytes[offset + 4].toInt() != 0) {
+                throw AudioDecoder.DecodeException("This Ogg recording uses an unknown page version.")
+            }
 
             val segmentCount = bytes[offset + 26].toInt() and 0xFF
-            val lacingStart = offset + 27
-            if (lacingStart + segmentCount > bytes.size) break
+            val lacingStart = offset + PAGE_HEADER_BYTES
+            val bodyStart = lacingStart + segmentCount
+            if (bodyStart > bytes.size) {
+                throw AudioDecoder.DecodeException(
+                    "This Ogg recording ends inside a page table and is truncated.",
+                )
+            }
 
-            var cursor = lacingStart + segmentCount
+            var bodyBytes = 0
+            for (segment in 0 until segmentCount) {
+                bodyBytes += bytes[lacingStart + segment].toInt() and 0xFF
+            }
+            val pageEnd = bodyStart + bodyBytes
+            if (pageEnd > bytes.size) {
+                throw AudioDecoder.DecodeException(
+                    "This Ogg recording ends inside a page and is truncated.",
+                )
+            }
+
+            val pageSerial = littleEndianInt(bytes, offset + 14)
+            val sequence = littleEndianInt(bytes, offset + 18)
+            if (serial == null) serial = pageSerial
+            if (pageSerial != serial) {
+                throw AudioDecoder.DecodeException(
+                    "This Ogg file contains multiple interleaved streams; convert it to WAV first.",
+                )
+            }
+            if (expectedSequence != null && sequence != expectedSequence) {
+                throw AudioDecoder.DecodeException(
+                    "This Ogg recording is missing or reorders a page and is incomplete.",
+                )
+            }
+            expectedSequence = sequence + 1
+            verifyChecksum(bytes, offset, pageEnd)
+
+            val headerType = bytes[offset + 5].toInt() and 0xFF
+            val continuesPacket = headerType and 0x01 != 0
+            if (continuesPacket != (partial.size() > 0)) {
+                throw AudioDecoder.DecodeException(
+                    "This Ogg recording starts or loses part of a packet and is incomplete.",
+                )
+            }
+
+            var cursor = bodyStart
             for (segment in 0 until segmentCount) {
                 val length = bytes[lacingStart + segment].toInt() and 0xFF
-                if (cursor + length > bytes.size) break
-
                 partial.write(bytes, cursor, length)
                 cursor += length
                 // Anything short of 255 ends the packet; exactly 255 means it continues.
@@ -91,12 +147,23 @@ object OggOpusReader {
 
                 val packet = partial.toByteArray()
                 partial.reset()
-                if (packet.isEmpty()) continue
+                if (packet.isEmpty()) {
+                    throw AudioDecoder.DecodeException(
+                        "This Ogg recording contains an empty Opus packet and is corrupt.",
+                    )
+                }
 
                 if (!sawHead && packet.size >= 19 &&
                     packet.copyOfRange(0, 8).decodeToString() == "OpusHead"
                 ) {
                     channels = packet[9].toInt() and 0xFF
+                    val mappingFamily = packet[18].toInt() and 0xFF
+                    if (channels !in 1..2 || mappingFamily != 0) {
+                        throw AudioDecoder.DecodeException(
+                            "This Opus recording uses unsupported multichannel mapping. " +
+                                "Convert it to mono or stereo WAV first.",
+                        )
+                    }
                     preSkip = (packet[10].toInt() and 0xFF) or ((packet[11].toInt() and 0xFF) shl 8)
                     sawHead = true
                     headersSeen++
@@ -108,18 +175,53 @@ object OggOpusReader {
                     headersSeen++
                     continue
                 }
+                if (headersSeen == 1) {
+                    throw AudioDecoder.DecodeException(
+                        "This Opus recording has no valid comment header and is incomplete.",
+                    )
+                }
                 packets += packet
             }
-            offset = cursor
+            sawEnd = headerType and 0x04 != 0
+            offset = pageEnd
         }
 
         if (!sawHead) {
             throw AudioDecoder.DecodeException(
                 "This is an Ogg file, but the stream inside it is not Opus. Convert Vorbis to WAV " +
-                    "first.",
+                "first.",
+            )
+        }
+        if (!sawEnd || partial.size() > 0) {
+            throw AudioDecoder.DecodeException(
+                "This Ogg recording has no complete end marker and is truncated.",
+            )
+        }
+        if (headersSeen < 2) {
+            throw AudioDecoder.DecodeException(
+                "This Opus recording is missing a required header and is incomplete.",
             )
         }
         return Stream(packets, preSkip, channels)
+    }
+
+    private const val PAGE_HEADER_BYTES = 27
+
+    private fun littleEndianInt(bytes: ByteArray, offset: Int): Int =
+        (bytes[offset].toInt() and 0xFF) or
+            ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
+            ((bytes[offset + 2].toInt() and 0xFF) shl 16) or
+            ((bytes[offset + 3].toInt() and 0xFF) shl 24)
+
+    private fun verifyChecksum(bytes: ByteArray, pageStart: Int, pageEnd: Int) {
+        val stored = littleEndianInt(bytes, pageStart + 22)
+        val page = bytes.copyOfRange(pageStart, pageEnd)
+        page.fill(0, 22, 26)
+        if (OggOpusWriter.crc32(page) != stored) {
+            throw AudioDecoder.DecodeException(
+                "This Ogg recording failed its checksum and is corrupt or incomplete.",
+            )
+        }
     }
 
     /** Decodes to 16 kHz mono PCM, ready for [WavRecorder.wrapInWavContainer]. */
@@ -140,12 +242,15 @@ object OggOpusReader {
             setByteBuffer("csd-2", ByteBuffer.wrap(nanoseconds(SEEK_PREROLL_SAMPLES)))
         }
 
+        var candidate: MediaCodec? = null
         val codec = try {
-            MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS).apply {
-                configure(format, null, null, 0)
-                start()
-            }
+            val created = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS)
+            candidate = created
+            created.configure(format, null, null, 0)
+            created.start()
+            created
         } catch (error: Exception) {
+            runCatching { candidate?.release() }
             throw AudioDecoder.DecodeException("This phone cannot decode Opus: ${error.message}")
         }
 
@@ -157,6 +262,9 @@ object OggOpusReader {
         var sawOutputEnd = false
         var skipRemaining = stream.preSkip
         var position = 0.0
+        var outputRate = DECODE_RATE
+        var outputChannels = stream.channels
+        var lastProgress = System.nanoTime()
 
         try {
             while (!sawOutputEnd) {
@@ -170,8 +278,16 @@ object OggOpusReader {
                             sawInputEnd = true
                         } else {
                             val packet = stream.packets[next++]
-                            val buffer = codec.getInputBuffer(index)!!
+                            val buffer = codec.getInputBuffer(index)
+                                ?: throw AudioDecoder.DecodeException(
+                                    "The Opus decoder exposed no input buffer.",
+                                )
                             buffer.clear()
+                            if (packet.size > buffer.remaining()) {
+                                throw AudioDecoder.DecodeException(
+                                    "An Opus packet is too large for this phone's decoder.",
+                                )
+                            }
                             buffer.put(packet)
                             // The timestamp is not decoration. See [packetSamples].
                             codec.queueInputBuffer(
@@ -180,35 +296,77 @@ object OggOpusReader {
                             )
                             presentedSamples += packetSamples(packet)
                         }
+                        lastProgress = System.nanoTime()
                     }
                 }
 
-                val index = codec.dequeueOutputBuffer(info, 10_000)
-                if (index >= 0) {
-                    if (info.size > 0) {
-                        val buffer = codec.getOutputBuffer(index)!!
-                        buffer.position(info.offset)
-                        buffer.limit(info.offset + info.size)
-                        var mono = AudioDecoder.downmixForOpus(buffer, stream.channels)
-
-                        // Priming samples the encoder added; audible as a click and a timing shift
-                        // if they survive into the transcript.
-                        if (skipRemaining > 0) {
-                            val dropped = minOf(skipRemaining, mono.size)
-                            mono = mono.copyOfRange(dropped, mono.size)
-                            skipRemaining -= dropped
+                when (val index = codec.dequeueOutputBuffer(info, 10_000)) {
+                    MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        val outputFormat = codec.outputFormat
+                        outputRate = runCatching {
+                            outputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                        }.getOrDefault(DECODE_RATE)
+                        outputChannels = runCatching {
+                            outputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                        }.getOrDefault(stream.channels)
+                        val encoding = if (outputFormat.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
+                            outputFormat.getInteger(MediaFormat.KEY_PCM_ENCODING)
+                        } else {
+                            AudioFormat.ENCODING_PCM_16BIT
                         }
-                        position = AudioDecoder.resampleForOpus(
-                            mono, DECODE_RATE, position, output,
-                        )
+                        if (outputRate != DECODE_RATE || outputChannels != stream.channels ||
+                            encoding != AudioFormat.ENCODING_PCM_16BIT
+                        ) {
+                            throw AudioDecoder.DecodeException(
+                                "This phone's Opus decoder returned an unsupported audio format.",
+                            )
+                        }
+                        lastProgress = System.nanoTime()
                     }
-                    codec.releaseOutputBuffer(index, false)
-                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) sawOutputEnd = true
+                    MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
+                    else -> if (index >= 0) {
+                        if (info.size > 0) {
+                            val buffer = AudioDecoder.checkedCodecOutputBuffer(
+                                codec, index, info, "Opus decoder",
+                            )
+                            var mono = AudioDecoder.downmixForOpus(buffer, outputChannels)
+
+                            // Priming samples the encoder added; audible as a click and a timing
+                            // shift if they survive into the transcript.
+                            if (skipRemaining > 0) {
+                                val dropped = minOf(skipRemaining, mono.size)
+                                mono = mono.copyOfRange(dropped, mono.size)
+                                skipRemaining -= dropped
+                            }
+                            position = AudioDecoder.resampleForOpus(
+                                mono, outputRate, position, output,
+                            )
+                        }
+                        codec.releaseOutputBuffer(index, false)
+                        if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                            sawOutputEnd = true
+                        }
+                        lastProgress = System.nanoTime()
+                    }
+                }
+
+                if (!sawOutputEnd && AudioDecoder.codecHasStalled(lastProgress)) {
+                    throw AudioDecoder.DecodeException(
+                        "This phone's Opus decoder stopped responding. Convert the recording to " +
+                            "WAV and try again.",
+                    )
                 }
             }
+        } catch (error: AudioDecoder.DecodeException) {
+            throw error
+        } catch (error: Exception) {
+            throw AudioDecoder.DecodeException(
+                "Could not decode this Opus recording: " +
+                    "${error.message ?: error.javaClass.simpleName}.",
+            )
         } finally {
             runCatching { codec.stop() }
-            codec.release()
+            runCatching { codec.release() }
         }
 
         val pcm = output.toByteArray()

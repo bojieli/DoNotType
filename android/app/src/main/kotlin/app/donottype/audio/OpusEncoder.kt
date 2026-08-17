@@ -1,7 +1,6 @@
 package app.donottype.audio
 
 import android.media.MediaCodec
-import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.util.Log
 import app.donottype.core.AudioChunker
@@ -48,13 +47,12 @@ object OpusEncoder {
         return try {
             val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_OPUS, SAMPLE_RATE, 1).apply {
                 setInteger(MediaFormat.KEY_BIT_RATE, BIT_RATE)
-                setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
                 setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, FRAME_BYTES * 4)
             }
-            codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS).apply {
-                configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-                start()
-            }
+            val created = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS)
+            codec = created
+            created.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            created.start()
 
             val writer = OggOpusWriter(sampleRate = SAMPLE_RATE, channels = 1)
             writer.begin()
@@ -62,72 +60,87 @@ object OpusEncoder {
             var offset = 0
             var inputDone = false
             val info = MediaCodec.BufferInfo()
-            // MediaCodec emits its own OpusHead and OpusTags as the first two output buffers.
-            // OggOpusWriter writes those itself, so they are dropped rather than duplicated --
-            // two identification headers in one stream is a file no decoder accepts.
-            var headersSeen = 0
+            var packetsWritten = 0
+            var lastProgress = System.nanoTime()
 
             while (true) {
                 if (!inputDone) {
                     val index = codec.dequeueInputBuffer(TIMEOUT_US)
                     if (index >= 0) {
-                        val buffer = codec.getInputBuffer(index)!!
+                        val buffer = codec.getInputBuffer(index)
+                            ?: throw IllegalStateException("Opus encoder exposed no input buffer")
                         buffer.clear()
 
                         val remaining = pcm.size - offset
                         if (remaining <= 0) {
+                            val presentationUs =
+                                (pcm.size.toLong() / 2) * 1_000_000L / SAMPLE_RATE
                             codec.queueInputBuffer(
-                                index, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                index, 0, 0, presentationUs,
+                                MediaCodec.BUFFER_FLAG_END_OF_STREAM,
+                            )
                             inputDone = true
                         } else {
                             // The final partial frame is zero-padded rather than dropped. Opus only
                             // encodes whole frames, and truncating clips the last syllable --
                             // which is where people put the word they care about.
                             val take = minOf(FRAME_BYTES, remaining)
+                            if (buffer.remaining() < FRAME_BYTES) {
+                                throw IllegalStateException(
+                                    "Opus encoder input buffer is smaller than one frame",
+                                )
+                            }
+                            val presentationUs =
+                                (offset.toLong() / 2) * 1_000_000L / SAMPLE_RATE
                             buffer.put(pcm, offset, take)
                             if (take < FRAME_BYTES) {
                                 buffer.put(ByteArray(FRAME_BYTES - take))
                             }
                             offset += take
 
-                            val presentationUs = (offset.toLong() / 2) * 1_000_000L / SAMPLE_RATE
                             codec.queueInputBuffer(index, 0, FRAME_BYTES, presentationUs, 0)
                         }
+                        lastProgress = System.nanoTime()
                     }
                 }
 
                 val outIndex = codec.dequeueOutputBuffer(info, TIMEOUT_US)
                 if (outIndex >= 0) {
                     val isConfig = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
-                    if (info.size > 0 && !isConfig && headersSeen >= 2) {
-                        val buffer: ByteBuffer = codec.getOutputBuffer(outIndex)!!
+                    if (info.size > 0 && !isConfig) {
+                        val buffer: ByteBuffer = AudioDecoder.checkedCodecOutputBuffer(
+                            codec, outIndex, info, "Opus encoder",
+                        )
                         val packet = ByteArray(info.size)
-                        buffer.position(info.offset)
                         buffer.get(packet)
-                        writer.append(packet, FRAME_SAMPLES)
-                    } else if (isConfig || info.size > 0) {
-                        headersSeen++
+                        val isContainerHeader = packet.size >= 8 &&
+                            (packet.copyOfRange(0, 8).decodeToString() == "OpusHead" ||
+                                packet.copyOfRange(0, 8).decodeToString() == "OpusTags")
+                        if (!isContainerHeader) {
+                            writer.append(packet, FRAME_SAMPLES)
+                            packetsWritten++
+                        }
                     }
                     codec.releaseOutputBuffer(outIndex, false)
+                    lastProgress = System.nanoTime()
 
                     if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
-                } else if (outIndex == MediaCodec.INFO_TRY_AGAIN_LATER && inputDone) {
-                    // The encoder has nothing more and will not produce more; without this the
-                    // loop spins forever on a codec that never flags end-of-stream.
-                    break
+                } else if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    lastProgress = System.nanoTime()
+                } else if (AudioDecoder.codecHasStalled(lastProgress)) {
+                    throw IllegalStateException("Opus encoder stopped responding")
                 }
             }
 
+            if (packetsWritten == 0) return null
             val ogg = writer.finish()
             if (ogg.size >= wav.size) null else ogg
         } catch (error: Exception) {
             Log.w(TAG, "Opus encoding failed, uploading WAV", error)
             null
         } finally {
-            runCatching {
-                codec?.stop()
-                codec?.release()
-            }
+            runCatching { codec?.stop() }
+            runCatching { codec?.release() }
         }
     }
 }

@@ -1,5 +1,6 @@
 package app.donottype.audio
 
+import app.donottype.core.OggOpusWriter
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -71,24 +72,22 @@ class OggOpusReaderTest {
         val cut = whole.copyOfRange(0, whole.size / 2 + 7)
 
         val error = runCatching { OggOpusReader.demux(cut) }.exceptionOrNull()
-        // Either it throws, or it returns only the packets it could read — what it must never do is
-        // claim the file was fine and hand back silence.
-        if (error == null) {
-            val stream = OggOpusReader.demux(cut)
-            assertTrue(stream.packets.isNotEmpty())
-        } else {
-            assertTrue(error is AudioDecoder.DecodeException)
-        }
+        assertTrue(
+            "a partial recording must not be returned as if it were complete",
+            error is AudioDecoder.DecodeException,
+        )
     }
 
     @Test
     fun `an ogg file that is not opus says so`() {
         // A plausible Ogg page header followed by a Vorbis identification packet.
-        val vorbis = ByteArray(64)
+        val vorbis = ByteArray(58)
         "OggS".toByteArray().copyInto(vorbis, 0)
+        vorbis[5] = 0x04
         vorbis[26] = 1
         vorbis[27] = 30
         "vorbis".toByteArray().copyInto(vorbis, 28)
+        setChecksum(vorbis)
 
         val error = runCatching { OggOpusReader.demux(vorbis) }.exceptionOrNull()
         assertTrue(error is AudioDecoder.DecodeException)
@@ -115,15 +114,12 @@ class OggOpusReaderTest {
         var length = 1
         while (length < whole.size) {
             val cut = whole.copyOf(length)
-            try {
-                OggOpusReader.isOggOpus(cut)
-                val stream = OggOpusReader.demux(cut)
-                stream.packets.forEach { assertTrue(it.isNotEmpty()) }
-                assertTrue(stream.preSkip >= 0)
-                assertTrue(stream.channels in 1..8)
-            } catch (error: AudioDecoder.DecodeException) {
-                // The documented failure.
-            }
+            OggOpusReader.isOggOpus(cut)
+            assertTrue(
+                "a cut at byte $length was accepted as a complete recording",
+                runCatching { OggOpusReader.demux(cut) }.exceptionOrNull()
+                    is AudioDecoder.DecodeException,
+            )
             length += 97
         }
 
@@ -137,14 +133,14 @@ class OggOpusReaderTest {
     @Test
     fun `a lying segment count is survived`() {
         val whole = fixture("speech.opus")
-        var count = 1
+        var count = 2
         while (count <= 255) {
             val corrupt = whole.copyOf()
             corrupt[26] = count.toByte()
-            try {
-                OggOpusReader.demux(corrupt)
-            } catch (error: AudioDecoder.DecodeException) {
-            }
+            assertTrue(
+                runCatching { OggOpusReader.demux(corrupt) }.exceptionOrNull()
+                    is AudioDecoder.DecodeException,
+            )
             count += 37
         }
     }
@@ -157,12 +153,33 @@ class OggOpusReaderTest {
             val noise = ByteArray(28 + random.nextInt(4_068))
             random.nextBytes(noise)
             "OggS".toByteArray().copyInto(noise)
-            try {
-                OggOpusReader.isOggOpus(noise)
-                OggOpusReader.demux(noise)
-            } catch (error: AudioDecoder.DecodeException) {
-            }
+            OggOpusReader.isOggOpus(noise)
+            assertTrue(
+                runCatching { OggOpusReader.demux(noise) }.exceptionOrNull()
+                    is AudioDecoder.DecodeException,
+            )
         }
+    }
+
+    @Test
+    fun `a payload that fails its page checksum is rejected`() {
+        val corrupt = fixture("speech.opus").copyOf()
+        corrupt[corrupt.lastIndex - 10] = (corrupt[corrupt.lastIndex - 10].toInt() xor 0x40).toByte()
+
+        val error = runCatching { OggOpusReader.demux(corrupt) }.exceptionOrNull()
+        assertTrue(error is AudioDecoder.DecodeException)
+        assertTrue(error?.message?.contains("checksum") == true)
+    }
+
+    @Test
+    fun `unsupported channel mapping is rejected before decoding`() {
+        val writer = OggOpusWriter(channels = 3)
+        writer.begin()
+        writer.append(byteArrayOf(0), frameCount = 320)
+
+        val error = runCatching { OggOpusReader.demux(writer.finish()) }.exceptionOrNull()
+        assertTrue(error is AudioDecoder.DecodeException)
+        assertTrue(error?.message?.contains("mono or stereo") == true)
     }
 
     /**
@@ -181,6 +198,14 @@ class OggOpusReaderTest {
         } catch (error: AudioDecoder.DecodeException) {
         }
         assertTrue("an empty page stalled the reader", System.currentTimeMillis() - started < 5_000)
+    }
+
+    private fun setChecksum(page: ByteArray) {
+        val checksum = OggOpusWriter.crc32(page)
+        page[22] = (checksum and 0xFF).toByte()
+        page[23] = ((checksum shr 8) and 0xFF).toByte()
+        page[24] = ((checksum shr 16) and 0xFF).toByte()
+        page[25] = ((checksum shr 24) and 0xFF).toByte()
     }
 }
 

@@ -5,8 +5,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.filters.LargeTest
 import app.donottype.audio.AudioDecoder
+import app.donottype.audio.OpusEncoder
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -59,6 +61,22 @@ class AudioDecoderTest {
             val wav = AudioDecoder.decodeToWav(context, fixture(name))
             assertDecodesToSpeech(wav, name)
         }
+    }
+
+    /** The exact record → compress → decode round trip used before an Android upload. */
+    @Test
+    fun appEncodedOpusKeepsTheWholeRecordingAndRemainsReadable() {
+        assertTrue("the API 35 CI device should provide its standard Opus encoder", OpusEncoder.isAvailable)
+        val source = copyOut("speech.wav", "encoder-source.wav").readBytes()
+        val encoded = OpusEncoder.encode(source)
+        assertNotNull("the platform Opus encoder rejected an ordinary app recording", encoded)
+
+        val file = File(context.cacheDir, "app-encoded.opus")
+        file.writeBytes(encoded!!)
+        assertDecodesToSpeech(
+            AudioDecoder.decodeToWav(context, Uri.fromFile(file)),
+            "app-encoded.opus",
+        )
     }
 
     /**

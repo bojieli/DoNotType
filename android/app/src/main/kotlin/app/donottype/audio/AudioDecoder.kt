@@ -1,6 +1,7 @@
 package app.donottype.audio
 
 import android.content.Context
+import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -37,6 +38,8 @@ object AudioDecoder {
     const val SUPPORTED_FORMATS = "WAV, MP3, M4A/AAC, Opus, AMR, FLAC and Ogg Vorbis"
 
     private val log = Log("audio")
+    private const val CODEC_DEQUEUE_TIMEOUT_US = 10_000L
+    private const val CODEC_STALL_NANOS = 15_000_000_000L
 
     class DecodeException(message: String) : IOException(message)
 
@@ -128,15 +131,21 @@ object AudioDecoder {
     private fun decodeTrack(extractor: MediaExtractor, format: MediaFormat): ByteArray {
         val mime = format.getString(MediaFormat.KEY_MIME)
             ?: throw DecodeException("That file has no audio track in it.")
-        val sourceRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-        val channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+        val sourceRate = requiredPositiveFormatValue(format, MediaFormat.KEY_SAMPLE_RATE, "sample rate")
+        val channels = requiredChannelCount(format)
+        // Audio buffers below are deliberately interpreted as signed little-endian 16-bit PCM.
+        // Ask for that explicitly rather than relying on a decoder-specific default.
+        format.setInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
 
+        var candidate: MediaCodec? = null
         val codec = try {
-            MediaCodec.createDecoderByType(mime).apply {
-                configure(format, null, null, 0)
-                start()
-            }
+            val created = MediaCodec.createDecoderByType(mime)
+            candidate = created
+            created.configure(format, null, null, 0)
+            created.start()
+            created
         } catch (error: Exception) {
+            runCatching { candidate?.release() }
             throw DecodeException("This phone cannot decode $mime: ${error.message}")
         }
 
@@ -144,6 +153,9 @@ object AudioDecoder {
         val info = MediaCodec.BufferInfo()
         var sawInputEnd = false
         var sawOutputEnd = false
+        var outputRate = sourceRate
+        var outputChannels = channels
+        var lastProgress = System.nanoTime()
         // Carried across blocks so resampling does not restart its phase at every boundary, which
         // would put a click at each one.
         var position = 0.0
@@ -151,9 +163,11 @@ object AudioDecoder {
         try {
             while (!sawOutputEnd) {
                 if (!sawInputEnd) {
-                    val index = codec.dequeueInputBuffer(10_000)
+                    val index = codec.dequeueInputBuffer(CODEC_DEQUEUE_TIMEOUT_US)
                     if (index >= 0) {
-                        val buffer = codec.getInputBuffer(index)!!
+                        val buffer = codec.getInputBuffer(index)
+                            ?: throw DecodeException("The $mime decoder exposed no input buffer.")
+                        buffer.clear()
                         val size = extractor.readSampleData(buffer, 0)
                         if (size < 0) {
                             codec.queueInputBuffer(
@@ -161,28 +175,65 @@ object AudioDecoder {
                             )
                             sawInputEnd = true
                         } else {
-                            codec.queueInputBuffer(index, 0, size, extractor.sampleTime, 0)
+                            codec.queueInputBuffer(
+                                index, 0, size, extractor.sampleTime.coerceAtLeast(0L), 0,
+                            )
                             extractor.advance()
                         }
+                        lastProgress = System.nanoTime()
                     }
                 }
 
-                val index = codec.dequeueOutputBuffer(info, 10_000)
-                if (index >= 0) {
-                    if (info.size > 0) {
-                        val buffer = codec.getOutputBuffer(index)!!
-                        buffer.position(info.offset)
-                        buffer.limit(info.offset + info.size)
-                        val mono = downmix(buffer, channels)
-                        position = resampleInto(mono, sourceRate, position, output)
+                when (val index = codec.dequeueOutputBuffer(info, CODEC_DEQUEUE_TIMEOUT_US)) {
+                    MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        val outputFormat = codec.outputFormat
+                        outputRate = requiredPositiveFormatValue(
+                            outputFormat, MediaFormat.KEY_SAMPLE_RATE, "decoded sample rate",
+                        )
+                        outputChannels = requiredChannelCount(outputFormat)
+                        val encoding = if (outputFormat.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
+                            outputFormat.getInteger(MediaFormat.KEY_PCM_ENCODING)
+                        } else {
+                            AudioFormat.ENCODING_PCM_16BIT
+                        }
+                        if (encoding != AudioFormat.ENCODING_PCM_16BIT) {
+                            throw DecodeException(
+                                "This phone decoded $mime to an unsupported PCM format.",
+                            )
+                        }
+                        lastProgress = System.nanoTime()
                     }
-                    codec.releaseOutputBuffer(index, false)
-                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) sawOutputEnd = true
+                    MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
+                    else -> if (index >= 0) {
+                        if (info.size > 0) {
+                            val buffer = checkedCodecOutputBuffer(codec, index, info, "$mime decoder")
+                            val mono = downmix(buffer, outputChannels)
+                            position = resampleInto(mono, outputRate, position, output)
+                        }
+                        codec.releaseOutputBuffer(index, false)
+                        if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                            sawOutputEnd = true
+                        }
+                        lastProgress = System.nanoTime()
+                    }
+                }
+
+                if (!sawOutputEnd && System.nanoTime() - lastProgress > CODEC_STALL_NANOS) {
+                    throw DecodeException(
+                        "This phone's $mime decoder stopped responding. Try converting the " +
+                            "recording to WAV.",
+                    )
                 }
             }
+        } catch (error: DecodeException) {
+            throw error
+        } catch (error: Exception) {
+            throw DecodeException(
+                "Could not decode this $mime recording: ${error.message ?: error.javaClass.simpleName}.",
+            )
         } finally {
             runCatching { codec.stop() }
-            codec.release()
+            runCatching { codec.release() }
         }
         return output.toByteArray()
     }
@@ -208,10 +259,52 @@ object AudioDecoder {
         into: ByteArrayOutputStream,
     ): Double = resampleInto(samples, sourceRate, startPosition, into)
 
+    internal fun codecHasStalled(lastProgressNanos: Long): Boolean =
+        System.nanoTime() - lastProgressNanos > CODEC_STALL_NANOS
+
+    internal fun checkedCodecOutputBuffer(
+        codec: MediaCodec,
+        index: Int,
+        info: MediaCodec.BufferInfo,
+        description: String,
+    ): ByteBuffer {
+        val buffer = codec.getOutputBuffer(index)
+            ?: throw DecodeException("The $description exposed no output buffer.")
+        if (info.offset < 0 || info.size < 0 || info.offset > buffer.capacity() - info.size) {
+            throw DecodeException("The $description returned an invalid audio buffer.")
+        }
+        buffer.position(info.offset)
+        buffer.limit(info.offset + info.size)
+        return buffer
+    }
+
+    private fun requiredPositiveFormatValue(
+        format: MediaFormat,
+        key: String,
+        description: String,
+    ): Int {
+        val value = runCatching { format.getInteger(key) }.getOrNull()
+            ?: throw DecodeException("That recording has no $description.")
+        if (value <= 0) throw DecodeException("That recording has an invalid $description.")
+        return value
+    }
+
+    private fun requiredChannelCount(format: MediaFormat): Int {
+        val channels = requiredPositiveFormatValue(
+            format, MediaFormat.KEY_CHANNEL_COUNT, "channel count",
+        )
+        if (channels > 32) throw DecodeException("That recording has too many audio channels.")
+        return channels
+    }
+
     /** Averages the channels. A phone recording in stereo is two copies of the same voice. */
     private fun downmix(buffer: ByteBuffer, channels: Int): ShortArray {
+        val frameBytes = channels * Short.SIZE_BYTES
+        if (channels <= 0 || buffer.remaining() % frameBytes != 0) {
+            throw DecodeException("The audio decoder returned an incomplete PCM frame.")
+        }
         val shorts = buffer.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val frames = shorts.remaining() / channels.coerceAtLeast(1)
+        val frames = shorts.remaining() / channels
         val mono = ShortArray(frames)
         for (frame in 0 until frames) {
             var total = 0
