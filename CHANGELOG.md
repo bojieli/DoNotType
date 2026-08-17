@@ -46,7 +46,10 @@ release yet, so everything below is unreleased.
   sources. Microphone start is now transactional: every native return code is checked, partial
   setup releases its handles and pinned buffers, a driver that stops accepting buffers is reported
   instead of uploading truncated speech, and a failed live consumer falls back to the complete
-  local recording.
+  local recording. Cancelled live segments now finish unwinding before their cancellation and
+  concurrency handles are released, so repeated escape/retry cycles neither accumulate resources
+  nor race an HTTP completion during shutdown; a late completion also cannot clear the live
+  session belonging to a newer recording.
 
 - **The iOS UI suite now waits for actionable controls, not merely allocated rows.** SwiftUI can
   expose a lazy Form row just outside the viewport, where XCUITest reports that it exists but a tap

@@ -145,7 +145,7 @@ public sealed class DictationController : IDisposable
             // Stop() waits for the capture worker holding the recorder lock, so this exchange is
             // complete before the finish path decides between live and post-recording modes.
             var failed = Interlocked.Exchange(ref _liveSession, null);
-            failed?.Cancel();
+            failed?.Dispose();
         };
 
         _hotkey.IsRecording = () => Current == State.Recording;
@@ -218,6 +218,7 @@ public sealed class DictationController : IDisposable
         _hotkey.Dispose();
         _recorder.PcmCaptureFailed = null;
         _recorder.Dispose();
+        AbandonLiveSession();
         _corrections.Dispose();
         _dictationCts?.Cancel();
         // The tasks using these sources own their disposal. Disposing a CTS while an HTTP request
@@ -328,8 +329,7 @@ public sealed class DictationController : IDisposable
         }
         catch (MicrophoneUnavailableException error)
         {
-            _liveSession?.Cancel();
-            _liveSession = null;
+            AbandonLiveSession();
             _recorder.PcmCaptured = null;
             // Windows has no permission prompt for the microphone: access is a toggle somebody has
             // to find, which makes opening the page the whole of the guidance. Once per run — the
@@ -354,8 +354,7 @@ public sealed class DictationController : IDisposable
         }
         catch (InvalidOperationException error)
         {
-            _liveSession?.Cancel();
-            _liveSession = null;
+            AbandonLiveSession();
             _recorder.PcmCaptured = null;
             Fail(error.Message);
         }
@@ -378,8 +377,7 @@ public sealed class DictationController : IDisposable
                 new Dictionary<string, string> { ["detail"] = error.Message });
         }
         _recorder.PcmCaptured = null;
-        _liveSession?.Cancel();
-        _liveSession = null;
+        AbandonLiveSession();
         _groundingCts?.Cancel();
         _pendingContext = null;
         _pendingFinishAndSend = FinishAndSendAction.Disabled;
@@ -403,13 +401,21 @@ public sealed class DictationController : IDisposable
         }
     }
 
+    /// <summary>Cancels a live fast path that no finish operation will take ownership of.</summary>
+    private void AbandonLiveSession()
+    {
+        var abandoned = Interlocked.Exchange(ref _liveSession, null);
+        // Dispose is deliberately non-blocking: it observes the worker and outstanding HTTP tasks,
+        // then releases their CTS/semaphore only after those tasks have stopped using them.
+        abandoned?.Dispose();
+    }
+
     private void CancelRecording()
     {
         if (Current != State.Recording) return;
         _recorder.Cancel();
         _recorder.PcmCaptured = null;
-        _liveSession?.Cancel();
-        _liveSession = null;
+        AbandonLiveSession();
         _groundingCts?.Cancel();
         _pendingContext = null;
         _pendingFinishAndSend = FinishAndSendAction.Disabled;
@@ -469,8 +475,7 @@ public sealed class DictationController : IDisposable
         catch (Exception error)
         {
             _groundingCts?.Cancel();
-            _liveSession?.Cancel();
-            _liveSession = null;
+            AbandonLiveSession();
             _recorder.PcmCaptured = null;
 
             DictationLog.Error(
@@ -509,8 +514,7 @@ public sealed class DictationController : IDisposable
                 () => "recording too short to send",
                 new Dictionary<string, string> { ["dictation"] = Short(_pendingId) });
             _groundingCts?.Cancel();
-            _liveSession?.Cancel();
-            _liveSession = null;
+            AbandonLiveSession();
             Notice("Recording was too short — try again");
             return;
         }
@@ -529,8 +533,7 @@ public sealed class DictationController : IDisposable
         catch (Exception error)
         {
             _groundingCts?.Cancel();
-            _liveSession?.Cancel();
-            _liveSession = null;
+            AbandonLiveSession();
             DictationLog.Error(
                 () => "speech detector failed",
                 new Dictionary<string, string>
@@ -579,7 +582,9 @@ public sealed class DictationController : IDisposable
         }
         finally
         {
-            _liveSession = null;
+            // TranscribeAsync can return to Idle immediately before this continuation runs. Do not
+            // clear a new recording's session if the user presses the hotkey in that small window.
+            Interlocked.CompareExchange(ref _liveSession, null, live);
             if (ReferenceEquals(_dictationCts, cancellation)) _dictationCts = null;
             cancellation.Dispose();
         }
@@ -717,7 +722,7 @@ public sealed class DictationController : IDisposable
         var key = _settings.ResolvedApiKey();
         if (string.IsNullOrEmpty(key))
         {
-            liveSession?.Dispose();
+            if (liveSession is not null) await liveSession.DisposeAsync().ConfigureAwait(false);
             Fail("No API key. Open Settings to add one.");
             return;
         }
@@ -726,7 +731,7 @@ public sealed class DictationController : IDisposable
         var promptPath = PromptBuilder.FindPromptDirectory();
         if (promptPath is null)
         {
-            liveSession?.Dispose();
+            if (liveSession is not null) await liveSession.DisposeAsync().ConfigureAwait(false);
             Fail("The prompt/ directory is missing next to the executable.");
             return;
         }
@@ -1026,7 +1031,7 @@ public sealed class DictationController : IDisposable
         }
         finally
         {
-            liveSession?.Dispose();
+            if (liveSession is not null) await liveSession.DisposeAsync().ConfigureAwait(false);
         }
     }
 

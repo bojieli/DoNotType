@@ -4,7 +4,7 @@ using DoNotType.Core;
 namespace DoNotType.App;
 
 /// <summary>Transcribes pause-finalised, Silero-qualified parts while capture continues.</summary>
-internal sealed class LiveDictationSession : IDisposable
+internal sealed class LiveDictationSession : IDisposable, IAsyncDisposable
 {
     private readonly Channel<byte[]> _audio = Channel.CreateUnbounded<byte[]>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
@@ -17,10 +17,18 @@ internal sealed class LiveDictationSession : IDisposable
     private readonly CancellationTokenSource _cancel = new();
     private readonly SortedDictionary<int, Task<FallbackTranscriber.Outcome?>> _tasks = [];
     private readonly object _contextGate = new();
+    private readonly object _lifecycleGate = new();
+    private readonly TaskCompletionSource _finishCompleted =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task _worker;
     private ScreenContext? _context;
     private bool _finished;
     private bool _cancelled;
+    private bool _finishStarted;
+    private bool _disposeStarted;
+    private Task? _cleanup;
+
+    private static readonly Log LiveLog = new("live");
 
     public LiveDictationSession(
         Func<byte[], ScreenContext?, CancellationToken, Task<FallbackTranscriber.Outcome>> transcribe,
@@ -35,7 +43,10 @@ internal sealed class LiveDictationSession : IDisposable
 
     public void Append(byte[] pcm)
     {
-        if (!_finished) _audio.Writer.TryWrite(pcm);
+        lock (_lifecycleGate)
+        {
+            if (!_finished) _audio.Writer.TryWrite(pcm);
+        }
     }
 
     public void SetContext(ScreenContext? context)
@@ -46,43 +57,150 @@ internal sealed class LiveDictationSession : IDisposable
     public async Task<FallbackTranscriber.Outcome> FinishAsync(ScreenContext? context)
     {
         SetContext(context);
-        if (!_finished)
+        lock (_lifecycleGate)
         {
-            _finished = true;
-            _audio.Writer.TryComplete();
+            ObjectDisposedException.ThrowIf(_disposeStarted, this);
+            if (_finishStarted)
+            {
+                throw new InvalidOperationException("This live dictation is already finishing.");
+            }
+            _finishStarted = true;
+            CompleteAudioUnderLifecycleGate();
         }
-        await _worker.ConfigureAwait(false);
-        if (_segmenter.Finish() is { } tail) Submit(tail);
 
-        var outcomes = (await Task.WhenAll(_tasks.Values).ConfigureAwait(false))
-            .Where(outcome => outcome is not null)
-            .Select(outcome => outcome!.Value)
-            .ToArray();
-        var results = outcomes.Select(outcome => outcome.Result).ToArray();
-        var result = new TranscriptionResult(
-            new Transcript(
-                AudioChunker.Stitch(results.Select(piece => piece.Transcript.Text)),
-                results.FirstOrDefault()?.Transcript.Language ?? string.Empty),
-            results.Aggregate(new TokenUsage(), (total, piece) => TokenUsage.Add(total, piece.Usage)),
-            string.Join("\n", results.Select(piece => piece.RawOutput)),
-            results.Length);
-        return new FallbackTranscriber.Outcome(result, Attribution(outcomes));
+        try
+        {
+            await _worker.ConfigureAwait(false);
+            if (_segmenter.Finish() is { } tail) Submit(tail);
+
+            var outcomes = (await Task.WhenAll(_tasks.Values).ConfigureAwait(false))
+                .Where(outcome => outcome is not null)
+                .Select(outcome => outcome!.Value)
+                .ToArray();
+            var results = outcomes.Select(outcome => outcome.Result).ToArray();
+            var result = new TranscriptionResult(
+                new Transcript(
+                    AudioChunker.Stitch(results.Select(piece => piece.Transcript.Text)),
+                    results.FirstOrDefault()?.Transcript.Language ?? string.Empty),
+                results.Aggregate(
+                    new TokenUsage(), (total, piece) => TokenUsage.Add(total, piece.Usage)),
+                string.Join("\n", results.Select(piece => piece.RawOutput)),
+                results.Length);
+            return new FallbackTranscriber.Outcome(result, Attribution(outcomes));
+        }
+        finally
+        {
+            _finishCompleted.TrySetResult();
+        }
     }
 
     public void Cancel()
     {
-        if (_cancelled) return;
-        _cancelled = true;
-        _finished = true;
-        _audio.Writer.TryComplete();
-        _cancel.Cancel();
+        lock (_lifecycleGate)
+        {
+            if (!_cancelled)
+            {
+                _cancelled = true;
+                CompleteAudioUnderLifecycleGate();
+                CancelSourceUnderLifecycleGate();
+            }
+        }
     }
 
-    public void Dispose()
+    public void Dispose() => _ = BeginDispose();
+
+    public async ValueTask DisposeAsync()
     {
-        Cancel();
-        _permits.Dispose();
-        _cancel.Dispose();
+        await BeginDispose().ConfigureAwait(false);
+    }
+
+    private Task BeginDispose()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_cleanup is not null) return _cleanup;
+
+            _disposeStarted = true;
+            if (!_cancelled)
+            {
+                _cancelled = true;
+                CompleteAudioUnderLifecycleGate();
+                CancelSourceUnderLifecycleGate();
+            }
+            if (!_finishStarted) _finishCompleted.TrySetResult();
+            return _cleanup = CleanupAsync(_finishStarted);
+        }
+    }
+
+    private void CompleteAudioUnderLifecycleGate()
+    {
+        if (_finished) return;
+        _finished = true;
+        _audio.Writer.TryComplete();
+    }
+
+    private void CancelSourceUnderLifecycleGate()
+    {
+        try
+        {
+            _cancel.Cancel();
+        }
+        catch (Exception error)
+        {
+            // Cancellation callbacks belong to transports outside this class. A broken callback
+            // cannot prevent the channel, worker and remaining requests from being observed and
+            // released below.
+            LiveLog.Warn(
+                () => "a live transcription cancellation callback failed",
+                new Dictionary<string, string>
+                {
+                    ["type"] = error.GetType().Name,
+                    ["detail"] = error.Message,
+                });
+        }
+    }
+
+    private async Task CleanupAsync(bool finishOwned)
+    {
+        Exception? cleanupError = null;
+        try
+        {
+            await _finishCompleted.Task.ConfigureAwait(false);
+            try
+            {
+                await _worker.ConfigureAwait(false);
+            }
+            catch (Exception error)
+            {
+                cleanupError = error;
+            }
+
+            try
+            {
+                await Task.WhenAll(_tasks.Values).ConfigureAwait(false);
+            }
+            catch (Exception error)
+            {
+                cleanupError ??= error;
+            }
+
+            if (!finishOwned && cleanupError is not null
+                && cleanupError is not OperationCanceledException)
+            {
+                LiveLog.Warn(
+                    () => "abandoned live transcription failed during cleanup",
+                    new Dictionary<string, string>
+                    {
+                        ["type"] = cleanupError.GetType().Name,
+                        ["detail"] = cleanupError.Message,
+                    });
+            }
+        }
+        finally
+        {
+            _permits.Dispose();
+            _cancel.Dispose();
+        }
     }
 
     private async Task ConsumeAsync()
