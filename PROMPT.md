@@ -62,8 +62,8 @@ competition. That argument is plausible and it does not survive measurement
 Two passes was **twice as bad**, not better. The likely mechanism is the opposite of the one
 predicted: a rewriter handed "Gemini 1.5" applies its own world knowledge and "corrects" a version
 number it believes is stale. It never sees the screen context, so nothing tells it the number came
-from audio and is not its to fix — which is why rule 2 of [`prompt/rewrite.md`](prompt/rewrite.md)
-exists, and why it is evidently not enough.
+from audio and is not its to fix — which is why the preservation rule in
+[`prompt/rewrite.md`](prompt/rewrite.md) exists, and why it is evidently not enough.
 
 Latency also went the other way. The single request was *slower* (15.7 s), because one call doing
 both jobs emits far more output than two specialised ones.
@@ -75,11 +75,12 @@ here so the choice is made on evidence rather than on the mechanism story, which
 
 Also optional, also off by default, and deliberately **not** a rewrite style.
 
-Rule 1 of [`prompt/rewrite.md`](prompt/rewrite.md) — never remove a fact — is the rule this project
-exists to enforce. A summary is defined by removing facts. Putting it in `prompt/style/` alongside
-`formal` and `concise` would mean one file there is quietly exempt from the block's first rule, and
-the exemption would be invisible at the call site. So it gets its own part, its own directory of
-styles, and its own type (`SummaryStyle`), and nothing that asks for a rewrite can reach it.
+The first rule in [`prompt/rewrite.md`](prompt/rewrite.md) — never remove a fact — is the rule this
+project exists to enforce. A summary is defined by removing facts. Putting it in `prompt/style/`
+alongside `formal` and `concise` would mean one file there is quietly exempt from the block's first
+rule, and the exemption would be invisible at the call site. So it gets its own part, its own
+directory of styles, and its own type (`SummaryStyle`), and nothing that asks for a rewrite can
+reach it.
 
 The invariant that makes this safe is the same one that makes rewriting safe: **the verbatim
 transcript is produced first and stored first**. A summary is a derived artifact sitting next to
@@ -97,8 +98,9 @@ Two things follow, and both are deliberate:
 ## Fidelity clauses
 
 Exactly one of [`prompt/fidelity/`](prompt/fidelity/) is substituted into `{{FIDELITY_RULE}}` per
-request. This is the dial that separates DoNotType from a rewriting tool: even `tidy` may change
-typography and never words. `light` is the default.
+request. `raw` keeps every audible word and filler. The default `light` removes only empty fillers,
+stutters, and abandoned starts; meaningful discourse markers stay. `tidy` adds standard casing and
+punctuation without rephrasing.
 
 ## Changelog
 
@@ -109,8 +111,30 @@ screen context broke it. That is the failure this contract exists to prevent, an
 
 | Date | Change | Provider / model | runs | matched | improved | regressed |
 |------|--------|------------------|------|---------|----------|-----------|
+| 2026-08-17 | Concise contracts and filler cleanup | **gemini** · gemini-3.5-flash | 48 | 38 | 12 | **2** |
+| 2026-08-17 | Pre-change 972-word control | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
 | 2026-08-09 | Initial contract | **gemini** · gemini-3.6-flash | 15 | 15 | 0 | **0** |
 | 2026-08-09 | Initial contract | openrouter · google/gemini-3.6-flash | 15 | 12 | 0 | 1 |
+
+### 2026-08-17 — concise contracts and measurable filler removal
+
+All twelve prompt parts were tightened from **972 to 448 words**; the transcription contract fell
+from **413 to 102 words** before its fidelity clause. Tests now cap assembled transcription,
+rewrite, and summary instructions at 160, 100, and 90 words respectively.
+
+The required near-miss run did not clear the zero-regression gate. Across 16 cases and three passes,
+gemini-3.5-flash matched 38/48, improved a wrong baseline 12 times, left 8 wrong, and regressed 2.
+A control run using the pre-change 972-word prompt also matched 38/48, left 8 wrong, and produced
+the same 2 regressions in the unstable `real-acronym` case; it improved 7 wrong baselines. The
+shorter contract therefore did not worsen the headline result in this comparison. The improvement
+counts overlap the suite's per-pass range, so 12 versus 7 is not evidence of a gain. Both prompts
+still fail the gate.
+
+`dnt-eval rewrite --trials 3` now measures filler retention as well as fact preservation. A first
+draft kept the empty word "basically" in 2/15 concise and 3/15 bullet rewrites. Naming it in the
+shared cleanup rule closed those failures. The final run preserved every required fact and removed
+every marked filler in **15/15 formal, 15/15 concise, and 15/15 bullet rewrites** (45/45 total),
+with no request errors.
 
 Notes on the first measurement:
 

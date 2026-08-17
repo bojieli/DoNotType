@@ -132,6 +132,40 @@ public class PromptBuilderTests
         }
     }
 
+    [Fact]
+    public void ShippedInstructionsStayConcise()
+    {
+        if (Shipped() is not { } builder) return;
+        static int Words(string value) =>
+            value.Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Length;
+
+        foreach (var fidelity in Enum.GetValues<Fidelity>())
+            Assert.True(
+                Words(builder.SystemInstruction(fidelity)) <= 160,
+                $"{fidelity} transcription prompt grew");
+        foreach (var style in Enum.GetValues<RewriteStyle>().Where(style => style.IsRewrite()))
+            Assert.True(
+                Words(builder.SecondStageInstruction(TranscriptMode.Rewrite(style))!) <= 100,
+                $"{style} rewrite prompt grew");
+        foreach (var style in Enum.GetValues<SummaryStyle>())
+            Assert.True(
+                Words(builder.SecondStageInstruction(TranscriptMode.Summary(style))!) <= 90,
+                $"{style} summary prompt grew");
+    }
+
+    [Fact]
+    public void DefaultTranscriptionRemovesEmptyFillers()
+    {
+        if (Shipped() is not { } builder) return;
+        var instruction = builder.SystemInstruction(Fidelity.Light);
+        foreach (var phrase in new[]
+                 {
+                     "vocal fillers", "\"um\"", "\"ah\"", "\"actually\"", "\"basically\"",
+                     "when they add no meaning",
+                 })
+            Assert.Contains(phrase, instruction);
+    }
+
     /// <summary>
     /// The regression test for the bug the split ended: the assembled instruction must be the
     /// contract and nothing else.

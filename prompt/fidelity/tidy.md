@@ -1,3 +1,3 @@
-Fidelity is TIDY. Drop filler sounds, stutters and abandoned false starts, then apply sentence
-casing and standard punctuation. Do not reword, reorder, or change register — the words stay
-exactly as spoken, only the typography is normalised.
+Fidelity is TIDY. Remove vocal and empty discourse fillers, stutters, and abandoned starts. Apply
+sentence case and standard punctuation. Keep all meaning, wording, grammar, and register; never
+rephrase or reorder.

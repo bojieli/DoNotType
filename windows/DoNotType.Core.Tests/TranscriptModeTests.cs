@@ -91,6 +91,19 @@ public sealed class TranscriptModeTests
     }
 
     [Fact]
+    public void DefaultRewriteRemovesFillersAndRequestsConciseProse()
+    {
+        var rewrite = Prompt().SecondStageInstruction(TranscriptMode.Rewrite(RewriteStyle.Formal))!;
+        foreach (var phrase in new[]
+                 {
+                     "vocal fillers", "\"um\"", "\"ah\"", "\"actually\"", "\"basically\"",
+                     "false starts",
+                     "repetition", "clear, concise, professional prose",
+                 })
+            Assert.Contains(phrase, rewrite);
+    }
+
+    [Fact]
     public void VerbatimAsksForNoSecondStage() =>
         Assert.Null(Prompt().SecondStageInstruction(TranscriptMode.Verbatim));
 

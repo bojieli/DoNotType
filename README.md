@@ -193,8 +193,8 @@ is the only way to check what was dropped. The GUI shows it behind a toggle; `--
 
 Summarising is the one stage in this codebase allowed to discard content, so it is not a rewrite
 style — it has its own part (`prompt/summary.md`), its own directory of styles, its own type, and no
-path to it from a rewrite. Rule 1 of `prompt/rewrite.md` is *never remove a fact*, and a summary
-style sitting in `prompt/style/` would be one entry quietly exempt from it.
+path to it from a rewrite. The first rule in `prompt/rewrite.md` is *never remove a fact*, and a
+summary style sitting in `prompt/style/` would be one entry quietly exempt from it.
 
 Rewriting and summarising need a language model. With a recogniser selected the CLI says so before
 uploading anything, and can split the work — audio to the fast recogniser, text to a model:
@@ -274,7 +274,8 @@ for masking before the first request, and anything else key-shaped is caught by 
   verbatim transcript is always kept. Not `Ctrl+Z`, which belongs to whatever you are typing into.
 - **Audio** — pin a microphone rather than following the system default; start/stop tones are on
   by default and can be disabled.
-- **Fidelity** — `raw`, `light` (default), `tidy`. Even `tidy` only changes typography, never words.
+- **Fidelity** — `raw` keeps every filler; `light` (default) removes empty fillers and false starts;
+  `tidy` also applies standard casing and punctuation without rephrasing.
 - **Grounding** — on/off, screenshot fallback, and two blocklists evaluated *before* capture.
 - **History** — search, filters, per-item retry and delete, retention policy, per-dictation
   timings, and a **Context Inspector** showing exactly what was sent with any dictation.

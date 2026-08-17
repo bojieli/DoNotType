@@ -79,6 +79,17 @@ final class TranscriptModeTests: XCTestCase {
         XCTAssertTrue(rewrite.contains("unchanged"))
     }
 
+    func testDefaultRewriteRemovesFillersAndRequestsConciseProse() throws {
+        let rewrite = try prompt.rewriteInstruction(style: .formal)
+        for phrase in [
+            "vocal fillers", "\"um\"", "\"ah\"", "\"actually\"", "\"basically\"", "false starts",
+            "repetition",
+            "clear, concise, professional prose",
+        ] {
+            XCTAssertTrue(rewrite.contains(phrase), "default rewrite lost: \(phrase)")
+        }
+    }
+
     func testSecondStageRoutesEachModeToItsOwnBlock() throws {
         XCTAssertNil(try prompt.secondStageInstruction(for: .verbatim))
         XCTAssertEqual(

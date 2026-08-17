@@ -54,11 +54,10 @@ public enum PromptPart: Sendable, Hashable, Codable {
         }
     }
 
-    /// Whether this part is substituted into a numbered list item in another part.
+    /// Whether this part is substituted into another part.
     ///
     /// The one transform in the whole loader: a clause is written as a wrapped paragraph and
-    /// joined into a single line on load, because it lands inside `5. {{FIDELITY_RULE}}` and a
-    /// hard newline there would break the list it lands in.
+    /// joined into a single line on load, so source wrapping never changes the instruction.
     public var isClause: Bool { placeholder == nil }
 
     /// The part a clause is substituted into.

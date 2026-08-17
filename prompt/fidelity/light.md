@@ -1,4 +1,4 @@
-Fidelity is LIGHT. Drop filler sounds ("um", "uh", "er"), stutters and abandoned false starts.
-Keep every real word exactly as spoken, including casual phrasing, discourse markers such as
-"you know" and "like", and non-standard grammar. Do not add punctuation the speaker did not
-imply through pausing, and do not change capitalisation beyond proper nouns.
+Fidelity is LIGHT. Remove vocal fillers ("um", "uh", "ah", "er"), stutters, abandoned starts, and
+discourse fillers such as "actually", "basically", "you know", "I mean", and "like" when they add
+no meaning. Keep all meaningful words and the speaker's phrasing, grammar, and register. Use only
+punctuation implied by pauses.

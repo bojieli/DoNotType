@@ -248,12 +248,11 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
         All.FirstOrDefault(p => string.Equals(p.Id, id.Trim(), StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// Whether this part is substituted into a numbered list item in another part.
+    /// Whether this part is substituted into another part.
     /// </summary>
     /// <remarks>
     /// The one transform in the whole loader: a clause is written as a wrapped paragraph and joined
-    /// into a single line on load, because it lands inside `5. {{FIDELITY_RULE}}` and a hard newline
-    /// there would break the list it lands in.
+    /// into a single line on load, so source wrapping never changes the instruction.
     /// </remarks>
     public bool IsClause => Placeholder is null;
 

@@ -1,2 +1,2 @@
-Fidelity is RAW. Transcribe every sound: every um, uh, false start, repetition and stutter,
-exactly where it occurred. Do not clean anything up.
+Fidelity is RAW. Keep every audible word and vocal filler exactly where spoken, including "um",
+"uh", "ah", repetitions, false starts, and stutters. Do not clean up wording or grammar.

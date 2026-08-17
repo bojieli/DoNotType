@@ -32,6 +32,8 @@ struct Rewrite: AsyncParsableCommand {
         let transcript: String
         /// Every token that must survive verbatim.
         let mustKeep: [String]
+        /// Semantically empty speech that a rewrite must remove.
+        let mustRemove: [String]
     }
 
     static let cases: [Case] = [
@@ -40,32 +42,37 @@ struct Rewrite: AsyncParsableCommand {
             transcript:
                 "um so we're still on Gemini 1.5 Flash for the batch job, you know, and I think "
                 + "we should probably move it to the newer one at some point but not this week",
-            mustKeep: ["1.5"]),
+            mustKeep: ["1.5"],
+            mustRemove: ["um", "you know"]),
         Case(
             id: "identifiers",
             transcript:
                 "so the koffi bindings load libContextHelper.dylib and uh we call "
                 + "getFocusedAppInfo from there, that's the whole bridge basically",
-            mustKeep: ["koffi", "libContextHelper.dylib", "getFocusedAppInfo"]),
+            mustKeep: ["koffi", "libContextHelper.dylib", "getFocusedAppInfo"],
+            mustRemove: ["uh", "basically"]),
         Case(
             id: "numbers",
             transcript:
                 "right so it's running on port 8081 not 8080, and the timeout is 500 milliseconds, "
                 + "and we saw like 11 failures out of 19 runs which is way too many",
-            mustKeep: ["8081", "8080", "500", "11", "19"]),
+            mustKeep: ["8081", "8080", "500", "11", "19"],
+            mustRemove: ["right so", "like"]),
         Case(
             id: "names",
             transcript:
                 "can you send the draft to Priya and cc Marcus, and um also loop in Bojie because "
                 + "he asked about it yesterday",
-            mustKeep: ["Priya", "Marcus", "Bojie"]),
+            mustKeep: ["Priya", "Marcus", "Bojie"],
+            mustRemove: ["um"]),
         Case(
             id: "hedges",
             transcript:
                 "I think we should probably ship it on Friday, but I'm not certain the migration "
                 + "will be done, so maybe hold off if it looks risky",
             // A rewriter that "improves" this into a commitment has changed its meaning.
-            mustKeep: ["probably", "not certain", "maybe"]),
+            mustKeep: ["probably", "not certain", "maybe"],
+            mustRemove: []),
     ]
 
     mutating func run() async throws {
@@ -82,12 +89,14 @@ struct Rewrite: AsyncParsableCommand {
 
         print("provider \(kind.rawValue) · model \(runner.model) · \(trials) runs per case\n")
 
-        var totals: [RewriteStyle: (kept: Int, lost: Int, empty: Int)] = [:]
+        var totals: [RewriteStyle: (kept: Int, lost: Int, clean: Int, dirty: Int, empty: Int)] = [:]
 
         for style in selected {
             let instruction = try builder.rewriteInstruction(style: style)
             var kept = 0
             var lost = 0
+            var clean = 0
+            var dirty = 0
             var empty = 0
             var examples: [String] = []
 
@@ -119,18 +128,30 @@ struct Rewrite: AsyncParsableCommand {
                             examples.append("\(testCase.id): lost \(missing) → \(rewritten.prefix(90))")
                         }
                     }
+
+                    let retained = testCase.mustRemove.filter { rewritten.containsWholePhrase($0) }
+                    if retained.isEmpty {
+                        clean += 1
+                    } else {
+                        dirty += 1
+                        if examples.count < 3 {
+                            examples.append("\(testCase.id): retained \(retained) → \(rewritten.prefix(90))")
+                        }
+                    }
                 }
             }
 
-            totals[style] = (kept, lost, empty)
+            totals[style] = (kept, lost, clean, dirty, empty)
             let judged = kept + lost
             let rate = judged == 0 ? "n/a" : String(format: "%.0f%%", Double(lost) / Double(judged) * 100)
-            print("\(style.rawValue): lost content in \(lost)/\(judged) (\(rate))")
+            print(
+                "\(style.rawValue): lost content in \(lost)/\(judged) (\(rate)); "
+                    + "retained filler in \(dirty)/\(clean + dirty)")
             for example in examples { print("  \(example)") }
         }
 
         print("\n────────────────────────────────────────────")
-        print("style      preserved  lost   error   loss rate")
+        print("style      preserved  lost  clean  filler   error   loss rate")
         for style in selected {
             guard let total = totals[style] else { continue }
             let judged = total.kept + total.lost
@@ -138,13 +159,22 @@ struct Rewrite: AsyncParsableCommand {
                 format: "%5.0f%%", Double(total.lost) / Double(judged) * 100)
             print(
                 style.rawValue.padding(toLength: 11, withPad: " ", startingAt: 0)
-                    + String(format: "%9d  %4d  %6d  ", total.kept, total.lost, total.empty)
+                    + String(
+                        format: "%9d  %4d  %5d  %6d  %6d  ", total.kept, total.lost,
+                        total.clean, total.dirty, total.empty)
                     + rate)
         }
         print("\nLoss rate is the number that matters: a rewrite may change how it reads,")
-        print("never what it says. Anything above zero is a defect in the rewrite prompt.")
+        print("never what it says. Filler must also be zero for every rewrite style.")
 
-        let anyLoss = totals.values.contains { $0.lost > 0 }
-        if anyLoss { throw ExitCode.failure }
+        let anyFailure = totals.values.contains { $0.lost > 0 || $0.dirty > 0 }
+        if anyFailure { throw ExitCode.failure }
+    }
+}
+
+extension String {
+    fileprivate func containsWholePhrase(_ phrase: String) -> Bool {
+        let pattern = "\\b\(NSRegularExpression.escapedPattern(for: phrase))\\b"
+        return range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
     }
 }

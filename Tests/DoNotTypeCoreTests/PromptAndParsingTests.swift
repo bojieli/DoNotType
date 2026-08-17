@@ -27,6 +27,37 @@ final class PromptBuilderTests: XCTestCase {
         }
     }
 
+    func testShippedInstructionsStayConcise() throws {
+        let builder = try shipped()
+        let words: (String) -> Int = { text in
+            text.split(whereSeparator: { $0.isWhitespace }).count
+        }
+
+        for fidelity in Fidelity.allCases {
+            let instruction = try builder.systemInstruction(fidelity: fidelity)
+            XCTAssertLessThanOrEqual(
+                words(instruction), 160, "\(fidelity) transcription prompt grew")
+        }
+        for style in RewriteStyle.allCases where style.isRewrite {
+            let instruction = try builder.rewriteInstruction(style: style)
+            XCTAssertLessThanOrEqual(words(instruction), 100, "\(style) rewrite prompt grew")
+        }
+        for style in SummaryStyle.allCases {
+            let instruction = try builder.summaryInstruction(style: style)
+            XCTAssertLessThanOrEqual(words(instruction), 90, "\(style) summary prompt grew")
+        }
+    }
+
+    func testDefaultTranscriptionRemovesEmptyFillers() throws {
+        let instruction = try shipped().systemInstruction(fidelity: .light)
+        for phrase in [
+            "vocal fillers", "\"um\"", "\"ah\"", "\"actually\"", "\"basically\"",
+            "when they add no meaning",
+        ] {
+            XCTAssertTrue(instruction.contains(phrase), "LIGHT lost its cleanup rule: \(phrase)")
+        }
+    }
+
     /// The regression test for the bug the split ended: the assembled instruction must be the
     /// contract and nothing else. Documentation, markers and build instructions are not sent.
     func testNothingButTheContractIsSent() throws {

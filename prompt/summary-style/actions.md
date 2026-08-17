@@ -1,3 +1,2 @@
-List only decisions, commitments and next steps, one per line. Name the owner when the speaker
-named one, and the deadline when the speaker gave one. If the transcript contains no decisions or
-next steps, return exactly: (no actions)
+List only decisions, commitments, and next steps, one per line. Include stated owners and deadlines.
+If there are none, return exactly: (no actions)
