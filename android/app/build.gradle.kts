@@ -93,6 +93,7 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.24.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.json:json:20240303")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     testImplementation("junit:junit:4.13.2")
     // Local JVM tests need the desktop native library; production still packages the Android AAR.
     testImplementation("com.microsoft.onnxruntime:onnxruntime:1.24.2")

@@ -110,6 +110,9 @@ object Settings {
         if (!ready) return false
         return runCatching {
             apiKeys.write("$KEY_API-${kind.id}", value)
+            // Once the provider-specific slot is deliberately written, the legacy Gemini-only
+            // slot must not reappear when that value is cleared by an imported profile.
+            if (kind == ProviderKind.GEMINI) apiKeys.write(KEY_API, null)
             LogRouter.redact(value)
         }.fold(
             onSuccess = { true },

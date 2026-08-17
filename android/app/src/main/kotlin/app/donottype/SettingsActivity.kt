@@ -78,6 +78,12 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var dictionaryStatus: TextView
     private var query = HistoryQuery()
 
+    private val settingsTransfer = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == RESULT_OK) recreate()
+    }
+
     private val service by lazy { DictationService(this) }
     private val dictionaryPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@registerForActivityResult
@@ -410,6 +416,20 @@ class SettingsActivity : AppCompatActivity() {
             button("Logs") {
                 startActivity(Intent(this, LogsActivity::class.java))
             }.also { it.contentDescription = "open-logs" }
+        )
+
+        // ---- Transfer ----
+        column.addView(sectionTitle("Transfer"))
+        column.addView(
+            body(
+                "Move settings between Android, iOS, macOS and Windows with the same versioned "
+                    + "JSON document, file or QR code."
+            )
+        )
+        column.addView(
+            button("Import or export settings") {
+                settingsTransfer.launch(Intent(this, SettingsTransferActivity::class.java))
+            }.also { it.contentDescription = "open-settings-transfer" }
         )
 
         // ---- Prompt ----
