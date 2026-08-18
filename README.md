@@ -76,9 +76,9 @@ installed anywhere at all.
 
 The iOS keyboard extension is covered where it can be. Its interface cannot be reached by a UI
 test — a custom keyboard runs in its own process and its views never enter the host app's
-accessibility tree — so the tests cover what it actually does instead: the shared container the app
-writes transcripts and dictionary state into and the keyboard reads back, including correction
-anchors that survive switching keyboards.
+accessibility tree — so the tests cover its cross-process protocol instead: cold/warm voice-command
+state, transcript handoff, dictionary state, and correction anchors that survive switching
+keyboards.
 
 The dictation pipeline is now covered offline against a stub backend — a transcript is stored with
 the backend that produced it, silence writes no row, a failure keeps its audio and retry recovers
@@ -99,7 +99,7 @@ hour's work rather than a project.
 | **macOS** | menu-bar app, hold Right ⌘ | ✅ accessibility tree + screenshot fallback | ✅ manual, CSV, optional learning | ✅ | `dnt` | `make app` |
 | **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | ✅ manual, CSV, optional learning | ✅ | `dnt.exe` | `cd windows && dotnet build` |
 | **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | ✅ manual, CSV, optional learning | ✅ | — | `cd android && ./gradlew assembleDebug` |
-| **iOS** | containing app; keyboard inserts | ❌ not possible in the sandbox | ✅ manual, CSV, best-effort learning | ✅ | — | `cd ios && xcodegen generate` |
+| **iOS** | voice keyboard; containing app records | ❌ not possible in the sandbox | ✅ manual, CSV, best-effort learning | ✅ | — | `cd ios && xcodegen generate` |
 
 Feature by feature, with the reason for every gap: [docs/PARITY.md](docs/PARITY.md). The only
 platform-imposed gap is screen grounding on iOS; its correction learner also has to wait until the
@@ -111,7 +111,9 @@ transcribe recordings you already have, in all three modes, and write a readable
 [docs/CLI.md](docs/CLI.md) for what differs and why.
 
 iOS is the odd one out for a reason: a keyboard extension cannot open a microphone — "Allow Full
-Access" grants network and a shared container, not the mic. See [ios/README.md](ios/README.md).
+Access" grants network and a shared container, not the mic. Its centred keyboard button therefore
+hands cold capture to the containing app, then controls the app's short-lived warm audio session
+for later dictations. See [ios/README.md](ios/README.md).
 
 That also makes iOS the one platform where a **speech recognition** backend costs nothing: there is
 no screen grounding to give up, so Deepgram or Voxtral are simply several times faster and cheaper

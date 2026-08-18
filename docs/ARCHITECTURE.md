@@ -171,10 +171,11 @@ a password page inside an allowed browser must still be excluded.
 | macOS | accessibility tree + screenshot | in-process | `AXEnhancedUserInterface` is what makes Electron apps legible |
 | Windows | UI Automation + screenshot | in-process | no permission needed at all, which puts more weight on the blocklist |
 | Android | `AccessibilityService`, pull-based | in the keyboard process | an IME may hold `RECORD_AUDIO` |
-| iOS | **none possible** | containing app only | a keyboard extension cannot open a microphone, and nothing in the sandbox lets one app read another's content |
+| iOS | **none possible** | containing app, controlled by keyboard | cold dictation deep-links to the app; a five-minute warm audio session accepts later keyboard start/stop commands |
 
-iOS is not an unfinished port. It is a different product shaped by one restriction, which is why the
-platform order was macOS → Android → iOS.
+iOS is not an unfinished port. Its keyboard owns the mic gesture and text insertion, while its
+containing app owns capture because the extension cannot. The two processes coordinate through the
+App Group and Darwin notifications; a persisted URL handoff recovers the first cold activation.
 
 ## The harness runs the product
 

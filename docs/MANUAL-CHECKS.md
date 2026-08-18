@@ -34,13 +34,18 @@ application:
 | macOS | hold Right ⌘, say a sentence, release |
 | Windows | hold Right Ctrl, say a sentence, release |
 | Android | switch to the DoNotType keyboard, hold the mic key, speak, release |
-| iOS | open the app, hold the button, speak, release, then insert from the keyboard |
+| iOS | switch to DoNotType keyboard, tap the outlined mic, swipe back, speak, then tap to stop |
 
 Say something with a number and a proper noun in it — *"tell Kaelith the 3.5 release ships Friday"* —
 because that is the sentence shape this project exists to get right.
 
 **Passes if** the words appear where the cursor was, they are the words you said, and the number is
 the number you said.
+
+On iOS, immediately dictate a second sentence while the keyboard mic is filled. It must start and
+stop without opening the app again. Also hold the filled mic, speak, and release; release must stop
+capture. After five idle minutes the mic should become outlined and the next press should repeat
+the one-time app handoff.
 
 **Watch for** the first word being clipped (capture started late), a trailing word missing (capture
 stopped early), text landing in the wrong window (injection raced the focus), or the number being

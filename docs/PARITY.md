@@ -11,7 +11,7 @@ reachable by a user of that client, not merely present in its core library.
 
 | | macOS | Windows | Android | iOS |
 |---|---|---|---|---|
-| Hold a key and speak | ✅ Right ⌘ | ✅ Right Ctrl | ✅ keyboard button | ✅ app button |
+| Hold a key and speak | ✅ Right ⌘ | ✅ Right Ctrl | ✅ keyboard button | ✅ keyboard button ¹⁶ |
 | Tap to toggle, hold to talk | ✅ | ✅ | ✅ | ✅ |
 | Cancel recording or transcription | ✅ Escape / None | ✅ Escape / None | ✅ drag off the button ¹⁴ | ✅ ¹⁴ |
 | Finish recording, insert, and submit | ✅ Return / ⌘Return / Off ¹⁵ | ✅ Enter / Ctrl+Enter / Off ¹⁵ | — ¹⁵ | — ¹⁵ |
@@ -60,6 +60,11 @@ an additional Return/Enter is opt-in: the app latches that request before transc
 the configured submit key only if the exact field focused at recording start still has focus after
 insertion. Mobile clients already own their foreground recording UI but cannot submit a message in
 another app, so there is no equivalent key.
+
+¹⁶ The iOS keyboard cannot open a microphone itself. A cold press opens the containing app, starts
+capture there, and asks the user to swipe back; while its five-minute audio session is warm, later
+tap/hold dictations stay in the keyboard. The app still owns the same recorder and transcription
+pipeline used by its main button.
 
 ## Screen grounding
 
@@ -126,8 +131,9 @@ OkHttp's, inside the platform, and picking from it is not the caller's decision.
 other three rows, and what stands in for this one is that a failed exchange evicts its own
 connection. The gap is real and the row says so rather than being marked met.
 
-¹² The iOS keyboard reads transcripts out of the shared container the app writes them into; there is
-no cross-app focus to lose in between, so there is nothing here to get wrong.
+¹² The iOS keyboard keeps the insertion target while the containing app records and returns a
+result through the shared container. iOS restores that keyboard/document when the user swipes back;
+the extension never attempts desktop-style cross-app injection, so there is no stored focus handle.
 
 ¹³ iOS is best-effort. A keyboard extension sees only the active document's limited text context,
 and it stops running while another keyboard is active. DoNotType persists a one-minute correction
