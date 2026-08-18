@@ -249,6 +249,32 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Cancel"].exists)
     }
 
+    /// A successful scan is a complete import, not a silent replacement of the JSON editor.
+    /// Camera frames are unavailable in Simulator, so the launch argument injects a valid payload
+    /// immediately after presenting the same scanner flow.
+    func testCompletedQRScanShowsImportConfirmation() {
+        let app = launch(arguments: ["-ui-testing-completed-qr-scan"])
+        app.buttons["open-settings"].tap()
+        XCTAssertTrue(app.buttons["scan-settings-qr"].waitForExistence(timeout: 5))
+        app.buttons["scan-settings-qr"].tap()
+
+        XCTAssertTrue(app.staticTexts["Settings imported"].waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            app.staticTexts[
+                "Your DoNotType settings are ready. API keys were stored in Keychain."
+            ].exists)
+        XCTAssertTrue(app.buttons["finish-qr-import"].exists)
+        app.buttons["finish-qr-import"].tap()
+
+        XCTAssertTrue(app.navigationBars["Settings transfer"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            reveal(
+                app.staticTexts[
+                    "Settings imported from QR code. API keys were stored in Keychain."
+                ],
+                in: app))
+    }
+
     func testHistoryOpensAndIsEmptyOnAFreshInstall() {
         let app = launch()
         app.buttons["open-history"].tap()

@@ -18,7 +18,6 @@ struct SettingsTransferView: View {
     @State private var importingQRImage = false
     @State private var scanning = false
     @State private var qrExport: QRExport?
-    @State private var scanNotice: ScanNotice?
     @State private var requestedInitialScan = false
     private let startsScanning: Bool
 
@@ -36,8 +35,8 @@ struct SettingsTransferView: View {
                 )
                 .foregroundStyle(.orange)
                 Text(
-                    "Treat the JSON file and QR code like a password. Check the provider and "
-                        + "endpoint below before importing."
+                    "Treat the JSON file and QR code like a password. A scanned code is imported "
+                        + "immediately after validation; files and QR images can be reviewed below."
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -92,9 +91,8 @@ struct SettingsTransferView: View {
                 Text("Import")
             } footer: {
                 Text(
-                    "Opening, importing an image, or scanning only loads the JSON. Import is a "
-                        + "separate step because "
-                        + "the document can replace credentials and network endpoints."
+                    "Opening a file or QR image only loads the JSON for review. Scanning a QR code "
+                        + "imports its settings immediately and shows a completion screen."
                 )
             }
         }
@@ -142,17 +140,8 @@ struct SettingsTransferView: View {
         .sheet(item: $qrExport) { export in
             QRExportSheet(export: export)
         }
-        .alert(item: $scanNotice) { notice in
-            Alert(
-                title: Text(notice.title),
-                message: Text(notice.message),
-                dismissButton: .default(Text("OK")))
-        }
         .fullScreenCover(isPresented: $scanning) {
-            QRScannerSheet { value in
-                receiveScannedCode(value)
-                scanning = false
-            }
+            QRScannerSheet(simulatedCode: simulatedScannedCode, importCode: importScannedCode)
         }
     }
 
@@ -213,20 +202,24 @@ struct SettingsTransferView: View {
         }
     }
 
-    private func receiveScannedCode(_ value: String) {
-        do {
-            let document = try SettingsTransferQRCode.decode(value)
-            json = try document.jsonString()
-            setStatus("QR code scanned. Review the JSON, then choose Import settings.")
-            scanNotice = ScanNotice(
-                title: "Settings QR code detected",
-                message: "The settings are loaded for review. Choose Import settings to apply them.")
-        } catch {
-            setStatus(error.localizedDescription, isError: true)
-            scanNotice = ScanNotice(
-                title: "That is not a DoNotType settings code",
-                message: error.localizedDescription)
+    private func importScannedCode(_ value: String) async throws {
+        let document = try SettingsTransferQRCode.decode(value)
+        try await model.importSettingsTransfer(document)
+        json = try model.settingsTransferDocument().jsonString()
+        setStatus("Settings imported from QR code. API keys were stored in Keychain.")
+    }
+
+    /// Camera input is unavailable in the simulator. This test-only payload exercises the same
+    /// decode, validation, persistence, and completion UI as a real detected QR code.
+    private var simulatedScannedCode: String? {
+        #if DEBUG
+        guard ProcessInfo.processInfo.arguments.contains("-ui-testing-completed-qr-scan") else {
+            return nil
         }
+        return try? SettingsTransferQRCode.encode(model.settingsTransferDocument())
+        #else
+        return nil
+        #endif
     }
 
     private func importEditor() async {
@@ -269,12 +262,6 @@ private struct QRExport: Identifiable {
     let id = UUID()
     let image: UIImage
     let containsSecrets: Bool
-}
-
-private struct ScanNotice: Identifiable {
-    let id = UUID()
-    let title: String
-    let message: String
 }
 
 private enum QRCode {
@@ -368,48 +355,160 @@ private struct QRExportSheet: View {
 private struct QRScannerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var cameraState = QRScannerState.starting
-    let onCode: (String) -> Void
+    @State private var phase: QRImportPhase
+    private let simulatedCode: String?
+    let importCode: (String) async throws -> Void
+
+    init(
+        simulatedCode: String? = nil,
+        importCode: @escaping (String) async throws -> Void
+    ) {
+        self.simulatedCode = simulatedCode
+        self.importCode = importCode
+        _phase = State(initialValue: simulatedCode == nil ? .scanning : .importing)
+    }
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            CameraQRScanner(onCode: onCode, onStateChange: { cameraState = $0 })
-                .ignoresSafeArea()
+        Group {
+            switch phase {
+            case .scanning:
+                ZStack {
+                    Color.black.ignoresSafeArea()
+                    CameraQRScanner(
+                        onCode: beginImport,
+                        onStateChange: { cameraState = $0 }
+                    )
+                    .ignoresSafeArea()
 
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(.white, style: StrokeStyle(lineWidth: 3, dash: [18, 8]))
-                .frame(width: 286, height: 286)
+                    RoundedRectangle(cornerRadius: 24)
+                        .stroke(.white, style: StrokeStyle(lineWidth: 3, dash: [18, 8]))
+                        .frame(width: 286, height: 286)
 
-            VStack(spacing: 8) {
-                Text("Scan a DoNotType settings QR code")
-                    .font(.headline)
-                Text(cameraState.message)
-                    .font(.footnote)
-                    .multilineTextAlignment(.center)
+                    VStack(spacing: 8) {
+                        Text("Scan a DoNotType settings QR code")
+                            .font(.headline)
+                        Text(cameraState.message)
+                            .font(.footnote)
+                            .multilineTextAlignment(.center)
 
-                if cameraState == .permissionDenied {
-                    Button("Open Camera Settings") {
-                        guard let url = URL(string: UIApplication.openSettingsURLString) else {
-                            return
+                        if cameraState == .permissionDenied {
+                            Button("Open Camera Settings") {
+                                guard let url = URL(string: UIApplication.openSettingsURLString)
+                                else { return }
+                                UIApplication.shared.open(url)
+                            }
+                            .buttonStyle(.borderedProminent)
+                        } else if cameraState == .starting {
+                            ProgressView()
                         }
-                        UIApplication.shared.open(url)
                     }
-                    .buttonStyle(.borderedProminent)
-                } else if cameraState == .starting {
+                    .padding()
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal, 52)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 38)
+
+                    Button("Cancel") { dismiss() }
+                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .padding()
+                }
+            case .importing:
+                QRImportResultView(
+                    symbol: "arrow.down.circle",
+                    symbolColor: .accentColor,
+                    title: "Importing settings…",
+                    message: "Validating the QR code and storing its settings securely."
+                ) {
                     ProgressView()
                 }
-            }
-            .padding()
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .padding(.horizontal, 52)
-            .frame(maxHeight: .infinity, alignment: .bottom)
-            .padding(.bottom, 38)
+            case .imported:
+                QRImportResultView(
+                    symbol: "checkmark.circle.fill",
+                    symbolColor: .green,
+                    title: "Settings imported",
+                    message: "Your DoNotType settings are ready. API keys were stored in Keychain."
+                ) {
+                    Button("Done") { dismiss() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .accessibilityIdentifier("finish-qr-import")
+                }
+            case .failed(let message):
+                QRImportResultView(
+                    symbol: "xmark.circle.fill",
+                    symbolColor: .red,
+                    title: "Couldn’t import settings",
+                    message: message
+                ) {
+                    VStack(spacing: 12) {
+                        Button("Scan again") {
+                            cameraState = .starting
+                            phase = .scanning
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
 
-            Button("Cancel") { dismiss() }
-                .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding()
+                        Button("Cancel") { dismiss() }
+                    }
+                }
+            }
         }
+        .interactiveDismissDisabled(phase == .importing)
+        .task {
+            guard let simulatedCode else { return }
+            await finishImport(simulatedCode)
+        }
+    }
+
+    private func beginImport(_ value: String) {
+        guard phase == .scanning else { return }
+        phase = .importing
+        Task { await finishImport(value) }
+    }
+
+    private func finishImport(_ value: String) async {
+        do {
+            try await importCode(value)
+            phase = .imported
+        } catch {
+            phase = .failed(error.localizedDescription)
+        }
+    }
+}
+
+private enum QRImportPhase: Equatable {
+    case scanning
+    case importing
+    case imported
+    case failed(String)
+}
+
+private struct QRImportResultView<Actions: View>: View {
+    let symbol: String
+    let symbolColor: Color
+    let title: String
+    let message: String
+    @ViewBuilder let actions: () -> Actions
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: symbol)
+                .font(.system(size: 72, weight: .semibold))
+                .foregroundStyle(symbolColor)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.title.bold())
+                .multilineTextAlignment(.center)
+            Text(message)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            actions()
+                .padding(.top, 8)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
     }
 }
 
