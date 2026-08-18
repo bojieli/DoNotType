@@ -1,6 +1,35 @@
 import CoreFoundation
 import Foundation
 
+/// Rejects UIKit's placeholder values before they cross the App Group as return targets.
+///
+/// Private host selectors can legitimately answer with strings such as `<null>` while their
+/// connection is still being assembled. Treating one as a bundle identifier prevents the
+/// resolver from continuing to the object that owns the real value.
+enum KeyboardHostIdentifier {
+    static func normalized(_ candidate: String?) -> String? {
+        guard let candidate else { return nil }
+        let value = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+
+        let placeholder = value.lowercased()
+        guard !["null", "<null>", "(null)", "nil", "<nil>"].contains(placeholder) else {
+            return nil
+        }
+
+        let components = value.split(separator: ".", omittingEmptySubsequences: false)
+        guard components.count >= 2,
+            components.allSatisfy({ component in
+                !component.isEmpty
+                    && component.unicodeScalars.allSatisfy {
+                        CharacterSet.alphanumerics.contains($0) || $0 == "-"
+                    }
+            })
+        else { return nil }
+        return value
+    }
+}
+
 /// The live command channel between the iOS keyboard and its containing app.
 ///
 /// A custom keyboard cannot own the microphone. The containing app keeps a short-lived audio
@@ -110,11 +139,11 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
     /// than merely suspending to the Home Screen.
     public var returnHostBundleIdentifier: String? {
         defaults?.string(forKey: Key.returnHostBundleIdentifier)
-            .flatMap { $0.isEmpty ? nil : $0 }
+            .flatMap(KeyboardHostIdentifier.normalized)
     }
 
     public func setReturnHostBundleIdentifier(_ bundleIdentifier: String?) {
-        if let bundleIdentifier, !bundleIdentifier.isEmpty {
+        if let bundleIdentifier = KeyboardHostIdentifier.normalized(bundleIdentifier) {
             defaults?.set(bundleIdentifier, forKey: Key.returnHostBundleIdentifier)
         } else {
             defaults?.removeObject(forKey: Key.returnHostBundleIdentifier)

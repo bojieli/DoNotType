@@ -104,6 +104,18 @@ final class VoiceKeyboardBridgeTests: XCTestCase {
         XCTAssertNil(bridge.returnHostBundleIdentifier)
     }
 
+    func testKeyboardRejectsNullHostPlaceholders() {
+        for placeholder in ["<null>", "(null)", "null", "nil", "", "not-a-bundle-id"] {
+            bridge.setReturnHostBundleIdentifier(placeholder)
+            XCTAssertNil(bridge.returnHostBundleIdentifier, placeholder)
+        }
+    }
+
+    func testKeyboardIgnoresAPreviouslyPersistedNullHostPlaceholder() {
+        defaults.set("<null>", forKey: "voiceKeyboard.returnHostBundleIdentifier")
+        XCTAssertNil(bridge.returnHostBundleIdentifier)
+    }
+
     func testCancelReturnsTheSharedStateToIdle() {
         bridge.requestStart()
         bridge.publishRecordingStarted()

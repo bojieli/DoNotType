@@ -27,6 +27,13 @@ final class KeyboardViewController: UIInputViewController {
     /// result until UIKit has attached this keyboard to a visible document again.
     private var isKeyboardVisible = false
 
+    /// UIKit can ask this before loading the extension's view. Keep the early answer truthful and
+    /// still forward writes to the superclass so its remote keyboard output is updated.
+    override var hasDictationKey: Bool {
+        get { true }
+        set { super.hasDictationKey = newValue }
+    }
+
     private lazy var appLauncher = KeyboardContainingAppLauncher { [weak self] in self }
     private lazy var statusLabel = UILabel()
     private lazy var dictateButton = UIButton(type: .system)
@@ -37,10 +44,9 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // UIKit's setter means "this extension has its own dictation key", so the system-owned
-        // microphone in the bottom keyboard chrome must be disabled. The previous no-op override
-        // returned true to our code but never informed UIKit that the key was provided.
-        hasDictationKey = true
+        // The setter means "this extension has its own dictation key" and sends that fact to the
+        // remote keyboard host, suppressing the system-owned microphone in the bottom chrome.
+        super.hasDictationKey = true
         buildInterface()
 
         VoiceKeyboardBridge.observeUpdates {
@@ -53,6 +59,9 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        // The remote keyboard interface can be rebuilt while this extension process stays alive.
+        // Re-publish the capability whenever UIKit attaches us to a document.
+        super.hasDictationKey = true
         voiceBridge.publishKeyboardSetupStatus(hasFullAccess: hasFullAccess)
         reload()
     }
@@ -360,7 +369,9 @@ final class KeyboardViewController: UIInputViewController {
         var objects: [NSObject] = [self]
         if let context = extensionContext { objects.append(context) }
         if let window = view.window { objects.append(window) }
+        if let inputView { objects.append(inputView) }
         if let parent { objects.append(parent) }
+        if let proxy = textDocumentProxy as? NSObject { objects.append(proxy) }
 
         var responder = next
         while let current = responder {
@@ -377,8 +388,9 @@ final class KeyboardViewController: UIInputViewController {
             for name in names {
                 let selector = NSSelectorFromString(name)
                 guard object.responds(to: selector),
-                    let value = object.perform(selector)?.takeUnretainedValue() as? String,
-                    !value.isEmpty, value != Bundle.main.bundleIdentifier,
+                    let rawValue = object.perform(selector)?.takeUnretainedValue() as? String,
+                    let value = KeyboardHostIdentifier.normalized(rawValue),
+                    value != Bundle.main.bundleIdentifier,
                     value != "app.donottype"
                 else { continue }
                 return value
