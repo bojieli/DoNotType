@@ -63,6 +63,16 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertFalse(raw.contains("superseded wording"), "RAW must not resolve corrections")
     }
 
+    func testChineseDefaultsToSimplifiedUnlessTheSpeakerRequestsTraditional() throws {
+        for fidelity in Fidelity.allCases {
+            let instruction = try shipped().systemInstruction(fidelity: fidelity)
+            XCTAssertTrue(
+                instruction.contains(
+                    "Use Simplified Chinese unless the speaker requests Traditional"),
+                "\(fidelity) lost the default Chinese script rule")
+        }
+    }
+
     /// The regression test for the bug the split ended: the assembled instruction must be the
     /// contract and nothing else. Documentation, markers and build instructions are not sent.
     func testNothingButTheContractIsSent() throws {

@@ -103,6 +103,14 @@ repetitions, stutters, abandoned starts, and superseded self-corrections; meanin
 markers and the final correction stay. `tidy` adds standard casing and punctuation without
 rephrasing.
 
+## Chinese script
+
+Spoken Mandarin does not identify a writing system. The shipped transcription contract therefore
+uses Simplified Chinese by default and switches to Traditional only when the speaker asks for it.
+This is a script choice, not translation: wording and language remain governed by the same fidelity
+and language-preservation rules. A user-edited `system.md` remains authoritative, as every other
+prompt override does.
+
 ## Changelog
 
 Measured with `swift run dnt-eval suite eval/nearmiss --repeat-count 3`.
