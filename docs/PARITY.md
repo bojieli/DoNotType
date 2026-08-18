@@ -132,8 +132,9 @@ other three rows, and what stands in for this one is that a failed exchange evic
 connection. The gap is real and the row says so rather than being marked met.
 
 ¹² The iOS keyboard keeps the insertion target while the containing app records and returns a
-result through the shared container. iOS restores that keyboard/document when the user swipes back;
-the extension never attempts desktop-style cross-app injection, so there is no stored focus handle.
+result through the shared container. After a cold microphone activation, the containing app
+suspends itself and iOS restores that keyboard/document; the extension never attempts desktop-style
+cross-app injection, so there is no stored focus handle.
 
 ¹³ iOS is best-effort. A keyboard extension sees only the active document's limited text context,
 and it stops running while another keyboard is active. DoNotType persists a one-minute correction
