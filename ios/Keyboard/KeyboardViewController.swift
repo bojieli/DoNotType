@@ -114,7 +114,10 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Interface
 
     private func buildInterface() {
-        view.backgroundColor = .secondarySystemBackground
+        // Face ID iPhones reserve a system-owned strip below third-party keyboards for the globe
+        // key. Matching that strip keeps this compact surface visually docked to the screen edge
+        // instead of reading as a light card floating above an unrelated footer.
+        view.backgroundColor = .systemGray5
 
         statusLabel.font = .preferredFont(forTextStyle: .callout)
         statusLabel.textColor = .secondaryLabel
@@ -214,7 +217,7 @@ final class KeyboardViewController: UIInputViewController {
             cancelButton.heightAnchor.constraint(equalToConstant: 30),
 
             settingsButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            settingsButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -7),
+            settingsButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -2),
             settingsButton.widthAnchor.constraint(equalToConstant: 38),
             settingsButton.heightAnchor.constraint(equalToConstant: 38),
 
