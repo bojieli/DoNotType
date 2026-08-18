@@ -27,25 +27,20 @@ final class KeyboardViewController: UIInputViewController {
     /// result until UIKit has attached this keyboard to a visible document again.
     private var isKeyboardVisible = false
 
-    /// This keyboard supplies its own recognition pipeline. Returning `true` from the property,
-    /// rather than setting it after the view loads, prevents iOS from ever adding the system
-    /// dictation key while constructing the keyboard chrome.
-    override var hasDictationKey: Bool {
-        get { true }
-        set {}
-    }
-
     private lazy var appLauncher = KeyboardContainingAppLauncher { [weak self] in self }
     private lazy var statusLabel = UILabel()
     private lazy var dictateButton = UIButton(type: .system)
     private lazy var cancelButton = UIButton(type: .system)
-    private lazy var nextKeyboardButton = UIButton(type: .system)
-    private lazy var latestButton = UIButton(type: .system)
+    private lazy var settingsButton = UIButton(type: .system)
     private lazy var returnButton = UIButton(type: .system)
     private lazy var backspaceButton = UIButton(type: .system)
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // UIKit's setter means "this extension has its own dictation key", so the system-owned
+        // microphone in the bottom keyboard chrome must be disabled. The previous no-op override
+        // returned true to our code but never informed UIKit that the key was provided.
+        hasDictationKey = true
         buildInterface()
 
         VoiceKeyboardBridge.observeUpdates {
@@ -115,19 +110,13 @@ final class KeyboardViewController: UIInputViewController {
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
         cancelButton.isHidden = true
 
-        nextKeyboardButton.setTitle("🌐", for: .normal)
-        nextKeyboardButton.accessibilityIdentifier = "kb-next"
-        nextKeyboardButton.accessibilityLabel = "Next keyboard"
-        nextKeyboardButton.titleLabel?.font = .systemFont(ofSize: 22)
-        nextKeyboardButton.addTarget(
-            self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
-        nextKeyboardButton.translatesAutoresizingMaskIntoConstraints = false
-
-        latestButton.setTitle("Latest", for: .normal)
-        latestButton.accessibilityIdentifier = "kb-insert-latest"
-        latestButton.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
-        latestButton.addTarget(self, action: #selector(insertLatest), for: .touchUpInside)
-        latestButton.translatesAutoresizingMaskIntoConstraints = false
+        settingsButton.setImage(UIImage(systemName: "gearshape"), for: .normal)
+        settingsButton.accessibilityIdentifier = "kb-settings"
+        settingsButton.accessibilityLabel = "Settings"
+        settingsButton.backgroundColor = .tertiarySystemFill
+        settingsButton.layer.cornerRadius = 10
+        settingsButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
+        settingsButton.translatesAutoresizingMaskIntoConstraints = false
 
         returnButton.setImage(UIImage(systemName: "return"), for: .normal)
         returnButton.accessibilityIdentifier = "kb-return"
@@ -148,8 +137,7 @@ final class KeyboardViewController: UIInputViewController {
         view.addSubview(statusLabel)
         view.addSubview(dictateButton)
         view.addSubview(cancelButton)
-        view.addSubview(nextKeyboardButton)
-        view.addSubview(latestButton)
+        view.addSubview(settingsButton)
         view.addSubview(returnButton)
         view.addSubview(backspaceButton)
 
@@ -171,23 +159,18 @@ final class KeyboardViewController: UIInputViewController {
             cancelButton.widthAnchor.constraint(equalToConstant: 58),
             cancelButton.heightAnchor.constraint(equalToConstant: 30),
 
-            nextKeyboardButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            nextKeyboardButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -7),
-            nextKeyboardButton.widthAnchor.constraint(equalToConstant: 38),
-            nextKeyboardButton.heightAnchor.constraint(equalToConstant: 38),
-
-            latestButton.leadingAnchor.constraint(equalTo: nextKeyboardButton.trailingAnchor, constant: 2),
-            latestButton.centerYAnchor.constraint(equalTo: nextKeyboardButton.centerYAnchor),
-            latestButton.widthAnchor.constraint(equalToConstant: 58),
-            latestButton.heightAnchor.constraint(equalToConstant: 36),
+            settingsButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            settingsButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -7),
+            settingsButton.widthAnchor.constraint(equalToConstant: 38),
+            settingsButton.heightAnchor.constraint(equalToConstant: 38),
 
             returnButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            returnButton.centerYAnchor.constraint(equalTo: nextKeyboardButton.centerYAnchor),
+            returnButton.centerYAnchor.constraint(equalTo: settingsButton.centerYAnchor),
             returnButton.widthAnchor.constraint(equalToConstant: 84),
             returnButton.heightAnchor.constraint(equalToConstant: 38),
 
             backspaceButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            backspaceButton.centerYAnchor.constraint(equalTo: nextKeyboardButton.centerYAnchor),
+            backspaceButton.centerYAnchor.constraint(equalTo: settingsButton.centerYAnchor),
             backspaceButton.widthAnchor.constraint(equalToConstant: 52),
             backspaceButton.heightAnchor.constraint(equalToConstant: 38),
         ])
@@ -195,7 +178,6 @@ final class KeyboardViewController: UIInputViewController {
 
     private func reload() {
         entries = store.load()
-        latestButton.isHidden = entries.isEmpty
 
         guard hasFullAccess else {
             statusLabel.text =
@@ -363,6 +345,14 @@ final class KeyboardViewController: UIInputViewController {
         statusLabel.text = "Starting DoNotType dictation…"
     }
 
+    @objc private func openSettings() {
+        guard appLauncher.open(URL(string: "donottype://settings")) else {
+            statusLabel.text = "Open DoNotType to configure Settings."
+            return
+        }
+        statusLabel.text = "Opening DoNotType Settings…"
+    }
+
     /// `NSExtensionContext` does not publicly expose the application hosting a custom keyboard,
     /// but iOS carries the identifier on the context. Capture it before the deep link replaces the
     /// host on screen; the containing app needs it to return to the exact text field's app.
@@ -412,14 +402,6 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     // MARK: - Insertion and correction learning
-
-    @objc private func insertLatest() {
-        guard let entry = entries.first else { return }
-        insert(entry.text)
-        store.markInserted(entry.id)
-        transientStatus = "Inserted latest transcript"
-        reload()
-    }
 
     private func insert(_ text: String) {
         let correction = dictionaryStore.load().learnsFromEdits

@@ -26,6 +26,7 @@ struct ContentView: View {
     @Bindable var files: FileTranscriptionModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingInitialSetup: Bool
+    @State private var showingSettings = false
 
     private static let initialSetupKey = "didCompleteInitialSetupV1"
 
@@ -56,8 +57,26 @@ struct ContentView: View {
         // Keep the handoff at the root: on a first install the keyboard can open this URL while
         // setup is still on screen, before `dictationScreen` exists in the view hierarchy.
         .onOpenURL { url in
-            guard url.scheme == "donottype", url.host == "dictate" else { return }
-            model.handleKeyboardLaunch()
+            guard url.scheme == "donottype" else { return }
+            switch url.host {
+            case "dictate":
+                model.handleKeyboardLaunch()
+            case "settings":
+                showingSettings = true
+            default:
+                break
+            }
+        }
+        .sheet(isPresented: $showingSettings) {
+            NavigationStack {
+                SettingsView(model: model)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Done") { showingSettings = false }
+                                .accessibilityIdentifier("close-keyboard-settings")
+                        }
+                    }
+            }
         }
         .overlay {
             if model.isReturnToHostPresented {
