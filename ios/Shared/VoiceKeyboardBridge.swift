@@ -96,71 +96,6 @@ enum KeyboardHostReturnURL {
     }
 }
 
-/// Return behavior is more than a bundle-to-scheme dictionary. Some host processes are transient
-/// system surfaces where launching the bundle is either meaningless or actively sends the user to
-/// the wrong place. Keeping that policy beside the routes gives the app one answer for both the
-/// automatic attempt and the fallback instructions.
-struct KeyboardHostReturnPolicy: Sendable, Equatable {
-    enum Guide: String, Sendable {
-        case standard
-        case appSwitcher
-        case manual
-
-        var title: String {
-            switch self {
-            case .standard: "Return to the app where you were typing"
-            case .appSwitcher: "Return with the app switcher"
-            case .manual: "Return to your text field"
-            }
-        }
-
-        var instructions: String {
-            switch self {
-            case .standard:
-                "Swipe across the bottom edge to the previous app, or open it manually. "
-                    + "Keep speaking — dictation continues after you leave DoNotType."
-            case .appSwitcher:
-                "The system search screen cannot be reopened directly. Swipe across the bottom "
-                    + "edge or choose the original app in the app switcher. Dictation continues."
-            case .manual:
-                "This embedded system screen cannot be reopened directly. Open the original app "
-                    + "manually; dictation continues while DoNotType is in the background."
-            }
-        }
-    }
-
-    let bundleIdentifier: String?
-    let publicURL: URL?
-    let allowsBundleLaunch: Bool
-    let guide: Guide
-
-    static func resolve(_ bundleIdentifier: String?) -> Self {
-        guard let bundleIdentifier = KeyboardHostIdentifier.normalized(bundleIdentifier) else {
-            return Self(
-                bundleIdentifier: nil, publicURL: nil, allowsBundleLaunch: false, guide: .manual)
-        }
-        switch bundleIdentifier {
-        case "com.apple.Spotlight":
-            return Self(
-                bundleIdentifier: bundleIdentifier, publicURL: nil,
-                allowsBundleLaunch: false, guide: .appSwitcher)
-        case "com.apple.SafariViewService":
-            return Self(
-                bundleIdentifier: bundleIdentifier, publicURL: nil,
-                allowsBundleLaunch: false, guide: .manual)
-        default:
-            return Self(
-                bundleIdentifier: bundleIdentifier,
-                publicURL: KeyboardHostReturnURL.url(for: bundleIdentifier),
-                allowsBundleLaunch: true, guide: .standard)
-        }
-    }
-
-    /// A stable key for showing the explanatory screen once per kind of handoff. A failed return
-    /// may still present it again; this only suppresses the successful cold-launch flash.
-    var guideKey: String { bundleIdentifier ?? "unavailable-host" }
-}
-
 /// The live command channel between the iOS keyboard and its containing app.
 ///
 /// A custom keyboard cannot own the microphone. The containing app keeps a short-lived audio
@@ -169,28 +104,6 @@ struct KeyboardHostReturnPolicy: Sendable, Equatable {
 /// into the app and the persisted `waiting` phase makes the launch recoverable even if the
 /// notification was posted before the app process existed.
 public final class VoiceKeyboardBridge: @unchecked Sendable {
-    public enum WarmSessionDuration: String, CaseIterable, Sendable {
-        case fiveMinutes
-        case twelveHours
-        case untilAppCloses
-
-        public var label: String {
-            switch self {
-            case .fiveMinutes: "5 minutes"
-            case .twelveHours: "12 hours"
-            case .untilAppCloses: "Until DoNotType closes"
-            }
-        }
-
-        public var seconds: TimeInterval? {
-            switch self {
-            case .fiveMinutes: 5 * 60
-            case .twelveHours: 12 * 60 * 60
-            case .untilAppCloses: nil
-            }
-        }
-    }
-
     public enum Phase: String, Sendable {
         case idle
         case waiting
@@ -205,21 +118,6 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
         case cancel
     }
 
-    public enum MicrophoneAccess: String, Sendable {
-        case unknown
-        case granted
-        case denied
-    }
-
-    public enum ActivationStatus: Sendable, Equatable {
-        case noFullAccess
-        case notConfigured
-        case microphoneDenied
-        case offline
-        case opensContainingApp
-        case ready
-    }
-
     public struct Snapshot: Sendable, Equatable {
         public let phase: Phase
         public let result: String?
@@ -231,77 +129,6 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
             self.result = result
             self.message = message
             self.updatedAt = updatedAt
-        }
-    }
-
-    /// The public editing context iOS exposes to a custom keyboard. Capturing it before a cold app
-    /// switch lets Rewrite mean “edit this selection” and lets the extension verify it has returned
-    /// to the same field before replacing anything.
-    public struct InputContext: Codable, Sendable, Equatable {
-        public enum SelectionLocation: Sendable, Equatable {
-            case selected
-            case cursorAtStart
-            case cursorAtEnd
-            case unavailable
-        }
-
-        public let documentIdentifier: String?
-        public let textBeforeSelection: String?
-        public let selectedText: String?
-        public let textAfterSelection: String?
-        public let keyboardType: Int?
-        public let returnKeyType: Int?
-        public let capturedAt: Date
-
-        public init(
-            documentIdentifier: String?, textBeforeSelection: String?, selectedText: String?,
-            textAfterSelection: String?, keyboardType: Int?, returnKeyType: Int?,
-            capturedAt: Date = Date()
-        ) {
-            self.documentIdentifier = documentIdentifier
-            self.textBeforeSelection = textBeforeSelection
-            self.selectedText = selectedText
-            self.textAfterSelection = textAfterSelection
-            self.keyboardType = keyboardType
-            self.returnKeyType = returnKeyType
-            self.capturedAt = capturedAt
-        }
-
-        public var hasSelection: Bool { !(selectedText ?? "").isEmpty }
-
-        public func locateSelection(
-            documentIdentifier currentDocumentIdentifier: String?,
-            selectedText currentSelection: String?, textBeforeCursor: String?,
-            textAfterCursor: String?
-        ) -> SelectionLocation {
-            guard let selection = selectedText, !selection.isEmpty,
-                documentIdentifier == currentDocumentIdentifier
-            else { return .unavailable }
-            if currentSelection == selection { return .selected }
-
-            let beforeAnchor = String((textBeforeSelection ?? "").suffix(64))
-            let afterAnchor = String((textAfterSelection ?? "").prefix(64))
-            let before = textBeforeCursor ?? ""
-            let after = textAfterCursor ?? ""
-
-            if after.hasPrefix(selection) {
-                let remainder = String(after.dropFirst(selection.count))
-                if (beforeAnchor.isEmpty || before.hasSuffix(beforeAnchor))
-                    && (afterAnchor.isEmpty || remainder.hasPrefix(afterAnchor))
-                {
-                    return .cursorAtStart
-                }
-            }
-
-            if before.hasSuffix(selection) {
-                let remainder = String(before.dropLast(selection.count))
-                if (beforeAnchor.isEmpty || remainder.hasSuffix(beforeAnchor))
-                    && (afterAnchor.isEmpty || after.hasPrefix(afterAnchor))
-                {
-                    return .cursorAtEnd
-                }
-            }
-            return .unavailable
         }
     }
 
@@ -331,11 +158,6 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
         static let keyboardHasFullAccess = "voiceKeyboard.keyboardHasFullAccess"
         static let returnHostBundleIdentifier = "voiceKeyboard.returnHostBundleIdentifier"
         static let rewriteModeEnabled = "voiceKeyboard.rewriteModeEnabled"
-        static let appHasAPIKey = "voiceKeyboard.appHasAPIKey"
-        static let microphoneAccess = "voiceKeyboard.microphoneAccess"
-        static let returnGuidesShown = "voiceKeyboard.returnGuidesShown"
-        static let warmSessionDuration = "voiceKeyboard.warmSessionDuration"
-        static let inputContext = "voiceKeyboard.inputContext"
     }
 
     private enum NotificationName {
@@ -369,41 +191,6 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
         return timestamp > 0 && Date().timeIntervalSince1970 - timestamp < Self.sessionFreshness
     }
 
-    public func activationStatus(hasFullAccess: Bool, isOnline: Bool?) -> ActivationStatus {
-        guard hasFullAccess else { return .noFullAccess }
-        if defaults?.object(forKey: Key.appHasAPIKey) != nil,
-            defaults?.bool(forKey: Key.appHasAPIKey) == false
-        {
-            return .notConfigured
-        }
-        if defaults?.string(forKey: Key.microphoneAccess) == MicrophoneAccess.denied.rawValue {
-            return .microphoneDenied
-        }
-        if isOnline == false { return .offline }
-        return isSessionWarm ? .ready : .opensContainingApp
-    }
-
-    /// Published by the containing app so the extension can explain a setup problem before it
-    /// switches applications. The app does not publish credentials themselves.
-    public func publishAppReadiness(hasAPIKey: Bool, microphoneAccess: MicrophoneAccess) {
-        defaults?.set(hasAPIKey, forKey: Key.appHasAPIKey)
-        defaults?.set(microphoneAccess.rawValue, forKey: Key.microphoneAccess)
-        defaults?.synchronize()
-        Self.post(NotificationName.update)
-    }
-
-    func shouldPresentReturnGuide(for policy: KeyboardHostReturnPolicy) -> Bool {
-        let shown = Set(defaults?.stringArray(forKey: Key.returnGuidesShown) ?? [])
-        return !shown.contains(policy.guideKey)
-    }
-
-    func markReturnGuidePresented(for policy: KeyboardHostReturnPolicy) {
-        var shown = Set(defaults?.stringArray(forKey: Key.returnGuidesShown) ?? [])
-        shown.insert(policy.guideKey)
-        defaults?.set(shown.sorted(), forKey: Key.returnGuidesShown)
-        defaults?.synchronize()
-    }
-
     public var keyboardSetupStatus: KeyboardSetupStatus {
         let timestamp = defaults?.double(forKey: Key.keyboardLastSeen) ?? 0
         guard timestamp > 0 else {
@@ -428,32 +215,6 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
     public var rewriteModeEnabled: Bool? {
         guard defaults?.object(forKey: Key.rewriteModeEnabled) != nil else { return nil }
         return defaults?.bool(forKey: Key.rewriteModeEnabled)
-    }
-
-    public var warmSessionDuration: WarmSessionDuration {
-        get {
-            defaults?.string(forKey: Key.warmSessionDuration)
-                .flatMap(WarmSessionDuration.init(rawValue:)) ?? .fiveMinutes
-        }
-        set {
-            defaults?.set(newValue.rawValue, forKey: Key.warmSessionDuration)
-            defaults?.synchronize()
-            Self.post(NotificationName.update)
-        }
-    }
-
-    public var inputContext: InputContext? {
-        guard let data = defaults?.data(forKey: Key.inputContext) else { return nil }
-        return try? JSONDecoder().decode(InputContext.self, from: data)
-    }
-
-    public func setInputContext(_ context: InputContext?) {
-        if let context, let data = try? JSONEncoder().encode(context) {
-            defaults?.set(data, forKey: Key.inputContext)
-        } else {
-            defaults?.removeObject(forKey: Key.inputContext)
-        }
-        defaults?.synchronize()
     }
 
     public func setRewriteModeEnabled(_ enabled: Bool) {
@@ -496,7 +257,6 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
 
     public func requestCancel() {
         write(phase: .idle, result: nil, message: nil)
-        setInputContext(nil)
         Self.post(NotificationName.cancel)
     }
 
@@ -518,7 +278,6 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
 
     public func acknowledgeResult() {
         write(phase: .idle, result: nil, message: nil)
-        setInputContext(nil)
     }
 
     /// Called from the audio callback. Throttling here avoids writing shared defaults per buffer.
