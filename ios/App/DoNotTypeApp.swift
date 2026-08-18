@@ -43,13 +43,29 @@ struct ContentView: View {
     }
 
     var body: some View {
-        if showingInitialSetup {
-            InitialSetupView(model: model) {
-                UserDefaults.standard.set(true, forKey: Self.initialSetupKey)
-                showingInitialSetup = false
+        Group {
+            if showingInitialSetup {
+                InitialSetupView(model: model) {
+                    UserDefaults.standard.set(true, forKey: Self.initialSetupKey)
+                    showingInitialSetup = false
+                }
+            } else {
+                dictationScreen
             }
-        } else {
-            dictationScreen
+        }
+        // Keep the handoff at the root: on a first install the keyboard can open this URL while
+        // setup is still on screen, before `dictationScreen` exists in the view hierarchy.
+        .onOpenURL { url in
+            guard url.scheme == "donottype", url.host == "dictate" else { return }
+            model.handleKeyboardLaunch()
+        }
+        .overlay {
+            if model.isReturnToHostPresented {
+                KeyboardReturnToHostView(state: model.state) {
+                    model.dismissReturnToHost()
+                }
+                .transition(.opacity)
+            }
         }
     }
 
@@ -103,6 +119,7 @@ struct ContentView: View {
             }
         }
         .task {
+            model.handleKeyboardLaunch()
             model.refreshDictionary()
             await model.refresh()
         }
@@ -116,8 +133,8 @@ struct ContentView: View {
                     await model.retryPending()
                 }
             case .inactive, .background:
-                // iOS does not grant this app background audio. More importantly, a microphone
-                // must never keep capturing after its only visible recording surface disappears.
+                // An ordinary app recording still stops here. A keyboard-initiated one continues
+                // because the keyboard remains its visible recording surface.
                 model.stopRecordingForBackground()
             @unknown default:
                 model.stopRecordingForBackground()
@@ -290,6 +307,54 @@ struct ContentView: View {
             .buttonStyle(.bordered)
             .disabled(!model.hasAPIKey)
         }
+    }
+}
+
+/// The cold-start half of iOS voice-keyboard dictation. The app has opened the microphone; the
+/// bottom-edge app-switch gesture returns to the original text field while recording continues.
+private struct KeyboardReturnToHostView: View {
+    let state: DictationModel.State
+    let dismiss: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color(.systemBackground).ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                Image(systemName: state == .recording ? "mic.fill" : "mic")
+                    .font(.system(size: 64, weight: .semibold))
+                    .foregroundStyle(state == .recording ? .red : Color.accentColor)
+
+                Text(state == .recording ? "DoNotType is listening" : "Starting dictation…")
+                    .font(.title.bold())
+
+                Text("Swipe right across the bottom edge to return to the previous app, then speak. You only need this switch when the voice session has gone cold.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 38, weight: .medium))
+                    .symbolEffect(.pulse)
+                    .accessibilityHidden(true)
+            }
+            .padding(32)
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark")
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Dismiss return instructions")
+                }
+                Spacer()
+            }
+            .padding()
+        }
+        .accessibilityIdentifier("keyboard-return-to-host")
     }
 }
 

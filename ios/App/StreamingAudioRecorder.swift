@@ -8,6 +8,7 @@ final class StreamingAudioRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var file: AVAudioFile?
     private var converter: AVAudioConverter?
+    private var targetFormat: AVAudioFormat?
     private var outputURL: URL?
     private var startedAt: Date?
     /// `engine.start()` can fail after the tap is installed. Track the tap independently from the
@@ -17,19 +18,18 @@ final class StreamingAudioRecorder: @unchecked Sendable {
     private var pendingBars: [AudioLevelMeter.Bar] = []
 
     var onPCM: (@Sendable (Data) -> Void)?
-    var isRecording: Bool { engine.isRunning }
+    /// Runs for each input buffer, including while the session is warm but not recording.
+    /// The bridge throttles the actual shared-container write to once a second.
+    var onHeartbeat: (@Sendable () -> Void)?
+    var isRecording: Bool { lock.withLock { startedAt != nil } }
+    var isMonitoring: Bool { engine.isRunning }
 
     func start(url: URL) throws {
-        guard !engine.isRunning else { return }
-        let input = engine.inputNode
-        let inputFormat = input.outputFormat(forBus: 0)
-        guard let target = AVAudioFormat(
-            commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: true),
-            let converter = AVAudioConverter(from: inputFormat, to: target)
-        else { throw RecorderError.conversionUnavailable }
-        self.converter = converter
-        outputURL = url
-        file = try AVAudioFile(
+        guard !isRecording else { return }
+        try configureEngineIfNeeded()
+        guard let target = targetFormat else { throw RecorderError.conversionUnavailable }
+
+        let recordingFile = try AVAudioFile(
             forWriting: url,
             settings: [
                 AVFormatIDKey: kAudioFormatLinearPCM,
@@ -41,22 +41,37 @@ final class StreamingAudioRecorder: @unchecked Sendable {
             ],
             commonFormat: target.commonFormat,
             interleaved: target.isInterleaved)
+
+        outputURL = url
         lock.withLock {
+            file = recordingFile
+            startedAt = Date()
             meter = AudioLevelMeter(sampleRate: 16_000)
             pendingBars.removeAll(keepingCapacity: true)
         }
-        input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
-            self?.append(buffer, target: target)
+
+        do {
+            try startEngineIfNeeded()
+        } catch {
+            lock.withLock {
+                file = nil
+                startedAt = nil
+            }
+            outputURL = nil
+            try? FileManager.default.removeItem(at: url)
+            throw error
         }
-        tapInstalled = true
-        engine.prepare()
-        try engine.start()
-        startedAt = Date()
     }
 
-    func stop() -> URL? {
-        let elapsed = startedAt.map { Date().timeIntervalSince($0) } ?? 0
-        teardown()
+    /// Keeps the input engine alive after the file closes when a keyboard session is active.
+    func stop(keepMonitoring: Bool = false) -> URL? {
+        let elapsed = lock.withLock { startedAt.map { Date().timeIntervalSince($0) } ?? 0 }
+        lock.withLock {
+            file = nil
+            startedAt = nil
+        }
+        if !keepMonitoring { stopMonitoring() }
+
         guard let url = outputURL, elapsed >= PressGesture.minimumRecordingSeconds else {
             if let outputURL { try? FileManager.default.removeItem(at: outputURL) }
             outputURL = nil
@@ -65,10 +80,33 @@ final class StreamingAudioRecorder: @unchecked Sendable {
         return url
     }
 
-    func cancel() {
-        teardown()
+    func cancel(keepMonitoring: Bool = false) {
+        lock.withLock {
+            file = nil
+            startedAt = nil
+        }
+        if !keepMonitoring { stopMonitoring() }
         if let outputURL { try? FileManager.default.removeItem(at: outputURL) }
         outputURL = nil
+    }
+
+    /// Starts the containing app's short-lived background session without retaining microphone
+    /// samples. Later keyboard presses can begin a file immediately through the command bridge.
+    func enableMonitoring() throws {
+        try configureEngineIfNeeded()
+        try startEngineIfNeeded()
+    }
+
+    func stopMonitoring() {
+        guard !isRecording else { return }
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
+        if engine.isRunning { engine.stop() }
+        engine.reset()
+        converter = nil
+        targetFormat = nil
     }
 
     func drainLevels() -> [AudioLevelMeter.Bar] {
@@ -78,18 +116,33 @@ final class StreamingAudioRecorder: @unchecked Sendable {
         }
     }
 
-    private func teardown() {
-        if tapInstalled {
-            engine.inputNode.removeTap(onBus: 0)
-            tapInstalled = false
+    private func configureEngineIfNeeded() throws {
+        guard !tapInstalled else { return }
+        let input = engine.inputNode
+        let inputFormat = input.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0,
+            let target = AVAudioFormat(
+                commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1,
+                interleaved: true),
+            let converter = AVAudioConverter(from: inputFormat, to: target)
+        else { throw RecorderError.conversionUnavailable }
+
+        self.converter = converter
+        targetFormat = target
+        input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+            self?.append(buffer, target: target)
         }
-        if engine.isRunning { engine.stop() }
-        lock.withLock { file = nil }
-        converter = nil
-        startedAt = nil
+        tapInstalled = true
+    }
+
+    private func startEngineIfNeeded() throws {
+        guard !engine.isRunning else { return }
+        engine.prepare()
+        try engine.start()
     }
 
     private func append(_ buffer: AVAudioPCMBuffer, target: AVAudioFormat) {
+        onHeartbeat?()
         lock.lock()
         defer { lock.unlock() }
         guard let file, let converter else { return }

@@ -1,38 +1,44 @@
 import DoNotTypeCore
 import UIKit
 
-/// The keyboard.
+/// DoNotType's voice keyboard.
 ///
-/// It inserts; it does not record. `AVAudioSession.setActive` fails inside a keyboard extension
-/// with `AVAudioSessionErrorCodeCannotStartRecording` — the microphone is simply not available to
-/// this process, regardless of Full Access. So the containing app produces transcripts and this
-/// reads them out of the App Group.
-///
-/// Full Access *is* required, for the shared container. Without it the list is empty and the
-/// keyboard says so rather than appearing broken.
+/// iOS reserves microphone capture for the containing app. A cold press opens that app and starts
+/// capture there; while its background audio session is warm, subsequent presses travel over the
+/// App Group/Darwin bridge and never leave the current text field. The keyboard owns the gesture,
+/// live state, and insertion. The app owns the exact same recorder and provider pipeline used by
+/// its main screen.
 final class KeyboardViewController: UIInputViewController {
 
     private let store = TranscriptStore()
+    private let voiceBridge = VoiceKeyboardBridge()
     private let dictionaryStore = DictionaryStore()
     private let correctionStore = CorrectionObservationStore()
     private var entries: [TranscriptStore.Entry] = []
     private var correctionTask: Task<Void, Never>?
+    private var launchFallback: DispatchWorkItem?
+    private var pressStartedAt: Date?
+    private var pressStartedRecording = false
+    private var stopWhenRecordingStarts = false
     private var lastLearnedTerms: [String] = []
+    private var transientStatus: String?
 
-    private lazy var tableView = UITableView(frame: .zero, style: .plain)
+    private lazy var appLauncher = KeyboardContainingAppLauncher { [weak self] in self }
     private lazy var statusLabel = UILabel()
+    private lazy var dictateButton = UIButton(type: .system)
     private lazy var nextKeyboardButton = UIButton(type: .system)
+    private lazy var latestButton = UIButton(type: .system)
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // Prevent iOS from placing its own lower-accuracy dictation key beside this keyboard. The
+        // central control below is DoNotType dictation, not a shortcut to system dictation.
+        hasDictationKey = true
         buildInterface()
 
-        // The app posts a Darwin notification when it stores a transcript, so switching back to
-        // the keyboard shows it without a manual refresh.
-        // Hopped to the main actor explicitly. The notification arrives on a Darwin callback with
-        // no isolation of its own, and `reload` touches UIKit — Swift 6.2 infers the hop, 6.0 does
-        // not, and relying on inference for a UI update from a C callback is the wrong bet either
-        // way.
+        VoiceKeyboardBridge.observeUpdates {
+            Task { @MainActor [weak self] in self?.reload() }
+        }
         TranscriptStore.observeUpdates {
             Task { @MainActor [weak self] in self?.reload() }
         }
@@ -47,6 +53,9 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillDisappear(_ animated: Bool) {
         correctionTask?.cancel()
         correctionTask = nil
+        launchFallback?.cancel()
+        launchFallback = nil
+        stopWhenRecordingStarts = false
         super.viewWillDisappear(animated)
     }
 
@@ -55,9 +64,9 @@ final class KeyboardViewController: UIInputViewController {
     private func buildInterface() {
         view.backgroundColor = .secondarySystemBackground
 
-        statusLabel.font = .preferredFont(forTextStyle: .footnote)
+        statusLabel.font = .preferredFont(forTextStyle: .callout)
         statusLabel.textColor = .secondaryLabel
-        statusLabel.numberOfLines = 0
+        statusLabel.numberOfLines = 2
         statusLabel.textAlignment = .center
         statusLabel.accessibilityIdentifier = "kb-status"
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -65,12 +74,15 @@ final class KeyboardViewController: UIInputViewController {
         statusLabel.addGestureRecognizer(
             UITapGestureRecognizer(target: self, action: #selector(statusTapped)))
 
-        tableView.dataSource = self
-        tableView.delegate = self
-        tableView.backgroundColor = .clear
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "transcript")
-        tableView.accessibilityIdentifier = "kb-transcripts"
-        tableView.translatesAutoresizingMaskIntoConstraints = false
+        dictateButton.accessibilityIdentifier = "kb-dictate"
+        dictateButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
+        dictateButton.tintColor = .white
+        dictateButton.layer.cornerRadius = 58
+        dictateButton.clipsToBounds = true
+        dictateButton.translatesAutoresizingMaskIntoConstraints = false
+        dictateButton.addTarget(self, action: #selector(dictateTouchDown), for: .touchDown)
+        dictateButton.addTarget(
+            self, action: #selector(dictateTouchUp), for: [.touchUpInside, .touchUpOutside])
 
         nextKeyboardButton.setTitle("🌐", for: .normal)
         nextKeyboardButton.accessibilityIdentifier = "kb-next"
@@ -80,55 +92,215 @@ final class KeyboardViewController: UIInputViewController {
             self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
         nextKeyboardButton.translatesAutoresizingMaskIntoConstraints = false
 
+        latestButton.setTitle("Insert latest", for: .normal)
+        latestButton.accessibilityIdentifier = "kb-insert-latest"
+        latestButton.addTarget(self, action: #selector(insertLatest), for: .touchUpInside)
+        latestButton.translatesAutoresizingMaskIntoConstraints = false
+
         view.addSubview(statusLabel)
-        view.addSubview(tableView)
+        view.addSubview(dictateButton)
         view.addSubview(nextKeyboardButton)
+        view.addSubview(latestButton)
 
         NSLayoutConstraint.activate([
-            view.heightAnchor.constraint(equalToConstant: 260),
+            view.heightAnchor.constraint(equalToConstant: 300),
 
-            statusLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 10),
-            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            statusLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
+            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
 
-            tableView.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 8),
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: nextKeyboardButton.topAnchor, constant: -4),
+            dictateButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            dictateButton.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: 4),
+            dictateButton.widthAnchor.constraint(equalToConstant: 116),
+            dictateButton.heightAnchor.constraint(equalToConstant: 116),
 
             nextKeyboardButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             nextKeyboardButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8),
+            nextKeyboardButton.widthAnchor.constraint(equalToConstant: 44),
             nextKeyboardButton.heightAnchor.constraint(equalToConstant: 36),
+
+            latestButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            latestButton.centerYAnchor.constraint(equalTo: nextKeyboardButton.centerYAnchor),
+            latestButton.heightAnchor.constraint(equalToConstant: 36),
         ])
     }
 
     private func reload() {
         entries = store.load()
+        latestButton.isHidden = entries.isEmpty
 
-        // Asked of the system rather than inferred from the container being nil. Both produce an
-        // empty list, and they are different problems: one is a switch the user can turn on, the
-        // other is an app-group misconfiguration in a build, which no amount of tapping fixes. A
-        // keyboard extension cannot open Settings, so the exact path is the whole of the guidance.
-        if !hasFullAccess {
+        guard hasFullAccess else {
             statusLabel.text =
-                "Turn on Full Access in Settings › General › Keyboard › Keyboards › DoNotType so "
-                + "this keyboard can read your transcripts."
-        } else if TranscriptStore.containerURL == nil {
-            statusLabel.text =
-                "Full Access is on, but the shared container is missing — this build is "
-                + "misconfigured. Please report it."
-        } else if entries.isEmpty {
-            statusLabel.text = "Open DoNotType and dictate — transcripts appear here to insert."
-        } else {
-            statusLabel.text = "Tap to insert"
+                "Turn on Full Access in Settings › General › Keyboard › Keyboards › "
+                + "DoNotType."
+            dictateButton.isEnabled = false
+            renderButton(phase: .idle, sessionWarm: false)
+            return
         }
-        tableView.reloadData()
+        guard TranscriptStore.containerURL != nil else {
+            statusLabel.text = "The shared App Group is missing from this build."
+            dictateButton.isEnabled = false
+            renderButton(phase: .idle, sessionWarm: false)
+            return
+        }
+
+        dictateButton.isEnabled = true
+        let snapshot = voiceBridge.snapshot
+
+        if snapshot.phase == .idle, let result = snapshot.result, !result.isEmpty {
+            insert(result)
+            voiceBridge.acknowledgeResult()
+            transientStatus = "Inserted"
+        }
+
+        var current = voiceBridge.snapshot
+        // Audio-session activation can take longer than the hold. Preserve push-to-talk semantics
+        // without turning `waiting` into `transcribing` before the app has actually opened its
+        // recorder. A cold launch dismisses this keyboard and deliberately falls back to toggle.
+        if current.phase == .recording, stopWhenRecordingStarts {
+            stopWhenRecordingStarts = false
+            voiceBridge.requestStop()
+            current = voiceBridge.snapshot
+        }
+        switch current.phase {
+        case .idle:
+            statusLabel.text = transientStatus ?? (voiceBridge.isSessionWarm
+                ? "Tap to dictate, or hold to talk"
+                : "Tap to dictate · DoNotType opens once to activate the microphone")
+        case .waiting:
+            statusLabel.text = voiceBridge.isSessionWarm
+                ? "Starting dictation…" : "Opening DoNotType to activate the microphone…"
+        case .recording:
+            statusLabel.text = "Listening… tap to stop"
+        case .transcribing:
+            statusLabel.text = "Transcribing…"
+        case .failed:
+            statusLabel.text = current.message ?? "Dictation failed — tap to try again"
+        }
+        renderButton(phase: current.phase, sessionWarm: voiceBridge.isSessionWarm)
+    }
+
+    private func renderButton(phase: VoiceKeyboardBridge.Phase, sessionWarm: Bool) {
+        let symbol: String
+        let background: UIColor
+        switch phase {
+        case .recording:
+            symbol = "stop.fill"
+            background = .systemRed
+        case .waiting, .transcribing:
+            symbol = "ellipsis"
+            background = .systemGray
+        case .idle, .failed:
+            symbol = sessionWarm ? "mic.fill" : "mic"
+            background = .systemBlue
+        }
+
+        dictateButton.setImage(
+            UIImage(systemName: symbol)?.applyingSymbolConfiguration(
+                .init(pointSize: 42, weight: .semibold)),
+            for: .normal)
+        dictateButton.backgroundColor = background
+        dictateButton.accessibilityLabel = phase == .recording ? "Stop dictating" : "Dictate"
+        dictateButton.accessibilityHint = sessionWarm
+            ? "Tap to start and stop. Touch and hold to record only while held."
+            : "Opens DoNotType once to activate its microphone, then returns here."
+    }
+
+    // MARK: - Dictation gesture
+
+    @objc private func dictateTouchDown() {
+        transientStatus = nil
+        stopWhenRecordingStarts = false
+        pressStartedAt = Date()
+        pressStartedRecording = false
+
+        switch voiceBridge.snapshot.phase {
+        case .idle, .failed:
+            pressStartedRecording = true
+            let wasWarm = voiceBridge.requestStart()
+            reload()
+            if wasWarm {
+                scheduleColdLaunchFallback()
+            } else {
+                openContainingApp()
+            }
+        case .recording:
+            voiceBridge.requestStop()
+            reload()
+        case .waiting, .transcribing:
+            break
+        }
+    }
+
+    @objc private func dictateTouchUp() {
+        defer {
+            pressStartedAt = nil
+            pressStartedRecording = false
+        }
+        guard pressStartedRecording, let startedAt = pressStartedAt,
+            Date().timeIntervalSince(startedAt) >= PressGesture.holdThreshold
+        else { return }
+
+        switch voiceBridge.snapshot.phase {
+        case .recording:
+            voiceBridge.requestStop()
+            reload()
+        case .waiting:
+            stopWhenRecordingStarts = true
+        case .idle, .transcribing, .failed:
+            break
+        }
+    }
+
+    private func scheduleColdLaunchFallback() {
+        launchFallback?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.voiceBridge.snapshot.phase == .waiting else { return }
+            self.openContainingApp()
+        }
+        launchFallback = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
+    }
+
+    private func openContainingApp() {
+        guard appLauncher.open(URL(string: "donottype://dictate")) else {
+            statusLabel.text = "Open DoNotType to activate dictation, then return here."
+            return
+        }
+        statusLabel.text = "Swipe back after DoNotType starts listening."
+    }
+
+    // MARK: - Insertion and correction learning
+
+    @objc private func insertLatest() {
+        guard let entry = entries.first else { return }
+        insert(entry.text)
+        store.markInserted(entry.id)
+        transientStatus = "Inserted latest transcript"
+        reload()
+    }
+
+    private func insert(_ text: String) {
+        let correction = dictionaryStore.load().learnsFromEdits
+            ? correctionAnchor(for: text) : nil
+        textDocumentProxy.insertText(text)
+        if let correction {
+            correctionStore.save(correction)
+            observePendingCorrection()
+        } else {
+            correctionStore.clear()
+        }
+        if let entry = entries.first(where: { $0.text == text && !$0.inserted }) {
+            store.markInserted(entry.id)
+        }
     }
 
     @objc private func statusTapped() {
         guard !lastLearnedTerms.isEmpty else { return }
         if let snapshot = try? dictionaryStore.forgetLearned(lastLearnedTerms) {
-            statusLabel.text = "Removed learned spelling · \(snapshot.all.count) dictionary entries"
+            transientStatus =
+                "Removed learned spelling · \(snapshot.all.count) dictionary entries"
+            statusLabel.text = transientStatus
         }
         lastLearnedTerms = []
     }
@@ -136,7 +308,6 @@ final class KeyboardViewController: UIInputViewController {
     private func correctionAnchor(for inserted: String) -> CorrectionObservationStore.Pending? {
         let before = textDocumentProxy.documentContextBeforeInput
         let after = textDocumentProxy.documentContextAfterInput
-        // Both are nil in a secure field. Empty strings in an ordinary blank field are safe.
         guard before != nil || after != nil else { return nil }
         return .init(
             documentID: textDocumentProxy.documentIdentifier,
@@ -145,7 +316,6 @@ final class KeyboardViewController: UIInputViewController {
             inserted: inserted)
     }
 
-    /// Polls while this keyboard is visible; the persisted anchor resumes after switching back.
     private func observePendingCorrection() {
         correctionTask?.cancel()
         guard dictionaryStore.load().learnsFromEdits,
@@ -176,7 +346,8 @@ final class KeyboardViewController: UIInputViewController {
                     from: pending.inserted, corrected: edited)
                 if let (_, added) = try? dictionaryStore.learn(candidates), !added.isEmpty {
                     lastLearnedTerms = added
-                    statusLabel.text = "Learned \(added.joined(separator: ", ")) — tap to undo"
+                    transientStatus = "Learned \(added.joined(separator: ", ")) — tap to undo"
+                    statusLabel.text = transientStatus
                 }
                 correctionStore.clear()
                 return
@@ -208,42 +379,5 @@ final class KeyboardViewController: UIInputViewController {
         }
         guard start <= end else { return nil }
         return String(combined[start..<end])
-    }
-}
-
-extension KeyboardViewController: UITableViewDataSource, UITableViewDelegate {
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        entries.count
-    }
-
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "transcript", for: indexPath)
-        let entry = entries[indexPath.row]
-
-        var content = cell.defaultContentConfiguration()
-        content.text = entry.text
-        content.textProperties.numberOfLines = 2
-        content.secondaryText = entry.inserted ? "inserted" : nil
-        content.secondaryTextProperties.color = .tertiaryLabel
-        cell.contentConfiguration = content
-        cell.backgroundColor = .clear
-        return cell
-    }
-
-    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        tableView.deselectRow(at: indexPath, animated: true)
-        let entry = entries[indexPath.row]
-
-        let correction = dictionaryStore.load().learnsFromEdits
-            ? correctionAnchor(for: entry.text) : nil
-        textDocumentProxy.insertText(entry.text)
-        if let correction {
-            correctionStore.save(correction)
-            observePendingCorrection()
-        } else {
-            correctionStore.clear()
-        }
-        store.markInserted(entry.id)
-        reload()
     }
 }

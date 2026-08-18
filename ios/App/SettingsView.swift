@@ -54,7 +54,8 @@ struct SettingsView: View {
         Section {
             SetupRow(
                 title: "Microphone",
-                detail: "Recording happens only while you are dictating.",
+                detail: "After keyboard dictation, the input session stays warm for up to five "
+                    + "minutes so later presses do not switch apps.",
                 isDone: microphoneGranted,
                 action: requestMicrophone)
 
@@ -66,16 +67,16 @@ struct SettingsView: View {
 
             SetupRow(
                 title: "Allow Full Access",
-                detail: "Required: the shared container is the keyboard's only way to see "
-                    + "transcripts. iOS does not let this app verify the switch.",
+                detail: "Required for keyboard voice commands and transcript insertion. iOS does "
+                    + "not let this app verify the switch.",
                 isDone: nil,
                 action: openSystemSettings)
         } header: {
             Text("Setup")
         } footer: {
             Text(
-                "iOS does not let a keyboard extension open a microphone, so this app records and "
-                    + "the keyboard inserts what it produced."
+                "The first cold press briefly opens this app to start capture. Later presses use "
+                    + "the warm session while the keyboard inserts the result."
             )
         }
     }
@@ -430,7 +431,7 @@ struct InitialSetupView: View {
 
                     SetupRow(
                         title: "Allow Full Access",
-                        detail: "Required so the keyboard can read transcripts from this app. "
+                        detail: "Required for keyboard voice commands and transcript insertion. "
                             + "iOS does not let the app verify this switch.",
                         isDone: nil,
                         action: openSystemSettings)

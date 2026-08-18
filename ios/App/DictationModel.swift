@@ -286,9 +286,18 @@ final class DictationModel {
     private let prompts: PromptStore
     private let history: HistoryStore
     private let recorder = StreamingAudioRecorder()
+    private let voiceKeyboardBridge = VoiceKeyboardBridge()
     private var levelTimer: Timer?
     private var recordingURL: URL?
     private var livePipeline: LiveAudioPipeline?
+    private var isStartingRecording = false
+    private var currentDictationIsFromKeyboard = false
+    private var keyboardSessionTimeoutTask: Task<Void, Never>?
+    private static let keyboardSessionTimeout: TimeInterval = 5 * 60
+
+    /// Shown only for a cold keyboard launch. Recording has already started; this surface tells
+    /// the user to swipe back to the app whose text field still owns the keyboard.
+    private(set) var isReturnToHostPresented = false
 
     init() {
         let defaults = UserDefaults.standard
@@ -328,6 +337,13 @@ final class DictationModel {
         // Console and no shell, so a log file in the shared container is the only evidence a bug
         // report can ever carry.
         AppLogging.start(directory: directory)
+
+        recorder.onHeartbeat = { [voiceKeyboardBridge] in
+            voiceKeyboardBridge.touchSession()
+        }
+        VoiceKeyboardBridge.observeCommands { [weak self] command in
+            Task { @MainActor in self?.handleKeyboardCommand(command) }
+        }
 
         #if DEBUG
         // The simulator cannot feed silence into AVAudioEngine reliably. This launch-only seam
@@ -619,10 +635,40 @@ final class DictationModel {
 
     // MARK: - Recording
 
+    /// Handles `donottype://dictate`, after the keyboard has persisted a start request and opened
+    /// the containing app. Persisting first matters: a Darwin notification cannot wake a process
+    /// that does not exist yet, while this state survives the launch.
+    func handleKeyboardLaunch() {
+        let snapshot = voiceKeyboardBridge.snapshot
+        guard snapshot.phase == .waiting,
+            let updatedAt = snapshot.updatedAt,
+            Date().timeIntervalSince(updatedAt) < 10
+        else { return }
+
+        isReturnToHostPresented = true
+        Task { await beginRecording(fromKeyboard: true) }
+    }
+
+    func dismissReturnToHost() {
+        isReturnToHostPresented = false
+    }
+
+    private func handleKeyboardCommand(_ command: VoiceKeyboardBridge.Command) {
+        switch command {
+        case .start:
+            Task { await beginRecording(fromKeyboard: true) }
+        case .stop:
+            if state == .recording, currentDictationIsFromKeyboard { finishRecording() }
+        case .cancel:
+            guard currentDictationIsFromKeyboard else { return }
+            cancelKeyboardDictation()
+        }
+    }
+
     func toggleRecording() {
         switch state {
         case .recording: finishRecording()
-        case .idle, .notice, .failed: Task { await beginRecording() }
+        case .idle, .notice, .failed: Task { await beginRecording(fromKeyboard: false) }
         case .transcribing: break
         }
     }
@@ -645,7 +691,7 @@ final class DictationModel {
 
         switch state {
         case .recording: finishRecording()  // second tap ends it
-        case .idle, .notice, .failed: Task { await beginRecording() }
+        case .idle, .notice, .failed: Task { await beginRecording(fromKeyboard: false) }
         case .transcribing: break
         }
     }
@@ -660,11 +706,18 @@ final class DictationModel {
         if state == .recording { finishRecording() }
     }
 
-    private func beginRecording() async {
+    private func beginRecording(fromKeyboard: Bool) async {
+        guard !isStartingRecording, state != .recording, state != .transcribing else { return }
+        isStartingRecording = true
+        currentDictationIsFromKeyboard = fromKeyboard
+        keyboardSessionTimeoutTask?.cancel()
+        keyboardSessionTimeoutTask = nil
+        defer { isStartingRecording = false }
+
         // Fail before asking for the microphone or capturing speech. A recording with nowhere to
         // send it is not useful, and discovering that only after speaking makes setup look broken.
         guard hasAPIKey else {
-            state = .failed("Add an API key in Settings before dictating.")
+            failRecordingStart("Add an API key in Settings before dictating.")
             return
         }
 
@@ -675,7 +728,7 @@ final class DictationModel {
             log.error(
                 "cannot record: the microphone permission is not granted",
                 ["permission": "microphone"])
-            state = .failed("Microphone access is off. Opening Settings…")
+            failRecordingStart("Microphone access is off. Open DoNotType Settings to enable it.")
             openAppSettings()
             return
         }
@@ -695,7 +748,9 @@ final class DictationModel {
 
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])
+            try session.setCategory(
+                .playAndRecord, mode: .measurement,
+                options: [.defaultToSpeaker, .mixWithOthers, .allowBluetoothHFP])
             try session.setActive(true)
 
             let url = FileManager.default.temporaryDirectory
@@ -716,6 +771,10 @@ final class DictationModel {
             }
             try recorder.start(url: url)
             state = .recording
+            if fromKeyboard {
+                voiceKeyboardBridge.touchSession()
+                voiceKeyboardBridge.publishRecordingStarted()
+            }
 
             // One id from the tap to the transcript, on every line and on the history row. A phone
             // has nowhere to show a trace, so the log is the only place this can be reconstructed.
@@ -731,6 +790,7 @@ final class DictationModel {
         } catch {
             recorder.cancel()
             deactivateAudioSession()
+            voiceKeyboardBridge.endSession()
             livePipeline?.cancel()
             livePipeline = nil
             recorder.onPCM = nil
@@ -740,21 +800,37 @@ final class DictationModel {
                     "dictation": Self.short(pendingID),
                     "detail": FailureAdvice.detail(of: error),
                 ])
-            state = .failed(FailureAdvice.describe(error).message)
+            failRecordingStart(FailureAdvice.describe(error).message)
         }
+    }
+
+    private func failRecordingStart(_ message: String) {
+        state = .failed(message)
+        if currentDictationIsFromKeyboard { voiceKeyboardBridge.publishFailure(message) }
+        currentDictationIsFromKeyboard = false
+        isReturnToHostPresented = false
+        // A failed command may have arrived during an existing warm session (for example, after
+        // the key was removed). Cancelling its old timer must not leave the microphone warm
+        // indefinitely.
+        armKeyboardSessionTimeout()
     }
 
     private func finishRecording() {
         levelTimer?.invalidate()
         levelTimer = nil
-        let stoppedURL = recorder.stop()
-        deactivateAudioSession()
+        let keepSessionWarm = currentDictationIsFromKeyboard
+        let stoppedURL = recorder.stop(keepMonitoring: keepSessionWarm)
+        if keepSessionWarm {
+            voiceKeyboardBridge.touchSession()
+        } else {
+            deactivateAudioSession()
+        }
         recorder.onPCM = nil
         levels = Self.silentMeter
 
         guard let url = stoppedURL ?? recordingURL else {
             log.info("recording produced no file", ["dictation": Self.short(pendingID)])
-            state = .failed("Recording failed — no audio was captured.")
+            finishKeyboardRequestWithFailure("Recording failed — no audio was captured.")
             return
         }
         recordingURL = nil
@@ -763,7 +839,7 @@ final class DictationModel {
             livePipeline?.cancel()
             livePipeline = nil
             log.info("recording too short to send", ["dictation": Self.short(pendingID)])
-            showNotice("Recording was too short — try again")
+            finishKeyboardRequestWithNotice("Recording was too short — try again")
             return
         }
 
@@ -781,7 +857,7 @@ final class DictationModel {
                 livePipeline?.cancel()
                 livePipeline = nil
                 try? FileManager.default.removeItem(at: url)
-                state = .failed(error.localizedDescription)
+                finishKeyboardRequestWithFailure(error.localizedDescription)
                 return
             }
             guard livePipeline != nil || activity.hasSpeech else {
@@ -789,7 +865,7 @@ final class DictationModel {
                     "nothing was said, so nothing was sent",
                     ["dictation": Self.short(pendingID), "audio": activity.summary])
                 try? FileManager.default.removeItem(at: url)
-                showNotice("No speech detected — recording wasn’t sent")
+                finishKeyboardRequestWithNotice("No speech detected — recording wasn’t sent")
                 return
             }
         }
@@ -801,18 +877,19 @@ final class DictationModel {
                 "bytes": "\((try? Data(contentsOf: url))?.count ?? 0)",
             ])
         state = .transcribing
+        if currentDictationIsFromKeyboard { voiceKeyboardBridge.publishTranscribing() }
         let pipeline = livePipeline
         livePipeline = nil
         Task { await transcribe(url: url, livePipeline: pipeline) }
     }
 
-    /// Stops capture when the app loses its visible foreground surface.
-    ///
-    /// The app has no background-audio entitlement, so attempting to continue would at best leave
-    /// a stale Recording state after suspension. It would also violate the stronger product rule:
-    /// the microphone never outlives the surface that says it is on.
+    /// Stops ordinary in-app capture when its visible surface disappears. A dictation explicitly
+    /// started by the keyboard is the exception: the keyboard is its visible recording surface,
+    /// and the containing app owns the audio session precisely so it can continue in background.
     func stopRecordingForBackground() {
+        isReturnToHostPresented = false
         guard state == .recording else { return }
+        guard !currentDictationIsFromKeyboard else { return }
         log.info(
             "recording stopped because the app left the foreground",
             ["dictation": Self.short(pendingID)])
@@ -829,6 +906,52 @@ final class DictationModel {
         // Do not auto-dismiss this notice while the process is suspended. It should still explain
         // the stopped recording when the user returns, however long the app was in the background.
         state = .notice("Recording stopped when DoNotType left the foreground")
+    }
+
+    private func cancelKeyboardDictation() {
+        levelTimer?.invalidate()
+        levelTimer = nil
+        recorder.cancel(keepMonitoring: true)
+        recorder.onPCM = nil
+        livePipeline?.cancel()
+        livePipeline = nil
+        recordingURL = nil
+        pressStartedAt = nil
+        levels = Self.silentMeter
+        state = .idle
+        currentDictationIsFromKeyboard = false
+        isReturnToHostPresented = false
+        armKeyboardSessionTimeout()
+    }
+
+    private func finishKeyboardRequestWithFailure(_ message: String) {
+        state = .failed(message)
+        if currentDictationIsFromKeyboard { voiceKeyboardBridge.publishFailure(message) }
+        currentDictationIsFromKeyboard = false
+        isReturnToHostPresented = false
+        armKeyboardSessionTimeout()
+    }
+
+    private func finishKeyboardRequestWithNotice(_ message: String) {
+        if currentDictationIsFromKeyboard { voiceKeyboardBridge.publishFailure(message) }
+        currentDictationIsFromKeyboard = false
+        isReturnToHostPresented = false
+        armKeyboardSessionTimeout()
+        showNotice(message)
+    }
+
+    private func armKeyboardSessionTimeout() {
+        keyboardSessionTimeoutTask?.cancel()
+        guard recorder.isMonitoring else { return }
+        keyboardSessionTimeoutTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.keyboardSessionTimeout))
+            guard let self, !Task.isCancelled,
+                self.state != .recording, self.state != .transcribing
+            else { return }
+            self.recorder.stopMonitoring()
+            self.deactivateAudioSession()
+            self.voiceKeyboardBridge.endSession()
+        }
     }
 
     /// Releases the route immediately so music, calls, and other audio regain their prior session.
@@ -911,13 +1034,14 @@ final class DictationModel {
 
     private func transcribe(url: URL, livePipeline: LiveAudioPipeline? = nil) async {
         defer { try? FileManager.default.removeItem(at: url) }
+        let isKeyboardRequest = currentDictationIsFromKeyboard
 
         // Read once, here. Moving the picker while a transcription is in flight must not change
         // what the recording already made becomes.
         let style = liveStyle
 
         guard let coordinator = makeCoordinator() else {
-            state = .failed("Add your API key in Settings.")
+            finishKeyboardRequestWithFailure("Add your API key in Settings.")
             return
         }
 
@@ -967,7 +1091,7 @@ final class DictationModel {
                 // also return an empty transcript. Both need a visible outcome; returning to idle
                 // immediately makes a successful tap look ignored.
                 log.info("nothing was said", ["dictation": Self.short(pendingID)])
-                showNotice("No speech was transcribed")
+                finishKeyboardRequestWithNotice("No speech was transcribed")
                 return
             }
 
@@ -1024,7 +1148,10 @@ final class DictationModel {
             record.latencySeconds = Date().timeIntervalSince(releasedAt)
             await history.insert(record, audio: keepAudio ? try? Data(contentsOf: url) : nil)
 
-            deliver(delivered)
+            deliver(delivered, toKeyboard: isKeyboardRequest)
+            currentDictationIsFromKeyboard = false
+            isReturnToHostPresented = false
+            armKeyboardSessionTimeout()
             if record.rewriteFailed == true {
                 state = .failed("Inserted — not rewritten.")
                 await refresh()
@@ -1051,13 +1178,18 @@ final class DictationModel {
             record.errorDetail = detail
             await history.insert(record, audio: try? Data(contentsOf: url))
             state = .failed(advice.message)
+            if isKeyboardRequest { voiceKeyboardBridge.publishFailure(advice.message) }
+            currentDictationIsFromKeyboard = false
+            isReturnToHostPresented = false
+            armKeyboardSessionTimeout()
         }
         await refresh()
     }
 
     /// Hands a finished transcript to the keyboard and the clipboard.
-    private func deliver(_ text: String) {
+    private func deliver(_ text: String, toKeyboard: Bool = false) {
         transcriptStore.append(text)
+        if toKeyboard { voiceKeyboardBridge.publishResult(text) }
         // Also to the pasteboard, so it is usable in apps where the keyboard is not enabled.
         UIPasteboard.general.string = text
     }
