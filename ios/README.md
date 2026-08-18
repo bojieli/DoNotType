@@ -25,11 +25,19 @@ keyboard extension                    containing app
 ```
 
 On a cold first press, the keyboard persists a start request and opens `donottype://dictate`. The
-app starts the same recorder/provider pipeline as its main dictation button, then suspends itself so
-iOS restores the original app, keyboard, and text field. After the user stops, the result returns to
-the visibly attached keyboard and is inserted automatically. A Darwin update can arrive while the
-keyboard controller is hidden; that controller must leave the result pending rather than clearing
-it after an insertion attempt through a stale `UITextDocumentProxy`.
+app starts the same recorder/provider pipeline as its main dictation button, then reopens the host
+application whose bundle identifier the extension captured before the switch. Known system apps
+use their registered URL and other hosts use a bundle-targeted Launch Services request; the manual
+bottom-edge gesture remains a fallback because iOS has no public return-to-caller API. After the
+user stops, the result returns to the visibly attached keyboard and is inserted automatically. A
+Darwin update can arrive while the keyboard controller is hidden; that controller must leave the
+result pending rather than clearing it after an insertion attempt through a stale
+`UITextDocumentProxy`.
+
+While waiting or transcribing, the keyboard's centre button becomes a cancel button. Cancellation
+returns the shared phase to idle, cancels the live pipeline and provider task, and checks task
+cancellation again before history or insertion so a late response cannot type discarded text. The
+containing app exposes the same action beneath its transcribing state.
 
 The app keeps its audio input session warm for five minutes after a keyboard dictation. During
 that window, a tap or hold on the keyboard mic sends start/stop commands without another app
