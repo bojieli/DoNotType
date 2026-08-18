@@ -5,6 +5,7 @@ import DoNotTypeCore
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
+import VisionKit
 
 struct SettingsTransferView: View {
     @Bindable var model: DictationModel
@@ -435,7 +436,147 @@ private enum QRScannerState: Equatable, Sendable {
     }
 }
 
-private struct CameraQRScanner: UIViewRepresentable {
+private struct CameraQRScanner: View {
+    let onCode: (String) -> Void
+    let onStateChange: (QRScannerState) -> Void
+
+    var body: some View {
+        if DataScannerViewController.isSupported {
+            VisionKitQRScanner(onCode: onCode, onStateChange: onStateChange)
+        } else {
+            AVFoundationQRScanner(onCode: onCode, onStateChange: onStateChange)
+        }
+    }
+}
+
+/// VisionKit uses Apple's full document-scanning pipeline rather than AVFoundation's lightweight
+/// metadata detector. Its accurate mode, camera selection, guidance, and zoom handling make dense
+/// settings codes displayed on a desktop monitor substantially easier to resolve.
+private struct VisionKitQRScanner: UIViewControllerRepresentable {
+    let onCode: (String) -> Void
+    let onStateChange: (QRScannerState) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onCode: onCode, onStateChange: onStateChange)
+    }
+
+    func makeUIViewController(context: Context) -> DataScannerViewController {
+        let scanner = DataScannerViewController(
+            recognizedDataTypes: [.barcode(symbologies: [.qr])],
+            qualityLevel: .accurate,
+            recognizesMultipleItems: false,
+            isHighFrameRateTrackingEnabled: true,
+            isPinchToZoomEnabled: true,
+            isGuidanceEnabled: true,
+            isHighlightingEnabled: true)
+        scanner.delegate = context.coordinator
+        context.coordinator.start(scanner)
+        return scanner
+    }
+
+    func updateUIViewController(
+        _ uiViewController: DataScannerViewController,
+        context: Context
+    ) {}
+
+    static func dismantleUIViewController(
+        _ uiViewController: DataScannerViewController,
+        coordinator: Coordinator
+    ) {
+        coordinator.stop(uiViewController)
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, DataScannerViewControllerDelegate {
+        private let onCode: (String) -> Void
+        private let onStateChange: (QRScannerState) -> Void
+        private var startupTask: Task<Void, Never>?
+        private var delivered = false
+
+        init(
+            onCode: @escaping (String) -> Void,
+            onStateChange: @escaping (QRScannerState) -> Void
+        ) {
+            self.onCode = onCode
+            self.onStateChange = onStateChange
+        }
+
+        func start(_ scanner: DataScannerViewController) {
+            onStateChange(.starting)
+            startupTask = Task { @MainActor [weak self, weak scanner] in
+                guard let self, let scanner else { return }
+                let authorized: Bool
+                switch AVCaptureDevice.authorizationStatus(for: .video) {
+                case .authorized:
+                    authorized = true
+                case .notDetermined:
+                    authorized = await AVCaptureDevice.requestAccess(for: .video)
+                case .denied, .restricted:
+                    authorized = false
+                @unknown default:
+                    onStateChange(.failed)
+                    return
+                }
+
+                guard !Task.isCancelled else { return }
+                guard authorized else {
+                    onStateChange(.permissionDenied)
+                    return
+                }
+                guard DataScannerViewController.isAvailable else {
+                    onStateChange(.cameraUnavailable)
+                    return
+                }
+                do {
+                    try scanner.startScanning()
+                    onStateChange(.scanning)
+                } catch {
+                    onStateChange(.failed)
+                }
+            }
+        }
+
+        func stop(_ scanner: DataScannerViewController) {
+            startupTask?.cancel()
+            scanner.stopScanning()
+        }
+
+        func dataScanner(
+            _ dataScanner: DataScannerViewController,
+            didAdd addedItems: [RecognizedItem],
+            allItems: [RecognizedItem]
+        ) {
+            guard !delivered else { return }
+            for item in addedItems {
+                guard case .barcode(let barcode) = item,
+                    let value = barcode.payloadStringValue
+                else { continue }
+                delivered = true
+                dataScanner.stopScanning()
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                onCode(value)
+                return
+            }
+        }
+
+        func dataScanner(
+            _ dataScanner: DataScannerViewController,
+            becameUnavailableWithError error: DataScannerViewController.ScanningUnavailable
+        ) {
+            switch error {
+            case .cameraRestricted:
+                onStateChange(.permissionDenied)
+            case .unsupported:
+                onStateChange(.cameraUnavailable)
+            @unknown default:
+                onStateChange(.failed)
+            }
+        }
+    }
+}
+
+/// Fallback for devices on which VisionKit's data scanner is not supported.
+private struct AVFoundationQRScanner: UIViewRepresentable {
     let onCode: (String) -> Void
     let onStateChange: (QRScannerState) -> Void
 
