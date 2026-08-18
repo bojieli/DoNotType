@@ -94,7 +94,7 @@ struct ContentView: View {
         NavigationStack {
             VStack(spacing: 28) {
                 Spacer()
-                styleChips
+                dictationModeBadge
                 recordButton
                 // Reserved rather than inserted: a meter that appears on the first word would push
                 // the button under the thumb that is holding it.
@@ -164,53 +164,30 @@ struct ContentView: View {
         }
     }
 
-    /// Verbatim, or one of the rewrites.
-    ///
-    /// The desktop makes this choice with a second hotkey — which key you hold decides, before you
-    /// speak. A phone has no second key, so it is a picker above the button, and the rule the
-    /// hotkey preserves is the one that matters: the choice is made *before* speaking. A menu
-    /// between finishing a sentence and seeing it appear would defeat the point of dictating.
-    ///
-    /// Hidden when no configured backend can rewrite text at all — a recogniser has no text
-    /// endpoint, so this is not a control that would work less well, it is one that cannot work.
-    /// Shown even when a rewrite cannot run, greyed out with the reason underneath.
-    ///
-    /// It used to be hidden, on the reasoning that a control which cannot work is worse than one
-    /// that is not there. It is not: a missing control cannot explain itself, and the feature ended
-    /// up looking absent rather than unavailable — the question "where is the rewrite" has no
-    /// answer on screen, while "why is this greyed out" does.
-    @ViewBuilder private var styleChips: some View {
-        let availability = model.rewriteAvailability
-
-        Picker("Style", selection: $model.liveStyle) {
-            ForEach(RewriteStyle.allCases, id: \.self) { style in
-                Text(Self.chipLabel(style)).tag(style)
-            }
+    /// The phone equivalent of the desktop's two hotkeys. This chooses the operation only; the
+    /// rewrite style is configured in Settings instead of being mixed with dictation fidelity.
+    private var dictationModeBadge: some View {
+        HStack(spacing: 3) {
+            modeButton("Dictate", rewrite: false)
+            modeButton("Rewrite", rewrite: true)
+                .disabled(!model.canRewrite)
         }
-        .pickerStyle(.segmented)
-        .disabled(
-            !availability.isAvailable || model.state == .recording
-                || model.state == .transcribing)
-        .accessibilityIdentifier("style-picker")
-
-        if let reason = availability.reason {
-            Text(reason)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("style-unavailable")
-        }
+        .padding(3)
+        .background(.quaternary, in: Capsule())
     }
 
-    /// The style's own word rather than "rewrite", which is what somebody is waiting for.
-    private static func chipLabel(_ style: RewriteStyle) -> String {
-        switch style {
-        case .verbatim: "Verbatim"
-        case .formal: "Formal"
-        case .concise: "Concise"
-        case .bullets: "Bullets"
-        }
+    private func modeButton(_ title: String, rewrite: Bool) -> some View {
+        let selected = model.liveStyle.isRewrite == rewrite
+        return Button(title) { model.setRewriteModeEnabled(rewrite) }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(selected ? Color.white : Color.primary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(selected ? Color.accentColor : Color.clear, in: Capsule())
+            .buttonStyle(.plain)
+            .disabled(model.state == .recording || model.state == .transcribing)
+            .accessibilityIdentifier(rewrite ? "mode-rewrite" : "mode-dictate")
+            .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var recordButton: some View {
@@ -340,8 +317,9 @@ struct ContentView: View {
     }
 }
 
-/// The cold-start half of iOS voice-keyboard dictation. The app opens the microphone and then
-/// suspends itself so iOS restores the original text field while recording continues.
+/// The cold-start half of iOS voice-keyboard dictation. The app opens the microphone, attempts a
+/// targeted return when iOS provided a host identifier, and gives honest manual instructions when
+/// current iOS versions withhold it.
 private struct KeyboardReturnToHostView: View {
     let state: DictationModel.State
     let dismiss: () -> Void
@@ -359,13 +337,20 @@ private struct KeyboardReturnToHostView: View {
                 Text(state == .recording ? "DoNotType is listening" : "Starting dictation…")
                     .font(.title.bold())
 
-                Text("Returning to the previous app… If this screen remains, swipe right across the bottom edge. You only need this switch when the voice session has gone cold.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 420)
+                VStack(spacing: 10) {
+                    Text("Return to the app where you were typing")
+                        .font(.headline)
 
-                Image(systemName: "arrow.right")
+                    Text("Swipe across the bottom edge to the previous app, or open it manually. Keep speaking — dictation continues after you leave DoNotType.")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: 420)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("keyboard-return-instructions")
+
+                Image(systemName: "arrow.left.and.right")
                     .font(.system(size: 38, weight: .medium))
                     .symbolEffect(.pulse)
                     .accessibilityHidden(true)

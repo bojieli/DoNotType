@@ -13,6 +13,7 @@ import app.donottype.core.ProviderFactory
 import app.donottype.core.ProviderKind
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.RewriteAvailability
+import app.donottype.core.RewriteStyle
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -64,6 +65,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var modelField: EditText
     private lateinit var recommendationNote: TextView
     private lateinit var groundingNote: TextView
+    private lateinit var rewriteStylePicker: Spinner
     private lateinit var rewriteNote: TextView
     private lateinit var fallbackKeyField: EditText
     private lateinit var fallbackDelayField: EditText
@@ -296,11 +298,12 @@ class SettingsActivity : AppCompatActivity() {
         )
 
         // ---- Rewrite ----
-        // Named here even though the choice is made on the keyboard, because this screen is where
-        // somebody looks for a feature and the chips are not visible until the keyboard is open.
-        // The desktops had the same problem in reverse: a row called "Second key" that never said
-        // what it produced.
+        // The keyboard chooses only the operation. Its formatting policy belongs here, separately
+        // from Fidelity, so "Dictate" is never presented as though it were a fourth writing style.
         column.addView(sectionTitle("Rewrite"))
+        column.addView(body("Rewrite style"))
+        rewriteStylePicker = buildRewriteStylePicker()
+        column.addView(rewriteStylePicker)
         rewriteNote = body("")
         column.addView(rewriteNote)
 
@@ -683,11 +686,11 @@ class SettingsActivity : AppCompatActivity() {
         // Stated whether or not it can: a note that appears only on failure leaves the feature
         // undiscoverable in the ordinary case, which is how it came to look absent entirely.
         val availability = RewriteAvailability.resolve(kind) { !Settings.keyFor(it).isNullOrBlank() }
+        rewriteStylePicker.isEnabled = availability.isAvailable
         rewriteNote.text = availability.reason
-            ?: "Available. Open the DoNotType keyboard and pick Formal, Concise or Bullets above " +
-                "the talk button — before you speak, so there is no mode to leave switched on. " +
-                "The verbatim transcript is kept either way. Summaries are not offered live; use " +
-                "Transcribe a recording for those."
+            ?: "Use the small Dictate/Rewrite switch on the keyboard before you speak. This " +
+                "setting controls what Rewrite produces; Fidelity only cleans the transcript. " +
+                "The verbatim transcript is kept either way."
 
         recommendationNote.text = kind.recommendationNote
         recommendationNote.visibility =
@@ -750,6 +753,28 @@ class SettingsActivity : AppCompatActivity() {
                         setOnClickListener { Settings.fidelity = fidelity }
                     }
                 )
+            }
+        }
+    }
+
+    private fun buildRewriteStylePicker(): Spinner {
+        val styles = RewriteStyle.entries.filter { it.isRewrite }
+        return Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@SettingsActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                styles.map { it.label },
+            )
+            setSelection(styles.indexOf(Settings.preferredRewriteStyle).coerceAtLeast(0))
+            contentDescription = "rewrite-style"
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: AdapterView<*>?, view: View?, position: Int, id: Long,
+                ) {
+                    Settings.preferredRewriteStyle = styles[position]
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             }
         }
     }

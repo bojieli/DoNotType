@@ -1,5 +1,6 @@
 import DoNotTypeCore
 import Darwin
+import ObjectiveC.runtime
 import UIKit
 
 /// DoNotType's voice keyboard.
@@ -37,6 +38,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private lazy var appLauncher = KeyboardContainingAppLauncher { [weak self] in self }
     private lazy var statusLabel = UILabel()
+    private lazy var modeControl = UISegmentedControl(items: ["Dictate", "Rewrite"])
     private lazy var dictateButton = UIButton(type: .system)
     private lazy var cancelButton = UIButton(type: .system)
     private lazy var settingsButton = UIButton(type: .system)
@@ -102,6 +104,15 @@ final class KeyboardViewController: UIInputViewController {
         statusLabel.addGestureRecognizer(
             UITapGestureRecognizer(target: self, action: #selector(statusTapped)))
 
+        modeControl.selectedSegmentIndex = voiceBridge.rewriteModeEnabled == true ? 1 : 0
+        modeControl.selectedSegmentTintColor = .systemBlue
+        modeControl.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .selected)
+        modeControl.setTitleTextAttributes([.foregroundColor: UIColor.label], for: .normal)
+        modeControl.accessibilityIdentifier = "kb-dictation-mode"
+        modeControl.accessibilityLabel = "Dictation mode"
+        modeControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
+        modeControl.translatesAutoresizingMaskIntoConstraints = false
+
         dictateButton.accessibilityIdentifier = "kb-dictate"
         dictateButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
         dictateButton.tintColor = .white
@@ -145,6 +156,7 @@ final class KeyboardViewController: UIInputViewController {
         backspaceButton.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(statusLabel)
+        view.addSubview(modeControl)
         view.addSubview(dictateButton)
         view.addSubview(cancelButton)
         view.addSubview(settingsButton)
@@ -152,15 +164,20 @@ final class KeyboardViewController: UIInputViewController {
         view.addSubview(backspaceButton)
 
         NSLayoutConstraint.activate([
-            view.heightAnchor.constraint(equalToConstant: 170),
+            view.heightAnchor.constraint(equalToConstant: 205),
 
             statusLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
             statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 64),
             statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -64),
             statusLabel.heightAnchor.constraint(equalToConstant: 30),
 
+            modeControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            modeControl.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 2),
+            modeControl.widthAnchor.constraint(equalToConstant: 160),
+            modeControl.heightAnchor.constraint(equalToConstant: 28),
+
             dictateButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            dictateButton.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 4),
+            dictateButton.topAnchor.constraint(equalTo: modeControl.bottomAnchor, constant: 4),
             dictateButton.widthAnchor.constraint(equalToConstant: 170),
             dictateButton.heightAnchor.constraint(equalToConstant: 58),
 
@@ -188,6 +205,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func reload() {
         entries = store.load()
+        modeControl.selectedSegmentIndex = voiceBridge.rewriteModeEnabled == true ? 1 : 0
 
         guard hasFullAccess else {
             statusLabel.text =
@@ -271,6 +289,9 @@ final class KeyboardViewController: UIInputViewController {
             for: .normal)
         dictateButton.setTitle(title, for: .normal)
         dictateButton.backgroundColor = background
+        let canChangeMode = phase == .idle || phase == .failed
+        modeControl.setEnabled(canChangeMode, forSegmentAt: 0)
+        modeControl.setEnabled(canChangeMode, forSegmentAt: 1)
         cancelButton.isHidden = phase != .waiting && phase != .transcribing
         switch phase {
         case .waiting:
@@ -291,6 +312,14 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     // MARK: - Dictation gesture
+
+    @objc private func modeChanged() {
+        voiceBridge.setRewriteModeEnabled(modeControl.selectedSegmentIndex == 1)
+        transientStatus = modeControl.selectedSegmentIndex == 1
+            ? "Rewrite mode · choose its style in Settings"
+            : "Dictation mode"
+        reload()
+    }
 
     @objc private func dictateTouchDown() {
         transientStatus = nil
@@ -396,23 +425,58 @@ final class KeyboardViewController: UIInputViewController {
                 else { continue }
                 return value
             }
+
+            // `_UIHostedWindow` keeps this value in `__hostBundleIdentifier` without exposing a
+            // getter for it. `responds(to:)` therefore says false even though the ivar already
+            // contains the application that owns the text field. Read object-valued host ivars
+            // through the Objective-C runtime before falling back to an audit token.
+            if let value = privateHostIdentifierIvar(on: object) { return value }
         }
-        return extensionHostSigningIdentifier()
+        return hostSigningIdentifier(in: objects)
     }
 
-    /// The extension context always carries an audit token for the process hosting it, even when
-    /// its convenience bundle-ID properties are still null. Resolve the signing identifier from
-    /// that token so a cold launch can return to the actual application rather than Home Screen.
-    private func extensionHostSigningIdentifier() -> String? {
-        guard let context = extensionContext else { return nil }
-        let selector = NSSelectorFromString("_extensionHostAuditToken")
-        guard context.responds(to: selector), let implementation = context.method(for: selector)
-        else { return nil }
+    private func privateHostIdentifierIvar(on object: NSObject) -> String? {
+        let names = ["__hostBundleIdentifier", "_hostBundleIdentifier", "_hostBundleID"]
+        for name in names {
+            guard let ivar = class_getInstanceVariable(type(of: object), name),
+                let encoding = ivar_getTypeEncoding(ivar), encoding.pointee == 64,
+                let rawValue = object_getIvar(object, ivar) as? String,
+                let value = KeyboardHostIdentifier.normalized(rawValue),
+                value != Bundle.main.bundleIdentifier,
+                value != "app.donottype"
+            else { continue }
+            return value
+        }
+        return nil
+    }
 
-        typealias AuditTokenGetter = @convention(c) (AnyObject, Selector) -> audit_token_t
-        let getter = unsafeBitCast(implementation, to: AuditTokenGetter.self)
-        let auditToken = getter(context, selector)
+    /// The extension context owns a copy of the caller's audit token. Do not call UIKit's similarly
+    /// named `_hostAuditToken` on the view controller: a custom keyboard has no view-service host
+    /// operator there, and iOS 26.6 dereferences that null operator inside UIKit.
+    private func hostSigningIdentifier(in objects: [NSObject]) -> String? {
+        for object in objects {
+            for name in ["_extensionHostAuditToken"] {
+                let selector = NSSelectorFromString(name)
+                guard object.responds(to: selector),
+                    let method = class_getInstanceMethod(type(of: object), selector),
+                    let encoding = method_getTypeEncoding(method), encoding.pointee == 123,
+                    let implementation = object.method(for: selector)
+                else { continue }
 
+                typealias AuditTokenGetter = @convention(c) (AnyObject, Selector) -> audit_token_t
+                let getter = unsafeBitCast(implementation, to: AuditTokenGetter.self)
+                if let identifier = signingIdentifier(for: getter(object, selector)),
+                    identifier != Bundle.main.bundleIdentifier,
+                    identifier != "app.donottype"
+                {
+                    return identifier
+                }
+            }
+        }
+        return nil
+    }
+
+    private func signingIdentifier(for auditToken: audit_token_t) -> String? {
         typealias CreateTask = @convention(c) (CFAllocator?, audit_token_t) -> Unmanaged<CFTypeRef>?
         typealias CopySigningIdentifier = @convention(c) (
             CFTypeRef, UnsafeMutablePointer<Unmanaged<CFError>?>?

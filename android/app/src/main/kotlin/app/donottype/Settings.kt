@@ -26,6 +26,7 @@ object Settings {
     private const val KEY_PROVIDER = "provider"
     private const val KEY_MODEL = "model"
     private const val KEY_LIVE_STYLE = "liveStyle"
+    private const val KEY_REWRITE_STYLE = "rewriteStyle"
     private const val KEY_KEYTERMS = "keytermBiasing"
     private const val KEY_FALLBACK = "fallbackProvider"
     private const val KEY_FALLBACK_AFTER = "fallbackAfterSeconds"
@@ -183,13 +184,7 @@ object Settings {
         get() = if (ready) prefs.getInt(KEY_FALLBACK_AFTER, 8).coerceIn(1, 120) else 8
         set(value) { if (ready) prefs.edit().putInt(KEY_FALLBACK_AFTER, value.coerceIn(1, 120)).apply() }
 
-    /**
-     * What the keyboard produces: the transcript, or a rewrite of it.
-     *
-     * The desktop makes this choice with a second hotkey — which key you hold decides. A phone has
-     * no second key, so the choice is a chip on the keyboard, made before speaking rather than from
-     * a menu afterwards. Same rule, the only input the platform has.
-     */
+    /** What the next keyboard dictation produces. The keyboard exposes only Dictate or Rewrite. */
     var liveStyle: RewriteStyle
         get() = if (ready) {
             RewriteStyle.from(prefs.getString(KEY_LIVE_STYLE, null)) ?: RewriteStyle.VERBATIM
@@ -197,6 +192,26 @@ object Settings {
             RewriteStyle.VERBATIM
         }
         set(value) { if (ready) prefs.edit().putString(KEY_LIVE_STYLE, value.id).apply() }
+
+    /** The configured style behind Rewrite, kept when the keyboard switches back to Dictate. */
+    var preferredRewriteStyle: RewriteStyle
+        get() {
+            if (!ready) return RewriteStyle.FORMAL
+            val stored = RewriteStyle.from(prefs.getString(KEY_REWRITE_STYLE, null))
+            if (stored?.isRewrite == true) return stored
+            return liveStyle.takeIf { it.isRewrite } ?: RewriteStyle.FORMAL
+        }
+        set(value) {
+            if (!ready || !value.isRewrite) return
+            prefs.edit().putString(KEY_REWRITE_STYLE, value.id).apply()
+            if (liveStyle.isRewrite) liveStyle = value
+        }
+
+    var rewriteModeEnabled: Boolean
+        get() = liveStyle.isRewrite
+        set(value) {
+            liveStyle = if (value) preferredRewriteStyle else RewriteStyle.VERBATIM
+        }
 
     var keytermBiasing: Boolean
         get() = ready && prefs.getBoolean(KEY_KEYTERMS, false)

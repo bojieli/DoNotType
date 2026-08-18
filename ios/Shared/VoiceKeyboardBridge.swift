@@ -91,6 +91,7 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
         static let keyboardLastSeen = "voiceKeyboard.keyboardLastSeen"
         static let keyboardHasFullAccess = "voiceKeyboard.keyboardHasFullAccess"
         static let returnHostBundleIdentifier = "voiceKeyboard.returnHostBundleIdentifier"
+        static let rewriteModeEnabled = "voiceKeyboard.rewriteModeEnabled"
     }
 
     private enum NotificationName {
@@ -140,6 +141,20 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
     public var returnHostBundleIdentifier: String? {
         defaults?.string(forKey: Key.returnHostBundleIdentifier)
             .flatMap(KeyboardHostIdentifier.normalized)
+    }
+
+    /// The small Dictate/Rewrite switch belongs to the keyboard, while the selected rewrite style
+    /// belongs to Settings. Optional distinguishes an existing install that has never made the
+    /// new choice from somebody who explicitly selected Dictate.
+    public var rewriteModeEnabled: Bool? {
+        guard defaults?.object(forKey: Key.rewriteModeEnabled) != nil else { return nil }
+        return defaults?.bool(forKey: Key.rewriteModeEnabled)
+    }
+
+    public func setRewriteModeEnabled(_ enabled: Bool) {
+        defaults?.set(enabled, forKey: Key.rewriteModeEnabled)
+        defaults?.synchronize()
+        Self.post(NotificationName.update)
     }
 
     public func setReturnHostBundleIdentifier(_ bundleIdentifier: String?) {

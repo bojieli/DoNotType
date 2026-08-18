@@ -94,6 +94,16 @@ final class VoiceKeyboardBridgeTests: XCTestCase {
         XCTAssertEqual(bridge.keyboardSetupStatus.hasFullAccess, true)
     }
 
+    func testKeyboardPersistsTheDictateOrRewriteModeSeparatelyFromItsStyle() {
+        XCTAssertNil(bridge.rewriteModeEnabled)
+
+        bridge.setRewriteModeEnabled(true)
+        XCTAssertEqual(bridge.rewriteModeEnabled, true)
+
+        bridge.setRewriteModeEnabled(false)
+        XCTAssertEqual(bridge.rewriteModeEnabled, false)
+    }
+
     func testKeyboardPersistsAndClearsTheCallingApplication() {
         XCTAssertNil(bridge.returnHostBundleIdentifier)
 

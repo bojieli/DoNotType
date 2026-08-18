@@ -84,6 +84,20 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["record"].isEnabled)
     }
 
+    /// iOS 26.4 and later can withhold the keyboard host's bundle ID. The cold-launch surface must
+    /// not promise an automatic return that cannot happen; it must explain both manual routes and
+    /// make clear that leaving DoNotType does not stop capture.
+    func testColdKeyboardLaunchExplainsManualReturnWithoutStoppingDictation() {
+        let app = launch(arguments: ["-ui-testing-keyboard-return-state"])
+        let instructions = app.descendants(matching: .any)["keyboard-return-instructions"]
+
+        XCTAssertTrue(instructions.waitForExistence(timeout: 10))
+        XCTAssertTrue(instructions.label.contains("Swipe across the bottom edge"))
+        XCTAssertTrue(instructions.label.contains("open it manually"))
+        XCTAssertTrue(instructions.label.contains("dictation continues"))
+        XCTAssertTrue(app.buttons["cancel-keyboard-dictation"].exists)
+    }
+
     /// A recording must not outlive the only surface that tells the user the microphone is on.
     func testLeavingTheForegroundStopsRecordingAndExplainsWhy() {
         let app = launch(arguments: ["-ui-testing-recording-state"])
@@ -99,27 +113,22 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["record"].isEnabled)
     }
 
-    /// The style picker, which is how a phone makes the choice the desktop makes with a second
-    /// hotkey — before speaking, not from a menu afterwards.
-    ///
-    /// A fresh install has no API key, so nothing can rewrite. The picker is still shown, disabled,
-    /// with a line saying why: hiding it is what made the feature look absent rather than
-    /// unavailable, and "where is the rewrite" is a question the screen cannot answer while "why is
-    /// this greyed out" is one it can.
-    ///
-    /// The previous version of this test asserted the opposite and passed for the wrong reason — it
-    /// only held while the default backend was a recogniser, and broke the moment the default
-    /// became a model, because the rule it tested never checked for a key at all.
-    func testTheStylePickerIsShownButDisabledUntilSomethingCanRewrite() {
+    /// Live dictation chooses only the operation. Formatting styles live in Settings, where they
+    /// cannot be mistaken for fidelity levels; a missing key is also explained there.
+    func testDictateAndRewriteAreSeparateFromTheRewriteStyleSetting() {
         let app = launch(arguments: ["-ui-testing-no-api-key"])
         XCTAssertTrue(app.buttons["record"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["mode-dictate"].exists)
+        XCTAssertTrue(app.buttons["mode-rewrite"].exists)
+        XCTAssertFalse(app.segmentedControls["style-picker"].exists)
 
-        let picker = app.segmentedControls["style-picker"]
-        XCTAssertTrue(picker.exists, "the picker should be visible so the feature is discoverable")
+        app.buttons["open-settings"].tap()
+        let picker = app.descendants(matching: .any)["rewrite-style"].firstMatch
+        XCTAssertTrue(reveal(picker, in: app), "rewrite style should be configured in Settings")
         XCTAssertFalse(picker.isEnabled, "with no key configured, nothing can rewrite")
 
-        let reason = app.staticTexts["style-unavailable"]
-        XCTAssertTrue(reason.exists, "a disabled control has to say why it is disabled")
+        let reason = app.descendants(matching: .any)["rewrite-unavailable"].firstMatch
+        XCTAssertTrue(reveal(reason, in: app), "a disabled control has to say why it is disabled")
         XCTAssertTrue(
             (reason.label).contains("API key"),
             "the reason should name what is missing, got: \(reason.label)")
@@ -137,11 +146,20 @@ final class DoNotTypeUITests: XCTestCase {
         app.buttons["open-settings"].tap()
 
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
-        for control in ["api-key", "model", "fidelity", "retention", "keep-audio", "open-prompt"] {
+        for control in [
+            "api-key", "model", "fidelity", "rewrite-style", "open-dictionary", "retention",
+            "keep-audio", "open-prompt",
+        ] {
             XCTAssertTrue(
                 reveal(app.descendants(matching: .any)[control].firstMatch, in: app),
                 "\(control) should be reachable in Settings")
         }
+
+        let dictionary = app.descendants(matching: .any)["open-dictionary"].firstMatch
+        XCTAssertFalse(dictionary.label.contains("model.personalDictionaryTerms.count"))
+        XCTAssertNotNil(
+            dictionary.label.range(of: #"\d+ (entry|entries)"#, options: .regularExpression),
+            "the dictionary row should show a human-readable entry count, got \(dictionary.label)")
     }
 
     /// Covers the complete safe round trip without changing a preference: Settings exports the

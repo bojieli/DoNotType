@@ -184,7 +184,10 @@ object SettingsTransfer {
         Settings.learnDictionaryFromEdits = dictionary.optBoolean("learnsFromEdits", false)
 
         root.optJSONObject("android")?.let { android ->
-            parsed.liveStyle?.let { Settings.liveStyle = it }
+            parsed.liveStyle?.let {
+                if (it.isRewrite) Settings.preferredRewriteStyle = it
+                Settings.rewriteModeEnabled = it.isRewrite
+            }
             Settings.groundingEnabled = android.optBoolean(
                 "groundingEnabled", Settings.groundingEnabled)
             Settings.keytermBiasing = android.optBoolean(

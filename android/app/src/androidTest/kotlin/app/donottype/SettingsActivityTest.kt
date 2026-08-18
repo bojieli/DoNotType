@@ -107,6 +107,42 @@ class SettingsActivityTest {
         }
     }
 
+    @Test
+    fun rewriteStyleIsConfiguredSeparatelyFromTheLiveDictateOrRewriteMode() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                Settings.liveStyle = RewriteStyle.VERBATIM
+                val root = activity.findViewById<ViewGroup>(android.R.id.content)
+                val picker = root.firstDescendant(Spinner::class.java) {
+                    it.contentDescription == "rewrite-style"
+                }
+                val labels = (0 until picker.adapter.count)
+                    .map { picker.adapter.getItem(it).toString() }
+
+                assertEquals(
+                    listOf(
+                        RewriteStyle.FORMAL.label,
+                        RewriteStyle.CONCISE.label,
+                        RewriteStyle.BULLETS.label,
+                    ),
+                    labels,
+                )
+                assertTrue("Dictate is a mode, not a rewrite style", labels.none { it == "Verbatim" })
+
+                val concise = labels.indexOf(RewriteStyle.CONCISE.label)
+                picker.onItemSelectedListener!!.onItemSelected(
+                    picker, null, concise, concise.toLong(),
+                )
+                assertEquals(RewriteStyle.CONCISE, Settings.preferredRewriteStyle)
+                assertEquals(
+                    "changing rewrite formatting must not silently turn Rewrite on",
+                    RewriteStyle.VERBATIM,
+                    Settings.liveStyle,
+                )
+            }
+        }
+    }
+
     /** The setting without which the app can do nothing at all. */
     @Test
     fun savingAnApiKeyPersistsIt() {

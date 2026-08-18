@@ -11,7 +11,6 @@ import app.donottype.core.NoSpeechException
 import app.donottype.core.Log as DntLog
 import app.donottype.core.LiveTranscriptionSession
 import app.donottype.core.RewriteAvailability
-import app.donottype.core.RewriteStyle
 import app.donottype.core.ProviderFactory
 import app.donottype.core.ProviderKind
 import app.donottype.core.ProviderTransport
@@ -68,8 +67,8 @@ class DoNotTypeIME : InputMethodService() {
     private val service by lazy { DictationService(this) }
 
     private lateinit var statusLabel: TextView
-    private lateinit var styleRow: LinearLayout
-    private val styleButtons = mutableMapOf<RewriteStyle, Button>()
+    private lateinit var modeRow: LinearLayout
+    private val modeButtons = mutableMapOf<Boolean, Button>()
     private lateinit var talkButton: Button
     private lateinit var indicator: DictationIndicatorView
 
@@ -129,7 +128,7 @@ class DoNotTypeIME : InputMethodService() {
         scope.launch { withContext(Dispatchers.IO) { service.retryAll() } }
         // The provider may have changed in the app since this keyboard was last shown, and with it
         // whether a rewrite is possible at all.
-        refreshStyleRow()
+        refreshModeRow()
         render()
         pendingLifecycleNotice?.let { message ->
             pendingLifecycleNotice = null
@@ -190,7 +189,7 @@ class DoNotTypeIME : InputMethodService() {
             }
         }
 
-        styleRow = buildStyleRow()
+        modeRow = buildModeRow()
         indicator = DictationIndicatorView(this)
 
         talkButton = Button(this).apply {
@@ -221,7 +220,7 @@ class DoNotTypeIME : InputMethodService() {
         }
 
         root.addView(statusLabel)
-        root.addView(styleRow)
+        root.addView(modeRow)
         root.addView(
             indicator,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 120),
@@ -230,56 +229,46 @@ class DoNotTypeIME : InputMethodService() {
             talkButton,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 180),
         )
-        refreshStyleRow()
+        refreshModeRow()
         render()
         return root
     }
 
-    /**
-     * The style chips: verbatim, or one of the rewrites.
-     *
-     * The desktop makes this choice with a second hotkey — which key you hold decides, before you
-     * speak. A phone has no second key, so it is a chip, and the rule it preserves is the one that
-     * matters: the choice is made *before* speaking. A menu between finishing a sentence and seeing
-     * it appear would defeat the point of dictating.
-     *
-     * Hidden when the configured backend cannot rewrite text at all, because a control that cannot
-     * work is worse than one that is not there.
-     */
-    private fun buildStyleRow(): LinearLayout {
+    /** The phone equivalent of the desktop's two hotkeys; rewrite formatting stays in Settings. */
+    private fun buildModeRow(): LinearLayout {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 20)
         }
 
-        styleButtons.clear()
-        for (style in RewriteStyle.entries) {
+        modeButtons.clear()
+        for ((rewrite, label) in listOf(false to "Dictate", true to "Rewrite")) {
             val chip = Button(this).apply {
-                text = styleChipLabel(style)
+                text = label
                 textSize = 12f
                 isAllCaps = false
                 minWidth = 0
                 minimumWidth = 0
                 setPadding(24, 8, 24, 8)
+                contentDescription = "dictation-mode-${label.lowercase()}"
                 setOnClickListener {
-                    // Kept clickable while unavailable rather than disabled: a disabled Button
-                    // swallows the tap, and the tap is the only way a keyboard can ask "why is
-                    // this greyed out". The answer goes to the status line.
                     val availability = RewriteAvailability.resolve(Settings.provider) {
                         !Settings.keyFor(it).isNullOrBlank()
                     }
-                    if (style.isRewrite && !availability.isAvailable) {
+                    if (rewrite && !availability.isAvailable) {
                         availability.reason?.let { statusLabel.text = it }
-                        log.info(mapOf("style" to style.id)) { "rewrite chip unavailable" }
+                        log.info { "rewrite mode unavailable" }
                         return@setOnClickListener
                     }
-                    Settings.liveStyle = style
-                    log.info(mapOf("style" to style.id)) { "live style chosen" }
-                    refreshStyleRow()
+                    Settings.rewriteModeEnabled = rewrite
+                    log.info(mapOf("mode" to if (rewrite) "rewrite" else "dictate")) {
+                        "live mode chosen"
+                    }
+                    refreshModeRow()
                 }
             }
-            styleButtons[style] = chip
+            modeButtons[rewrite] = chip
             row.addView(
                 chip,
                 LinearLayout.LayoutParams(
@@ -291,35 +280,19 @@ class DoNotTypeIME : InputMethodService() {
         return row
     }
 
-    /** The chip's word, which is the style's own name rather than "rewrite". */
-    private fun styleChipLabel(style: RewriteStyle): String = when (style) {
-        RewriteStyle.VERBATIM -> "Verbatim"
-        RewriteStyle.FORMAL -> "Formal"
-        RewriteStyle.CONCISE -> "Concise"
-        RewriteStyle.BULLETS -> "Bullets"
-    }
-
-    private fun refreshStyleRow() {
-        if (!::styleRow.isInitialized) return
-
-        // Shown even when a rewrite cannot run, with the rewrite chips dimmed and unclickable.
-        //
-        // The row used to disappear, on the reasoning that a control which cannot work is worse
-        // than one that is not there. It is not: a missing control cannot explain itself, and the
-        // feature ended up looking absent rather than unavailable. A keyboard has no room for a
-        // sentence, so tapping a dimmed chip puts the reason in the status line, which is the one
-        // place on this surface that already carries explanations.
+    private fun refreshModeRow() {
+        if (!::modeRow.isInitialized) return
         val availability = RewriteAvailability.resolve(Settings.provider) {
             !Settings.keyFor(it).isNullOrBlank()
         }
-        styleRow.visibility = View.VISIBLE
-
-        // Verbatim is always reachable — it is what the main button does anyway, and leaving it
-        // live means the row still reads as a choice rather than as a dead strip.
-        val selected = if (availability.isAvailable) Settings.liveStyle else RewriteStyle.VERBATIM
-        styleButtons.forEach { (style, chip) ->
-            val usable = availability.isAvailable || !style.isRewrite
-            val active = style == selected
+        if (!availability.isAvailable && Settings.rewriteModeEnabled) {
+            Settings.rewriteModeEnabled = false
+        }
+        val canChange = state != State.RECORDING && state != State.TRANSCRIBING
+        modeButtons.forEach { (rewrite, chip) ->
+            val usable = canChange && (!rewrite || availability.isAvailable)
+            val active = rewrite == Settings.rewriteModeEnabled
+            chip.isEnabled = usable
             chip.setTextColor(
                 Color.parseColor(
                     when {
@@ -801,6 +774,7 @@ class DoNotTypeIME : InputMethodService() {
                 stopLevelUpdates()
             }
         }
+        refreshModeRow()
     }
 
     private companion object {

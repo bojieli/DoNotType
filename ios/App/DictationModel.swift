@@ -90,13 +90,20 @@ final class DictationModel {
         didSet { UserDefaults.standard.set(endpoint, forKey: "endpoint-\(provider.rawValue)") }
     }
 
-    /// What a dictation produces: the transcript, or a rewrite of it.
-    ///
-    /// The desktop makes this choice with a second hotkey. A phone has no second key, so it is a
-    /// picker above the button — the same rule, expressed with the only input the platform has:
-    /// chosen before speaking, never from a menu afterwards.
+    /// What the next dictation produces. Mobile exposes this as a two-state Dictate/Rewrite badge;
+    /// the particular rewrite style is configured separately in Settings.
     var liveStyle: RewriteStyle {
         didSet { UserDefaults.standard.set(liveStyle.rawValue, forKey: "liveStyle") }
+    }
+
+    /// The style used whenever the Dictate/Rewrite badge is on Rewrite. Keeping it separate means
+    /// selecting Dictate does not forget whether Rewrite was configured as Formal or Concise.
+    var preferredRewriteStyle: RewriteStyle {
+        didSet {
+            guard preferredRewriteStyle.isRewrite else { return }
+            UserDefaults.standard.set(preferredRewriteStyle.rawValue, forKey: "rewriteStyle")
+            if liveStyle.isRewrite { liveStyle = preferredRewriteStyle }
+        }
     }
 
     /// Whether the rewrite stage can run at all, and what to say when it cannot.
@@ -320,7 +327,16 @@ final class DictationModel {
         fallbackEndpoint = fallbackKind.map { Self.storedEndpoint(for: $0) } ?? ""
         fallbackAfterSeconds = Self.storedFallbackSeconds()
         fidelity = Fidelity(rawValue: defaults.string(forKey: "fidelity") ?? "") ?? .default
-        liveStyle = RewriteStyle(rawValue: defaults.string(forKey: "liveStyle") ?? "") ?? .verbatim
+        let storedLiveStyle =
+            RewriteStyle(rawValue: defaults.string(forKey: "liveStyle") ?? "") ?? .verbatim
+        liveStyle = storedLiveStyle
+        let storedRewriteStyle =
+            RewriteStyle(rawValue: defaults.string(forKey: "rewriteStyle") ?? "")
+        if let storedRewriteStyle, storedRewriteStyle.isRewrite {
+            preferredRewriteStyle = storedRewriteStyle
+        } else {
+            preferredRewriteStyle = storedLiveStyle.isRewrite ? storedLiveStyle : .formal
+        }
         retention = RetentionPolicy(rawValue: defaults.string(forKey: "retention") ?? "")
             ?? .forever
         keepAudio = defaults.bool(forKey: "keepAudio")
@@ -349,9 +365,20 @@ final class DictationModel {
             Task { @MainActor in self?.handleKeyboardCommand(command) }
         }
         VoiceKeyboardBridge.observeUpdates { [weak self] in
-            Task { @MainActor in self?.refreshKeyboardSetupStatus() }
+            Task { @MainActor in
+                self?.refreshKeyboardSetupStatus()
+                self?.syncRewriteModeFromKeyboard()
+            }
         }
         refreshKeyboardSetupStatus()
+
+        // Migrate the old four-way picker into the shared two-state keyboard switch. If the
+        // keyboard already wrote a choice before cold-launching this process, its choice wins.
+        if let enabled = voiceKeyboardBridge.rewriteModeEnabled {
+            liveStyle = enabled ? preferredRewriteStyle : .verbatim
+        } else {
+            voiceKeyboardBridge.setRewriteModeEnabled(liveStyle.isRewrite)
+        }
 
         // A process restart destroys the recording and request tasks but leaves App Group state
         // intact. Do not strand the keyboard on a recording/transcribing screen that no task can
@@ -381,6 +408,9 @@ final class DictationModel {
             state = .recording
         } else if arguments.contains("-ui-testing-transcribing-state") {
             state = .transcribing
+        } else if arguments.contains("-ui-testing-keyboard-return-state") {
+            state = .recording
+            isReturnToHostPresented = true
         }
         #endif
     }
@@ -463,7 +493,12 @@ final class DictationModel {
             forKey: "fallbackAfterSeconds")
         defaults.set(importedRetention.rawValue, forKey: "retention")
         defaults.set(document.keepAudio, forKey: "keepAudio")
-        if let importedStyle { defaults.set(importedStyle.rawValue, forKey: "liveStyle") }
+        if let importedStyle {
+            defaults.set(importedStyle.rawValue, forKey: "liveStyle")
+            if importedStyle.isRewrite {
+                defaults.set(importedStyle.rawValue, forKey: "rewriteStyle")
+            }
+        }
 
         let snapshot = try dictionaryStore.replace(with: .init(
             manual: document.dictionary.manual,
@@ -482,7 +517,10 @@ final class DictationModel {
         fidelity = importedFidelity
         retention = importedRetention
         keepAudio = document.keepAudio
-        if let importedStyle { liveStyle = importedStyle }
+        if let importedStyle {
+            if importedStyle.isRewrite { preferredRewriteStyle = importedStyle }
+            setRewriteModeEnabled(importedStyle.isRewrite)
+        }
         applyDictionary(snapshot)
         await refresh()
     }
@@ -673,6 +711,7 @@ final class DictationModel {
             Date().timeIntervalSince(updatedAt) < 10
         else { return }
 
+        syncRewriteModeFromKeyboard()
         isReturnToHostPresented = true
         Task { await beginRecording(fromKeyboard: true) }
     }
@@ -684,6 +723,7 @@ final class DictationModel {
     private func handleKeyboardCommand(_ command: VoiceKeyboardBridge.Command) {
         switch command {
         case .start:
+            syncRewriteModeFromKeyboard()
             Task { await beginRecording(fromKeyboard: true) }
         case .stop:
             if state == .recording, currentDictationIsFromKeyboard { finishRecording() }
@@ -708,6 +748,18 @@ final class DictationModel {
         case .idle, .notice, .failed: Task { await beginRecording(fromKeyboard: false) }
         case .transcribing: break
         }
+    }
+
+    /// Changes only the stage used by the next live dictation. The style behind Rewrite remains a
+    /// Settings preference and is shared with the keyboard through the bridge.
+    func setRewriteModeEnabled(_ enabled: Bool) {
+        liveStyle = enabled ? preferredRewriteStyle : .verbatim
+        voiceKeyboardBridge.setRewriteModeEnabled(enabled)
+    }
+
+    private func syncRewriteModeFromKeyboard() {
+        guard let enabled = voiceKeyboardBridge.rewriteModeEnabled else { return }
+        liveStyle = enabled ? preferredRewriteStyle : .verbatim
     }
 
     /// How long a press must last before releasing it ends the recording.

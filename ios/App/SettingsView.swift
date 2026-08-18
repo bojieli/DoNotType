@@ -23,6 +23,7 @@ struct SettingsView: View {
             setupSection
             providerSection
             dictationSection
+            rewriteSection
             dictionarySection
             historySection
             promptSection
@@ -203,14 +204,44 @@ struct SettingsView: View {
         }
     }
 
+    private var rewriteSection: some View {
+        Section {
+            Picker("Rewrite style", selection: $model.preferredRewriteStyle) {
+                ForEach(RewriteStyle.allCases.filter(\.isRewrite), id: \.self) { style in
+                    Text(style.label).tag(style)
+                }
+            }
+            .disabled(!model.canRewrite)
+            .accessibilityIdentifier("rewrite-style")
+
+            if let reason = model.rewriteAvailability.reason {
+                Label(reason, systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("rewrite-unavailable")
+            }
+        } header: {
+            Text("Rewrite")
+        } footer: {
+            Text(
+                "The Dictate/Rewrite badge chooses the operation before you speak. This setting "
+                    + "chooses what Rewrite produces. Fidelity above only cleans the transcript; "
+                    + "rewriting may reword it. The verbatim transcript is always kept."
+            )
+        }
+    }
+
     private var dictionarySection: some View {
         Section {
             NavigationLink {
                 DictionaryView(model: model)
             } label: {
                 LabeledContent("Personal dictionary") {
-                    Text("(model.personalDictionaryTerms.count) entries")
+                    Text(dictionaryEntryCountLabel)
                         .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("dictionary-count")
                 }
             }
             .accessibilityIdentifier("open-dictionary")
@@ -220,6 +251,11 @@ struct SettingsView: View {
                     + "on device and are visible and removable."
             )
         }
+    }
+
+    private var dictionaryEntryCountLabel: String {
+        let count = model.personalDictionaryTerms.count
+        return count == 1 ? "1 entry" : "\(count) entries"
     }
 
     // MARK: - History

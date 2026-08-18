@@ -40,10 +40,10 @@ phase to idle, cancels the live pipeline and provider task, and checks task canc
 before history or insertion so a late response cannot type discarded text. The containing app
 exposes the same action beneath its transcribing state.
 
-The extension uses a compact 170-point surface: status, a 170×58-point pill-shaped Speak control,
-then a utility row with Settings, Return, and Backspace. Settings opens the containing app directly
-on its configuration screen; Return and Backspace operate directly on the active
-`UITextDocumentProxy`, like transcript insertion. The system-owned globe remains outside the custom
+The extension uses a compact 205-point surface: status, a Dictate/Rewrite mode switch, a
+170×58-point pill-shaped Speak control, then a utility row with Settings, Return, and Backspace.
+Settings opens the containing app directly on its configuration screen; Return and Backspace
+operate directly on the active `UITextDocumentProxy`, like transcript insertion. The system-owned globe remains outside the custom
 surface, so the extension does not duplicate it.
 
 The app keeps its audio input session warm for five minutes after a keyboard dictation. During
