@@ -126,6 +126,25 @@ final class VoiceKeyboardBridgeTests: XCTestCase {
         XCTAssertNil(bridge.returnHostBundleIdentifier)
     }
 
+    func testKnownKeyboardHostsResolveToTheirPublicReturnRoutes() {
+        XCTAssertEqual(
+            KeyboardHostReturnURL.url(for: "com.apple.mobilenotes"),
+            URL(string: "mobilenotes:"))
+        XCTAssertEqual(
+            KeyboardHostReturnURL.url(for: "com.tencent.xin"),
+            URL(string: "weixin:"))
+        XCTAssertEqual(
+            KeyboardHostReturnURL.url(for: "com.openai.chat"),
+            URL(string: "openai:"))
+        XCTAssertEqual(
+            KeyboardHostReturnURL.url(for: "ph.telegra.Telegraph"),
+            URL(string: "telegram://resolve"))
+    }
+
+    func testUnknownKeyboardHostHasNoInventedReturnRoute() {
+        XCTAssertNil(KeyboardHostReturnURL.url(for: "com.example.unsupported"))
+    }
+
     func testCancelReturnsTheSharedStateToIdle() {
         bridge.requestStart()
         bridge.publishRecordingStarted()

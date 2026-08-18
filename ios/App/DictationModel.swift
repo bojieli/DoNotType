@@ -944,13 +944,11 @@ final class DictationModel {
     }
 
     private func openKeyboardHost(bundleIdentifier: String) async -> Bool {
-        // Notes is the first-party test target and publishes a URL scheme. Opening the root does
-        // not create a note or mutate its content; it simply foregrounds the existing Notes scene.
-        let knownURL: URL? = switch bundleIdentifier {
-        case "com.apple.mobilenotes", "com.apple.Notes": URL(string: "mobilenotes://")
-        default: nil
-        }
-        if let knownURL, await UIApplication.shared.open(knownURL) {
+        // Prefer the host's public interoperability route. This covers the common editing and
+        // messaging apps and, unlike a private bundle launch, reports whether iOS accepted it.
+        if let knownURL = KeyboardHostReturnURL.url(for: bundleIdentifier),
+            await UIApplication.shared.open(knownURL)
+        {
             log.info("returned through the host URL", ["host": bundleIdentifier])
             return true
         }
