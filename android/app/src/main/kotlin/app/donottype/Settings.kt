@@ -184,7 +184,7 @@ object Settings {
         get() = if (ready) prefs.getInt(KEY_FALLBACK_AFTER, 8).coerceIn(1, 120) else 8
         set(value) { if (ready) prefs.edit().putInt(KEY_FALLBACK_AFTER, value.coerceIn(1, 120)).apply() }
 
-    /** What the next keyboard dictation produces. The keyboard exposes only Dictate or Rewrite. */
+    /** What the current recording will produce when stopped, or the next one while idle. */
     var liveStyle: RewriteStyle
         get() = if (ready) {
             RewriteStyle.from(prefs.getString(KEY_LIVE_STYLE, null)) ?: RewriteStyle.VERBATIM

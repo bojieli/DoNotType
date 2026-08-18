@@ -30,6 +30,7 @@ import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.EditorInfo
 import android.text.InputType
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
@@ -67,8 +68,7 @@ class DoNotTypeIME : InputMethodService() {
     private val service by lazy { DictationService(this) }
 
     private lateinit var statusLabel: TextView
-    private lateinit var modeRow: LinearLayout
-    private val modeButtons = mutableMapOf<Boolean, Button>()
+    private lateinit var modeButton: Button
     private lateinit var talkButton: Button
     private lateinit var indicator: DictationIndicatorView
 
@@ -128,7 +128,7 @@ class DoNotTypeIME : InputMethodService() {
         scope.launch { withContext(Dispatchers.IO) { service.retryAll() } }
         // The provider may have changed in the app since this keyboard was last shown, and with it
         // whether a rewrite is possible at all.
-        refreshModeRow()
+        refreshModeButton()
         render()
         pendingLifecycleNotice?.let { message ->
             pendingLifecycleNotice = null
@@ -176,7 +176,8 @@ class DoNotTypeIME : InputMethodService() {
             textSize = 14f
             setTextColor(Color.parseColor("#8A9BA8"))
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 28)
+            setPadding(0, 0, 0, 0)
+            maxLines = 2
             // Tapping it opens the app, when the app is where the problem gets fixed. A keyboard
             // cannot request a runtime permission or hold an API key, so every one of its dead ends
             // is "go to the app" — and telling somebody to go somewhere is not the same as taking
@@ -189,7 +190,7 @@ class DoNotTypeIME : InputMethodService() {
             }
         }
 
-        modeRow = buildModeRow()
+        modeButton = buildModeButton()
         indicator = DictationIndicatorView(this)
 
         talkButton = Button(this).apply {
@@ -219,90 +220,85 @@ class DoNotTypeIME : InputMethodService() {
             }
         }
 
-        root.addView(statusLabel)
-        root.addView(modeRow)
+        root.addView(
+            statusLabel,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)),
+        )
         root.addView(
             indicator,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 120),
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(28)),
         )
+
+        val primaryRow = FrameLayout(this).apply {
+            addView(
+                talkButton,
+                FrameLayout.LayoutParams(dp(160), dp(56), Gravity.CENTER),
+            )
+            addView(
+                modeButton,
+                FrameLayout.LayoutParams(dp(80), dp(34), Gravity.START or Gravity.CENTER_VERTICAL),
+            )
+        }
         root.addView(
-            talkButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 180),
+            primaryRow,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)),
         )
-        refreshModeRow()
+        refreshModeButton()
         render()
         return root
     }
 
-    /** The phone equivalent of the desktop's two hotkeys; rewrite formatting stays in Settings. */
-    private fun buildModeRow(): LinearLayout {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 20)
-        }
-
-        modeButtons.clear()
-        for ((rewrite, label) in listOf(false to "Dictate", true to "Rewrite")) {
-            val chip = Button(this).apply {
-                text = label
-                textSize = 12f
-                isAllCaps = false
-                minWidth = 0
-                minimumWidth = 0
-                setPadding(24, 8, 24, 8)
-                contentDescription = "dictation-mode-${label.lowercase()}"
-                setOnClickListener {
-                    val availability = RewriteAvailability.resolve(Settings.provider) {
-                        !Settings.keyFor(it).isNullOrBlank()
-                    }
-                    if (rewrite && !availability.isAvailable) {
-                        availability.reason?.let { statusLabel.text = it }
-                        log.info { "rewrite mode unavailable" }
-                        return@setOnClickListener
-                    }
-                    Settings.rewriteModeEnabled = rewrite
-                    log.info(mapOf("mode" to if (rewrite) "rewrite" else "dictate")) {
-                        "live mode chosen"
-                    }
-                    refreshModeRow()
-                }
+    /** Shows the current live mode without taking horizontal space from the speaking control. */
+    private fun buildModeButton(): Button = Button(this).apply {
+        textSize = 12f
+        isAllCaps = false
+        minWidth = 0
+        minimumWidth = 0
+        minHeight = 0
+        minimumHeight = 0
+        setPadding(dp(8), dp(2), dp(8), dp(2))
+        setOnClickListener {
+            val rewrite = !Settings.rewriteModeEnabled
+            val availability = RewriteAvailability.resolve(Settings.provider) {
+                !Settings.keyFor(it).isNullOrBlank()
             }
-            modeButtons[rewrite] = chip
-            row.addView(
-                chip,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { marginEnd = 10 },
-            )
+            if (rewrite && !availability.isAvailable) {
+                availability.reason?.let { statusLabel.text = it }
+                log.info { "rewrite mode unavailable" }
+                return@setOnClickListener
+            }
+            Settings.rewriteModeEnabled = rewrite
+            log.info(mapOf("mode" to if (rewrite) "rewrite" else "dictate")) {
+                "live mode chosen"
+            }
+            refreshModeButton()
         }
-        return row
     }
 
-    private fun refreshModeRow() {
-        if (!::modeRow.isInitialized) return
+    private fun refreshModeButton() {
+        if (!::modeButton.isInitialized) return
         val availability = RewriteAvailability.resolve(Settings.provider) {
             !Settings.keyFor(it).isNullOrBlank()
         }
         if (!availability.isAvailable && Settings.rewriteModeEnabled) {
             Settings.rewriteModeEnabled = false
         }
-        val canChange = state != State.RECORDING && state != State.TRANSCRIBING
-        modeButtons.forEach { (rewrite, chip) ->
-            val usable = canChange && (!rewrite || availability.isAvailable)
-            val active = rewrite == Settings.rewriteModeEnabled
-            chip.isEnabled = usable
-            chip.setTextColor(
-                Color.parseColor(
-                    when {
-                        !usable -> "#4A5560"
-                        active -> "#0B0F14"
-                        else -> "#8A9BA8"
-                    }
-                )
-            )
-            chip.setBackgroundColor(Color.parseColor(if (active) "#7FB2FF" else "#1B2430"))
+        // finishRecording reads the style after capture stops, so the current recording may be
+        // corrected from Dictate to Rewrite (or back) without interrupting the speaker.
+        val canChange = state != State.TRANSCRIBING
+        val rewrite = Settings.rewriteModeEnabled
+        val canSwitch = canChange && (rewrite || availability.isAvailable)
+        val current = if (rewrite) "Rewrite" else "Dictate"
+        val next = if (rewrite) "Dictate" else "Rewrite"
+        modeButton.text = current
+        modeButton.isEnabled = canSwitch
+        modeButton.alpha = if (canSwitch) 1f else 0.55f
+        modeButton.setTextColor(Color.parseColor("#0B0F14"))
+        modeButton.setBackgroundColor(Color.parseColor(if (rewrite) "#B69CFF" else "#7FB2FF"))
+        modeButton.contentDescription = when {
+            canSwitch -> "Current mode: $current. Tap to switch to $next"
+            !canChange -> "Current mode: $current. Mode is fixed while transcribing"
+            else -> "Current mode: $current. Rewrite is unavailable"
         }
     }
 
@@ -522,8 +518,8 @@ class DoNotTypeIME : InputMethodService() {
             return
         }
 
-        // Read at the moment the recording ends, not when the request returns: tapping a
-        // different chip while a transcription is in flight must not change what it becomes.
+        // Read at the moment the recording ends: this accepts a mode correction made while the
+        // user was speaking, while a tap during the request cannot change what it becomes.
         val style = Settings.liveStyle
         val live = liveSession
         liveSession = null
@@ -774,15 +770,18 @@ class DoNotTypeIME : InputMethodService() {
                 stopLevelUpdates()
             }
         }
-        refreshModeRow()
+        refreshModeButton()
     }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private companion object {
         const val TAG = "DoNotTypeIME"
 
         const val PAD_SIDE = 48
-        const val PAD_TOP = 56
-        const val PAD_BOTTOM = 56
+        const val PAD_TOP = 32
+        const val PAD_BOTTOM = 32
 
         /**
          * How long a press has to last before releasing it ends the recording.
