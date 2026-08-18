@@ -41,8 +41,10 @@ before history or insertion so a late response cannot type discarded text. The c
 exposes the same action beneath its transcribing state.
 
 The extension uses a compact 170-point surface: status, a 170×58-point pill-shaped Speak control,
-then a utility row with keyboard switcher, latest-transcript recovery, Return, and Backspace. Return
-and Backspace operate directly on the active `UITextDocumentProxy`, like transcript insertion.
+then a utility row with Settings, Return, and Backspace. Settings opens the containing app directly
+on its configuration screen; Return and Backspace operate directly on the active
+`UITextDocumentProxy`, like transcript insertion. The system-owned globe remains outside the custom
+surface, so the extension does not duplicate it.
 
 The app keeps its audio input session warm for five minutes after a keyboard dictation. During
 that window, a tap or hold on the keyboard mic sends start/stop commands without another app
@@ -50,9 +52,9 @@ switch. The outlined mic means cold; the filled mic means warm. iOS displays its
 indicator while that warm input session is active. Samples are discarded between dictations, and
 the recorder/audio session are released when the window expires.
 
-The keyboard sets `hasDictationKey` because it supplies its own voice button; this prevents iOS
-from adding the system dictation key beside it. A manual **Insert latest** action remains as a
-recovery path for an interrupted result handoff.
+The keyboard sets `hasDictationKey` through UIKit because it supplies its own voice button; this
+prevents iOS from adding the system dictation key beside it. Results remain pending in the App Group
+until a visible keyboard can insert them automatically.
 
 The personal dictionary uses the same container. Manual entries and one-column CSV import are
 managed in the app; the keyboard reads the current list for every insertion. Optional correction
