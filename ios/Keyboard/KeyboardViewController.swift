@@ -1,4 +1,5 @@
 import DoNotTypeCore
+import Darwin
 import UIKit
 
 /// DoNotType's voice keyboard.
@@ -396,7 +397,38 @@ final class KeyboardViewController: UIInputViewController {
                 return value
             }
         }
-        return nil
+        return extensionHostSigningIdentifier()
+    }
+
+    /// The extension context always carries an audit token for the process hosting it, even when
+    /// its convenience bundle-ID properties are still null. Resolve the signing identifier from
+    /// that token so a cold launch can return to the actual application rather than Home Screen.
+    private func extensionHostSigningIdentifier() -> String? {
+        guard let context = extensionContext else { return nil }
+        let selector = NSSelectorFromString("_extensionHostAuditToken")
+        guard context.responds(to: selector), let implementation = context.method(for: selector)
+        else { return nil }
+
+        typealias AuditTokenGetter = @convention(c) (AnyObject, Selector) -> audit_token_t
+        let getter = unsafeBitCast(implementation, to: AuditTokenGetter.self)
+        let auditToken = getter(context, selector)
+
+        typealias CreateTask = @convention(c) (CFAllocator?, audit_token_t) -> Unmanaged<CFTypeRef>?
+        typealias CopySigningIdentifier = @convention(c) (
+            CFTypeRef, UnsafeMutablePointer<Unmanaged<CFError>?>?
+        ) -> Unmanaged<CFString>?
+        // Darwin's RTLD_DEFAULT is the sentinel `(void *)-2`; Swift's iOS overlay omits the name.
+        let defaultSymbolScope = UnsafeMutableRawPointer(bitPattern: -2)
+        guard let createSymbol = dlsym(defaultSymbolScope, "SecTaskCreateWithAuditToken"),
+            let copySymbol = dlsym(defaultSymbolScope, "SecTaskCopySigningIdentifier")
+        else { return nil }
+
+        let createTask = unsafeBitCast(createSymbol, to: CreateTask.self)
+        let copySigningIdentifier = unsafeBitCast(copySymbol, to: CopySigningIdentifier.self)
+        guard let task = createTask(kCFAllocatorDefault, auditToken)?.takeRetainedValue(),
+            let identifier = copySigningIdentifier(task, nil)?.takeRetainedValue() as String?
+        else { return nil }
+        return KeyboardHostIdentifier.normalized(identifier)
     }
 
     @objc private func cancelDictation() {
