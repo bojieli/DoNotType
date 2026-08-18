@@ -34,10 +34,15 @@ Darwin update can arrive while the keyboard controller is hidden; that controlle
 result pending rather than clearing it after an insertion attempt through a stale
 `UITextDocumentProxy`.
 
-While waiting or transcribing, the keyboard's centre button becomes a cancel button. Cancellation
-returns the shared phase to idle, cancels the live pipeline and provider task, and checks task
-cancellation again before history or insertion so a late response cannot type discarded text. The
-containing app exposes the same action beneath its transcribing state.
+While waiting or transcribing, a separate Cancel control appears in the keyboard's top-right corner;
+the primary Speak control never changes into a destructive action. Cancellation returns the shared
+phase to idle, cancels the live pipeline and provider task, and checks task cancellation again
+before history or insertion so a late response cannot type discarded text. The containing app
+exposes the same action beneath its transcribing state.
+
+The extension uses a compact 170-point surface: status, a 170×58-point pill-shaped Speak control,
+then a utility row with keyboard switcher, latest-transcript recovery, Return, and Backspace. Return
+and Backspace operate directly on the active `UITextDocumentProxy`, like transcript insertion.
 
 The app keeps its audio input session warm for five minutes after a keyboard dictation. During
 that window, a tap or hold on the keyboard mic sends start/stop commands without another app
