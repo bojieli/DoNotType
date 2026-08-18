@@ -109,6 +109,8 @@ final class KeyboardViewController: UIInputViewController {
             UITapGestureRecognizer(target: self, action: #selector(statusTapped)))
 
         modeButton.accessibilityIdentifier = "kb-dictation-mode"
+        modeButton.titleLabel?.numberOfLines = 1
+        modeButton.titleLabel?.lineBreakMode = .byClipping
         modeButton.addTarget(self, action: #selector(toggleMode), for: .touchUpInside)
         modeButton.translatesAutoresizingMaskIntoConstraints = false
 
@@ -168,7 +170,7 @@ final class KeyboardViewController: UIInputViewController {
         view.addSubview(backspaceButton)
 
         NSLayoutConstraint.activate([
-            view.heightAnchor.constraint(equalToConstant: 205),
+            view.heightAnchor.constraint(equalToConstant: 170),
 
             statusLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
             statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
@@ -324,9 +326,16 @@ final class KeyboardViewController: UIInputViewController {
         var configuration = UIButton.Configuration.filled()
         configuration.cornerStyle = .capsule
         configuration.image = UIImage(systemName: rewrite ? "wand.and.sparkles" : "mic.fill")
-        configuration.imagePadding = 4
-        configuration.contentInsets = .init(top: 6, leading: 8, bottom: 6, trailing: 8)
+        configuration.preferredSymbolConfigurationForImage = .init(
+            pointSize: 11, weight: .semibold)
+        configuration.imagePadding = 3
+        configuration.contentInsets = .init(top: 5, leading: 6, bottom: 5, trailing: 6)
         configuration.title = rewrite ? "Rewrite" : "Dictate"
+        configuration.titleTextAttributesTransformer = .init { attributes in
+            var attributes = attributes
+            attributes.font = .systemFont(ofSize: 12, weight: .semibold)
+            return attributes
+        }
         configuration.baseBackgroundColor = rewrite ? .systemPurple : .systemBlue
         configuration.baseForegroundColor = .white
         modeButton.configuration = configuration
