@@ -195,7 +195,7 @@ final class KeyboardViewController: UIInputViewController {
         case .recording:
             statusLabel.text = "Listening… tap to stop"
         case .transcribing:
-            statusLabel.text = "Transcribing…"
+            statusLabel.text = "Transcribing… tap × to cancel"
         case .failed:
             statusLabel.text = current.message ?? "Dictation failed — tap to try again"
         }
@@ -210,7 +210,7 @@ final class KeyboardViewController: UIInputViewController {
             symbol = "stop.fill"
             background = .systemRed
         case .waiting, .transcribing:
-            symbol = "ellipsis"
+            symbol = "xmark"
             background = .systemGray
         case .idle, .failed:
             symbol = sessionWarm ? "mic.fill" : "mic"
@@ -222,10 +222,22 @@ final class KeyboardViewController: UIInputViewController {
                 .init(pointSize: 42, weight: .semibold)),
             for: .normal)
         dictateButton.backgroundColor = background
-        dictateButton.accessibilityLabel = phase == .recording ? "Stop dictating" : "Dictate"
-        dictateButton.accessibilityHint = sessionWarm
-            ? "Tap to start and stop. Touch and hold to record only while held."
-            : "Opens DoNotType once to activate its microphone, then returns here."
+        switch phase {
+        case .waiting:
+            dictateButton.accessibilityLabel = "Cancel dictation"
+            dictateButton.accessibilityHint = "Cancels microphone activation."
+        case .transcribing:
+            dictateButton.accessibilityLabel = "Cancel transcription"
+            dictateButton.accessibilityHint = "Stops waiting and discards this transcription."
+        case .recording:
+            dictateButton.accessibilityLabel = "Stop dictating"
+            dictateButton.accessibilityHint = "Stops recording and starts transcription."
+        case .idle, .failed:
+            dictateButton.accessibilityLabel = "Dictate"
+            dictateButton.accessibilityHint = sessionWarm
+                ? "Tap to start and stop. Touch and hold to record only while held."
+                : "Opens DoNotType once to activate its microphone, then returns here."
+        }
     }
 
     // MARK: - Dictation gesture
@@ -239,6 +251,7 @@ final class KeyboardViewController: UIInputViewController {
         switch voiceBridge.snapshot.phase {
         case .idle, .failed:
             pressStartedRecording = true
+            voiceBridge.setReturnHostBundleIdentifier(keyboardHostBundleIdentifier())
             let wasWarm = voiceBridge.requestStart()
             reload()
             if wasWarm {
@@ -250,7 +263,9 @@ final class KeyboardViewController: UIInputViewController {
             voiceBridge.requestStop()
             reload()
         case .waiting, .transcribing:
-            break
+            voiceBridge.requestCancel()
+            transientStatus = "Cancelled"
+            reload()
         }
     }
 
@@ -290,6 +305,22 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         statusLabel.text = "Starting DoNotType dictation…"
+    }
+
+    /// `NSExtensionContext` does not publicly expose the application hosting a custom keyboard,
+    /// but iOS carries the identifier on the context. Capture it before the deep link replaces the
+    /// host on screen; the containing app needs it to return to the exact text field's app.
+    private func keyboardHostBundleIdentifier() -> String? {
+        guard let context = extensionContext else { return nil }
+        for name in ["_hostBundleIdentifier", "hostBundleIdentifier"] {
+            let selector = NSSelectorFromString(name)
+            guard context.responds(to: selector),
+                let value = context.perform(selector)?.takeUnretainedValue() as? String,
+                !value.isEmpty
+            else { continue }
+            return value
+        }
+        return nil
     }
 
     // MARK: - Insertion and correction learning

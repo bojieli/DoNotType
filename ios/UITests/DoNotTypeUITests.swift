@@ -73,6 +73,17 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(record.isEnabled, "no speech should not disable the next dictation")
     }
 
+    func testAStalledTranscriptionCanBeCancelled() {
+        let app = launch(arguments: ["-ui-testing-transcribing-state"])
+        let cancel = app.buttons["cancel-transcription"]
+
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10))
+        cancel.tap()
+
+        XCTAssertTrue(app.staticTexts["Cancelled"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["record"].isEnabled)
+    }
+
     /// A recording must not outlive the only surface that tells the user the microphone is on.
     func testLeavingTheForegroundStopsRecordingAndExplainsWhy() {
         let app = launch(arguments: ["-ui-testing-recording-state"])

@@ -93,4 +93,25 @@ final class VoiceKeyboardBridgeTests: XCTestCase {
         bridge.publishKeyboardSetupStatus(hasFullAccess: true)
         XCTAssertEqual(bridge.keyboardSetupStatus.hasFullAccess, true)
     }
+
+    func testKeyboardPersistsAndClearsTheCallingApplication() {
+        XCTAssertNil(bridge.returnHostBundleIdentifier)
+
+        bridge.setReturnHostBundleIdentifier("com.apple.mobilenotes")
+        XCTAssertEqual(bridge.returnHostBundleIdentifier, "com.apple.mobilenotes")
+
+        bridge.setReturnHostBundleIdentifier(nil)
+        XCTAssertNil(bridge.returnHostBundleIdentifier)
+    }
+
+    func testCancelReturnsTheSharedStateToIdle() {
+        bridge.requestStart()
+        bridge.publishRecordingStarted()
+        bridge.requestStop()
+        XCTAssertEqual(bridge.snapshot.phase, .transcribing)
+
+        bridge.requestCancel()
+        XCTAssertEqual(bridge.snapshot.phase, .idle)
+        XCTAssertNil(bridge.snapshot.result)
+    }
 }

@@ -63,6 +63,8 @@ struct ContentView: View {
             if model.isReturnToHostPresented {
                 KeyboardReturnToHostView(state: model.state) {
                     model.dismissReturnToHost()
+                } cancel: {
+                    model.cancelCurrentOperation()
                 }
                 .transition(.opacity)
             }
@@ -267,8 +269,16 @@ struct ContentView: View {
             case .recording: Text("Listening… tap to stop").foregroundStyle(.secondary)
             case .transcribing:
                 // Named, not a bare spinner: after you stop talking the wait is dead time, and the
-                // user needs to know what is consuming it and that it will end.
-                Text("Transcribing…").foregroundStyle(.secondary)
+                // user needs to know what is consuming it and retain a way out if the provider
+                // never answers.
+                VStack(spacing: 10) {
+                    Text("Transcribing…").foregroundStyle(.secondary)
+                    Button("Cancel transcription", role: .cancel) {
+                        model.cancelCurrentOperation()
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("cancel-transcription")
+                }
             case .notice(let message):
                 Text(message)
                     .foregroundStyle(.secondary)
@@ -316,6 +326,7 @@ struct ContentView: View {
 private struct KeyboardReturnToHostView: View {
     let state: DictationModel.State
     let dismiss: () -> Void
+    let cancel: () -> Void
 
     var body: some View {
         ZStack {
@@ -339,6 +350,16 @@ private struct KeyboardReturnToHostView: View {
                     .font(.system(size: 38, weight: .medium))
                     .symbolEffect(.pulse)
                     .accessibilityHidden(true)
+
+                if state == .recording || state == .transcribing {
+                    Button(
+                        state == .transcribing ? "Cancel transcription" : "Cancel dictation",
+                        role: .cancel,
+                        action: cancel
+                    )
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("cancel-keyboard-dictation")
+                }
             }
             .padding(32)
 

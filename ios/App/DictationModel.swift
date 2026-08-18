@@ -292,6 +292,8 @@ final class DictationModel {
     private var levelTimer: Timer?
     private var recordingURL: URL?
     private var livePipeline: LiveAudioPipeline?
+    private var transcribingPipeline: LiveAudioPipeline?
+    private var transcriptionTask: Task<Void, Never>?
     private var isStartingRecording = false
     private var currentDictationIsFromKeyboard = false
     private var keyboardSessionTimeoutTask: Task<Void, Never>?
@@ -351,6 +353,18 @@ final class DictationModel {
         }
         refreshKeyboardSetupStatus()
 
+        // A process restart destroys the recording and request tasks but leaves App Group state
+        // intact. Do not strand the keyboard on a recording/transcribing screen that no task can
+        // ever complete; `waiting` is deliberately preserved because that is the cold-launch
+        // request this new process is about to handle.
+        let inheritedKeyboardPhase = voiceKeyboardBridge.snapshot.phase
+        if inheritedKeyboardPhase == .recording || inheritedKeyboardPhase == .transcribing {
+            log.warning(
+                "clearing an interrupted keyboard operation after process launch",
+                ["phase": inheritedKeyboardPhase.rawValue])
+            voiceKeyboardBridge.publishFailure("Dictation was interrupted — tap to try again.")
+        }
+
         #if DEBUG
         // The simulator cannot feed silence into AVAudioEngine reliably. This launch-only seam
         // keeps the user-visible no-speech outcome under UI test without changing release builds.
@@ -365,6 +379,8 @@ final class DictationModel {
         } else if arguments.contains("-ui-testing-recording-state") {
             // Drives the foreground-lifecycle contract without relying on a simulator microphone.
             state = .recording
+        } else if arguments.contains("-ui-testing-transcribing-state") {
+            state = .transcribing
         }
         #endif
     }
@@ -673,8 +689,17 @@ final class DictationModel {
             if state == .recording, currentDictationIsFromKeyboard { finishRecording() }
         case .cancel:
             guard currentDictationIsFromKeyboard else { return }
-            cancelKeyboardDictation()
+            cancelCurrentOperationLocally()
         }
+    }
+
+    /// Cancels capture or the request that follows it. The keyboard writes its shared state to
+    /// idle before posting the command; the app does the same when this action originates on its
+    /// own screen so neither surface can remain stuck on "Transcribing…".
+    func cancelCurrentOperation() {
+        guard state == .recording || state == .transcribing else { return }
+        if currentDictationIsFromKeyboard { voiceKeyboardBridge.requestCancel() }
+        cancelCurrentOperationLocally()
     }
 
     func toggleRecording() {
@@ -841,24 +866,66 @@ final class DictationModel {
     }
 
     /// A keyboard cannot request microphone access itself, so a cold press must briefly activate
-    /// its containing app. Voice-first keyboards then suspend that app after audio is live, which
-    /// exposes the previous application and restores the exact keyboard/document proxy that
-    /// initiated the request. There is no public "return to previous app" API on iOS; using the
-    /// runtime selector mirrors the dynamic responder-chain URL launch required on the extension
-    /// side. If a future iOS release removes it, the on-screen swipe instruction remains usable.
+    /// its containing app. Generic suspension does not restore the caller on current iOS—it can
+    /// leave DoNotType in front or reveal the Home Screen. The extension therefore persists its
+    /// host bundle identifier before launching us. Prefer a registered URL for known system apps,
+    /// then use Launch Services' bundle-targeted handoff for other hosts. The bottom-edge gesture
+    /// remains the fallback if iOS rejects both runtime paths.
     private func returnToKeyboardHostAfterColdLaunch() {
         guard isReturnToHostPresented else { return }
-        let application = UIApplication.shared
-        let selector = NSSelectorFromString("suspend")
-        guard application.responds(to: selector) else {
-            log.warning("automatic return to the keyboard host is unavailable")
-            return
-        }
+        let host = voiceKeyboardBridge.returnHostBundleIdentifier
+        log.info(
+            "returning to the keyboard host after microphone activation",
+            ["host": host ?? "unavailable"])
 
-        log.info("returning to the keyboard host after microphone activation")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard let self, self.state == .recording,
+                self.currentDictationIsFromKeyboard
+            else { return }
+
+            if let host, await self.openKeyboardHost(bundleIdentifier: host) { return }
+
+            let application = UIApplication.shared
+            let selector = NSSelectorFromString("suspend")
+            guard application.responds(to: selector) else {
+                self.log.warning("automatic return to the keyboard host is unavailable")
+                return
+            }
+            self.log.warning(
+                "targeted keyboard return failed; trying generic suspension",
+                ["host": host ?? "unavailable"])
             _ = application.perform(selector)
         }
+    }
+
+    private func openKeyboardHost(bundleIdentifier: String) async -> Bool {
+        // Notes is the first-party test target and publishes a URL scheme. Opening the root does
+        // not create a note or mutate its content; it simply foregrounds the existing Notes scene.
+        let knownURL: URL? = switch bundleIdentifier {
+        case "com.apple.mobilenotes", "com.apple.Notes": URL(string: "mobilenotes://")
+        default: nil
+        }
+        if let knownURL, await UIApplication.shared.open(knownURL) {
+            log.info("returned through the host URL", ["host": bundleIdentifier])
+            return true
+        }
+
+        guard let workspaceType = NSClassFromString("LSApplicationWorkspace") as? NSObject.Type,
+            let workspace = workspaceType.perform(NSSelectorFromString("defaultWorkspace"))?
+                .takeUnretainedValue() as? NSObject
+        else {
+            log.warning("Launch Services workspace is unavailable", ["host": bundleIdentifier])
+            return false
+        }
+        let selector = NSSelectorFromString("openApplicationWithBundleID:")
+        guard workspace.responds(to: selector) else {
+            log.warning("Launch Services cannot open a bundle identifier", ["host": bundleIdentifier])
+            return false
+        }
+        _ = workspace.perform(selector, with: bundleIdentifier)
+        log.info("requested a bundle-targeted host return", ["host": bundleIdentifier])
+        return true
     }
 
     private func recordingStartMessage(for error: Error) -> String {
@@ -947,7 +1014,11 @@ final class DictationModel {
         if currentDictationIsFromKeyboard { voiceKeyboardBridge.publishTranscribing() }
         let pipeline = livePipeline
         livePipeline = nil
-        Task { await transcribe(url: url, livePipeline: pipeline) }
+        transcribingPipeline = pipeline
+        transcriptionTask?.cancel()
+        transcriptionTask = Task { @MainActor [weak self] in
+            await self?.transcribe(url: url, livePipeline: pipeline)
+        }
     }
 
     /// Stops ordinary in-app capture when its visible surface disappears. A dictation explicitly
@@ -978,19 +1049,26 @@ final class DictationModel {
         state = .notice("Recording stopped when DoNotType left the foreground")
     }
 
-    private func cancelKeyboardDictation() {
+    private func cancelCurrentOperationLocally() {
+        let keepSessionWarm = currentDictationIsFromKeyboard
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+        transcribingPipeline?.cancel()
+        transcribingPipeline = nil
         levelTimer?.invalidate()
         levelTimer = nil
-        recorder.cancel(keepMonitoring: true)
+        recorder.cancel(keepMonitoring: keepSessionWarm)
         recorder.onPCM = nil
         livePipeline?.cancel()
         livePipeline = nil
         recordingURL = nil
         pressStartedAt = nil
         levels = Self.silentMeter
-        state = .idle
+        if !keepSessionWarm { deactivateAudioSession() }
+        state = .notice("Cancelled")
         currentDictationIsFromKeyboard = false
         isReturnToHostPresented = false
+        log.info("dictation cancelled", ["dictation": Self.short(pendingID)])
         armKeyboardSessionTimeout()
     }
 
@@ -1104,6 +1182,13 @@ final class DictationModel {
 
     private func transcribe(url: URL, livePipeline: LiveAudioPipeline? = nil) async {
         defer { try? FileManager.default.removeItem(at: url) }
+        let dictationID = pendingID
+        defer {
+            if pendingID == dictationID {
+                transcribingPipeline = nil
+                transcriptionTask = nil
+            }
+        }
         let isKeyboardRequest = currentDictationIsFromKeyboard
 
         // Read once, here. Moving the picker while a transcription is in flight must not change
@@ -1134,6 +1219,7 @@ final class DictationModel {
                 try await makeTranscriber(primary: coordinator.service)
                     .transcribe(audio: audio, context: nil)
             }
+            try Task.checkCancellation()
             let result = outcome.result
             // Recorded as the backend that answered, not the one that was asked.
             record.provider = outcome.attribution.provider
@@ -1184,6 +1270,7 @@ final class DictationModel {
                 {
                     do {
                         let styled = try await rewriter.rewrite(text, instruction: instruction)
+                        try Task.checkCancellation()
                         record.styledText = styled
                         record.style = style
                         delivered = styled
@@ -1195,6 +1282,9 @@ final class DictationModel {
                                 "ms": LogClock.ms(Date().timeIntervalSince(rewriteStart)),
                             ])
                     } catch {
+                        if error is CancellationError || Task.isCancelled {
+                            throw CancellationError()
+                        }
                         // The words survive either way, so this is a warning rather than a
                         // failure — but it is said out loud, because a rewrite that fails every
                         // time should not be indistinguishable from one never asked for.
@@ -1216,7 +1306,9 @@ final class DictationModel {
             }
 
             record.latencySeconds = Date().timeIntervalSince(releasedAt)
+            try Task.checkCancellation()
             await history.insert(record, audio: keepAudio ? try? Data(contentsOf: url) : nil)
+            try Task.checkCancellation()
 
             deliver(delivered, toKeyboard: isKeyboardRequest)
             currentDictationIsFromKeyboard = false
@@ -1229,6 +1321,10 @@ final class DictationModel {
             }
             state = .idle
         } catch {
+            if error is CancellationError || Task.isCancelled {
+                log.info("transcription cancelled", ["dictation": Self.short(dictationID)])
+                return
+            }
             let advice = FailureAdvice.describe(error)
             let detail = FailureAdvice.detail(of: error)
 

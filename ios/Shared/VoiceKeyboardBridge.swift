@@ -61,6 +61,7 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
         static let heartbeat = "voiceKeyboard.heartbeat"
         static let keyboardLastSeen = "voiceKeyboard.keyboardLastSeen"
         static let keyboardHasFullAccess = "voiceKeyboard.keyboardHasFullAccess"
+        static let returnHostBundleIdentifier = "voiceKeyboard.returnHostBundleIdentifier"
     }
 
     private enum NotificationName {
@@ -102,6 +103,23 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
         return KeyboardSetupStatus(
             lastSeen: Date(timeIntervalSince1970: timestamp),
             hasFullAccess: defaults?.bool(forKey: Key.keyboardHasFullAccess))
+    }
+
+    /// The application whose text field launched the keyboard dictation. The extension captures
+    /// this before opening DoNotType so the containing app can return to the actual caller rather
+    /// than merely suspending to the Home Screen.
+    public var returnHostBundleIdentifier: String? {
+        defaults?.string(forKey: Key.returnHostBundleIdentifier)
+            .flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    public func setReturnHostBundleIdentifier(_ bundleIdentifier: String?) {
+        if let bundleIdentifier, !bundleIdentifier.isEmpty {
+            defaults?.set(bundleIdentifier, forKey: Key.returnHostBundleIdentifier)
+        } else {
+            defaults?.removeObject(forKey: Key.returnHostBundleIdentifier)
+        }
+        defaults?.synchronize()
     }
 
     /// Called by the extension when it actually appears. This turns setup's question marks into
