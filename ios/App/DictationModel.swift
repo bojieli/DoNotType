@@ -885,17 +885,9 @@ final class DictationModel {
             else { return }
 
             if let host, await self.openKeyboardHost(bundleIdentifier: host) { return }
-
-            let application = UIApplication.shared
-            let selector = NSSelectorFromString("suspend")
-            guard application.responds(to: selector) else {
-                self.log.warning("automatic return to the keyboard host is unavailable")
-                return
-            }
             self.log.warning(
-                "targeted keyboard return failed; trying generic suspension",
+                "targeted keyboard return failed; leaving the manual return fallback visible",
                 ["host": host ?? "unavailable"])
-            _ = application.perform(selector)
         }
     }
 

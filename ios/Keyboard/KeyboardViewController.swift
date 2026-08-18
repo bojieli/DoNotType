@@ -38,8 +38,11 @@ final class KeyboardViewController: UIInputViewController {
     private lazy var appLauncher = KeyboardContainingAppLauncher { [weak self] in self }
     private lazy var statusLabel = UILabel()
     private lazy var dictateButton = UIButton(type: .system)
+    private lazy var cancelButton = UIButton(type: .system)
     private lazy var nextKeyboardButton = UIButton(type: .system)
     private lazy var latestButton = UIButton(type: .system)
+    private lazy var returnButton = UIButton(type: .system)
+    private lazy var backspaceButton = UIButton(type: .system)
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -97,12 +100,20 @@ final class KeyboardViewController: UIInputViewController {
         dictateButton.accessibilityIdentifier = "kb-dictate"
         dictateButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
         dictateButton.tintColor = .white
-        dictateButton.layer.cornerRadius = 58
+        dictateButton.layer.cornerRadius = 29
         dictateButton.clipsToBounds = true
         dictateButton.translatesAutoresizingMaskIntoConstraints = false
         dictateButton.addTarget(self, action: #selector(dictateTouchDown), for: .touchDown)
         dictateButton.addTarget(
             self, action: #selector(dictateTouchUp), for: [.touchUpInside, .touchUpOutside])
+
+        cancelButton.setTitle("Cancel", for: .normal)
+        cancelButton.setTitleColor(.systemRed, for: .normal)
+        cancelButton.titleLabel?.font = .preferredFont(forTextStyle: .callout)
+        cancelButton.accessibilityIdentifier = "kb-cancel"
+        cancelButton.addTarget(self, action: #selector(cancelDictation), for: .touchUpInside)
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+        cancelButton.isHidden = true
 
         nextKeyboardButton.setTitle("🌐", for: .normal)
         nextKeyboardButton.accessibilityIdentifier = "kb-next"
@@ -112,36 +123,73 @@ final class KeyboardViewController: UIInputViewController {
             self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
         nextKeyboardButton.translatesAutoresizingMaskIntoConstraints = false
 
-        latestButton.setTitle("Insert latest", for: .normal)
+        latestButton.setTitle("Latest", for: .normal)
         latestButton.accessibilityIdentifier = "kb-insert-latest"
+        latestButton.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
         latestButton.addTarget(self, action: #selector(insertLatest), for: .touchUpInside)
         latestButton.translatesAutoresizingMaskIntoConstraints = false
 
+        returnButton.setImage(UIImage(systemName: "return"), for: .normal)
+        returnButton.accessibilityIdentifier = "kb-return"
+        returnButton.accessibilityLabel = "Return"
+        returnButton.backgroundColor = .tertiarySystemFill
+        returnButton.layer.cornerRadius = 10
+        returnButton.addTarget(self, action: #selector(insertReturn), for: .touchUpInside)
+        returnButton.translatesAutoresizingMaskIntoConstraints = false
+
+        backspaceButton.setImage(UIImage(systemName: "delete.left"), for: .normal)
+        backspaceButton.accessibilityIdentifier = "kb-backspace"
+        backspaceButton.accessibilityLabel = "Delete"
+        backspaceButton.backgroundColor = .tertiarySystemFill
+        backspaceButton.layer.cornerRadius = 10
+        backspaceButton.addTarget(self, action: #selector(deleteBackward), for: .touchUpInside)
+        backspaceButton.translatesAutoresizingMaskIntoConstraints = false
+
         view.addSubview(statusLabel)
         view.addSubview(dictateButton)
+        view.addSubview(cancelButton)
         view.addSubview(nextKeyboardButton)
         view.addSubview(latestButton)
+        view.addSubview(returnButton)
+        view.addSubview(backspaceButton)
 
         NSLayoutConstraint.activate([
-            view.heightAnchor.constraint(equalToConstant: 300),
+            view.heightAnchor.constraint(equalToConstant: 170),
 
-            statusLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
-            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            statusLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
+            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 64),
+            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -64),
+            statusLabel.heightAnchor.constraint(equalToConstant: 30),
 
             dictateButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            dictateButton.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: 4),
-            dictateButton.widthAnchor.constraint(equalToConstant: 116),
-            dictateButton.heightAnchor.constraint(equalToConstant: 116),
+            dictateButton.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 4),
+            dictateButton.widthAnchor.constraint(equalToConstant: 170),
+            dictateButton.heightAnchor.constraint(equalToConstant: 58),
+
+            cancelButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
+            cancelButton.centerYAnchor.constraint(equalTo: statusLabel.centerYAnchor),
+            cancelButton.widthAnchor.constraint(equalToConstant: 58),
+            cancelButton.heightAnchor.constraint(equalToConstant: 30),
 
             nextKeyboardButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            nextKeyboardButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8),
-            nextKeyboardButton.widthAnchor.constraint(equalToConstant: 44),
-            nextKeyboardButton.heightAnchor.constraint(equalToConstant: 36),
+            nextKeyboardButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -7),
+            nextKeyboardButton.widthAnchor.constraint(equalToConstant: 38),
+            nextKeyboardButton.heightAnchor.constraint(equalToConstant: 38),
 
-            latestButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            latestButton.leadingAnchor.constraint(equalTo: nextKeyboardButton.trailingAnchor, constant: 2),
             latestButton.centerYAnchor.constraint(equalTo: nextKeyboardButton.centerYAnchor),
+            latestButton.widthAnchor.constraint(equalToConstant: 58),
             latestButton.heightAnchor.constraint(equalToConstant: 36),
+
+            returnButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            returnButton.centerYAnchor.constraint(equalTo: nextKeyboardButton.centerYAnchor),
+            returnButton.widthAnchor.constraint(equalToConstant: 84),
+            returnButton.heightAnchor.constraint(equalToConstant: 38),
+
+            backspaceButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            backspaceButton.centerYAnchor.constraint(equalTo: nextKeyboardButton.centerYAnchor),
+            backspaceButton.widthAnchor.constraint(equalToConstant: 52),
+            backspaceButton.heightAnchor.constraint(equalToConstant: 38),
         ])
     }
 
@@ -195,7 +243,7 @@ final class KeyboardViewController: UIInputViewController {
         case .recording:
             statusLabel.text = "Listening… tap to stop"
         case .transcribing:
-            statusLabel.text = "Transcribing… tap × to cancel"
+            statusLabel.text = "Transcribing…"
         case .failed:
             statusLabel.text = current.message ?? "Dictation failed — tap to try again"
         }
@@ -204,31 +252,41 @@ final class KeyboardViewController: UIInputViewController {
 
     private func renderButton(phase: VoiceKeyboardBridge.Phase, sessionWarm: Bool) {
         let symbol: String
+        let title: String
         let background: UIColor
         switch phase {
         case .recording:
             symbol = "stop.fill"
+            title = " Stop"
             background = .systemRed
-        case .waiting, .transcribing:
-            symbol = "xmark"
+        case .waiting:
+            symbol = "ellipsis"
+            title = " Starting"
+            background = .systemGray
+        case .transcribing:
+            symbol = "ellipsis"
+            title = " Transcribing"
             background = .systemGray
         case .idle, .failed:
             symbol = sessionWarm ? "mic.fill" : "mic"
+            title = " Speak"
             background = .systemBlue
         }
 
         dictateButton.setImage(
             UIImage(systemName: symbol)?.applyingSymbolConfiguration(
-                .init(pointSize: 42, weight: .semibold)),
+                .init(pointSize: 22, weight: .semibold)),
             for: .normal)
+        dictateButton.setTitle(title, for: .normal)
         dictateButton.backgroundColor = background
+        cancelButton.isHidden = phase != .waiting && phase != .transcribing
         switch phase {
         case .waiting:
-            dictateButton.accessibilityLabel = "Cancel dictation"
-            dictateButton.accessibilityHint = "Cancels microphone activation."
+            dictateButton.accessibilityLabel = "Starting dictation"
+            dictateButton.accessibilityHint = "Use the separate Cancel button to stop."
         case .transcribing:
-            dictateButton.accessibilityLabel = "Cancel transcription"
-            dictateButton.accessibilityHint = "Stops waiting and discards this transcription."
+            dictateButton.accessibilityLabel = "Transcribing"
+            dictateButton.accessibilityHint = "Use the separate Cancel button to stop."
         case .recording:
             dictateButton.accessibilityLabel = "Stop dictating"
             dictateButton.accessibilityHint = "Stops recording and starts transcription."
@@ -263,9 +321,7 @@ final class KeyboardViewController: UIInputViewController {
             voiceBridge.requestStop()
             reload()
         case .waiting, .transcribing:
-            voiceBridge.requestCancel()
-            transientStatus = "Cancelled"
-            reload()
+            break
         }
     }
 
@@ -311,16 +367,48 @@ final class KeyboardViewController: UIInputViewController {
     /// but iOS carries the identifier on the context. Capture it before the deep link replaces the
     /// host on screen; the containing app needs it to return to the exact text field's app.
     private func keyboardHostBundleIdentifier() -> String? {
-        guard let context = extensionContext else { return nil }
-        for name in ["_hostBundleIdentifier", "hostBundleIdentifier"] {
-            let selector = NSSelectorFromString(name)
-            guard context.responds(to: selector),
-                let value = context.perform(selector)?.takeUnretainedValue() as? String,
-                !value.isEmpty
-            else { continue }
-            return value
+        var objects: [NSObject] = [self]
+        if let context = extensionContext { objects.append(context) }
+        if let window = view.window { objects.append(window) }
+        if let parent { objects.append(parent) }
+
+        var responder = next
+        while let current = responder {
+            objects.append(current)
+            responder = current.next
+        }
+
+        let names = [
+            "__hostBundleIdentifier", "_hostBundleIdentifier", "hostBundleIdentifier",
+            "_hostBundleID", "hostBundleID", "_hostApplicationBundleIdentifier",
+            "_sourceBundleIdentifier", "sourceBundleIdentifier",
+        ]
+        for object in objects {
+            for name in names {
+                let selector = NSSelectorFromString(name)
+                guard object.responds(to: selector),
+                    let value = object.perform(selector)?.takeUnretainedValue() as? String,
+                    !value.isEmpty, value != Bundle.main.bundleIdentifier,
+                    value != "app.donottype"
+                else { continue }
+                return value
+            }
         }
         return nil
+    }
+
+    @objc private func cancelDictation() {
+        voiceBridge.requestCancel()
+        transientStatus = "Cancelled"
+        reload()
+    }
+
+    @objc private func insertReturn() {
+        textDocumentProxy.insertText("\n")
+    }
+
+    @objc private func deleteBackward() {
+        textDocumentProxy.deleteBackward()
     }
 
     // MARK: - Insertion and correction learning
