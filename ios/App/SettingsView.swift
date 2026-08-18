@@ -61,15 +61,17 @@ struct SettingsView: View {
 
             SetupRow(
                 title: "Add the DoNotType keyboard",
-                detail: "Settings › General › Keyboard › Keyboards › Add New Keyboard.",
-                isDone: nil,
+                detail: model.keyboardWasSeen
+                    ? "Confirmed when the DoNotType keyboard last appeared."
+                    : "Add it in Settings, then switch to DoNotType once so it can confirm.",
+                isDone: model.keyboardWasSeen ? true : nil,
                 action: openSystemSettings)
 
             SetupRow(
                 title: "Allow Full Access",
-                detail: "Required for keyboard voice commands and transcript insertion. iOS does "
-                    + "not let this app verify the switch.",
-                isDone: nil,
+                detail: "Required for voice commands and insertion. Confirmed whenever the "
+                    + "DoNotType keyboard appears.",
+                isDone: model.keyboardHasFullAccess,
                 action: openSystemSettings)
         } header: {
             Text("Setup")
@@ -331,6 +333,7 @@ struct SettingsView: View {
 
     private func refreshPermissions() {
         microphoneGranted = AVAudioApplication.shared.recordPermission == .granted
+        model.refreshKeyboardSetupStatus()
     }
 
     private func requestMicrophone() {
@@ -425,15 +428,17 @@ struct InitialSetupView: View {
 
                     SetupRow(
                         title: "Add the DoNotType keyboard",
-                        detail: "Settings › General › Keyboard › Keyboards › Add New Keyboard.",
-                        isDone: nil,
+                        detail: model.keyboardWasSeen
+                            ? "Confirmed when the DoNotType keyboard last appeared."
+                            : "Add it in Settings, then switch to DoNotType once so it can confirm.",
+                        isDone: model.keyboardWasSeen ? true : nil,
                         action: openSystemSettings)
 
                     SetupRow(
                         title: "Allow Full Access",
-                        detail: "Required for keyboard voice commands and transcript insertion. "
-                            + "iOS does not let the app verify this switch.",
-                        isDone: nil,
+                        detail: "Required for voice commands and insertion. Confirmed whenever "
+                            + "the DoNotType keyboard appears.",
+                        isDone: model.keyboardHasFullAccess,
                         action: openSystemSettings)
                 } header: {
                     Text("2. Enable dictation")
@@ -460,6 +465,7 @@ struct InitialSetupView: View {
 
     private func refreshPermissions() {
         microphoneGranted = AVAudioApplication.shared.recordPermission == .granted
+        model.refreshKeyboardSetupStatus()
     }
 
     private func requestMicrophone() {
@@ -594,8 +600,8 @@ struct DictionaryView: View {
 private struct SetupRow: View {
     let title: String
     let detail: String
-    /// `nil` when the app genuinely cannot tell — iOS exposes no way to ask whether a keyboard
-    /// has been added, so claiming either answer would be a guess.
+    /// `nil` until there is evidence. Keyboard state is reported by the extension when it appears;
+    /// iOS still exposes no direct enabled-keyboard query to the containing app.
     let isDone: Bool?
     let action: () -> Void
 

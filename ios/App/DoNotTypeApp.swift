@@ -127,6 +127,7 @@ struct ContentView: View {
             switch phase {
             case .active:
                 // Anything that failed while offline goes out as soon as the app is foregrounded.
+                model.refreshKeyboardSetupStatus()
                 Task {
                     model.refreshDictionary()
                     await model.refresh()
@@ -310,8 +311,8 @@ struct ContentView: View {
     }
 }
 
-/// The cold-start half of iOS voice-keyboard dictation. The app has opened the microphone; the
-/// bottom-edge app-switch gesture returns to the original text field while recording continues.
+/// The cold-start half of iOS voice-keyboard dictation. The app opens the microphone and then
+/// suspends itself so iOS restores the original text field while recording continues.
 private struct KeyboardReturnToHostView: View {
     let state: DictationModel.State
     let dismiss: () -> Void
@@ -328,7 +329,7 @@ private struct KeyboardReturnToHostView: View {
                 Text(state == .recording ? "DoNotType is listening" : "Starting dictation…")
                     .font(.title.bold())
 
-                Text("Swipe right across the bottom edge to return to the previous app, then speak. You only need this switch when the voice session has gone cold.")
+                Text("Returning to the previous app… If this screen remains, swipe right across the bottom edge. You only need this switch when the voice session has gone cold.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

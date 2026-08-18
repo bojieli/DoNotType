@@ -22,6 +22,18 @@ final class KeyboardViewController: UIInputViewController {
     private var stopWhenRecordingStarts = false
     private var lastLearnedTerms: [String] = []
     private var transientStatus: String?
+    /// Darwin notifications can reach this controller after Notes has hidden its keyboard. Its
+    /// `textDocumentProxy` still exists then, but inserting through it is a no-op. Never consume a
+    /// result until UIKit has attached this keyboard to a visible document again.
+    private var isKeyboardVisible = false
+
+    /// This keyboard supplies its own recognition pipeline. Returning `true` from the property,
+    /// rather than setting it after the view loads, prevents iOS from ever adding the system
+    /// dictation key while constructing the keyboard chrome.
+    override var hasDictationKey: Bool {
+        get { true }
+        set {}
+    }
 
     private lazy var appLauncher = KeyboardContainingAppLauncher { [weak self] in self }
     private lazy var statusLabel = UILabel()
@@ -31,9 +43,6 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Prevent iOS from placing its own lower-accuracy dictation key beside this keyboard. The
-        // central control below is DoNotType dictation, not a shortcut to system dictation.
-        hasDictationKey = true
         buildInterface()
 
         VoiceKeyboardBridge.observeUpdates {
@@ -46,11 +55,22 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        voiceBridge.publishKeyboardSetupStatus(hasFullAccess: hasFullAccess)
+        reload()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        isKeyboardVisible = true
+        // A cold dictation normally finishes while this extension is not running. The result is
+        // deliberately still pending in the App Group, and is consumed only after UIKit has
+        // restored the original document proxy.
         reload()
         observePendingCorrection()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
+        isKeyboardVisible = false
         correctionTask?.cancel()
         correctionTask = nil
         launchFallback?.cancel()
@@ -147,7 +167,9 @@ final class KeyboardViewController: UIInputViewController {
         dictateButton.isEnabled = true
         let snapshot = voiceBridge.snapshot
 
-        if snapshot.phase == .idle, let result = snapshot.result, !result.isEmpty {
+        if isKeyboardVisible, view.window != nil,
+            snapshot.phase == .idle, let result = snapshot.result, !result.isEmpty
+        {
             insert(result)
             voiceBridge.acknowledgeResult()
             transientStatus = "Inserted"
@@ -267,7 +289,7 @@ final class KeyboardViewController: UIInputViewController {
             statusLabel.text = "Open DoNotType to activate dictation, then return here."
             return
         }
-        statusLabel.text = "Swipe back after DoNotType starts listening."
+        statusLabel.text = "Starting DoNotType dictation…"
     }
 
     // MARK: - Insertion and correction learning

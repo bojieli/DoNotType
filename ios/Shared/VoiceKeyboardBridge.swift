@@ -37,6 +37,20 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
         }
     }
 
+    /// What the containing app can honestly know about keyboard setup.
+    ///
+    /// iOS does not expose the enabled-keyboard list to an app. The extension can, however,
+    /// confirm that it has actually appeared and report the `hasFullAccess` value iOS gives it.
+    public struct KeyboardSetupStatus: Sendable, Equatable {
+        public let lastSeen: Date?
+        public let hasFullAccess: Bool?
+
+        public init(lastSeen: Date?, hasFullAccess: Bool?) {
+            self.lastSeen = lastSeen
+            self.hasFullAccess = hasFullAccess
+        }
+    }
+
     public static let sessionFreshness: TimeInterval = 3
 
     private enum Key {
@@ -45,6 +59,8 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
         static let message = "voiceKeyboard.message"
         static let updatedAt = "voiceKeyboard.updatedAt"
         static let heartbeat = "voiceKeyboard.heartbeat"
+        static let keyboardLastSeen = "voiceKeyboard.keyboardLastSeen"
+        static let keyboardHasFullAccess = "voiceKeyboard.keyboardHasFullAccess"
     }
 
     private enum NotificationName {
@@ -76,6 +92,25 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
     public var isSessionWarm: Bool {
         let timestamp = defaults?.double(forKey: Key.heartbeat) ?? 0
         return timestamp > 0 && Date().timeIntervalSince1970 - timestamp < Self.sessionFreshness
+    }
+
+    public var keyboardSetupStatus: KeyboardSetupStatus {
+        let timestamp = defaults?.double(forKey: Key.keyboardLastSeen) ?? 0
+        guard timestamp > 0 else {
+            return KeyboardSetupStatus(lastSeen: nil, hasFullAccess: nil)
+        }
+        return KeyboardSetupStatus(
+            lastSeen: Date(timeIntervalSince1970: timestamp),
+            hasFullAccess: defaults?.bool(forKey: Key.keyboardHasFullAccess))
+    }
+
+    /// Called by the extension when it actually appears. This turns setup's question marks into
+    /// evidence rather than pretending the containing app can inspect Settings directly.
+    public func publishKeyboardSetupStatus(hasFullAccess: Bool) {
+        defaults?.set(Date().timeIntervalSince1970, forKey: Key.keyboardLastSeen)
+        defaults?.set(hasFullAccess, forKey: Key.keyboardHasFullAccess)
+        defaults?.synchronize()
+        Self.post(NotificationName.update)
     }
 
     /// Returns whether the app reported a live session before the command was sent.

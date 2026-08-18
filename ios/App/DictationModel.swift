@@ -53,6 +53,8 @@ final class DictationModel {
     private(set) var audioBytes: Int64 = 0
     private(set) var connectionStatus: String?
     private(set) var isCheckingConnection = false
+    private(set) var keyboardWasSeen = false
+    private(set) var keyboardHasFullAccess: Bool?
 
     /// The backend, chosen per install.
     ///
@@ -295,8 +297,8 @@ final class DictationModel {
     private var keyboardSessionTimeoutTask: Task<Void, Never>?
     private static let keyboardSessionTimeout: TimeInterval = 5 * 60
 
-    /// Shown only for a cold keyboard launch. Recording has already started; this surface tells
-    /// the user to swipe back to the app whose text field still owns the keyboard.
+    /// Shown only for a cold keyboard launch while recording starts and iOS restores the app whose
+    /// text field still owns the keyboard.
     private(set) var isReturnToHostPresented = false
 
     init() {
@@ -344,6 +346,10 @@ final class DictationModel {
         VoiceKeyboardBridge.observeCommands { [weak self] command in
             Task { @MainActor in self?.handleKeyboardCommand(command) }
         }
+        VoiceKeyboardBridge.observeUpdates { [weak self] in
+            Task { @MainActor in self?.refreshKeyboardSetupStatus() }
+        }
+        refreshKeyboardSetupStatus()
 
         #if DEBUG
         // The simulator cannot feed silence into AVAudioEngine reliably. This launch-only seam
@@ -562,6 +568,12 @@ final class DictationModel {
 
     func refreshDictionary() { applyDictionary(dictionaryStore.load()) }
 
+    func refreshKeyboardSetupStatus() {
+        let setup = voiceKeyboardBridge.keyboardSetupStatus
+        keyboardWasSeen = setup.lastSeen != nil
+        keyboardHasFullAccess = setup.hasFullAccess
+    }
+
     func addDictionaryTerm(_ raw: String) {
         do {
             let snapshot = try dictionaryStore.add(raw)
@@ -721,6 +733,18 @@ final class DictationModel {
             return
         }
 
+        // A cold deep link reaches SwiftUI before the containing app necessarily becomes active.
+        // Activating a record session during that transition fails with `!int`
+        // (`cannotInterruptOthers`). A warm keyboard session already has live input and must not
+        // be activated again while the app is in the background.
+        if fromKeyboard, !recorder.isMonitoring,
+            !(await waitForContainingAppToBecomeActive())
+        {
+            failRecordingStart(
+                "DoNotType could not activate the microphone. Open the app and try again.")
+            return
+        }
+
         guard await requestMicrophone() else {
             // Taking somebody to the setting rather than describing where it is. On iOS the app's
             // own page is one tap from here and several taps from the home screen, and a person
@@ -747,11 +771,13 @@ final class DictationModel {
         }
 
         do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(
-                .playAndRecord, mode: .measurement,
-                options: [.defaultToSpeaker, .mixWithOthers, .allowBluetoothHFP])
-            try session.setActive(true)
+            if !recorder.isMonitoring {
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(
+                    .playAndRecord, mode: .measurement,
+                    options: [.defaultToSpeaker, .mixWithOthers, .allowBluetoothHFP])
+                try session.setActive(true)
+            }
 
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("dnt-\(UUID().uuidString).wav")
@@ -774,6 +800,7 @@ final class DictationModel {
             if fromKeyboard {
                 voiceKeyboardBridge.touchSession()
                 voiceKeyboardBridge.publishRecordingStarted()
+                returnToKeyboardHostAfterColdLaunch()
             }
 
             // One id from the tap to the transcript, on every line and on the history row. A phone
@@ -800,8 +827,48 @@ final class DictationModel {
                     "dictation": Self.short(pendingID),
                     "detail": FailureAdvice.detail(of: error),
                 ])
-            failRecordingStart(FailureAdvice.describe(error).message)
+            failRecordingStart(recordingStartMessage(for: error))
         }
+    }
+
+    private func waitForContainingAppToBecomeActive() async -> Bool {
+        for _ in 0..<50 {
+            if UIApplication.shared.applicationState == .active { return true }
+            if Task.isCancelled { return false }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return UIApplication.shared.applicationState == .active
+    }
+
+    /// A keyboard cannot request microphone access itself, so a cold press must briefly activate
+    /// its containing app. Voice-first keyboards then suspend that app after audio is live, which
+    /// exposes the previous application and restores the exact keyboard/document proxy that
+    /// initiated the request. There is no public "return to previous app" API on iOS; using the
+    /// runtime selector mirrors the dynamic responder-chain URL launch required on the extension
+    /// side. If a future iOS release removes it, the on-screen swipe instruction remains usable.
+    private func returnToKeyboardHostAfterColdLaunch() {
+        guard isReturnToHostPresented else { return }
+        let application = UIApplication.shared
+        let selector = NSSelectorFromString("suspend")
+        guard application.responds(to: selector) else {
+            log.warning("automatic return to the keyboard host is unavailable")
+            return
+        }
+
+        log.info("returning to the keyboard host after microphone activation")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            _ = application.perform(selector)
+        }
+    }
+
+    private func recordingStartMessage(for error: Error) -> String {
+        let underlying = error as NSError
+        if underlying.domain == NSOSStatusErrorDomain,
+            underlying.code == Int(AVAudioSession.ErrorCode.cannotInterruptOthers.rawValue)
+        {
+            return "iOS was still switching apps, so the microphone was not ready. Try again."
+        }
+        return FailureAdvice.describe(error).message
     }
 
     private func failRecordingStart(_ message: String) {
@@ -887,9 +954,12 @@ final class DictationModel {
     /// started by the keyboard is the exception: the keyboard is its visible recording surface,
     /// and the containing app owns the audio session precisely so it can continue in background.
     func stopRecordingForBackground() {
+        // The keyboard is still the visible recording surface. Keep the cold-launch instructions
+        // on screen until the user follows them; scene transitions while opening the app used to
+        // erase this overlay and leave only the ordinary in-app “tap to stop” screen.
+        guard !currentDictationIsFromKeyboard else { return }
         isReturnToHostPresented = false
         guard state == .recording else { return }
-        guard !currentDictationIsFromKeyboard else { return }
         log.info(
             "recording stopped because the app left the foreground",
             ["dictation": Self.short(pendingID)])

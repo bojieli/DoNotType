@@ -78,4 +78,19 @@ final class VoiceKeyboardBridgeTests: XCTestCase {
 
         XCTAssertFalse(bridge.isSessionWarm)
     }
+
+    func testKeyboardReportsThatItAppearedWithoutFullAccess() {
+        XCTAssertNil(bridge.keyboardSetupStatus.lastSeen)
+        XCTAssertNil(bridge.keyboardSetupStatus.hasFullAccess)
+
+        bridge.publishKeyboardSetupStatus(hasFullAccess: false)
+
+        XCTAssertNotNil(bridge.keyboardSetupStatus.lastSeen)
+        XCTAssertEqual(bridge.keyboardSetupStatus.hasFullAccess, false)
+    }
+
+    func testKeyboardReportsFullAccess() {
+        bridge.publishKeyboardSetupStatus(hasFullAccess: true)
+        XCTAssertEqual(bridge.keyboardSetupStatus.hasFullAccess, true)
+    }
 }
