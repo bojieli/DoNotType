@@ -38,63 +38,6 @@
 			</array>
 		</dict>
 	</array>
-	<!--
-	  `canOpenURL` only answers for third-party schemes declared here. Keep this list aligned with
-	  KeyboardHostReturnURL; system Maps does not consume one of iOS's 50 declared-scheme slots.
-	-->
-	<key>LSApplicationQueriesSchemes</key>
-	<array>
-		<string>fbapi</string>
-		<string>fb-messenger-share-api</string>
-		<string>mailto</string>
-		<string>x-safari-https</string>
-		<string>mobilenotes</string>
-		<string>moments</string>
-		<string>weixin</string>
-		<string>lark</string>
-		<string>openai</string>
-		<string>googlechrome</string>
-		<string>claude</string>
-		<string>copilotn</string>
-		<string>discord</string>
-		<string>doordash</string>
-		<string>evernote</string>
-		<string>fb</string>
-		<string>googlegemini</string>
-		<string>googlegmail</string>
-		<string>googlemaps</string>
-		<string>com.grokapp</string>
-		<string>instagram</string>
-		<string>jira</string>
-		<string>linear</string>
-		<string>fb-messenger</string>
-		<string>monday</string>
-		<string>nflx</string>
-		<string>notion</string>
-		<string>ms-outlook</string>
-		<string>perplexity-app</string>
-		<string>pinterest</string>
-		<string>reddit</string>
-		<string>sgnl</string>
-		<string>slack</string>
-		<string>snapchat</string>
-		<string>spotify</string>
-		<string>substack</string>
-		<string>msteams</string>
-		<string>telegram</string>
-		<string>barcelona</string>
-		<string>tiktok</string>
-		<string>trello</string>
-		<string>uber</string>
-		<string>ubereats</string>
-		<string>walmart</string>
-		<string>whatsapp</string>
-		<string>twitter</string>
-		<string>youtube</string>
-		<string>googledocs</string>
-		<string>amazonpay</string>
-		<string>googledrive</string>
-	</array>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Bojie Li. Licensed under MIT.</string>
 	<key>LSRequiresIPhoneOS</key>
