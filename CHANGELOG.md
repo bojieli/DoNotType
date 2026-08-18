@@ -14,11 +14,8 @@ release yet, so everything below is unreleased.
   Dictate/Rewrite switch instead of presenting Verbatim beside Formal, Concise, and Bullets as if
   all four were one kind of setting. Rewrite style now lives in its own Settings section, separate
   from transcription fidelity, and the iOS keyboard carries the same switch as the main dictation
-  screen. The mobile keyboards show the current mode in one compact button without moving the
-  geometrically centered speaking control; on iOS it sits beside Settings in the utility row. The
-  mode can be corrected while recording without interrupting speech. The iOS
-  personal-dictionary row also renders its entry count instead of showing the Swift expression
-  that was meant to produce it.
+  screen. The iOS personal-dictionary row also renders its entry count instead of showing the
+  Swift expression that was meant to produce it.
 
 - **MIT licensing now travels with every build.** The canonical repository license is copied into
   macOS, iOS, Android, and Windows deliverables, Apple and .NET metadata identify the grant, and CI
