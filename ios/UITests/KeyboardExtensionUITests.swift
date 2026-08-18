@@ -4,28 +4,43 @@ import XCTest
 ///
 /// Not much, and the limit is the platform's rather than this project's: a custom keyboard runs in
 /// its own process and its views do not appear in the host application's accessibility tree, so
-/// `XCUIApplication` cannot see the status label or the transcript list no matter what identifiers
+/// `XCUIApplication` cannot see the status label or the dictation button no matter what identifiers
 /// they carry. Dumping the hierarchy with the keyboard on screen shows the app's own views and a
 /// single opaque `Keyboard` element.
 ///
 /// So the split is: this asserts the app raises a keyboard at all and that the extension is
-/// packaged where iOS will find it, and `SharedTests/TranscriptStoreTests` covers what the
-/// extension actually *does* — read the container, insert one entry, mark it used. That is where
-/// the risk is anyway. The drawing is a table view; the bridge is the part that can silently stop
-/// working.
+/// packaged where iOS will find it. Shared tests cover the persisted voice-command state machine,
+/// transcript handoff, and correction records. The microphone and insertion endpoints remain in
+/// the real-device checklist because a simulator cannot prove either one.
 @MainActor
 final class KeyboardExtensionUITests: XCTestCase {
+
+    private func launch() -> XCUIApplication {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments += ["-ui-testing", "-ui-testing-configured"]
+        app.launch()
+        return app
+    }
+
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        if element.waitForExistence(timeout: 3) { return true }
+        for _ in 0..<6 {
+            app.swipeUp()
+            if element.waitForExistence(timeout: 1) { return true }
+        }
+        return false
+    }
 
     /// iOS only offers a keyboard it can find inside the app bundle. Getting this wrong produces
     /// an app that installs and runs while the keyboard never appears in Settings at all, which is
     /// indistinguishable from the user not having added it.
     func testFocusingAFieldRaisesAKeyboard() throws {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launch()
         app.buttons["open-settings"].tap()
 
         let field = app.textFields["model"]
-        XCTAssertTrue(field.waitForExistence(timeout: 10), "the Model field should be in Settings")
+        XCTAssertTrue(reveal(field, in: app), "the Model field should be in Settings")
         field.tap()
 
         XCTAssertTrue(
@@ -36,12 +51,11 @@ final class KeyboardExtensionUITests: XCTestCase {
     /// Typing has to reach the field whichever keyboard is up. This is the one end-to-end
     /// statement available: text goes in and the app sees it.
     func testTypingReachesTheField() throws {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launch()
         app.buttons["open-settings"].tap()
 
         let field = app.textFields["model"]
-        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        XCTAssertTrue(reveal(field, in: app))
         field.tap()
         field.typeText("-probe")
 

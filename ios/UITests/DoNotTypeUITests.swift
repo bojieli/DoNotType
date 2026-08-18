@@ -176,7 +176,7 @@ final class DoNotTypeUITests: XCTestCase {
         app.buttons["open-settings"].tap()
 
         let field = app.secureTextFields["api-key"]
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(field, in: app))
         field.tap()
         field.typeText("test-key-12345")
 
@@ -184,7 +184,7 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["DoNotType"].waitForExistence(timeout: 5))
 
         app.buttons["open-settings"].tap()
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(field, in: app))
         XCTAssertEqual(field.value as? String, "••••••••••••••",
                        "the key should still be there after leaving and coming back")
     }
