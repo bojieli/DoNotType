@@ -185,7 +185,7 @@ struct ContentView: View {
             .padding(.vertical, 6)
             .background(selected ? Color.accentColor : Color.clear, in: Capsule())
             .buttonStyle(.plain)
-            .disabled(model.state == .recording || model.state == .transcribing)
+            .disabled(model.state == .transcribing)
             .accessibilityIdentifier(rewrite ? "mode-rewrite" : "mode-dictate")
             .accessibilityAddTraits(selected ? .isSelected : [])
     }

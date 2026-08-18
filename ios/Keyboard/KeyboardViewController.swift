@@ -24,6 +24,9 @@ final class KeyboardViewController: UIInputViewController {
     private var stopWhenRecordingStarts = false
     private var lastLearnedTerms: [String] = []
     private var transientStatus: String?
+    private var backspaceRepeatDelay: DispatchWorkItem?
+    private var backspaceRepeatTimer: Timer?
+    private var isBackspaceHeld = false
     /// Darwin notifications can reach this controller after Notes has hidden its keyboard. Its
     /// `textDocumentProxy` still exists then, but inserting through it is a no-op. Never consume a
     /// result until UIKit has attached this keyboard to a visible document again.
@@ -38,7 +41,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private lazy var appLauncher = KeyboardContainingAppLauncher { [weak self] in self }
     private lazy var statusLabel = UILabel()
-    private lazy var modeControl = UISegmentedControl(items: ["Dictate", "Rewrite"])
+    private lazy var modeButton = UIButton(type: .system)
     private lazy var dictateButton = UIButton(type: .system)
     private lazy var cancelButton = UIButton(type: .system)
     private lazy var settingsButton = UIButton(type: .system)
@@ -86,6 +89,7 @@ final class KeyboardViewController: UIInputViewController {
         launchFallback?.cancel()
         launchFallback = nil
         stopWhenRecordingStarts = false
+        stopBackspaceRepeat()
         super.viewWillDisappear(animated)
     }
 
@@ -104,14 +108,9 @@ final class KeyboardViewController: UIInputViewController {
         statusLabel.addGestureRecognizer(
             UITapGestureRecognizer(target: self, action: #selector(statusTapped)))
 
-        modeControl.selectedSegmentIndex = voiceBridge.rewriteModeEnabled == true ? 1 : 0
-        modeControl.selectedSegmentTintColor = .systemBlue
-        modeControl.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .selected)
-        modeControl.setTitleTextAttributes([.foregroundColor: UIColor.label], for: .normal)
-        modeControl.accessibilityIdentifier = "kb-dictation-mode"
-        modeControl.accessibilityLabel = "Dictation mode"
-        modeControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
-        modeControl.translatesAutoresizingMaskIntoConstraints = false
+        modeButton.accessibilityIdentifier = "kb-dictation-mode"
+        modeButton.addTarget(self, action: #selector(toggleMode), for: .touchUpInside)
+        modeButton.translatesAutoresizingMaskIntoConstraints = false
 
         dictateButton.accessibilityIdentifier = "kb-dictate"
         dictateButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
@@ -152,14 +151,19 @@ final class KeyboardViewController: UIInputViewController {
         backspaceButton.accessibilityLabel = "Delete"
         backspaceButton.backgroundColor = .tertiarySystemFill
         backspaceButton.layer.cornerRadius = 10
-        backspaceButton.addTarget(self, action: #selector(deleteBackward), for: .touchUpInside)
+        backspaceButton.addTarget(self, action: #selector(startBackspacePress), for: .touchDown)
+        backspaceButton.addTarget(
+            self, action: #selector(finishBackspacePress), for: .touchUpInside)
+        backspaceButton.addTarget(
+            self, action: #selector(cancelBackspacePress),
+            for: [.touchUpOutside, .touchCancel, .touchDragExit])
         backspaceButton.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(statusLabel)
-        view.addSubview(modeControl)
         view.addSubview(dictateButton)
         view.addSubview(cancelButton)
         view.addSubview(settingsButton)
+        view.addSubview(modeButton)
         view.addSubview(returnButton)
         view.addSubview(backspaceButton)
 
@@ -167,17 +171,12 @@ final class KeyboardViewController: UIInputViewController {
             view.heightAnchor.constraint(equalToConstant: 205),
 
             statusLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
-            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 64),
-            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -64),
+            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
+            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
             statusLabel.heightAnchor.constraint(equalToConstant: 30),
 
-            modeControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            modeControl.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 2),
-            modeControl.widthAnchor.constraint(equalToConstant: 160),
-            modeControl.heightAnchor.constraint(equalToConstant: 28),
-
             dictateButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            dictateButton.topAnchor.constraint(equalTo: modeControl.bottomAnchor, constant: 4),
+            dictateButton.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 4),
             dictateButton.widthAnchor.constraint(equalToConstant: 170),
             dictateButton.heightAnchor.constraint(equalToConstant: 58),
 
@@ -190,6 +189,11 @@ final class KeyboardViewController: UIInputViewController {
             settingsButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -7),
             settingsButton.widthAnchor.constraint(equalToConstant: 38),
             settingsButton.heightAnchor.constraint(equalToConstant: 38),
+
+            modeButton.leadingAnchor.constraint(equalTo: settingsButton.trailingAnchor, constant: 7),
+            modeButton.centerYAnchor.constraint(equalTo: settingsButton.centerYAnchor),
+            modeButton.widthAnchor.constraint(equalToConstant: 86),
+            modeButton.heightAnchor.constraint(equalToConstant: 34),
 
             returnButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             returnButton.centerYAnchor.constraint(equalTo: settingsButton.centerYAnchor),
@@ -205,7 +209,6 @@ final class KeyboardViewController: UIInputViewController {
 
     private func reload() {
         entries = store.load()
-        modeControl.selectedSegmentIndex = voiceBridge.rewriteModeEnabled == true ? 1 : 0
 
         guard hasFullAccess else {
             statusLabel.text =
@@ -244,9 +247,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         switch current.phase {
         case .idle:
-            statusLabel.text = transientStatus ?? (voiceBridge.isSessionWarm
-                ? "Tap to dictate, or hold to talk"
-                : "Tap to dictate · DoNotType opens once to activate the microphone")
+            statusLabel.text = transientStatus ?? idleCallToAction
         case .waiting:
             statusLabel.text = voiceBridge.isSessionWarm
                 ? "Starting dictation…" : "Opening DoNotType to activate the microphone…"
@@ -289,9 +290,8 @@ final class KeyboardViewController: UIInputViewController {
             for: .normal)
         dictateButton.setTitle(title, for: .normal)
         dictateButton.backgroundColor = background
-        let canChangeMode = phase == .idle || phase == .failed
-        modeControl.setEnabled(canChangeMode, forSegmentAt: 0)
-        modeControl.setEnabled(canChangeMode, forSegmentAt: 1)
+        renderModeButton(
+            canChange: phase == .idle || phase == .failed || phase == .recording)
         cancelButton.isHidden = phase != .waiting && phase != .transcribing
         switch phase {
         case .waiting:
@@ -313,11 +313,34 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - Dictation gesture
 
-    @objc private func modeChanged() {
-        voiceBridge.setRewriteModeEnabled(modeControl.selectedSegmentIndex == 1)
-        transientStatus = modeControl.selectedSegmentIndex == 1
-            ? "Rewrite mode · choose its style in Settings"
-            : "Dictation mode"
+    private var idleCallToAction: String {
+        voiceBridge.rewriteModeEnabled == true
+            ? "Tap Speak to rewrite, or hold to talk"
+            : "Tap Speak to dictate, or hold to talk"
+    }
+
+    private func renderModeButton(canChange: Bool) {
+        let rewrite = voiceBridge.rewriteModeEnabled == true
+        var configuration = UIButton.Configuration.filled()
+        configuration.cornerStyle = .capsule
+        configuration.image = UIImage(systemName: rewrite ? "wand.and.sparkles" : "mic.fill")
+        configuration.imagePadding = 4
+        configuration.contentInsets = .init(top: 6, leading: 8, bottom: 6, trailing: 8)
+        configuration.title = rewrite ? "Rewrite" : "Dictate"
+        configuration.baseBackgroundColor = rewrite ? .systemPurple : .systemBlue
+        configuration.baseForegroundColor = .white
+        modeButton.configuration = configuration
+        modeButton.isEnabled = canChange
+        modeButton.accessibilityLabel = rewrite ? "Rewrite mode" : "Dictate mode"
+        modeButton.accessibilityValue = "Selected"
+        modeButton.accessibilityHint = rewrite
+            ? "Switches to Dictate mode."
+            : "Switches to Rewrite mode."
+    }
+
+    @objc private func toggleMode() {
+        voiceBridge.setRewriteModeEnabled(voiceBridge.rewriteModeEnabled != true)
+        transientStatus = nil
         reload()
     }
 
@@ -505,8 +528,48 @@ final class KeyboardViewController: UIInputViewController {
         textDocumentProxy.insertText("\n")
     }
 
-    @objc private func deleteBackward() {
+    @objc private func startBackspacePress() {
+        stopBackspaceRepeat()
+        isBackspaceHeld = true
         textDocumentProxy.deleteBackward()
+
+        let delay = DispatchWorkItem { [weak self] in
+            guard let self, self.isBackspaceHeld else { return }
+            let timer = Timer(
+                timeInterval: 0.065, target: self,
+                selector: #selector(repeatBackspace), userInfo: nil, repeats: true)
+            backspaceRepeatTimer = timer
+            RunLoop.main.add(timer, forMode: .common)
+        }
+        backspaceRepeatDelay = delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38, execute: delay)
+    }
+
+    @objc private func finishBackspacePress() {
+        // Accessibility activation can arrive without a preceding touch-down.
+        let needsSingleDelete = !isBackspaceHeld
+        stopBackspaceRepeat()
+        if needsSingleDelete { textDocumentProxy.deleteBackward() }
+    }
+
+    @objc private func cancelBackspacePress() {
+        stopBackspaceRepeat()
+    }
+
+    @objc private func repeatBackspace() {
+        guard isBackspaceHeld else {
+            stopBackspaceRepeat()
+            return
+        }
+        textDocumentProxy.deleteBackward()
+    }
+
+    private func stopBackspaceRepeat() {
+        isBackspaceHeld = false
+        backspaceRepeatDelay?.cancel()
+        backspaceRepeatDelay = nil
+        backspaceRepeatTimer?.invalidate()
+        backspaceRepeatTimer = nil
     }
 
     // MARK: - Insertion and correction learning
