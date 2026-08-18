@@ -145,6 +145,94 @@ final class VoiceKeyboardBridgeTests: XCTestCase {
         XCTAssertNil(KeyboardHostReturnURL.url(for: "com.example.unsupported"))
     }
 
+    func testReturnPolicyAvoidsLaunchingTransientSystemHosts() {
+        let spotlight = KeyboardHostReturnPolicy.resolve("com.apple.Spotlight")
+        XCTAssertFalse(spotlight.allowsBundleLaunch)
+        XCTAssertEqual(spotlight.guide, .appSwitcher)
+
+        let notes = KeyboardHostReturnPolicy.resolve("com.apple.mobilenotes")
+        XCTAssertTrue(notes.allowsBundleLaunch)
+        XCTAssertEqual(notes.publicURL, URL(string: "mobilenotes:"))
+        XCTAssertEqual(notes.guide, .standard)
+    }
+
+    func testReturnGuideIsShownOnceUnlessTheAppReportsFailure() {
+        let policy = KeyboardHostReturnPolicy.resolve("com.apple.mobilenotes")
+        XCTAssertTrue(bridge.shouldPresentReturnGuide(for: policy))
+        bridge.markReturnGuidePresented(for: policy)
+        XCTAssertFalse(bridge.shouldPresentReturnGuide(for: policy))
+    }
+
+    func testActivationStatusExplainsSetupAndWarmth() {
+        XCTAssertEqual(
+            bridge.activationStatus(hasFullAccess: false, isOnline: true), .noFullAccess)
+
+        bridge.publishAppReadiness(hasAPIKey: false, microphoneAccess: .unknown)
+        XCTAssertEqual(
+            bridge.activationStatus(hasFullAccess: true, isOnline: true), .notConfigured)
+
+        bridge.publishAppReadiness(hasAPIKey: true, microphoneAccess: .denied)
+        XCTAssertEqual(
+            bridge.activationStatus(hasFullAccess: true, isOnline: true), .microphoneDenied)
+
+        bridge.publishAppReadiness(hasAPIKey: true, microphoneAccess: .granted)
+        XCTAssertEqual(
+            bridge.activationStatus(hasFullAccess: true, isOnline: false), .offline)
+        XCTAssertEqual(
+            bridge.activationStatus(hasFullAccess: true, isOnline: true), .opensContainingApp)
+
+        bridge.touchSession()
+        XCTAssertEqual(bridge.activationStatus(hasFullAccess: true, isOnline: true), .ready)
+    }
+
+    func testWarmSessionDurationDefaultsAndPersists() {
+        XCTAssertEqual(bridge.warmSessionDuration, .fiveMinutes)
+        XCTAssertEqual(bridge.warmSessionDuration.seconds, 300)
+
+        bridge.warmSessionDuration = .twelveHours
+        XCTAssertEqual(bridge.warmSessionDuration, .twelveHours)
+        XCTAssertEqual(bridge.warmSessionDuration.seconds, 43_200)
+
+        bridge.warmSessionDuration = .untilAppCloses
+        XCTAssertNil(bridge.warmSessionDuration.seconds)
+    }
+
+    func testInputContextRoundTripsAndLocatesASelection() {
+        let context = VoiceKeyboardBridge.InputContext(
+            documentIdentifier: "document", textBeforeSelection: "Hello ",
+            selectedText: "world", textAfterSelection: "!", keyboardType: 0,
+            returnKeyType: 0)
+        bridge.setInputContext(context)
+        XCTAssertEqual(bridge.inputContext, context)
+        XCTAssertEqual(
+            context.locateSelection(
+                documentIdentifier: "document", selectedText: "world",
+                textBeforeCursor: "Hello ", textAfterCursor: "!"),
+            .selected)
+        XCTAssertEqual(
+            context.locateSelection(
+                documentIdentifier: "document", selectedText: nil,
+                textBeforeCursor: "Hello ", textAfterCursor: "world!"),
+            .cursorAtStart)
+        XCTAssertEqual(
+            context.locateSelection(
+                documentIdentifier: "document", selectedText: nil,
+                textBeforeCursor: "Hello world", textAfterCursor: "!"),
+            .cursorAtEnd)
+    }
+
+    func testInputContextRefusesToEditAnotherDocument() {
+        let context = VoiceKeyboardBridge.InputContext(
+            documentIdentifier: "original", textBeforeSelection: "A",
+            selectedText: "selection", textAfterSelection: "B", keyboardType: nil,
+            returnKeyType: nil)
+        XCTAssertEqual(
+            context.locateSelection(
+                documentIdentifier: "different", selectedText: "selection",
+                textBeforeCursor: "A", textAfterCursor: "B"),
+            .unavailable)
+    }
+
     func testCancelReturnsTheSharedStateToIdle() {
         bridge.requestStart()
         bridge.publishRecordingStarted()

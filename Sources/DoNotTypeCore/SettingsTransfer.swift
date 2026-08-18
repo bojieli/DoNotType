@@ -96,8 +96,12 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
     /// The phone chooses a rewrite style in the UI; desktop chooses it with a second hotkey.
     public struct IOS: Codable, Equatable, Sendable {
         public var liveStyle: String
+        public var warmSessionDuration: String?
 
-        public init(liveStyle: String) { self.liveStyle = liveStyle }
+        public init(liveStyle: String, warmSessionDuration: String? = nil) {
+            self.liveStyle = liveStyle
+            self.warmSessionDuration = warmSessionDuration
+        }
     }
 
     public var format: String

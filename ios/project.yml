@@ -31,6 +31,7 @@ targets:
     sources:
       - path: App
       - path: Shared
+      - path: ActivityShared
       # The whole directory, as a folder reference: a part is found by its path
       # under prompt/, so a flattened copy would not resolve.
       - path: ../prompt
@@ -55,6 +56,8 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - target: DoNotTypeKeyboard
+        embed: true
+      - target: DoNotTypeActivity
         embed: true
       - package: DoNotTypeCore
         product: DoNotTypeCore
@@ -109,6 +112,21 @@ targets:
     dependencies:
       - package: DoNotTypeCore
         product: DoNotTypeCore
+
+  # Live Activity and Dynamic Island mirror the real audio/session state. They do not keep the app
+  # alive; the containing app's declared background audio session remains the execution mechanism.
+  DoNotTypeActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ActivityShared
+      - path: LiveActivity
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.donottype.activity
+        INFOPLIST_FILE: LiveActivity/Info.plist
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
 
 # Explicit so that `xcodebuild test -scheme DoNotType` runs the UI tests, rather than the UI tests
 # living in a scheme nobody invokes.

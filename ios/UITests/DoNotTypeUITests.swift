@@ -37,6 +37,14 @@ final class DoNotTypeUITests: XCTestCase {
                 return true
             }
         }
+        // Navigation can restore a Form's prior scroll offset. A control above that offset will
+        // never be built by repeatedly swiping farther down, so search back toward the top too.
+        for _ in 0..<8 {
+            app.swipeDown()
+            if element.waitForExistence(timeout: 1), isInsideViewport(element, in: app) {
+                return true
+            }
+        }
         return false
     }
 
@@ -134,6 +142,23 @@ final class DoNotTypeUITests: XCTestCase {
             "the reason should name what is missing, got: \(reason.label)")
     }
 
+    /// A mistaken mode should be fixable without interrupting the sentence being captured. The
+    /// model reads this choice when recording ends and then freezes it for transcription.
+    func testDictateOrRewriteCanChangeWhileSpeaking() {
+        let app = launch(arguments: ["-ui-testing-recording-state"])
+        XCTAssertTrue(app.staticTexts["Listening… tap to stop"].waitForExistence(timeout: 10))
+
+        let dictate = app.buttons["mode-dictate"]
+        let rewrite = app.buttons["mode-rewrite"]
+        XCTAssertTrue(dictate.exists)
+        XCTAssertTrue(rewrite.exists)
+
+        let newMode = dictate.isSelected ? rewrite : dictate
+        XCTAssertTrue(newMode.isEnabled, "mode controls must remain enabled while recording")
+        newMode.tap()
+        XCTAssertTrue(newMode.isSelected, "the new mode should take effect before speech ends")
+    }
+
     /// Asserts on the controls rather than on the section headers above them.
     ///
     /// Headers were the obvious thing to look for and the wrong one: how a `Section` header is
@@ -147,8 +172,8 @@ final class DoNotTypeUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
         for control in [
-            "api-key", "model", "fidelity", "rewrite-style", "open-dictionary", "retention",
-            "keep-audio", "open-prompt",
+            "api-key", "model", "fidelity", "warm-session-duration", "rewrite-style",
+            "open-dictionary", "retention", "keep-audio", "open-prompt",
         ] {
             XCTAssertTrue(
                 reveal(app.descendants(matching: .any)[control].firstMatch, in: app),
@@ -198,23 +223,33 @@ final class DoNotTypeUITests: XCTestCase {
                 .waitForExistence(timeout: 5))
     }
 
-    /// Typing a key and leaving the screen has to persist it. This is the setting without which
-    /// the app cannot do anything at all, so "it looked like it saved" is not good enough.
+    /// Typing a key and relaunching has to persist it. This is the setting without which the app
+    /// cannot do anything at all, so "it looked like it saved" is not good enough.
     func testAPIKeySurvivesLeavingSettings() {
         let app = launch(arguments: ["-ui-testing-no-api-key"])
         app.buttons["open-settings"].tap()
 
-        let field = app.secureTextFields["api-key"]
+        // SwiftUI has exposed the same SecureField as both SecureTextField and TextField after its
+        // bound value changes. The identifier belongs to the app and remains stable.
+        let field = app.descendants(matching: .any)["api-key"].firstMatch
         XCTAssertTrue(reveal(field, in: app))
         field.tap()
         field.typeText("test-key-12345")
+        let returnKey = app.keyboards.buttons["return"]
+        if returnKey.exists { returnKey.tap() }
 
-        app.navigationBars["Settings"].buttons.firstMatch.tap()
-        XCTAssertTrue(app.navigationBars["DoNotType"].waitForExistence(timeout: 5))
-
+        // A process relaunch verifies the Keychain write and avoids treating a still-live SwiftUI
+        // binding as persistence. Preserve the stored key instead of applying the usual test key.
+        app.terminate()
+        app.launchArguments.removeAll { $0 == "-ui-testing-no-api-key" }
+        app.launchArguments.append("-ui-testing-preserve-api-key")
+        app.launch()
+        XCTAssertTrue(app.navigationBars["DoNotType"].waitForExistence(timeout: 10))
         app.buttons["open-settings"].tap()
-        XCTAssertTrue(reveal(field, in: app))
-        XCTAssertEqual(field.value as? String, "••••••••••••••",
+
+        let persistedField = app.descendants(matching: .any)["api-key"].firstMatch
+        XCTAssertTrue(reveal(persistedField, in: app))
+        XCTAssertEqual(persistedField.value as? String, "••••••••••••••",
                        "the key should still be there after leaving and coming back")
     }
 

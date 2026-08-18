@@ -80,7 +80,7 @@ struct ContentView: View {
         }
         .overlay {
             if model.isReturnToHostPresented {
-                KeyboardReturnToHostView(state: model.state) {
+                KeyboardReturnToHostView(state: model.state, guide: model.returnToHostGuide) {
                     model.dismissReturnToHost()
                 } cancel: {
                     model.cancelCurrentOperation()
@@ -185,7 +185,9 @@ struct ContentView: View {
             .padding(.vertical, 6)
             .background(selected ? Color.accentColor : Color.clear, in: Capsule())
             .buttonStyle(.plain)
-            .disabled(model.state == .recording || model.state == .transcribing)
+            // The choice is captured when speech ends, so the user can correct the mode without
+            // stopping mid-sentence. A take already being transcribed keeps its captured mode.
+            .disabled(model.state == .transcribing)
             .accessibilityIdentifier(rewrite ? "mode-rewrite" : "mode-dictate")
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
@@ -322,6 +324,7 @@ struct ContentView: View {
 /// current iOS versions withhold it.
 private struct KeyboardReturnToHostView: View {
     let state: DictationModel.State
+    let guide: KeyboardHostReturnPolicy.Guide
     let dismiss: () -> Void
     let cancel: () -> Void
 
@@ -338,10 +341,10 @@ private struct KeyboardReturnToHostView: View {
                     .font(.title.bold())
 
                 VStack(spacing: 10) {
-                    Text("Return to the app where you were typing")
+                    Text(guide.title)
                         .font(.headline)
 
-                    Text("Swipe across the bottom edge to the previous app, or open it manually. Keep speaking — dictation continues after you leave DoNotType.")
+                    Text(guide.instructions)
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -380,7 +383,6 @@ private struct KeyboardReturnToHostView: View {
             }
             .padding()
         }
-        .accessibilityIdentifier("keyboard-return-to-host")
     }
 }
 

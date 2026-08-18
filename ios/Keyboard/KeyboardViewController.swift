@@ -1,5 +1,6 @@
 import DoNotTypeCore
 import Darwin
+import Network
 import ObjectiveC.runtime
 import UIKit
 
@@ -23,7 +24,17 @@ final class KeyboardViewController: UIInputViewController {
     private var pressStartedRecording = false
     private var stopWhenRecordingStarts = false
     private var lastLearnedTerms: [String] = []
+    private struct InsertionUndo {
+        let documentIdentifier: UUID
+        let insertedText: String
+        let replacedText: String?
+        let trailingAnchor: String
+    }
+    private var insertionUndo: InsertionUndo?
     private var transientStatus: String?
+    private let networkMonitor = NWPathMonitor()
+    private let networkQueue = DispatchQueue(label: "app.donottype.keyboard-network")
+    private var isOnline: Bool?
     /// Darwin notifications can reach this controller after Notes has hidden its keyboard. Its
     /// `textDocumentProxy` still exists then, but inserting through it is a no-op. Never consume a
     /// result until UIKit has attached this keyboard to a visible document again.
@@ -38,10 +49,11 @@ final class KeyboardViewController: UIInputViewController {
 
     private lazy var appLauncher = KeyboardContainingAppLauncher { [weak self] in self }
     private lazy var statusLabel = UILabel()
-    private lazy var modeControl = UISegmentedControl(items: ["Dictate", "Rewrite"])
+    private lazy var modeButton = UIButton(type: .system)
     private lazy var dictateButton = UIButton(type: .system)
     private lazy var cancelButton = UIButton(type: .system)
     private lazy var settingsButton = UIButton(type: .system)
+    private lazy var undoButton = UIButton(type: .system)
     private lazy var returnButton = UIButton(type: .system)
     private lazy var backspaceButton = UIButton(type: .system)
 
@@ -51,6 +63,16 @@ final class KeyboardViewController: UIInputViewController {
         // remote keyboard host, suppressing the system-owned microphone in the bottom chrome.
         super.hasDictationKey = true
         buildInterface()
+
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            let online = path.status == .satisfied
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isOnline = online
+                self.reload()
+            }
+        }
+        networkMonitor.start(queue: networkQueue)
 
         VoiceKeyboardBridge.observeUpdates {
             Task { @MainActor [weak self] in self?.reload() }
@@ -96,7 +118,7 @@ final class KeyboardViewController: UIInputViewController {
 
         statusLabel.font = .preferredFont(forTextStyle: .callout)
         statusLabel.textColor = .secondaryLabel
-        statusLabel.numberOfLines = 2
+        statusLabel.numberOfLines = 1
         statusLabel.textAlignment = .center
         statusLabel.accessibilityIdentifier = "kb-status"
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -104,14 +126,9 @@ final class KeyboardViewController: UIInputViewController {
         statusLabel.addGestureRecognizer(
             UITapGestureRecognizer(target: self, action: #selector(statusTapped)))
 
-        modeControl.selectedSegmentIndex = voiceBridge.rewriteModeEnabled == true ? 1 : 0
-        modeControl.selectedSegmentTintColor = .systemBlue
-        modeControl.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .selected)
-        modeControl.setTitleTextAttributes([.foregroundColor: UIColor.label], for: .normal)
-        modeControl.accessibilityIdentifier = "kb-dictation-mode"
-        modeControl.accessibilityLabel = "Dictation mode"
-        modeControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
-        modeControl.translatesAutoresizingMaskIntoConstraints = false
+        modeButton.accessibilityIdentifier = "kb-dictation-mode"
+        modeButton.translatesAutoresizingMaskIntoConstraints = false
+        modeButton.addTarget(self, action: #selector(toggleMode), for: .touchUpInside)
 
         dictateButton.accessibilityIdentifier = "kb-dictate"
         dictateButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
@@ -139,6 +156,15 @@ final class KeyboardViewController: UIInputViewController {
         settingsButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
         settingsButton.translatesAutoresizingMaskIntoConstraints = false
 
+        undoButton.setImage(UIImage(systemName: "arrow.uturn.backward"), for: .normal)
+        undoButton.accessibilityIdentifier = "kb-undo"
+        undoButton.accessibilityLabel = "Undo last insertion"
+        undoButton.backgroundColor = .tertiarySystemFill
+        undoButton.layer.cornerRadius = 10
+        undoButton.addTarget(self, action: #selector(undoLastInsertion), for: .touchUpInside)
+        undoButton.translatesAutoresizingMaskIntoConstraints = false
+        undoButton.isEnabled = false
+
         returnButton.setImage(UIImage(systemName: "return"), for: .normal)
         returnButton.accessibilityIdentifier = "kb-return"
         returnButton.accessibilityLabel = "Return"
@@ -156,28 +182,29 @@ final class KeyboardViewController: UIInputViewController {
         backspaceButton.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(statusLabel)
-        view.addSubview(modeControl)
+        view.addSubview(modeButton)
         view.addSubview(dictateButton)
         view.addSubview(cancelButton)
         view.addSubview(settingsButton)
+        view.addSubview(undoButton)
         view.addSubview(returnButton)
         view.addSubview(backspaceButton)
 
         NSLayoutConstraint.activate([
-            view.heightAnchor.constraint(equalToConstant: 205),
+            view.heightAnchor.constraint(equalToConstant: 155),
+
+            modeButton.leadingAnchor.constraint(equalTo: settingsButton.trailingAnchor, constant: 7),
+            modeButton.centerYAnchor.constraint(equalTo: settingsButton.centerYAnchor),
+            modeButton.widthAnchor.constraint(equalToConstant: 90),
+            modeButton.heightAnchor.constraint(equalToConstant: 34),
 
             statusLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
-            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 64),
-            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -64),
+            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
+            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
             statusLabel.heightAnchor.constraint(equalToConstant: 30),
 
-            modeControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            modeControl.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 2),
-            modeControl.widthAnchor.constraint(equalToConstant: 160),
-            modeControl.heightAnchor.constraint(equalToConstant: 28),
-
             dictateButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            dictateButton.topAnchor.constraint(equalTo: modeControl.bottomAnchor, constant: 4),
+            dictateButton.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 4),
             dictateButton.widthAnchor.constraint(equalToConstant: 170),
             dictateButton.heightAnchor.constraint(equalToConstant: 58),
 
@@ -191,6 +218,11 @@ final class KeyboardViewController: UIInputViewController {
             settingsButton.widthAnchor.constraint(equalToConstant: 38),
             settingsButton.heightAnchor.constraint(equalToConstant: 38),
 
+            undoButton.trailingAnchor.constraint(equalTo: backspaceButton.leadingAnchor, constant: -7),
+            undoButton.centerYAnchor.constraint(equalTo: settingsButton.centerYAnchor),
+            undoButton.widthAnchor.constraint(equalToConstant: 42),
+            undoButton.heightAnchor.constraint(equalToConstant: 38),
+
             returnButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             returnButton.centerYAnchor.constraint(equalTo: settingsButton.centerYAnchor),
             returnButton.widthAnchor.constraint(equalToConstant: 84),
@@ -201,11 +233,13 @@ final class KeyboardViewController: UIInputViewController {
             backspaceButton.widthAnchor.constraint(equalToConstant: 52),
             backspaceButton.heightAnchor.constraint(equalToConstant: 38),
         ])
+        renderModeButton(canChange: true)
     }
 
     private func reload() {
         entries = store.load()
-        modeControl.selectedSegmentIndex = voiceBridge.rewriteModeEnabled == true ? 1 : 0
+        renderModeButton(canChange: true)
+        undoButton.isEnabled = insertionUndo != nil
 
         guard hasFullAccess else {
             statusLabel.text =
@@ -230,7 +264,6 @@ final class KeyboardViewController: UIInputViewController {
         {
             insert(result)
             voiceBridge.acknowledgeResult()
-            transientStatus = "Inserted"
         }
 
         var current = voiceBridge.snapshot
@@ -242,11 +275,11 @@ final class KeyboardViewController: UIInputViewController {
             voiceBridge.requestStop()
             current = voiceBridge.snapshot
         }
+        let activation = voiceBridge.activationStatus(
+            hasFullAccess: hasFullAccess, isOnline: isOnline)
         switch current.phase {
         case .idle:
-            statusLabel.text = transientStatus ?? (voiceBridge.isSessionWarm
-                ? "Tap to dictate, or hold to talk"
-                : "Tap to dictate · DoNotType opens once to activate the microphone")
+            statusLabel.text = transientStatus ?? activationMessage(for: activation)
         case .waiting:
             statusLabel.text = voiceBridge.isSessionWarm
                 ? "Starting dictation…" : "Opening DoNotType to activate the microphone…"
@@ -258,6 +291,30 @@ final class KeyboardViewController: UIInputViewController {
             statusLabel.text = current.message ?? "Dictation failed — tap to try again"
         }
         renderButton(phase: current.phase, sessionWarm: voiceBridge.isSessionWarm)
+    }
+
+    private func activationMessage(for status: VoiceKeyboardBridge.ActivationStatus) -> String {
+        switch status {
+        case .noFullAccess:
+            "Full Access is required for voice dictation"
+        case .notConfigured:
+            "Setup needed · tap Speak to open DoNotType Settings"
+        case .microphoneDenied:
+            "Microphone access is off · tap Speak to open Settings"
+        case .offline:
+            "Offline · dictation will be saved so it can be retried"
+        case .opensContainingApp, .ready:
+            idleCallToAction
+        }
+    }
+
+    private var idleCallToAction: String {
+        guard voiceBridge.rewriteModeEnabled == true else {
+            return "Tap Speak to dictate, or hold to talk"
+        }
+        return (textDocumentProxy.selectedText ?? "").isEmpty
+            ? "Tap Speak to rewrite, or hold to talk"
+            : "Tap Speak to edit the selection, or hold to talk"
     }
 
     private func renderButton(phase: VoiceKeyboardBridge.Phase, sessionWarm: Bool) {
@@ -289,9 +346,10 @@ final class KeyboardViewController: UIInputViewController {
             for: .normal)
         dictateButton.setTitle(title, for: .normal)
         dictateButton.backgroundColor = background
-        let canChangeMode = phase == .idle || phase == .failed
-        modeControl.setEnabled(canChangeMode, forSegmentAt: 0)
-        modeControl.setEnabled(canChangeMode, forSegmentAt: 1)
+        // The mode is read when recording ends, so changing it while the microphone is live is
+        // intentional. Once transcription begins, keep the choice stable for that completed take.
+        let canChangeMode = phase == .idle || phase == .failed || phase == .recording
+        renderModeButton(canChange: canChangeMode)
         cancelButton.isHidden = phase != .waiting && phase != .transcribing
         switch phase {
         case .waiting:
@@ -313,12 +371,35 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - Dictation gesture
 
-    @objc private func modeChanged() {
-        voiceBridge.setRewriteModeEnabled(modeControl.selectedSegmentIndex == 1)
-        transientStatus = modeControl.selectedSegmentIndex == 1
-            ? "Rewrite mode · choose its style in Settings"
-            : "Dictation mode"
+    @objc private func toggleMode() {
+        let rewrite = voiceBridge.rewriteModeEnabled != true
+        voiceBridge.setRewriteModeEnabled(rewrite)
+        transientStatus = nil
         reload()
+    }
+
+    private func renderModeButton(canChange: Bool) {
+        let rewrite = voiceBridge.rewriteModeEnabled == true
+        let hasSelection = !(textDocumentProxy.selectedText ?? "").isEmpty
+        let title = rewrite ? (hasSelection ? "Edit" : "Rewrite") : "Dictate"
+        let nextTitle = rewrite ? "Dictate" : (hasSelection ? "Edit" : "Rewrite")
+
+        var configuration = UIButton.Configuration.filled()
+        configuration.title = title
+        configuration.image = UIImage(systemName: rewrite ? "wand.and.sparkles" : "mic")
+        configuration.imagePadding = 4
+        configuration.cornerStyle = .capsule
+        configuration.contentInsets = .init(top: 2, leading: 8, bottom: 2, trailing: 8)
+        configuration.baseForegroundColor = .white
+        configuration.baseBackgroundColor = rewrite ? .systemPurple : .systemBlue
+        modeButton.configuration = configuration
+        modeButton.titleLabel?.font = .systemFont(ofSize: 11, weight: .semibold)
+        modeButton.isEnabled = canChange
+        modeButton.accessibilityLabel = "Current mode: \(title)"
+        modeButton.accessibilityHint = canChange
+            ? "Double-tap to switch to \(nextTitle)."
+            : "The mode is fixed while transcription is in progress."
+        modeButton.accessibilityValue = title
     }
 
     @objc private func dictateTouchDown() {
@@ -329,7 +410,25 @@ final class KeyboardViewController: UIInputViewController {
 
         switch voiceBridge.snapshot.phase {
         case .idle, .failed:
+            let activation = voiceBridge.activationStatus(
+                hasFullAccess: hasFullAccess, isOnline: isOnline)
+            switch activation {
+            case .noFullAccess:
+                transientStatus = activationMessage(for: activation)
+                reload()
+                return
+            case .notConfigured, .microphoneDenied:
+                transientStatus = activationMessage(for: activation)
+                reload()
+                openContainingApp(path: "settings")
+                return
+            case .offline:
+                transientStatus = activationMessage(for: activation)
+            case .opensContainingApp, .ready:
+                break
+            }
             pressStartedRecording = true
+            voiceBridge.setInputContext(captureInputContext())
             voiceBridge.setReturnHostBundleIdentifier(keyboardHostBundleIdentifier())
             let wasWarm = voiceBridge.requestStart()
             reload()
@@ -376,20 +475,17 @@ final class KeyboardViewController: UIInputViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
     }
 
-    private func openContainingApp() {
-        guard appLauncher.open(URL(string: "donottype://dictate")) else {
+    private func openContainingApp(path: String = "dictate") {
+        guard appLauncher.open(URL(string: "donottype://\(path)")) else {
             statusLabel.text = "Open DoNotType to activate dictation, then return here."
             return
         }
-        statusLabel.text = "Starting DoNotType dictation…"
+        statusLabel.text = path == "settings"
+            ? "Opening DoNotType Settings…" : "Starting DoNotType dictation…"
     }
 
     @objc private func openSettings() {
-        guard appLauncher.open(URL(string: "donottype://settings")) else {
-            statusLabel.text = "Open DoNotType to configure Settings."
-            return
-        }
-        statusLabel.text = "Opening DoNotType Settings…"
+        openContainingApp(path: "settings")
     }
 
     /// `NSExtensionContext` does not publicly expose the application hosting a custom keyboard,
@@ -502,19 +598,60 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     @objc private func insertReturn() {
+        insertionUndo = nil
         textDocumentProxy.insertText("\n")
+        reload()
     }
 
     @objc private func deleteBackward() {
+        insertionUndo = nil
         textDocumentProxy.deleteBackward()
+        reload()
     }
 
     // MARK: - Insertion and correction learning
 
     private func insert(_ text: String) {
+        let context = voiceBridge.inputContext
+        let selectionEdit = voiceBridge.rewriteModeEnabled == true && context?.hasSelection == true
+        var replacedText = textDocumentProxy.selectedText
+
+        if selectionEdit, let context {
+            switch context.locateSelection(
+                documentIdentifier: textDocumentProxy.documentIdentifier.uuidString,
+                selectedText: textDocumentProxy.selectedText,
+                textBeforeCursor: textDocumentProxy.documentContextBeforeInput,
+                textAfterCursor: textDocumentProxy.documentContextAfterInput)
+            {
+            case .selected:
+                replacedText = context.selectedText
+            case .cursorAtStart:
+                guard let selected = context.selectedText else { return }
+                textDocumentProxy.adjustTextPosition(byCharacterOffset: selected.utf16.count)
+                selected.forEach { _ in textDocumentProxy.deleteBackward() }
+                replacedText = selected
+            case .cursorAtEnd:
+                guard let selected = context.selectedText else { return }
+                selected.forEach { _ in textDocumentProxy.deleteBackward() }
+                replacedText = selected
+            case .unavailable:
+                insertionUndo = nil
+                transientStatus = "Selection changed · transcript copied"
+                return
+            }
+        }
+
         let correction = dictionaryStore.load().learnsFromEdits
             ? correctionAnchor(for: text) : nil
         textDocumentProxy.insertText(text)
+        insertionUndo = InsertionUndo(
+            documentIdentifier: textDocumentProxy.documentIdentifier,
+            insertedText: text,
+            replacedText: replacedText,
+            trailingAnchor: String(
+                (textDocumentProxy.documentContextAfterInput ?? "").prefix(32)))
+        transientStatus = "Inserted · tap Undo to restore"
+        undoButton.isEnabled = true
         if let correction {
             correctionStore.save(correction)
             observePendingCorrection()
@@ -524,6 +661,50 @@ final class KeyboardViewController: UIInputViewController {
         if let entry = entries.first(where: { $0.text == text && !$0.inserted }) {
             store.markInserted(entry.id)
         }
+    }
+
+    private func captureInputContext() -> VoiceKeyboardBridge.InputContext {
+        VoiceKeyboardBridge.InputContext(
+            documentIdentifier: textDocumentProxy.documentIdentifier.uuidString,
+            textBeforeSelection: textDocumentProxy.documentContextBeforeInput.map {
+                String($0.suffix(512))
+            },
+            selectedText: textDocumentProxy.selectedText.map { String($0.prefix(4_000)) },
+            textAfterSelection: textDocumentProxy.documentContextAfterInput.map {
+                String($0.prefix(512))
+            },
+            keyboardType: textDocumentProxy.keyboardType?.rawValue,
+            returnKeyType: textDocumentProxy.returnKeyType?.rawValue)
+    }
+
+    @objc private func undoLastInsertion() {
+        guard let undo = insertionUndo,
+            undo.documentIdentifier == textDocumentProxy.documentIdentifier,
+            let before = textDocumentProxy.documentContextBeforeInput
+        else {
+            insertionUndo = nil
+            transientStatus = "Nothing safe to undo"
+            reload()
+            return
+        }
+
+        let insertedAnchor = String(undo.insertedText.suffix(64))
+        let after = textDocumentProxy.documentContextAfterInput ?? ""
+        guard (insertedAnchor.isEmpty || before.hasSuffix(insertedAnchor)),
+            (undo.trailingAnchor.isEmpty || after.hasPrefix(undo.trailingAnchor))
+        else {
+            insertionUndo = nil
+            transientStatus = "Text changed · undo cancelled"
+            reload()
+            return
+        }
+
+        undo.insertedText.forEach { _ in textDocumentProxy.deleteBackward() }
+        if let replaced = undo.replacedText { textDocumentProxy.insertText(replaced) }
+        insertionUndo = nil
+        transientStatus = "Insertion undone"
+        correctionStore.clear()
+        reload()
     }
 
     @objc private func statusTapped() {

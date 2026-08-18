@@ -55,8 +55,9 @@ struct SettingsView: View {
         Section {
             SetupRow(
                 title: "Microphone",
-                detail: "After keyboard dictation, the input session stays warm for up to five "
-                    + "minutes so later presses do not switch apps.",
+                detail: "After keyboard dictation, the input session stays warm for "
+                    + model.warmSessionDuration.label.lowercased()
+                    + " so later presses do not switch apps.",
                 isDone: microphoneGranted,
                 action: requestMicrophone)
 
@@ -197,10 +198,21 @@ struct SettingsView: View {
                 Text("Tidy — light, plus punctuation").tag(Fidelity.tidy)
             }
             .accessibilityIdentifier("fidelity")
+
+            Picker("Keep keyboard microphone ready", selection: $model.warmSessionDuration) {
+                ForEach(VoiceKeyboardBridge.WarmSessionDuration.allCases, id: \.self) { duration in
+                    Text(duration.label).tag(duration)
+                }
+            }
+            .accessibilityIdentifier("warm-session-duration")
         } header: {
             Text("Dictation")
         } footer: {
-            Text("Even Tidy only changes typography. None of these reword you.")
+            Text(
+                "Even Tidy only changes typography. Keeping the keyboard microphone ready avoids "
+                    + "another app switch, but uses more battery and keeps iOS’s microphone "
+                    + "privacy indicator visible. Audio is discarded between dictations."
+            )
         }
     }
 
