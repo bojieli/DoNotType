@@ -1,10 +1,8 @@
 package app.donottype
 
 import app.donottype.accessibility.ScreenReaderService
-import app.donottype.core.DictationRecord
 import app.donottype.core.DictationService
 import app.donottype.core.Fidelity
-import app.donottype.core.HistoryQuery
 import app.donottype.core.InputPart
 import app.donottype.core.PerformanceStats
 import app.donottype.core.PersonalDictionary
@@ -63,7 +61,6 @@ import app.donottype.ui.settingRow
 import app.donottype.ui.setupRow
 import app.donottype.ui.switchRow
 import app.donottype.ui.textButton
-import app.donottype.ui.themeColor
 import app.donottype.ui.tonalButton
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -98,15 +95,11 @@ class SettingsActivity : AppCompatActivity() {
     /** The three setup steps and their state, rebuilt by refreshStatus(). */
     private lateinit var setupContainer: LinearLayout
     private lateinit var connectionLabel: TextView
-    private lateinit var historyContainer: LinearLayout
     private lateinit var historySummary: TextView
-    private lateinit var searchField: TextInputEditText
-    private lateinit var searchFieldLayout: TextInputLayout
     private lateinit var dictionaryContainer: LinearLayout
     private lateinit var dictionaryEntry: TextInputEditText
     private lateinit var dictionaryEntryLayout: TextInputLayout
     private lateinit var dictionaryStatus: TextView
-    private var query = HistoryQuery()
 
     private val settingsTransfer = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -401,26 +394,17 @@ class SettingsActivity : AppCompatActivity() {
         )
 
         // ---- History ----
+        // The list itself is its own screen. What stays here is the part that really is a setting:
+        // how long transcripts are kept, and whether their audio is kept with them.
         column.addView(sectionTitle("History"))
-
-        // Search sits above the list because it is the reason history is kept at all.
-        searchField = TextInputEditText(this).apply {
-            addTextChangedListener(object : android.text.TextWatcher {
-                override fun afterTextChanged(s: android.text.Editable?) {
-                    query = query.copy(text = s?.toString().orEmpty())
-                    refreshHistory()
-                }
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-            })
-        }
-        searchFieldLayout =
-            fieldContainer("Search transcripts, errors, apps", searchField)
-
         column.addView(
             card(
-                controlRow(null, searchFieldLayout),
-                controlRow("Show", buildStatusFilterPicker()),
+                settingRow(
+                    "Transcripts",
+                    "Search what you have dictated, retry what failed, delete what you want gone.",
+                ) {
+                    startActivity(Intent(this, HistoryActivity::class.java))
+                }.also { it.contentDescription = "open-history" },
                 controlRow("Keep for", buildRetentionPicker()),
                 switchRow(
                     "Keep audio for successful dictations",
@@ -435,10 +419,6 @@ class SettingsActivity : AppCompatActivity() {
 
         historySummary = caption("")
         column.addView(historySummary)
-        column.addView(tonalButton("Retry all failed") { retryAll() })
-
-        historyContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        column.addView(cardHolding(historyContainer))
         column.addView(
             sectionFooter(
                 "Whatever Keep audio is set to, a failed dictation holds on to its recording — "
@@ -591,31 +571,6 @@ class SettingsActivity : AppCompatActivity() {
             )
         )
 
-        column.addView(
-            textButton("Delete all history") {
-                service.history.deleteAll()
-                refreshHistory()
-            }
-        )
-    }
-
-    /** The history status filter, which used to be an unlabelled spinner under the search box. */
-    private fun buildStatusFilterPicker(): Spinner {
-        val filters = HistoryQuery.StatusFilter.entries
-        return Spinner(this).apply {
-            adapter = ArrayAdapter(
-                this@SettingsActivity,
-                android.R.layout.simple_spinner_dropdown_item,
-                filters.map { it.label },
-            )
-            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
-                    query = query.copy(status = filters[pos])
-                    refreshHistory()
-                }
-                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-            }
-        }
     }
 
     private fun addDictionaryEntry() {
@@ -935,27 +890,17 @@ class SettingsActivity : AppCompatActivity() {
         return out.toByteArray()
     }
 
-    private fun retryAll() {
-        lifecycleScope.launch {
-            historySummary.text = "Retrying…"
-            val (succeeded, failed) = service.retryAll()
-            historySummary.text = "$succeeded succeeded, $failed still failing"
-            refreshHistory()
-        }
-    }
-
+    /**
+     * The one line settings still says about history: how much there is, how much of it is waiting
+     * to be retried, and how fast the whole thing has been. The list it summarises is a screen away.
+     */
     private fun refreshHistory() {
         service.history.configure(Settings.retention, Settings.keepAudio)
         val all = service.history.all()
-        val records = query.apply(all)
         val retryable = all.count { it.canRetry }
 
         historySummary.text = buildString {
-            if (records.size == all.size) {
-                append("${all.size} dictation${if (all.size == 1) "" else "s"}")
-            } else {
-                append("${records.size} of ${all.size}")
-            }
+            append("${all.size} dictation${if (all.size == 1) "" else "s"}")
             if (retryable > 0) append(" · $retryable to retry")
             append(" · ")
             append(Formatter.formatShortFileSize(this@SettingsActivity, service.history.audioBytes()))
@@ -970,117 +915,6 @@ class SettingsActivity : AppCompatActivity() {
                 append(" · ${PerformanceStats.formatCount(stats.words)} words")
             }
         }
-
-        // Rendered in full rather than truncated. A list capped at 20 with nothing said about it
-        // reads as "this is your whole history" when it is not; the retention policy is what is
-        // supposed to bound how much there is, not the view.
-        historyContainer.removeAllViews()
-        records.forEachIndexed { index, record ->
-            if (index > 0) historyContainer.addView(divider())
-            historyContainer.addView(historyRow(record))
-        }
-    }
-
-    private fun historyRow(record: DictationRecord): View {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            val padding = resources.getDimensionPixelSize(R.dimen.space_m)
-            setPadding(padding, resources.getDimensionPixelSize(R.dimen.space_s), padding,
-                resources.getDimensionPixelSize(R.dimen.space_s))
-            minimumHeight = resources.getDimensionPixelSize(R.dimen.row_min_height)
-        }
-
-        val marker = when (record.status) {
-            DictationRecord.Status.COMPLETED -> "✓"
-            DictationRecord.Status.FAILED -> "✗"
-            DictationRecord.Status.PENDING -> "…"
-        }
-
-        // Transcript with its timing underneath. Per row rather than only in aggregate, because
-        // "that one felt slow" is a claim the user should be able to check.
-        row.addView(
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-
-                addView(
-                    TextView(this@SettingsActivity).apply {
-                        text = "$marker  ${record.summary.take(90)}"
-                        textSize = 14f
-                        // Theme attributes rather than the hex literals this used to carry. Under
-                        // a DayNight theme a fixed dark grey is unreadable at night, which is what
-                        // "✓ …" rows looked like on a dark phone: dark grey on a dark surface.
-                        setTextColor(
-                            if (record.status == DictationRecord.Status.COMPLETED) {
-                                themeColor(com.google.android.material.R.attr.colorOnSurface)
-                            } else {
-                                themeColor(com.google.android.material.R.attr.colorError)
-                            }
-                        )
-                    }
-                )
-
-                val details = buildList {
-                    record.latencyMillis?.let { add(PerformanceStats.formatMillis(it)) }
-                    if (record.retryCount > 0) add("retried ${record.retryCount}×")
-                    if (record.durationSeconds > 0) {
-                        add("${PerformanceStats.formatSeconds(record.durationSeconds)} spoken")
-                    }
-                }
-                if (details.isNotEmpty()) {
-                    addView(
-                        TextView(this@SettingsActivity).apply {
-                            text = details.joinToString(" · ")
-                            textSize = 12f
-                            // Amber marks a wait long enough to have been noticed. It is a named
-                            // colour with a night variant, not a hex literal, for the same reason
-                            // as the line above.
-                            setTextColor(
-                                if ((record.latencyMillis ?: 0) > 8_000) {
-                                    ContextCompat.getColor(context, R.color.dnt_warning)
-                                } else {
-                                    themeColor(
-                                        com.google.android.material.R.attr.colorOnSurfaceVariant,
-                                    )
-                                }
-                            )
-                        }
-                    )
-                }
-            }
-        )
-
-        // The point of the whole grounding argument: if the app reads your screen, you can read
-        // what it read. On the row it belongs to, rather than on a screen you have to know exists.
-        row.setOnClickListener { ContextInspector.show(this, record) }
-
-        if (record.canRetry) {
-            row.addView(
-                textButton("Retry") {}.apply {
-                    layoutParams = wrapContent()
-                    setOnClickListener {
-                        isEnabled = false
-                        lifecycleScope.launch {
-                            service.retry(record)
-                            refreshHistory()
-                        }
-                    }
-                }
-            )
-        }
-
-        // Per-item delete: removing one transcript should not require removing all of them.
-        row.addView(
-            textButton("✕") {
-                service.history.delete(record.id)
-                refreshHistory()
-            }.apply {
-                layoutParams = wrapContent()
-                contentDescription = "Delete this transcript"
-            }
-        )
-        return row
     }
 
     /**

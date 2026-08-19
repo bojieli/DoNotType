@@ -38,6 +38,15 @@
             android:exported="false"
             android:label="@string/app_name" />
 
+        <!--
+          The record of what the app did: transcripts, failures, and the screen text sent with
+          each. Not exported, because it is the user's speech.
+        -->
+        <activity
+            android:name=".HistoryActivity"
+            android:exported="false"
+            android:label="History" />
+
         <activity
             android:name=".LogsActivity"
             android:exported="false"
