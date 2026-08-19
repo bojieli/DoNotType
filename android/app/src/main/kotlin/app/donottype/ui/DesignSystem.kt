@@ -16,6 +16,7 @@ import androidx.core.widget.TextViewCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.color.MaterialColors
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import app.donottype.R
@@ -186,13 +187,96 @@ fun Context.card(vararg rows: View): MaterialCardView {
     }
 }
 
+/**
+ * [card] over a column the caller keeps a reference to, for the sections whose rows are rebuilt as
+ * state changes -- history, the dictionary, the setup checklist. Those callers add their own
+ * [divider]s, because only they know where a row ends.
+ */
+fun Context.cardHolding(body: LinearLayout): MaterialCardView = MaterialCardView(this).apply {
+    radius = dimen(R.dimen.card_corner).toFloat()
+    cardElevation = 0f
+    strokeWidth = 0
+    setCardBackgroundColor(themeColor(com.google.android.material.R.attr.colorSurfaceContainerLow))
+    addView(
+        body,
+        ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ),
+    )
+    layoutParams = columnParams()
+}
+
+/**
+ * A row built around a control that is too wide to sit at the end of a [settingRow] -- a spinner, a
+ * group of radio buttons, a text field. The label goes above the control rather than beside it, so
+ * a long provider name has the full width of the card to be read in.
+ */
+fun Context.controlRow(title: String?, control: View): LinearLayout = LinearLayout(this).apply {
+    orientation = LinearLayout.VERTICAL
+    val padding = dimen(R.dimen.space_m)
+    setPadding(padding, dimen(R.dimen.space_s), padding, dimen(R.dimen.space_s))
+    if (title != null) {
+        addView(
+            TextView(context).apply {
+                text = title
+                appearance(com.google.android.material.R.attr.textAppearanceBodyLarge)
+                setTextColor(themeColor(com.google.android.material.R.attr.colorOnSurface))
+                layoutParams = columnParams(bottom = dimen(R.dimen.space_xs))
+            },
+        )
+    }
+    addView(
+        control,
+        LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ),
+    )
+}
+
+/**
+ * A [settingRow] whose trailing control is a switch, and whose whole row toggles it. Reaching only
+ * the switch itself is a small target for something this screen asks for repeatedly.
+ */
+fun Context.switchRow(
+    title: String,
+    detail: String? = null,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+): LinearLayout {
+    val toggle = MaterialSwitch(this).apply {
+        isChecked = checked
+        setOnCheckedChangeListener { _, value -> onChange(value) }
+    }
+    return settingRow(title, detail, trailing = toggle) { toggle.toggle() }
+}
+
 /** The hairline between two rows of a [card]. Inset from the left, as iOS insets its separators. */
 fun Context.divider(): View = View(this).apply {
+    tag = DIVIDER_TAG
     setBackgroundColor(themeColor(com.google.android.material.R.attr.colorOutlineVariant))
     layoutParams = LinearLayout.LayoutParams(
         LinearLayout.LayoutParams.MATCH_PARENT,
         maxOf(1, dp(1) / 2),
     ).apply { leftMargin = dimen(R.dimen.space_m) }
+}
+
+private const val DIVIDER_TAG = "dnt-card-divider"
+
+/**
+ * Shows or hides a card row along with the hairline above it.
+ *
+ * Hiding the row alone leaves the separator behind, and a card that ends in a line with nothing
+ * under it looks like a row that failed to draw rather than one that does not apply. Rows do
+ * disappear here: the fallback key and delay are meaningless until a second service is chosen.
+ */
+fun View.setRowVisible(visible: Boolean) {
+    visibility = if (visible) View.VISIBLE else View.GONE
+    val parent = parent as? LinearLayout ?: return
+    val index = parent.indexOfChild(this)
+    if (index > 0) parent.getChildAt(index - 1).takeIf { it.tag == DIVIDER_TAG }?.visibility =
+        visibility
 }
 
 // MARK: - Rows

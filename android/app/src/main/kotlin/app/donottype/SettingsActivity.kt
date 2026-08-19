@@ -17,7 +17,6 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
@@ -29,14 +28,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.Spinner
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -44,10 +40,30 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
+import app.donottype.ui.caption
+import app.donottype.ui.card
+import app.donottype.ui.cardHolding
+import app.donottype.ui.controlRow
+import app.donottype.ui.divider
+import app.donottype.ui.dp
+import app.donottype.ui.monospace
+import app.donottype.ui.primaryButton
+import app.donottype.ui.screenScaffold
+import app.donottype.ui.screenSubtitle
+import app.donottype.ui.screenTitle
+import app.donottype.ui.sectionFooter
+import app.donottype.ui.sectionTitle
+import app.donottype.ui.setRowVisible
+import app.donottype.ui.settingRow
+import app.donottype.ui.setupRow
+import app.donottype.ui.switchRow
+import app.donottype.ui.textButton
+import app.donottype.ui.themeColor
+import app.donottype.ui.tonalButton
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -62,22 +78,32 @@ import kotlin.math.roundToInt
  */
 class SettingsActivity : AppCompatActivity() {
 
-    private lateinit var apiKeyField: EditText
-    private lateinit var modelField: EditText
+    private lateinit var apiKeyField: TextInputEditText
+    private lateinit var apiKeyLayout: TextInputLayout
+    private lateinit var modelField: TextInputEditText
+    private lateinit var modelLayout: TextInputLayout
     private lateinit var recommendationNote: TextView
     private lateinit var groundingNote: TextView
     private lateinit var rewriteStylePicker: Spinner
     private lateinit var rewriteNote: TextView
-    private lateinit var fallbackKeyField: EditText
-    private lateinit var fallbackDelayField: EditText
+    private lateinit var fallbackKeyField: TextInputEditText
+    private lateinit var fallbackKeyLayout: TextInputLayout
+    private lateinit var fallbackDelayField: TextInputEditText
+    private lateinit var fallbackDelayLayout: TextInputLayout
+    /** Held so the pair can be hidden with the hairline above them when there is no fallback. */
+    private lateinit var fallbackKeyRow: LinearLayout
+    private lateinit var fallbackDelayRow: LinearLayout
     private lateinit var fallbackNote: TextView
-    private lateinit var statusLabel: TextView
+    /** The three setup steps and their state, rebuilt by refreshStatus(). */
+    private lateinit var setupContainer: LinearLayout
     private lateinit var connectionLabel: TextView
     private lateinit var historyContainer: LinearLayout
     private lateinit var historySummary: TextView
-    private lateinit var searchField: EditText
+    private lateinit var searchField: TextInputEditText
+    private lateinit var searchFieldLayout: TextInputLayout
     private lateinit var dictionaryContainer: LinearLayout
-    private lateinit var dictionaryEntry: EditText
+    private lateinit var dictionaryEntry: TextInputEditText
+    private lateinit var dictionaryEntryLayout: TextInputLayout
     private lateinit var dictionaryStatus: TextView
     private var query = HistoryQuery()
 
@@ -132,15 +158,10 @@ class SettingsActivity : AppCompatActivity() {
         if (::dictionaryContainer.isInitialized) refreshDictionary()
     }
 
-    private fun buildLayout(): ScrollView {
-        val column = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(HORIZONTAL_PADDING, TOP_PADDING, HORIZONTAL_PADDING, BOTTOM_PADDING)
-        }
-
-        column.addView(heading("DoNotType", 24f))
+    private fun buildLayout(): ScrollView = screenScaffold { column ->
+        column.addView(screenTitle("DoNotType"))
         column.addView(
-            body(
+            screenSubtitle(
                 "Transcribes what you said, not a tidied-up version of it. Grounded in what is on "
                     + "your screen so names and technical terms are spelled the way you see them."
             )
@@ -150,88 +171,94 @@ class SettingsActivity : AppCompatActivity() {
         // phone with one scan, without scrolling through every individual setting first.
         column.addView(sectionTitle("Set up from another device"))
         column.addView(
-            body(
-                "Scan a settings QR code now, or open the transfer editor to import a QR image or "
-                    + "JSON file. Imported values are shown for review before anything changes."
+            card(
+                settingRow(
+                    "Scan settings QR code",
+                    "Point the camera at the code another device is showing.",
+                ) {
+                    settingsTransfer.launch(
+                        Intent(this, SettingsTransferActivity::class.java).putExtra(
+                            SettingsTransferActivity.EXTRA_START_SCANNER, true,
+                        ),
+                    )
+                }.also { it.contentDescription = "scan-settings-qr" },
+                settingRow(
+                    "Import, export, or edit settings",
+                    "Paste a document, or import a QR image or JSON file.",
+                ) {
+                    settingsTransfer.launch(Intent(this, SettingsTransferActivity::class.java))
+                }.also { it.contentDescription = "open-settings-transfer" },
             )
         )
         column.addView(
-            button("Scan settings QR code") {
-                settingsTransfer.launch(
-                    Intent(this, SettingsTransferActivity::class.java).putExtra(
-                        SettingsTransferActivity.EXTRA_START_SCANNER, true,
-                    ),
-                )
-            }.also { it.contentDescription = "scan-settings-qr" }
-        )
-        column.addView(
-            button("Import, export, or edit settings") {
-                settingsTransfer.launch(Intent(this, SettingsTransferActivity::class.java))
-            }.also { it.contentDescription = "open-settings-transfer" }
+            sectionFooter("Imported values are shown for review before anything changes.")
         )
 
         // ---- Setup ----
         column.addView(sectionTitle("First-time setup"))
-        column.addView(
-            body(
-                "Grant the microphone, enable the DoNotType keyboard, then add and save an API "
-                    + "key below. Screen grounding is optional."
-            )
-        )
-        statusLabel = body("").apply { setTypeface(Typeface.MONOSPACE) }
-        column.addView(statusLabel)
+        // The checklist and its actions, rather than a block of monospace ticks. Each row says
+        // what the step is for and carries its own state, which refreshStatus() rewrites -- a
+        // screen that reports "○ Microphone" and nothing else leaves the reader to work out both
+        // what it wants and what to do about it.
+        setupContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        column.addView(cardHolding(setupContainer))
+        refreshStatus()
 
         column.addView(
-            button("Grant microphone access") {
+            tonalButton("Grant microphone access") {
                 ActivityCompat.requestPermissions(
                     this, arrayOf(Manifest.permission.RECORD_AUDIO), 1,
                 )
             }
         )
         column.addView(
-            button("Enable the keyboard") {
+            tonalButton("Enable the keyboard") {
                 startActivity(Intent(AndroidSettings.ACTION_INPUT_METHOD_SETTINGS))
             }
         )
         column.addView(
-            button("Enable screen grounding (optional)") {
+            tonalButton("Enable screen grounding (optional)") {
                 startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS))
             }
+        )
+        column.addView(
+            sectionFooter(
+                "Grant the microphone, enable the DoNotType keyboard, then add and save an API "
+                    + "key below. Screen grounding is optional."
+            )
         )
 
         // ---- Provider ----
         column.addView(sectionTitle("Provider"))
-        column.addView(
-            body("Calls go straight to the provider with your key. Nothing routes through a server of ours.")
-        )
-        column.addView(buildProviderPicker())
 
-        // What the choice buys, for the two there is a recommendation for. Above the note below
-        // it, because someone who has just been told two entries are recommended is asking which.
-        recommendationNote = body("")
-        column.addView(recommendationNote)
-
-        // Stated rather than left to be discovered: a recognition service silently disables screen
-        // grounding and the rewrite path, and neither control would otherwise say so.
-        groundingNote = body("")
-        column.addView(groundingNote)
-
-
-        apiKeyField = EditText(this).apply {
-            hint = "API key"
+        apiKeyField = TextInputEditText(this).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setText(Settings.apiKey.orEmpty())
         }
-        column.addView(apiKeyField)
+        apiKeyLayout = passwordField("API key", apiKeyField)
 
-        modelField = EditText(this).apply {
-            hint = "Model"
-            setText(Settings.model)
-        }
-        column.addView(modelField)
+        modelField = TextInputEditText(this).apply { setText(Settings.model) }
+        modelLayout = plainField("Model", modelField)
 
         column.addView(
-            button("Save") {
+            card(
+                controlRow("Service", buildProviderPicker()),
+                controlRow(null, apiKeyLayout),
+                controlRow(null, modelLayout),
+            )
+        )
+
+        // What the choice buys, for the two there is a recommendation for. Above the note below
+        // it, because someone who has just been told two entries are recommended is asking which.
+        recommendationNote = sectionFooter("")
+        column.addView(recommendationNote)
+        // Stated rather than left to be discovered: a recognition service silently disables screen
+        // grounding and the rewrite path, and neither control would otherwise say so.
+        groundingNote = sectionFooter("")
+        column.addView(groundingNote)
+
+        column.addView(
+            primaryButton("Save") {
                 // Keys and models are stored per provider, so this writes to whichever one is
                 // selected rather than to a single shared slot.
                 val keySaved = Settings.setKey(
@@ -247,33 +274,44 @@ class SettingsActivity : AppCompatActivity() {
                 refreshStatus()
             }
         )
-
-        connectionLabel = body("")
+        column.addView(tonalButton("Test connection") { testConnection() })
+        connectionLabel = monospace("")
         column.addView(connectionLabel)
-        column.addView(button("Test connection") { testConnection() })
+        column.addView(
+            sectionFooter(
+                "Calls go straight to the provider with your key. Nothing routes through a "
+                    + "server of ours."
+            )
+        )
 
         // ---- Fallback ----
         // Its own section because it has its own key: the pairing only works when both are
         // configured, and a second key buried under the first one's field is how someone ends up
         // with a fallback that silently never fires.
         column.addView(sectionTitle("Fallback"))
-        column.addView(buildFallbackPicker())
-        fallbackKeyField = EditText(this).apply {
-            hint = "Fallback API key"
+        fallbackKeyField = TextInputEditText(this).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setText(Settings.fallbackProvider?.let { Settings.keyFor(it) }.orEmpty())
         }
-        column.addView(fallbackKeyField)
+        fallbackKeyLayout = passwordField("Fallback API key", fallbackKeyField)
 
-        fallbackDelayField = EditText(this).apply {
-            hint = "Start it after (seconds)"
+        fallbackDelayField = TextInputEditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
             setText(Settings.fallbackAfterSeconds.toString())
         }
-        column.addView(fallbackDelayField)
+        fallbackDelayLayout = plainField("Start it after (seconds)", fallbackDelayField)
 
+        fallbackKeyRow = controlRow(null, fallbackKeyLayout)
+        fallbackDelayRow = controlRow(null, fallbackDelayLayout)
         column.addView(
-            button("Save fallback") {
+            card(
+                controlRow("Second service", buildFallbackPicker()),
+                fallbackKeyRow,
+                fallbackDelayRow,
+            )
+        )
+        column.addView(
+            tonalButton("Save fallback") {
                 val keySaved = Settings.fallbackProvider?.let {
                     Settings.setKey(it, fallbackKeyField.text.toString().trim())
                 } ?: true
@@ -288,104 +326,82 @@ class SettingsActivity : AppCompatActivity() {
                 refreshProviderNotes()
             }
         )
-        fallbackNote = body("")
+        fallbackNote = sectionFooter("")
         column.addView(fallbackNote)
 
         // ---- Dictation ----
         column.addView(sectionTitle("Fidelity"))
-        column.addView(buildFidelityPicker())
+        column.addView(card(controlRow(null, buildFidelityPicker())))
         column.addView(
-            body("Even Tidy only changes typography. None of these reword you.")
+            sectionFooter("Even Tidy only changes typography. None of these reword you.")
         )
 
         // ---- Rewrite ----
         // The keyboard chooses only the operation. Its formatting policy belongs here, separately
         // from Fidelity, so "Dictate" is never presented as though it were a fourth writing style.
         column.addView(sectionTitle("Rewrite"))
-        column.addView(body("Rewrite style"))
         rewriteStylePicker = buildRewriteStylePicker()
-        column.addView(rewriteStylePicker)
-        rewriteNote = body("")
+        column.addView(card(controlRow("Rewrite style", rewriteStylePicker)))
+        rewriteNote = sectionFooter("")
         column.addView(rewriteNote)
 
         // ---- Grounding ----
         column.addView(sectionTitle("Screen grounding"))
         column.addView(
-            Switch(this).apply {
-                text = "Send screen context"
-                isChecked = Settings.groundingEnabled
-                setOnCheckedChangeListener { _, checked -> Settings.groundingEnabled = checked }
-            }
+            card(
+                switchRow(
+                    "Send screen context",
+                    "Read only while you dictate, never stored.",
+                    checked = Settings.groundingEnabled,
+                ) { Settings.groundingEnabled = it },
+            )
         )
         column.addView(
-            body(
-                "Read only while you dictate, never stored. Screen context stays separate from "
-                    + "your explicit dictionary. It may correct spelling, never the words you said."
+            sectionFooter(
+                "Screen context stays separate from your explicit dictionary. It may correct "
+                    + "spelling, never the words you said."
             )
         )
 
         // ---- Dictionary ----
         column.addView(sectionTitle("Personal dictionary"))
+        dictionaryEntry = TextInputEditText(this)
+        dictionaryEntryLayout = plainField("Word or phrase", dictionaryEntry)
         column.addView(
-            body(
-                "Names, jargon and preferred capitalisation. The same bounded list is sent to "
-                    + "every compatible backend; number-bearing entries never enter a bare "
-                    + "speech-recognition hint channel.",
-            ),
+            card(
+                switchRow(
+                    "Learn spelling corrections after dictation",
+                    "For one minute after insertion, the keyboard watches only that same editor.",
+                    checked = Settings.learnDictionaryFromEdits,
+                ) { Settings.learnDictionaryFromEdits = it },
+                controlRow(null, dictionaryEntryLayout),
+            )
         )
+        column.addView(tonalButton("Add entry") { addDictionaryEntry() })
         column.addView(
-            Switch(this).apply {
-                text = "Learn spelling corrections after dictation"
-                isChecked = Settings.learnDictionaryFromEdits
-                setOnCheckedChangeListener { _, checked ->
-                    Settings.learnDictionaryFromEdits = checked
-                }
-            },
-        )
-        column.addView(
-            body(
-                "Optional. For one minute after insertion, the keyboard watches only that same "
-                    + "editor. Password fields, additions, deletions, numbers and ordinary "
-                    + "rewrites are ignored; learned entries are labelled below and removable.",
-            ),
-        )
-        dictionaryEntry = EditText(this).apply { hint = "Word or phrase" }
-        column.addView(dictionaryEntry)
-        column.addView(button("Add entry") { addDictionaryEntry() })
-        column.addView(
-            button("Import CSV…") {
+            tonalButton("Import CSV…") {
                 dictionaryPicker.launch(arrayOf("text/csv", "text/plain", "application/csv"))
             },
         )
-        dictionaryStatus = body("")
+        dictionaryStatus = caption("")
         column.addView(dictionaryStatus)
         dictionaryContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        column.addView(dictionaryContainer)
+        column.addView(cardHolding(dictionaryContainer))
         refreshDictionary()
+        column.addView(
+            sectionFooter(
+                "Names, jargon and preferred capitalisation. The same bounded list is sent to "
+                    + "every compatible backend; number-bearing entries never enter a bare "
+                    + "speech-recognition hint channel. Password fields, additions, deletions, "
+                    + "numbers and ordinary rewrites are never learned from.",
+            ),
+        )
 
         // ---- History ----
         column.addView(sectionTitle("History"))
-        column.addView(buildRetentionPicker())
-        column.addView(
-            Switch(this).apply {
-                text = "Keep audio for successful dictations"
-                isChecked = Settings.keepAudio
-                setOnCheckedChangeListener { _, checked ->
-                    Settings.keepAudio = checked
-                    refreshHistory()
-                }
-            }
-        )
-        column.addView(
-            body(
-                "Failed dictations always keep their audio until they succeed, whatever this is "
-                    + "set to — otherwise Retry could not work."
-            )
-        )
 
         // Search sits above the list because it is the reason history is kept at all.
-        searchField = EditText(this).apply {
-            hint = "Search transcripts, errors, apps"
+        searchField = TextInputEditText(this).apply {
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun afterTextChanged(s: android.text.Editable?) {
                     query = query.copy(text = s?.toString().orEmpty())
@@ -395,61 +411,65 @@ class SettingsActivity : AppCompatActivity() {
                 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
             })
         }
-        column.addView(searchField)
+        searchFieldLayout = plainField("Search transcripts, errors, apps", searchField)
 
         column.addView(
-            Spinner(this).apply {
-                val filters = HistoryQuery.StatusFilter.entries
-                adapter = ArrayAdapter(
-                    this@SettingsActivity,
-                    android.R.layout.simple_spinner_dropdown_item,
-                    filters.map { it.label },
-                )
-                onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                    override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
-                        query = query.copy(status = filters[pos])
-                        refreshHistory()
-                    }
-                    override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-                }
-            }
+            card(
+                controlRow(null, searchFieldLayout),
+                controlRow("Show", buildStatusFilterPicker()),
+                controlRow("Keep for", buildRetentionPicker()),
+                switchRow(
+                    "Keep audio for successful dictations",
+                    "Failed dictations always keep theirs until they succeed.",
+                    checked = Settings.keepAudio,
+                ) {
+                    Settings.keepAudio = it
+                    refreshHistory()
+                },
+            )
         )
 
-        historySummary = body("")
+        historySummary = caption("")
         column.addView(historySummary)
-        column.addView(button("Retry all failed") { retryAll() })
+        column.addView(tonalButton("Retry all failed") { retryAll() })
 
         historyContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        column.addView(historyContainer)
+        column.addView(cardHolding(historyContainer))
+        column.addView(
+            sectionFooter(
+                "Whatever Keep audio is set to, a failed dictation holds on to its recording — "
+                    + "otherwise Retry could not work."
+            )
+        )
 
         // ---- Recordings ----
         // The offline half. The keyboard covers speech you are about to make; this covers the
         // voice memo you already have.
         column.addView(sectionTitle("Recordings"))
         column.addView(
-            body(
+            tonalButton("Transcribe a recording…") {
+                startActivity(Intent(this, FileTranscriptionActivity::class.java))
+            }.also { it.contentDescription = "transcribe-recording" }
+        )
+        column.addView(
+            sectionFooter(
                 "Transcribe a recording you already have — a voice memo, a call, a file someone "
                     + "sent you. Verbatim, rewritten, or summarised."
             )
-        )
-        column.addView(
-            button("Transcribe a recording…") {
-                startActivity(Intent(this, FileTranscriptionActivity::class.java))
-            }.also { it.contentDescription = "transcribe-recording" }
         )
 
         // ---- Diagnostics ----
         column.addView(sectionTitle("Diagnostics"))
         column.addView(
-            body(
+            tonalButton("Logs") {
+                startActivity(Intent(this, LogsActivity::class.java))
+            }.also { it.contentDescription = "open-logs" }
+        )
+        column.addView(
+            sectionFooter(
                 "Logcat needs a cable and a computer, which rules it out for the person who has "
                     + "the problem. This is the same record, on the device, with a share button."
             )
-        )
-        column.addView(
-            button("Logs") {
-                startActivity(Intent(this, LogsActivity::class.java))
-            }.also { it.contentDescription = "open-logs" }
         )
 
         // ---- Prompt ----
@@ -460,24 +480,17 @@ class SettingsActivity : AppCompatActivity() {
         // came to live in the same place, with a marker convention as the only thing telling them
         // apart.
         column.addView(sectionTitle("Prompt"))
-        column.addView(
-            body(
-                "The transcription contract, one part per file. Everything in the box below is "
-                    + "sent in full. Editing a part invalidates the measured numbers in the "
-                    + "project's changelog, which describe the shipped text."
-            )
-        )
 
         val parts = PromptPart.all
         var selectedPart = parts.first()
-        val promptEditor = EditText(this).apply {
+        val promptEditor = TextInputEditText(this).apply {
             setTypeface(Typeface.MONOSPACE)
-            textSize = 10f
+            textSize = 11f
             minLines = 8
             maxLines = 16
             gravity = Gravity.TOP or Gravity.START
         }
-        val promptStatus = body("")
+        val promptStatus = caption("")
 
         fun loadPart() {
             promptEditor.setText(PromptAssets.editableText(this, selectedPart))
@@ -501,13 +514,18 @@ class SettingsActivity : AppCompatActivity() {
                 override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             }
         }.also { it.contentDescription = "prompt-part" }
-        column.addView(partPicker)
-        column.addView(promptEditor)
+
+        column.addView(
+            card(
+                controlRow("Part", partPicker),
+                controlRow(null, plainField("Contract text", promptEditor)),
+            )
+        )
         column.addView(promptStatus)
         loadPart()
 
         column.addView(
-            button("Save part") {
+            primaryButton("Save part") {
                 promptStatus.text = runCatching {
                     PromptAssets.saveCustomPrompt(this, promptEditor.text.toString(), selectedPart)
                 }.fold(
@@ -522,25 +540,25 @@ class SettingsActivity : AppCompatActivity() {
         // Restores the selected part only. The others keep whatever they are, which is the point of
         // per-part overrides: editing one clause should not pin the whole contract.
         column.addView(
-            button("Restore this part") {
+            tonalButton("Restore this part") {
                 PromptAssets.restoreDefault(this, selectedPart)
                 loadPart()
                 promptStatus.text = "Restored the shipped ${selectedPart.relativePath}."
             }
         )
         column.addView(
-            button("Restore every part") {
+            textButton("Restore every part") {
                 PromptAssets.restoreAll(this)
                 loadPart()
                 promptStatus.text = "Restored every part to the shipped contract."
             }
         )
-
         column.addView(
-            button("Delete all history") {
-                service.history.deleteAll()
-                refreshHistory()
-            }
+            sectionFooter(
+                "The transcription contract, one part per file. Everything in the box above is "
+                    + "sent in full. Editing a part invalidates the measured numbers in the "
+                    + "project's changelog, which describe the shipped text."
+            )
         )
 
         // ---- About ----
@@ -551,38 +569,71 @@ class SettingsActivity : AppCompatActivity() {
         // worth one for a single display line.
         @Suppress("DEPRECATION")
         val versionLine = packageManager.getPackageInfo(packageName, 0).let {
-            "DoNotType ${it.versionName} (${it.versionCode}) · " +
-                "${BuildConfig.BUILD_COMMIT} · ${BuildConfig.BUILD_TIMESTAMP}"
+            "${it.versionName} (${it.versionCode})"
         }
-        column.addView(body(versionLine))
         column.addView(
-            button("GitHub") {
-                startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/bojieli/DoNotType"))
-                )
-            }
-        )
-        column.addView(
-            button("Open source licenses") { showLicenseNotices() }
+            card(
+                settingRow("Version", versionLine),
+                settingRow(
+                    "Build",
+                    "${BuildConfig.BUILD_COMMIT} · ${BuildConfig.BUILD_TIMESTAMP}",
+                ),
+                settingRow("GitHub", "github.com/bojieli/DoNotType") {
+                    startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/bojieli/DoNotType"))
+                    )
+                },
+                settingRow("Open source licenses") { showLicenseNotices() },
+            )
         )
 
-        return ScrollView(this).apply {
-            addView(column)
-            // Android 15 draws every app edge to edge whether it asked to or not, and a layout
-            // built in code gets no insets applied for it. Without this the heading sits behind
-            // the status bar and the last row behind the navigation bar -- which is exactly how
-            // this screen looked on an API 35 device.
-            //
-            // The padding goes on the scroll view rather than on the column inside it, so that
-            // clipToPadding keeps scrolled rows out from under the bars too. Padding the column
-            // fixes only the resting position: scroll down and the text runs under the clock.
-            ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
-                val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-                view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-                insets
+        column.addView(
+            textButton("Delete all history") {
+                service.history.deleteAll()
+                refreshHistory()
+            }
+        )
+    }
+
+    /** The history status filter, which used to be an unlabelled spinner under the search box. */
+    private fun buildStatusFilterPicker(): Spinner {
+        val filters = HistoryQuery.StatusFilter.entries
+        return Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@SettingsActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                filters.map { it.label },
+            )
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                    query = query.copy(status = filters[pos])
+                    refreshHistory()
+                }
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             }
         }
     }
+
+    private fun passwordField(label: String, field: TextInputEditText): TextInputLayout =
+        TextInputLayout(
+            this,
+            null,
+            com.google.android.material.R.attr.textInputOutlinedStyle,
+        ).apply {
+            hint = label
+            endIconMode = TextInputLayout.END_ICON_PASSWORD_TOGGLE
+            addView(field)
+        }
+
+    private fun plainField(label: String, field: TextInputEditText): TextInputLayout =
+        TextInputLayout(
+            this,
+            null,
+            com.google.android.material.R.attr.textInputOutlinedStyle,
+        ).apply {
+            hint = label
+            addView(field)
+        }
 
     private fun addDictionaryEntry() {
         dictionaryStatus.text = runCatching {
@@ -597,7 +648,7 @@ class SettingsActivity : AppCompatActivity() {
                 )
             }
             Settings.dictionaryTerms = Settings.dictionaryTerms + term
-            dictionaryEntry.text.clear()
+            dictionaryEntry.text?.clear()
             refreshDictionary()
             "Added “$term”."
         }.getOrElse { it.message ?: "That entry could not be added." }
@@ -606,30 +657,37 @@ class SettingsActivity : AppCompatActivity() {
     private fun refreshDictionary() {
         if (!::dictionaryContainer.isInitialized) return
         dictionaryContainer.removeAllViews()
+        var rows = 0
         fun addRow(term: String, learned: Boolean) {
+            if (rows++ > 0) dictionaryContainer.addView(divider())
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(0, 8, 0, 16)
+                val padding = resources.getDimensionPixelSize(R.dimen.space_m)
+                setPadding(padding, padding, padding, padding)
             }
-            val editor = EditText(this).apply {
+            val editor = TextInputEditText(this).apply {
                 setText(term)
                 contentDescription = "dictionary-${if (learned) "learned" else "added"}-$term"
             }
-            row.addView(editor)
-            row.addView(body(if (learned) "Learned from an edit" else "Added by you"))
-            val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            actions.addView(button("Save") {
+            row.addView(
+                plainField(if (learned) "Learned from an edit" else "Added by you", editor),
+            )
+            val actions = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.END
+            }
+            actions.addView(textButton("Save") {
                 dictionaryStatus.text = runCatching {
                     Settings.replaceDictionaryTerm(term, editor.text.toString(), learned)
                     refreshDictionary()
                     "Saved."
                 }.getOrElse { it.message ?: "That entry could not be saved." }
-            })
-            actions.addView(button("Remove") {
+            }.also { it.layoutParams = wrapContent() })
+            actions.addView(textButton("Remove") {
                 Settings.removeDictionaryTerm(term, learned)
                 refreshDictionary()
                 dictionaryStatus.text = "Removed “$term”."
-            })
+            }.also { it.layoutParams = wrapContent() })
             row.addView(actions)
             dictionaryContainer.addView(row)
         }
@@ -662,7 +720,7 @@ class SettingsActivity : AppCompatActivity() {
                     if (chosen == Settings.provider) return
                     Settings.provider = chosen
                     apiKeyField.setText(Settings.apiKey.orEmpty())
-                    apiKeyField.hint = "${chosen.displayName} API key"
+                    apiKeyLayout.hint = "${chosen.displayName} API key"
                     modelField.setText(Settings.model)
                     refreshProviderNotes()
                     refreshStatus()
@@ -747,8 +805,8 @@ class SettingsActivity : AppCompatActivity() {
 
 
         val fallback = Settings.fallbackProvider
-        fallbackKeyField.visibility = if (fallback != null) View.VISIBLE else View.GONE
-        fallbackDelayField.visibility = if (fallback != null) View.VISIBLE else View.GONE
+        fallbackKeyRow.setRowVisible(fallback != null)
+        fallbackDelayRow.setRowVisible(fallback != null)
         fallbackNote.text = if (fallback == null) {
             "Off. Worth turning on when the primary is accurate but its latency has a tail — the " +
                 "first-party Gemini API answered one three-second clip in 5 s and the next in " +
@@ -931,14 +989,20 @@ class SettingsActivity : AppCompatActivity() {
         // reads as "this is your whole history" when it is not; the retention policy is what is
         // supposed to bound how much there is, not the view.
         historyContainer.removeAllViews()
-        records.forEach { historyContainer.addView(historyRow(it)) }
+        records.forEachIndexed { index, record ->
+            if (index > 0) historyContainer.addView(divider())
+            historyContainer.addView(historyRow(record))
+        }
     }
 
     private fun historyRow(record: DictationRecord): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 12, 0, 12)
+            val padding = resources.getDimensionPixelSize(R.dimen.space_m)
+            setPadding(padding, resources.getDimensionPixelSize(R.dimen.space_s), padding,
+                resources.getDimensionPixelSize(R.dimen.space_s))
+            minimumHeight = resources.getDimensionPixelSize(R.dimen.row_min_height)
         }
 
         val marker = when (record.status) {
@@ -957,10 +1021,16 @@ class SettingsActivity : AppCompatActivity() {
                 addView(
                     TextView(this@SettingsActivity).apply {
                         text = "$marker  ${record.summary.take(90)}"
-                        textSize = 13f
+                        textSize = 14f
+                        // Theme attributes rather than the hex literals this used to carry. Under
+                        // a DayNight theme a fixed dark grey is unreadable at night, which is what
+                        // "✓ …" rows looked like on a dark phone: dark grey on a dark surface.
                         setTextColor(
-                            if (record.status == DictationRecord.Status.COMPLETED) Color.DKGRAY
-                            else Color.parseColor("#B23A2F")
+                            if (record.status == DictationRecord.Status.COMPLETED) {
+                                themeColor(com.google.android.material.R.attr.colorOnSurface)
+                            } else {
+                                themeColor(com.google.android.material.R.attr.colorError)
+                            }
                         )
                     }
                 )
@@ -976,10 +1046,18 @@ class SettingsActivity : AppCompatActivity() {
                     addView(
                         TextView(this@SettingsActivity).apply {
                             text = details.joinToString(" · ")
-                            textSize = 11f
+                            textSize = 12f
+                            // Amber marks a wait long enough to have been noticed. It is a named
+                            // colour with a night variant, not a hex literal, for the same reason
+                            // as the line above.
                             setTextColor(
-                                if ((record.latencyMillis ?: 0) > 8_000) Color.parseColor("#B26A00")
-                                else Color.GRAY
+                                if ((record.latencyMillis ?: 0) > 8_000) {
+                                    ContextCompat.getColor(context, R.color.dnt_warning)
+                                } else {
+                                    themeColor(
+                                        com.google.android.material.R.attr.colorOnSurfaceVariant,
+                                    )
+                                }
                             )
                         }
                     )
@@ -993,8 +1071,8 @@ class SettingsActivity : AppCompatActivity() {
 
         if (record.canRetry) {
             row.addView(
-                Button(this).apply {
-                    text = "Retry"
+                textButton("Retry") {}.apply {
+                    layoutParams = wrapContent()
                     setOnClickListener {
                         isEnabled = false
                         lifecycleScope.launch {
@@ -1008,29 +1086,49 @@ class SettingsActivity : AppCompatActivity() {
 
         // Per-item delete: removing one transcript should not require removing all of them.
         row.addView(
-            Button(this).apply {
-                text = "✕"
+            textButton("✕") {
+                service.history.delete(record.id)
+                refreshHistory()
+            }.apply {
+                layoutParams = wrapContent()
                 contentDescription = "Delete this transcript"
-                setOnClickListener {
-                    service.history.delete(record.id)
-                    refreshHistory()
-                }
             }
         )
         return row
     }
 
+    /**
+     * Rewrites the setup checklist.
+     *
+     * Every state here is one the app can actually observe, so none of them is the nullable third
+     * case [setupRow] allows -- unlike iOS, where whether the keyboard is enabled is not something
+     * the containing app can ask. The rows still go through the same builder, because that is
+     * where the question mark lives if a future check turns out to be unanswerable.
+     */
     private fun refreshStatus() {
+        if (!::setupContainer.isInitialized) return
         val checks = listOf(
-            "API key" to !Settings.apiKey.isNullOrBlank(),
-            "Microphone" to (
+            Triple(
+                "API key",
+                "Saved on this device, sent only to the provider you chose.",
+                !Settings.apiKey.isNullOrBlank(),
+            ),
+            Triple(
+                "Microphone",
+                "The keyboard cannot ask for this itself, so it asks here.",
                 ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                    == PackageManager.PERMISSION_GRANTED
-                ),
-            "Screen grounding" to (ScreenReaderService.instance != null),
+                    == PackageManager.PERMISSION_GRANTED,
+            ),
+            Triple(
+                "Screen grounding",
+                "Optional. Spells names the way they appear on your screen.",
+                ScreenReaderService.instance != null,
+            ),
         )
-        statusLabel.text = checks.joinToString("\n") { (label, ok) ->
-            "${if (ok) "✓" else "○"}  $label"
+        setupContainer.removeAllViews()
+        checks.forEachIndexed { index, (label, detail, ok) ->
+            if (index > 0) setupContainer.addView(divider())
+            setupContainer.addView(setupRow(label, detail, done = ok))
         }
     }
 
@@ -1057,7 +1155,8 @@ class SettingsActivity : AppCompatActivity() {
         val message = TextView(this).apply {
             this.text = text
             textSize = 13f
-            setPadding(HORIZONTAL_PADDING, 24, HORIZONTAL_PADDING, 24)
+            val horizontal = resources.getDimensionPixelSize(R.dimen.space_l)
+            setPadding(horizontal, dp(12), horizontal, dp(12))
         }
         AlertDialog.Builder(this)
             .setTitle("Open source licenses")
@@ -1070,32 +1169,13 @@ class SettingsActivity : AppCompatActivity() {
 
     // MARK: - Tiny view helpers
 
-    private fun sectionTitle(text: String) = heading(text, 18f)
-
-    private fun heading(text: String, size: Float) = TextView(this).apply {
-        this.text = text
-        textSize = size
-        setTypeface(null, Typeface.BOLD)
-        setPadding(0, 48, 0, 12)
-    }
-
-    private fun body(text: String) = TextView(this).apply {
-        this.text = text
-        textSize = 13f
-        setPadding(0, 0, 0, 16)
-    }
-
-    private fun button(title: String, onClick: () -> Unit) = Button(this).apply {
-        text = title
-        layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-        )
-        setOnClickListener { onClick() }
-    }
-
-    private companion object {
-        const val HORIZONTAL_PADDING = 56
-        const val TOP_PADDING = 64
-        const val BOTTOM_PADDING = 96
-    }
+    /**
+     * For a control that sits beside another one rather than filling the row. The design system's
+     * buttons are full width, which is right for an action that is the point of a section and
+     * wrong for the pair at the end of a history row.
+     */
+    private fun wrapContent() = LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.WRAP_CONTENT,
+        ViewGroup.LayoutParams.WRAP_CONTENT,
+    )
 }
