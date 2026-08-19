@@ -42,12 +42,19 @@ struct SettingsTransferView: View {
             .font(.callout)
             .foregroundStyle(.secondary)
 
+            // Two rows along the seam a Divider used to mark: what this machine sends out, then
+            // what it takes in. Seven buttons on one line wanted more width than the window has
+            // to give, and truncating "Import QR image…" would hide the only word that says which
+            // direction the button goes.
             HStack {
                 Button("Load current settings", action: loadCurrentSettings)
                 Button("Copy JSON", action: copyJSON)
                 Button("Save JSON…") { exporting = true }
                 Button("Show QR code", action: showQRCode)
-                Divider().frame(height: 20)
+                Spacer()
+            }
+
+            HStack {
                 Button("Open JSON…") { importingFile = true }
                 Button("Import QR image…") { importingQRImage = true }
                 Spacer()
