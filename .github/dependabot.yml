@@ -17,3 +17,21 @@ updates:
       android-build:
         patterns:
           - "*"
+
+  - package-ecosystem: swift
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      swift-packages:
+        patterns:
+          - "*"
+
+  - package-ecosystem: nuget
+    directory: /windows
+    schedule:
+      interval: monthly
+    groups:
+      dotnet-packages:
+        patterns:
+          - "*"

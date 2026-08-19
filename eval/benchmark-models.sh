@@ -14,7 +14,7 @@
 # Results are committed to docs/MODELS.md. Re-run on any model bump: multimodal quality moves
 # between releases and nothing else here would notice.
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit
 
 PROVIDER="${PROVIDER:-openrouter}"
 TRIALS="${TRIALS:-8}"

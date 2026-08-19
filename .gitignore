@@ -1,6 +1,8 @@
 .DS_Store
 .build/
 .swiftpm/
+__pycache__/
+*.py[cod]
 *.xcuserdatan
 xcuserdata/
 DerivedData/
@@ -32,6 +34,11 @@ eval/dictation/
 # Never commit a key.
 .env
 *.key
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
 
 # Android
 android/.gradle/

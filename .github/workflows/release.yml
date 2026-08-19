@@ -14,7 +14,7 @@ on:
         required: true
         default: '0.1.0'
       publish:
-        description: 'Create a draft GitHub release from this run'
+        description: 'Create a v<version> tag and draft GitHub release from this run'
         type: boolean
         default: false
 
@@ -29,6 +29,10 @@ jobs:
   macos:
     name: macOS app
     runs-on: macos-15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     # Secrets are lifted to job scope because a step's own `env:` block is not in scope for that
     # same step's `if:` — the condition is evaluated first, so `if: env.X != ''` against a
     # step-level env is always false and the signing step silently never runs.
@@ -76,6 +80,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then version="$MANUAL_VERSION"; fi
           ./scripts/stamp-version.sh "$version"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
 
       # A release that fails its own suite should not exist. Cheap insurance against tagging a
       # commit that was never green.
@@ -89,30 +94,53 @@ jobs:
       - name: Import signing certificate
         if: env.MACOS_CERTIFICATE != ''
         run: |
-          echo "$MACOS_CERTIFICATE" | base64 --decode > /tmp/cert.p12
+          certificate_path="$RUNNER_TEMP/donottype-cert.p12"
+          trap 'rm -f "$certificate_path"' EXIT
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$certificate_path"
           security create-keychain -p runner build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p runner build.keychain
-          security import /tmp/cert.p12 -k build.keychain \
+          security import "$certificate_path" -k build.keychain \
             -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k runner build.keychain
-          rm -f /tmp/cert.p12
 
       - name: Build the app bundle
         run: make app
 
+      # `make app` must never turn an explicit Developer ID signing failure into an ad-hoc build.
+      # Verify the exact bundle before notarization and packaging, and assert the expected class of
+      # signature so a configured release cannot silently lose its stable TCC identity.
+      - name: Verify the app signature
+        run: |
+          codesign --verify --deep --strict --verbose=2 .build/DoNotType.app
+          signature=$(codesign -dv --verbose=4 .build/DoNotType.app 2>&1)
+          if [[ -n "$MACOS_CERTIFICATE" ]]; then
+            grep -q '^Authority=Developer ID Application:' <<< "$signature"
+            grep -q 'flags=.*runtime' <<< "$signature"
+          else
+            grep -q '^Signature=adhoc$' <<< "$signature"
+          fi
+          bundled_version=$(/usr/libexec/PlistBuddy \
+            -c 'Print :CFBundleShortVersionString' .build/DoNotType.app/Contents/Info.plist)
+          test "$bundled_version" = "$VERSION"
+          .build/DoNotType.app/Contents/MacOS/dnt --version | grep -q "^dnt $VERSION ("
+
       - name: Notarize
         if: env.NOTARY_KEY_ID != ''
         run: |
-          echo "$NOTARY_KEY" > /tmp/notary.p8
-          ditto -c -k --keepParent .build/DoNotType.app /tmp/notarize.zip
-          xcrun notarytool submit /tmp/notarize.zip \
-            --key /tmp/notary.p8 --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+          notary_key_path="$RUNNER_TEMP/donottype-notary.p8"
+          notary_archive="$RUNNER_TEMP/donottype-notarize.zip"
+          trap 'rm -f "$notary_key_path" "$notary_archive"' EXIT
+          echo "$NOTARY_KEY" > "$notary_key_path"
+          ditto -c -k --keepParent .build/DoNotType.app "$notary_archive"
+          xcrun notarytool submit "$notary_archive" \
+            --key "$notary_key_path" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
             --wait
           # Stapling means the app opens without a network round trip on first launch.
           xcrun stapler staple .build/DoNotType.app
-          rm -f /tmp/notary.p8
+          xcrun stapler validate .build/DoNotType.app
+          spctl --assess --type execute --verbose=4 .build/DoNotType.app
 
       - name: Package
         run: |
@@ -123,6 +151,11 @@ jobs:
           # worse than none — it fails and looks like corruption.
           (cd dist && shasum -a 256 DoNotType-macOS.zip | tee DoNotType-macOS.zip.sha256)
 
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/DoNotType-macOS.zip
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos
@@ -131,11 +164,30 @@ jobs:
   windows:
     name: Windows app
     runs-on: windows-2022
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
+
+      - name: Validate signing configuration
+        shell: bash
+        run: |
+          signing_values=0
+          for value in "$WINDOWS_CERTIFICATE" "$WINDOWS_CERTIFICATE_PASSWORD"; do
+            if [[ -n "$value" ]]; then signing_values=$((signing_values + 1)); fi
+          done
+          if [[ "$signing_values" -ne 0 && "$signing_values" -ne 2 ]]; then
+            echo "WINDOWS_CERTIFICATE and WINDOWS_CERTIFICATE_PASSWORD must be set together" >&2
+            exit 1
+          fi
 
       - name: Stamp the version
         shell: bash
@@ -149,8 +201,11 @@ jobs:
           # through a NuGet restore that fails without logging an error, which reads as an outage.
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
+      - name: Restore locked NuGet graph
+        run: dotnet restore windows/DoNotType.slnx --locked-mode
+
       - name: Unit tests
-        run: dotnet test windows/DoNotType.Core.Tests/DoNotType.Core.Tests.csproj -c Release
+        run: dotnet test windows/DoNotType.Core.Tests/DoNotType.Core.Tests.csproj -c Release --no-restore
 
       # Built from source rather than downloaded. libopus is the project's only native dependency,
       # and a release binary pulled from a random host is a supply-chain decision nobody reviewed;
@@ -185,6 +240,10 @@ jobs:
           -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=false -p:Version=$env:VERSION -o publish
 
+      - name: Prepare release layout
+        shell: pwsh
+        run: Copy-Item native/opus.dll publish/opus.dll
+
       - name: Exercise the packaged executables without a global runtime
         shell: pwsh
         run: |
@@ -200,13 +259,62 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "the packaged prompt is missing or invalid" }
           & $dnt providers --no-stored-key
           if ($LASTEXITCODE -ne 0) { throw "the packaged CLI did not start" }
+          $reportedVersion = (& $dnt --version | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or !$reportedVersion.StartsWith("dnt $env:VERSION (")) {
+            throw "the packaged CLI reports '$reportedVersion', expected $env:VERSION"
+          }
+
+          $app = Start-Process "$PWD\publish\DoNotType.exe" -PassThru
+          try {
+            Start-Sleep -Seconds 15
+            if ($app.HasExited) {
+              throw "the packaged app exited during its launch check with code $($app.ExitCode)"
+            }
+          }
+          finally {
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Sign Windows binaries
+        if: env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        run: |
+          $certificatePath = "$env:RUNNER_TEMP\donottype-signing.pfx"
+          try {
+            [System.IO.File]::WriteAllBytes(
+              $certificatePath,
+              [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+
+            $signTool = Get-ChildItem `
+              "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" `
+              -ErrorAction SilentlyContinue |
+              Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
+            if (!$signTool) { throw "signtool.exe was not found on the Windows runner" }
+
+            $binaries = @(
+              "publish\DoNotType.exe",
+              "publish\dnt.exe",
+              "publish\DoNotType.App.dll",
+              "publish\DoNotType.Cli.dll",
+              "publish\DoNotType.Core.dll",
+              "publish\opus.dll"
+            )
+            foreach ($binary in $binaries) {
+              if (!(Test-Path $binary)) { throw "release binary is missing: $binary" }
+              & $signTool sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com `
+                /f $certificatePath /p $env:WINDOWS_CERTIFICATE_PASSWORD $binary
+              if ($LASTEXITCODE -ne 0) { throw "signing failed for $binary" }
+              & $signTool verify /pa /all $binary
+              if ($LASTEXITCODE -ne 0) { throw "signature verification failed for $binary" }
+            }
+          }
+          finally {
+            Remove-Item $certificatePath -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Package
         shell: pwsh
         run: |
-          # opus.dll sits beside the executable, which is where the import resolver looks first.
-          # Without it the app still dictates — it just uploads WAV and is slower.
-          Copy-Item native/opus.dll publish/opus.dll
           # Both project files already publish prompt/ with its directory layout preserved. Copying
           # it again here would create publish/prompt/prompt on PowerShell and ship two contracts.
           New-Item -ItemType Directory -Force -Path dist | Out-Null
@@ -220,6 +328,11 @@ jobs:
             "$PWD/dist/DoNotType-Windows-x64.zip.sha256",
             "$hash  DoNotType-Windows-x64.zip`n")
 
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/DoNotType-Windows-x64.zip
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows
@@ -228,10 +341,15 @@ jobs:
   android:
     name: Android APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     env:
       ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
@@ -250,6 +368,10 @@ jobs:
             echo "ANDROID_KEYSTORE, ANDROID_KEYSTORE_PASSWORD, and ANDROID_KEY_ALIAS must be set together" >&2
             exit 1
           fi
+          if [[ -n "$ANDROID_KEY_PASSWORD" && "$signing_values" -ne 3 ]]; then
+            echo "ANDROID_KEY_PASSWORD cannot be set without the other Android signing secrets" >&2
+            exit 1
+          fi
 
       - name: Stamp the version
         env:
@@ -258,10 +380,15 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then version="$MANUAL_VERSION"; fi
           ./scripts/stamp-version.sh "$version"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Unit tests
         working-directory: android
         run: ./gradlew test --no-daemon
+
+      - name: Android lint
+        working-directory: android
+        run: ./gradlew lint --no-daemon
 
       # Signed with the upload keystore when it exists. Without it the APK is debug-signed, which
       # installs fine from a file but can never be updated in place by a differently-signed build
@@ -280,6 +407,20 @@ jobs:
             ./gradlew assembleDebug --no-daemon
             echo "APK=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
           fi
+
+      - name: Remove decoded keystore
+        if: always() && env.ANDROID_KEYSTORE != ''
+        run: rm -f android/release.keystore
+
+      - name: Verify APK signature and version
+        working-directory: android
+        run: |
+          build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d \
+            | sort -V | tail -1)
+          test -n "$build_tools"
+          "$build_tools/apksigner" verify --verbose --print-certs "$APK"
+          badging=$("$build_tools/aapt" dump badging "$APK")
+          grep -Fq "versionName='$VERSION'" <<< "$badging"
 
       # Every part, not just the entry point: a part missing from the APK is invisible until
       # somebody picks that fidelity or style, and then it fails mid-dictation.
@@ -303,6 +444,11 @@ jobs:
           cp "android/$APK" dist/DoNotType-Android.apk
           (cd dist && sha256sum DoNotType-Android.apk | tee DoNotType-Android.apk.sha256)
 
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/DoNotType-Android.apk
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: android
@@ -313,24 +459,56 @@ jobs:
   # .app nobody can install is not a release artifact. This job exists so a tag cannot be cut on a
   # commit where iOS is broken.
   ios:
-    name: iOS builds
+    name: iOS tests
     runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Stamp the version
+        env:
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then version="$MANUAL_VERSION"; fi
+          ./scripts/stamp-version.sh "$version"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
       - name: Generate the project
         run: |
           brew install xcodegen
           cd ios && xcodegen generate
-      - name: Build
+      # A compile-only job missed a cold keyboard handoff that disappeared during scene startup.
+      # Install and drive the app just as CI does so a tag cannot package while iOS behavior is red.
+      - name: Pick a simulator
+        id: simulator
+        run: |
+          name=$(xcrun simctl list devices available --json \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["name"] for r in sorted(d, reverse=True) for x in d[r] if x["name"].startswith("iPhone")))')
+          echo "Using $name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Test app and keyboard extension
         run: |
           cd ios
           mkdir -p ../artifacts/ios-build
-          xcodebuild -project DoNotType.xcodeproj -scheme DoNotType \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath ../artifacts/ios-build build
+          xcodebuild test -project DoNotType.xcodeproj -scheme DoNotType \
+            -destination "platform=iOS Simulator,name=${{ steps.simulator.outputs.name }}" \
+            -configuration Debug CODE_SIGNING_ALLOWED=NO \
+            -derivedDataPath ../artifacts/ios-build \
+            -resultBundlePath ../artifacts/ios-tests.xcresult
           license=../artifacts/ios-build/Build/Products/Debug-iphonesimulator/DoNotType.app/LICENSE
           test -s "$license"
           grep -qx "MIT License" "$license"
+          info=../artifacts/ios-build/Build/Products/Debug-iphonesimulator/DoNotType.app/Info.plist
+          bundled_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info")
+          test "$bundled_version" = "$VERSION"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: release-ios-test-results
+          path: artifacts/ios-tests.xcresult
+          if-no-files-found: warn
 
   publish:
     name: Publish release
@@ -343,19 +521,67 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          path: artifacts
+          name: macos
+          path: artifacts/macos
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows
+          path: artifacts/windows
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android
+          path: artifacts/android
 
       - name: Collect
         run: |
           mkdir -p dist
-          find artifacts -type f -exec cp {} dist/ \;
+          assets=(
+            macos/DoNotType-macOS.zip
+            macos/DoNotType-macOS.zip.sha256
+            windows/DoNotType-Windows-x64.zip
+            windows/DoNotType-Windows-x64.zip.sha256
+            android/DoNotType-Android.apk
+            android/DoNotType-Android.apk.sha256
+          )
+          for asset in "${assets[@]}"; do
+            test -s "artifacts/$asset"
+            cp "artifacts/$asset" dist/
+          done
+          (cd dist && sha256sum --check ./*.sha256)
+          unzip -tq dist/DoNotType-macOS.zip
+          unzip -tq dist/DoNotType-Windows-x64.zip
+          unzip -tq dist/DoNotType-Android.apk
           ls -la dist/
+
+      # `target_commitish` controls a newly-created tag but is ignored when the name already
+      # exists. Pin the manual tag explicitly so an old v<version> can never receive artifacts
+      # built from a different commit. Accepting the same lightweight tag makes a failed draft
+      # step safely rerunnable without weakening that invariant.
+      - name: Pin manual release tag to the tested commit
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: v${{ inputs.version }}
+        run: |
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
+            --jq '.object.sha' 2>/dev/null || true)
+          if [[ -n "$existing" ]]; then
+            if [[ "$existing" != "$GITHUB_SHA" ]]; then
+              echo "$RELEASE_TAG already exists and does not point to tested commit $GITHUB_SHA" >&2
+              exit 1
+            fi
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$RELEASE_TAG" -f sha="$GITHUB_SHA" >/dev/null
+          fi
 
       # Drafted rather than published outright. A release is a public, hard-to-retract act, and the
       # notes below are generated — someone should read them before anyone downloads them.
       - name: Draft the release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v{0}', inputs.version) }}
+          target_commitish: ${{ github.sha }}
           draft: true
           generate_release_notes: true
           files: dist/*
@@ -380,12 +606,15 @@ jobs:
             with `cd ios && xcodegen generate`.
 
             Verify a download against the matching `.sha256` file before running it.
+            GitHub also records signed build provenance for every downloadable app; with the
+            GitHub CLI, verify it with `gh attestation verify <file> --repo bojieli/DoNotType`.
 
             ## Note on signing
 
             If this build was produced without signing secrets configured, macOS will refuse to
-            open it normally and Android will have signed it with a debug key. See
-            `docs/RELEASING.md` for what to set.
+            open it normally, Windows will show an unknown publisher and may trigger SmartScreen,
+            and Android will have signed it with a debug key. See `docs/RELEASING.md` for what to
+            set. Official releases should configure all three platform signing groups.
 
             For an unsigned macOS build: right-click the app and choose Open, once. Gatekeeper
             asks rather than refuses on that path. Note that an ad-hoc signature also means macOS

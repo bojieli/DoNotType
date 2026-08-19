@@ -16,7 +16,7 @@
 #
 # Results are recorded in docs/EVALUATION.md and eval/results/.
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit
 
 REPEAT="${REPEAT:-3}"
 CASES="${CASES:-eval/nearmiss}"

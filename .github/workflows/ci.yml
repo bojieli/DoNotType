@@ -14,6 +14,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Shell scripts
+        run: shellcheck -x scripts/*.sh eval/*.sh
+
+      # actionlint has no first-party action. Download the fixed release archive and verify it
+      # before execution so workflow validation does not introduce an unreviewed executable.
+      - name: GitHub Actions workflows
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          tool_dir=$(mktemp -d)
+          archive="$tool_dir/actionlint.tar.gz"
+          curl -fsSL --retry 3 \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            -o "$archive"
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$tool_dir" actionlint
+          "$tool_dir/actionlint" -no-color
+
+      # Exercise every replacement on a disposable CI checkout. This catches a renamed plist key,
+      # Gradle field, or CLI version literal before a tag discovers it after the platform builds.
+      - name: Release version stamping
+        run: |
+          ./scripts/stamp-version.sh 9.8.7
+          if ./scripts/stamp-version.sh 9.8.100 >/dev/null 2>&1; then
+            echo "a colliding version unexpectedly passed validation" >&2
+            exit 1
+          fi
+
   # The contract files are copied into every bundle at build time so the platforms cannot drift.
   # This checks the invariant that makes that safe: the shipped prompt must actually build.
   contract:
@@ -111,15 +146,21 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Restore
+        run: dotnet restore windows/DoNotType.slnx --locked-mode
+
+      - name: Formatting
+        run: dotnet format whitespace windows/DoNotType.slnx --verify-no-changes --no-restore
+
       # The core deliberately targets plain net10.0 with no Windows TFM, so it builds and tests
       # anywhere. That is what makes this job possible on Linux.
       - name: Core tests
-        run: dotnet test windows/DoNotType.Core.Tests/DoNotType.Core.Tests.csproj
+        run: dotnet test windows/DoNotType.Core.Tests/DoNotType.Core.Tests.csproj --no-restore
 
       # EnableWindowsTargeting lets the tray app and the CLI compile here too, so a change that
       # breaks either is caught on the fast runner rather than on the Windows one.
       - name: Build everything
-        run: dotnet build windows/DoNotType.slnx
+        run: dotnet build windows/DoNotType.slnx --no-restore
 
       - name: Run the CLI
         run: |
@@ -235,6 +276,10 @@ jobs:
       - name: Unit tests
         working-directory: android
         run: ./gradlew test --no-daemon
+
+      - name: Android lint
+        working-directory: android
+        run: ./gradlew lint --no-daemon
 
       - name: Assemble debug APK
         working-directory: android

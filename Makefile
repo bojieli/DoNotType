@@ -80,10 +80,13 @@ app: build
 	@# dropped in here is the whole mechanism — see docs/LOCALIZATION.md.
 	@[ -d Resources/Localizations ] && cp -R Resources/Localizations/*.lproj "$(CONTENTS)/Resources/" 2>/dev/null || true
 	@printf 'APPL????' > "$(CONTENTS)/PkgInfo"
-	@codesign --force --deep --options runtime \
-		--entitlements Resources/$(APP).entitlements \
-		--sign "$(CODESIGN_ID)" "$(APP_BUNDLE)" 2>/dev/null || \
-		codesign --force --deep --sign - "$(APP_BUNDLE)"
+	@if [ "$(CODESIGN_ID)" = "-" ]; then \
+		codesign --force --deep --sign - "$(APP_BUNDLE)"; \
+	else \
+		codesign --force --deep --options runtime \
+			--entitlements Resources/$(APP).entitlements \
+			--sign "$(CODESIGN_ID)" "$(APP_BUNDLE)"; \
+	fi
 	@echo "built $(APP_BUNDLE)  (signed with: $(CODESIGN_ID))"
 
 run: app

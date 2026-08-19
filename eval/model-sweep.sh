@@ -4,7 +4,7 @@
 # Worth running whenever a model is bumped: multimodal behaviour regresses between releases, and
 # the failure this measures is invisible without a controlled comparison.
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit
 : "${GEMINI_API_KEY:?set GEMINI_API_KEY}"
 
 MODELS="${1:-gemini-3.6-flash gemini-3.5-flash gemini-3-flash-preview gemini-2.5-flash}"
