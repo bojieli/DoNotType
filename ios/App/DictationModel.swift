@@ -853,9 +853,17 @@ final class DictationModel {
         do {
             if !recorder.isMonitoring {
                 let session = AVAudioSession.sharedInstance()
+                // allowBluetoothHFP is the iOS 26 SDK's name for allowBluetooth; the CI image's
+                // Xcode 16.4 SDK only has the old one. The compiler version tracks the SDK here.
+                #if compiler(>=6.2)
                 try session.setCategory(
                     .playAndRecord, mode: .measurement,
                     options: [.defaultToSpeaker, .mixWithOthers, .allowBluetoothHFP])
+                #else
+                try session.setCategory(
+                    .playAndRecord, mode: .measurement,
+                    options: [.defaultToSpeaker, .mixWithOthers, .allowBluetooth])
+                #endif
                 try session.setActive(true)
             }
 
