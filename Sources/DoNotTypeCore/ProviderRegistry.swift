@@ -190,6 +190,41 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         }
     }
 
+    /// The caveat that belongs under the endpoint field once it points at a server nobody here has
+    /// measured.
+    ///
+    /// Dictation is the one use of these APIs that needs the audio modality, and it is the one a
+    /// compatible third party is least likely to have. "OpenAI-compatible" is a claim about the
+    /// request shape, not about what the model behind it accepts: relays, aggregators and a
+    /// `vllm serve` pointed at a text-only checkpoint all speak `/v1/chat/completions` fluently
+    /// and have nowhere to put an `input_audio` block. Some answer that with an error, which is
+    /// the good case. Others accept it, drop it, and answer HTTP 200 with a fluent invention —
+    /// see the incident in `TranscriptionProvider.assertAudioWasProcessed`.
+    ///
+    /// Stated here rather than left to `audioSilentlyDropped` to catch, because that guard only
+    /// fires when the provider reports zero audio tokens, and a third party that reports no usage
+    /// at all is given the benefit of the doubt. The endpoint field is the last moment where the
+    /// question is cheap to answer.
+    ///
+    /// - Parameter endpointOverride: the contents of the endpoint field; empty when unset.
+    /// - Returns: `nil` when there is nothing to warn about — see the guards below.
+    public func thirdPartyAudioNote(endpointOverride: String) -> String? {
+        // A recognition endpoint takes audio and nothing else, so a mirror of one that could not
+        // carry a recording would not be a mirror of it. The whole API is the audio.
+        guard !isSpeechRecognition else { return nil }
+        // `.local` is a third-party server whether or not the field is filled in: the default is
+        // only a default port on the user's own machine, and a text-only checkpoint served there
+        // is the most likely way anyone reaches this note.
+        guard self == .local || !endpointOverride.trimmed.isEmpty else { return nil }
+        return """
+            Dictation sends the recording itself to this URL, so the service has to accept audio \
+            input — plenty that speak this API serve text and images only. Confirm it documents \
+            audio for the model above: the connection test below sends text, so it can pass \
+            against an endpoint that drops every recording and answers with a transcript it \
+            invented.
+            """
+    }
+
     /// The model this backend runs the second stage on — rewriting and summarising — when that
     /// is not the model that transcribes.
     ///

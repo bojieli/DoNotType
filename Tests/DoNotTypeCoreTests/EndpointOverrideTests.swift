@@ -118,4 +118,69 @@ final class EndpointOverrideTests: XCTestCase {
             .xai, apiKey: "k", endpoint: "https://mirror.example.com/v1/stt", environment: key)
         XCTAssertEqual(text?.endpointOrigin?.absoluteString, "https://api.x.ai/")
     }
+
+    // MARK: - The audio-input caveat
+
+    /// The note appears exactly when a model backend has been pointed somewhere unmeasured.
+    ///
+    /// Asserted per backend rather than spot-checked, because the cost of getting this wrong runs
+    /// both ways: silence on a text-only relay is the failure the note exists to prevent, and a
+    /// warning on an untouched default is the kind of noise that teaches people to skip the whole
+    /// block of explanations it sits in.
+    func testTheAudioCaveatAppearsOnlyForAModelBackendPointedElsewhere() {
+        let mirror = "https://mirror.example.com/v1/chat/completions"
+        for kind in ProviderKind.allCases {
+            // A recogniser's entire API is the recording, so a mirror of one that could not carry
+            // audio would not be a mirror of it. Nothing to say, at any endpoint.
+            guard !kind.isSpeechRecognition else {
+                XCTAssertNil(kind.thirdPartyAudioNote(endpointOverride: mirror))
+                XCTAssertNil(kind.thirdPartyAudioNote(endpointOverride: ""))
+                continue
+            }
+            XCTAssertNotNil(
+                kind.thirdPartyAudioNote(endpointOverride: mirror),
+                "\(kind.rawValue) forwards audio to a URL nobody here has measured, silently")
+            // `.local` is always somebody else's server; the others are only once told to be.
+            XCTAssertEqual(
+                kind.thirdPartyAudioNote(endpointOverride: "") != nil, kind == .local,
+                "\(kind.rawValue) disagrees about whether its default is a third party")
+        }
+    }
+
+    /// `.local` is the exception, and the one most likely to hit this: `vllm serve` in front of a
+    /// text-only checkpoint speaks the same API and has nowhere to put the recording.
+    func testTheLocalBackendCarriesTheCaveatWithNoOverrideAtAll() {
+        XCTAssertNotNil(ProviderKind.local.thirdPartyAudioNote(endpointOverride: ""))
+        XCTAssertNil(ProviderKind.google.thirdPartyAudioNote(endpointOverride: ""))
+    }
+
+    /// The same rule the factory applies: an emptied field is unset, not a URL. Otherwise a user
+    /// who cleared the field would keep a warning about a server they no longer use.
+    func testAWhitespaceOverrideDoesNotRaiseTheCaveat() {
+        for blank in ["", "   ", "\n"] {
+            XCTAssertNil(ProviderKind.google.thirdPartyAudioNote(endpointOverride: blank))
+        }
+    }
+
+    /// What the note has to say to be worth its space. The middle claim is the one that decays
+    /// silently: `ProviderProbe` sends *text* to a multimodal backend, so a green connection test
+    /// says nothing about audio. If that probe ever starts sending audio, this assertion should
+    /// fail and the sentence should go — not the other way round.
+    func testTheCaveatNamesAudioAndDoesNotLetTheConnectionTestStandInForIt() throws {
+        let note = try XCTUnwrap(
+            ProviderKind.openrouter.thirdPartyAudioNote(
+                endpointOverride: "https://mirror.example.com/v1/chat/completions"))
+        XCTAssertTrue(note.contains("audio input"))
+        XCTAssertTrue(note.contains("connection test below sends text"))
+
+        // The branch that makes the sentence true: `ProviderProbe.check` sends text wherever
+        // grounding is `.multimodal`, and audio only where it is not. Every backend that can show
+        // this note is on the text side of it.
+        for kind in ProviderKind.allCases where !kind.isSpeechRecognition {
+            let backend = try ProviderFactory.make(kind, apiKey: "k", environment: key)
+            XCTAssertEqual(
+                backend.grounding(forModel: kind.defaultModel), .multimodal,
+                "\(kind.rawValue) is probed with audio; the note's middle sentence is now false")
+        }
+    }
 }
