@@ -1,7 +1,8 @@
 # Model and provider benchmark
 
-Which models can actually do this job, measured rather than assumed. Re-run on any model bump —
-multimodal quality moves between releases and nothing else in this project would notice.
+This document records which models and providers can perform the transcription-and-grounding job,
+measured rather than assumed. The benchmarks are re-run on any model bump, because multimodal
+quality moves between releases and nothing else in this project would notice.
 
 ```bash
 export OPENROUTER_API_KEY=...   # or GEMINI_API_KEY with PROVIDER=gemini
@@ -12,15 +13,15 @@ export OPENROUTER_API_KEY=...   # or GEMINI_API_KEY with PROVIDER=gemini
 
 ## What is measured, and why in this order
 
-Each question only matters if the previous one passed.
+Each measurement only matters if the previous one passed.
 
-1. **Does the audio reach the model?** A provider that accepts an audio block and discards it
+1. **The audio reaches the model.** A provider that accepts an audio block and discards it
    returns a fluent, confident, invented transcript. This is the single worst failure mode here and
    it has been observed in the wild.
-2. **Can it transcribe the reference clip with _no_ context?** A model that mis-hears the number
+2. **The reference clip is transcribed with _no_ context.** A model that mis-hears the number
    cannot be scored for substitution at all — its errors are mis-hearing, not overwriting.
-3. **Under hostile screen context, how often does it write the on-screen value instead of the
-   spoken one?** This is the failure the project exists to prevent.
+3. **How often the on-screen value is written instead of the spoken one under hostile screen
+   context.** This is the failure the project exists to prevent.
 
 The reference clip (`eval/audio/real-talk-gemini15.wav`) is 22 seconds of a real recorded talk. The
 speaker says "**Gemini 1.5**"; the test context repeats "**Gemini 2.5**" five times. The number is
@@ -85,7 +86,7 @@ clip rather than creating the error outright.
 Older models cannot be given a substitution number at all — they never produce either the spoken or
 the decoy value, so there is nothing to score.
 
-## Provider matters, not just model
+## Provider differences
 
 The same model ID served by different providers does not behave identically.
 
@@ -96,10 +97,10 @@ The same model ID served by different providers does not behave identically.
 
 The direction is consistent across two independent measurements, but **each is individually weak** —
 6/8 versus 4/8 is nowhere near significant on its own. Treat this as "native is probably better,
-worth preferring, not proven". Native is the default anyway, because it is first-party, honours
+worth preferring, not proven". Native is the default anyway, because it is first-party and honours
 `store: false` directly.
 
-## Caveats worth knowing before trusting any of this
+## Caveats
 
 **`openai/gpt-audio` does not reliably transcribe.** Given audio and a transcription instruction it
 sometimes returns a *conversational reply* instead: "It sounds like you're describing an interesting
@@ -281,8 +282,8 @@ disabled, and does not claim a vLLM result for this clip.
 
 ### Mandarin language smoke test (public real speech)
 
-Because the exact `real-mandarin.wav` fixture is also unavailable, I used one short, openly
-licensed AISHELL-1 recording as a separately labeled language check. The 5.409-second clip
+Because the exact `real-mandarin.wav` fixture is also unavailable, one short, openly
+licensed AISHELL-1 recording was used as a separately labeled language check. The 5.409-second clip
 (`BAC009S0002W0124.wav`, SHA-256
 `85e184e8aed8c40a94a4666e8d021ef41901c8d566d928951d54e6a540aaaaca`) says
 **自六月底呼和浩特市率先宣布取消限购后** (“Since the end of June, Hohhot was the first city
@@ -306,8 +307,8 @@ The complete entries, checkpoint revisions, dataset license, and reference trans
 
 ### Mandarin-English code-switch smoke test (public real speech)
 
-Before the uploaded code-switch fixture was supplied, I downloaded one real public control without fabricating a fixture:
-recording from the public `AudioLLMs/seame_dev_man` test split (example 7). The clip is 23.234
+Before the uploaded code-switch fixture was supplied, one real public control was downloaded without fabricating a fixture:
+a recording from the public `AudioLLMs/seame_dev_man` test split (example 7). The clip is 23.234
 seconds of Mandarin with spoken English terms including **“looking for job opportunities,” “NTU,”
 “career website,” “school of computer engineering,”** and **“code switch.”** Its 16 kHz mono WAV
 hash is `88443f86632c44da6c526738247389e058d6d6e250651be0ff896ab95eeaf8f0`. The dataset card cites
@@ -549,6 +550,8 @@ results and pinned revisions are in `additional_bcn_context_order_smoke` in the 
 earlier Gemma Barcelona row that used direct MP3 input remains excluded because its no-context
 transcript was unusable; the WAV rerun above matches the app's 16 kHz mono input format.
 
+### Obama-clip proper-noun control (public real speech)
+
 To exercise context handling on genuine speech independently of the uploaded near-miss fixtures, the
 primary downloaded multimodal checkpoints were each run 15 times with and without a hostile context block. The
 recording says **Chicago** in its opening sentence; the context repeated **Seattle** eight times.
@@ -743,7 +746,7 @@ Reproduce with `eval/benchmark-latency.py`; raw per-trial seconds in `eval/resul
 **Clip length is the axis that does not matter.** Seven times the audio — 77 audio tokens against
 550 — costs `gemini-3-flash-preview` nothing measurable and `gemini-3.5-flash` 0.6 s. It costs the
 two slower models 2.6–2.8 s, which is less than their own spread between the two runs. Anyone
-sizing a timeout against recording length is tuning the wrong variable: what a request costs here
+Sizing a timeout against recording length uses the wrong variable: what a request costs here
 is set by which model answers it, not by how much was said.
 
 **There are two speed classes, and only the class boundary replicates.** 3.5 and the 3 preview sit
@@ -757,11 +760,11 @@ three-second phrase in 39 s once, and its p90 on that same short clip is 10.6 s.
 the least reproducible thing measured: 3.6's short-clip maximum was 39.06 s in one run and 9.06 s
 in the other.
 
-### The tail is waiting, not thinking — and it is per request
+### Per-request tail latency
 
-The obvious reading of that spread is "those two models were busy". Measured directly, with all
-four sampling one shared 180-second window on a matched 6-second cadence
-(`eval/latency-variance.py`), it is not that:
+The obvious reading of that spread — "those two models were busy" — does not hold when measured
+directly, with all four sampling one shared 180-second window on a matched 6-second cadence
+(`eval/latency-variance.py`):
 
 - **Output tokens are pinned at 30 on every trial of every model.** A 3.6 request that took
   15.81 s emitted exactly the same 30 tokens as one that took 3.26 s. Thought tokens bill as
@@ -794,8 +797,9 @@ This harness spends one process per trial, so a TLS handshake falls inside the t
 its absolute figures run ~1 s above the table above. That offset is constant across models and
 does not touch the variance result.
 
-The p90 column is the one to quote for the default, because the short clip is the common case: a
-user dictating a phrase waits about 4 s typically and about 11 s in the worst tenth of attempts.
+The p90 column is the representative tail figure for the default because the short clip is the
+common case: a user dictating a phrase waits about 4 s typically and about 11 s in the worst tenth
+of attempts.
 That is the real price of the accuracy the recommendation above is buying — see the no-context
 column before treating the fast pair as an upgrade.
 
@@ -820,3 +824,8 @@ exists to prevent. Speed here is bought with the only thing that matters.
 
 Check the no-context column before the clock when evaluating any replacement:
 `dnt-eval ablate --model <id> --conditions verbatim,no-context`.
+
+## See also
+
+- [EVALUATION.md](EVALUATION.md) — benchmark method and per-case readings
+- [GPU-TESTING.md](GPU-TESTING.md) — local serving and measurement procedure

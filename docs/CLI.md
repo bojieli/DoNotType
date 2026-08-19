@@ -1,21 +1,25 @@
-# The command line, and the log
+# CLI and logging reference
 
-There are two of these: the Swift `dnt` on macOS, and `dnt.exe` built from `windows/DoNotType.Cli`.
-Same verbs, same flags, same two output rules — separate tools in separate languages, because a
-single binary would mean one platform's core shipping inside the other's. Android and iOS have no
-shell to run one from; their equivalent is the log screen and the file screen in the app.
+This document is the reference for the `dnt` command-line tools and for the logging facility they
+share with the apps. Two implementations exist: the Swift `dnt` on macOS, and `dnt.exe` built from
+`windows/DoNotType.Cli`. They have the same verbs, the same flags, and the same two output rules,
+but they are separate tools in separate languages, because a single binary would require one
+platform's core to ship inside the other's. Android and iOS have no shell to run a CLI from; their
+equivalents are the log screen and the file screen in the app.
 
-Everything below describes both unless a line says otherwise.
+Everything below describes both implementations unless a line says otherwise.
 
-Two command-line tools ship on the desktop, and they have different jobs.
+Two command-line tools ship on the desktop, with different jobs:
 
 | | for | when |
 |---|---|---|
 | **`dnt`** | using the product | transcribe a file, read the log, inspect history, check a key |
 | **`dnt-eval`** | measuring the prompt | you changed a file in `prompt/` and owe the changelog a number |
 
-`dnt-eval` is documented in [EVALUATION.md](EVALUATION.md). This file covers `dnt` and the logging
-it exists to make readable.
+`dnt-eval` is documented in [EVALUATION.md](EVALUATION.md). This document covers `dnt` and the
+logging it exists to make readable.
+
+## Building and running
 
 ```bash
 make cli                       # .build/release/dnt
@@ -26,10 +30,10 @@ swift run dnt doctor           # from a checkout, without installing anything
 The CLI is also inside the app bundle at `DoNotType.app/Contents/MacOS/dnt`, so a release carries
 it and an installed copy finds the shipped `prompt/` beside itself without a checkout anywhere.
 
-## Two rules
+## Output rules
 
-**stdout is the transcript.** Progress, warnings, summaries and log lines go to stderr. So this
-produces a file containing words and nothing else, even with `--verbose` on:
+**stdout is the transcript.** Progress, warnings, summaries and log lines go to stderr. Therefore
+the following produces a file containing words and nothing else, even with `--verbose` on:
 
 ```bash
 dnt transcribe interview.m4a > interview.txt
@@ -41,27 +45,28 @@ request so it cannot appear even if a provider echoes it back inside an error bo
 
 ## Configuration
 
-`dnt` reads the app's own settings, so the two do not disagree about which backend "the" backend
-is. Precedence, highest first:
+`dnt` reads the app's own settings, so the CLI and the app do not disagree about which backend is
+"the" backend. Precedence, highest first:
 
 1. flags — `--provider`, `--model`, `--fidelity`, `--prompt`
 2. the app's preferences (`defaults read app.donottype`)
 3. the fresh-install defaults
 
 Keys resolve **environment first, then Keychain** — the opposite of the app, deliberately: a key
-exported in the shell you are typing in is an instruction for this invocation, while the Keychain
-entry is the standing configuration. `GEMINI_API_KEY=other-key dnt transcribe …` therefore does what
-it obviously should. `--no-keychain` skips the Keychain entirely, which is what you want in CI or
-when you would rather not authorise a prompt.
+exported in the shell in use is an instruction for that invocation, while the Keychain entry is the
+standing configuration. `GEMINI_API_KEY=other-key dnt transcribe …` therefore overrides the stored
+key for that invocation. `--no-keychain` skips the Keychain entirely, which is the correct choice
+in CI or when authorising a Keychain prompt is undesirable.
 
-Your edited parts are used where you have them, exactly as the app would use them. `dnt prompt
+Edited prompt files are used wherever they exist, exactly as the app would use them. `dnt prompt
 path` lists all twelve and says which file is in force for each; `dnt prompt validate` checks that
 every one of them still resolves.
 
-## `dnt transcribe` — recordings that already exist
+## `dnt transcribe` — existing recordings
 
-This is the offline half of the product. Everything else in DoNotType is built around holding a key
-while you speak; this takes a recording and produces the same three things the live path can.
+This command is the offline half of the product. Everything else in DoNotType is built around
+holding a key while speaking; `dnt transcribe` takes an existing recording and produces the same
+three outputs the live path can.
 
 ```bash
 dnt transcribe memo.m4a                          # verbatim, to stdout
@@ -81,19 +86,23 @@ dnt transcribe call.mp3 --json | jq -r .[0].verbatim
 `rewrite` and `summary` alone mean `rewrite:casual` and `summary:brief`.
 
 **The verbatim transcript is always produced.** `--json` carries both; `--output` writes the derived
-text to `name.txt` and the transcript to `name.verbatim.txt` beside it. A summary you cannot check
-against what was actually said is a summary you have to take on faith, which is the thing this
-project exists to argue against.
+text to `name.txt` and the transcript to `name.verbatim.txt` beside it. Rationale: a summary that
+cannot be checked against what was actually said has to be taken on faith, which is the failure
+mode this project exists to prevent.
+
+### Output naming
 
 With more than one recording, `--output` is a directory and each transcript is named after its
 source. Two sources that want the same name keep their extension to tell them apart — `speech.wav`
 and `speech.mp3` become `speech.txt` and `speech.mp3.txt` — and two with the *same* name in
-different folders are numbered in the order you gave them. The names are worked out before the
-first request, so a collision cannot cost you the file it would have overwritten. This used to
-overwrite silently and report success twice.
+different folders are numbered in the order given on the command line. The names are worked out
+before the first request, so a collision cannot cost the file it would have overwritten.
+Historical note: this previously overwrote silently and reported success twice.
 
-Rewriting and summarising need a language model. If your backend is a recogniser (`xai`,
-`deepgram`, `mistral`) the command refuses **before uploading anything** and tells you the two ways
+### Two-stage backends
+
+Rewriting and summarising need a language model. If the selected backend is a recogniser (`xai`,
+`deepgram`, `mistral`) the command refuses **before uploading anything** and reports the two ways
 forward — switch backend, or keep the fast recogniser and add a model for the second stage:
 
 ```bash
@@ -107,12 +116,12 @@ alongside its recogniser. Older names still resolve, so `--provider gemini` rema
 
 ### Formats and length
 
-**WAV, MP3, M4A/AAC and Opus on every platform**, plus whatever else each system happens to play.
-Everything is decoded to 16 kHz mono up front, which is what makes the rest work: recordings over 90
-seconds are split on silence and transcribed concurrently (`--concurrency`, default 3), durations are
-recorded correctly, and the upload is Opus rather than raw PCM.
+Supported on every platform: **WAV, MP3, M4A/AAC and Opus**, plus whatever else each system happens
+to play. Everything is decoded to 16 kHz mono up front, which is what makes the rest work:
+recordings over 90 seconds are split on silence and transcribed concurrently (`--concurrency`,
+default 3), durations are recorded correctly, and the upload is Opus rather than raw PCM.
 
-How each platform gets there differs, and the differences are worth knowing when one misbehaves:
+The decode path differs per platform; the differences matter when one misbehaves:
 
 | platform | WAV | MP3, M4A, and the rest | Opus |
 |---|---|---|---|
@@ -120,39 +129,39 @@ How each platform gets there differs, and the differences are worth knowing when
 | Android | `MediaExtractor` | `MediaExtractor` + `MediaCodec` | own Ogg reader + `MediaCodec` |
 | Windows | managed code | Media Foundation | own Ogg reader + libopus |
 
-Two of those are ours rather than the platform's, for the same reason in both cases — the system
-would not do it everywhere the app runs:
+Two of these decoders are the project's own rather than the platform's, for the same reason in both
+cases — the system would not do it everywhere the app runs:
 
 - **Android below API 29** cannot open an Ogg container holding Opus, and this app supports API 26.
   Since `.opus` is the format the project itself *encodes* to, a file it produced could fail to open
-  on a device it supports. It now demuxes Ogg itself and hands packets to `MediaCodec`, which has
-  decoded Opus since API 21, so the answer is the same on every supported device.
+  on a device it supports. The app now demuxes Ogg itself and hands packets to `MediaCodec`, which
+  has decoded Opus since API 21, so the behaviour is the same on every supported device.
 - **Windows has no Opus decoder at all**, and libopus is already a dependency for the encode side —
   so the decode side costs a binding and an Ogg reader rather than a new dependency. MP3 and M4A go
-  to Media Foundation, which is on every supported Windows.
+  to Media Foundation, which is present on every supported Windows.
 
 The container is sniffed from the bytes, not the extension: a `.wav` that is really an MP3 is a
-thing recorders do, and dispatching on the name would send it to the wrong reader.
+thing recorders produce, and dispatching on the name would send it to the wrong reader.
 
-One decoder quirk is worth knowing, because it produced a bug that looked like nothing: an AAC
-decoder advertises a default output format before it has parsed the stream — 32 kHz stereo for a
-file that is 16 kHz mono — and corrects itself on the first read. Code that believes the first
-answer converts every buffer with the wrong sample rate, which is not an error, just wrong. A 1.5
-second file came out at 0.4 seconds and nothing anywhere said so.
+One decoder quirk is documented because it produced a bug that looked like nothing: an AAC decoder
+advertises a default output format before it has parsed the stream — 32 kHz stereo for a file that
+is 16 kHz mono — and corrects itself on the first read. Code that believes the first answer
+converts every buffer with the wrong sample rate, which is not an error, just wrong. Measured: a
+1.5 second file came out at 0.4 seconds, and nothing anywhere reported it.
 
 ### Screen context
 
-A file has no screen, but a *reproduction* of a dictation does. This is the loop:
+A file has no screen, but a *reproduction* of a dictation does. The loop:
 
 ```bash
 dnt history show 8174a6b9 --context > context.json
 dnt transcribe recording.wav --context-file context.json --mode verbatim
 ```
 
-Individual fields can be supplied or overridden with `--visible-text`, `--before-caret`, `--app` and
-`--window-title`.
+Individual fields can be supplied or overridden with `--visible-text`, `--before-caret`, `--app`
+and `--window-title`.
 
-## `dnt doctor` — why is this not working
+## `dnt doctor` — diagnosis
 
 ```bash
 dnt doctor            # keys, prompt, history, logging, audio support
@@ -164,14 +173,14 @@ request.
 
 ## `dnt providers`
 
-Every backend, whether a key is found and where, the model that would be used, and — the column
-that matters — whether it is a language model at all. Two of the six are not, which decides whether
-grounding, rewriting and summarising work.
+Lists every backend, whether a key is found and where, the model that would be used, and — the
+column that matters — whether it is a language model at all. Two of the six are not, which decides
+whether grounding, rewriting and summarising work.
 
 ## `dnt history`
 
-The history is a plain JSON file by design. These are the operations that were previously only
-reachable through a window:
+The history is a plain JSON file by design. These subcommands expose operations that were
+previously only reachable through a window:
 
 ```bash
 dnt history list --query migration --status failed
@@ -183,8 +192,8 @@ dnt history path
 ```
 
 `--files-only` narrows to transcripts made from recordings rather than the microphone. Offline
-transcriptions land in the same history as dictations on purpose: "find that thing I said about the
-migration" should not depend on remembering how it was captured.
+transcriptions land in the same history as dictations on purpose: finding "that thing said about
+the migration" should not depend on remembering how it was captured.
 
 ## `dnt prompt`
 
@@ -202,7 +211,7 @@ dnt prompt path                                     # shipped, or your edited co
 Everything logs through one facility in `DoNotTypeCore`, so the app, the CLI and the eval harness
 behave the same way.
 
-### Where it goes
+### Destinations
 
 Every platform writes a file beside its history, at `info`, and keeps its native sink alongside it:
 
@@ -214,12 +223,15 @@ Every platform writes a file beside its history, at `info`, and keeps its native
 | **iOS** | the App Group container, `Logs/` | — | Settings › Diagnostics › Logs |
 | **the CLIs** | none unless `DNT_LOG_FILE` is set | stderr, at `warn` | — |
 
-A CLI does not write to the app's file by default: two processes appending would interleave and race
-its rotation. The file rotates at 8 MB (4 MB on Android) and keeps exactly one previous generation.
+A CLI does not write to the app's file by default: two processes appending would interleave and
+race its rotation. The file rotates at 8 MB (4 MB on Android) and keeps exactly one previous
+generation.
 
-On Android and iOS the viewer offers **share** rather than reveal, because a share sheet is how a log
-reaches a bug report from a phone — there is no Console, no shell, and no way to reach a file inside
-the container without plugging the device into a computer.
+On Android and iOS the viewer offers **share** rather than reveal, because a share sheet is how a
+log reaches a bug report from a phone — there is no Console, no shell, and no way to reach a file
+inside the container without plugging the device into a computer.
+
+### `dnt logs`
 
 ```bash
 dnt logs                                  # last 200 lines of the app's log
@@ -230,13 +242,13 @@ dnt logs --clear
 ```
 
 In the app, Settings › Logs shows the same events live, with the recording level next to them —
-turning detail up no longer means quitting and relaunching from a terminal.
+raising the level no longer requires quitting and relaunching from a terminal.
 
 ### Following one dictation
 
 Every stage logs, and every line carries a `dictation=` id — the first eight characters of the
-history row's id, so the two can be lined up. A log with three dictations in it is three interleaved
-stories, and the question being asked is always about one of them.
+history row's id, so the two can be lined up. A log containing three dictations is three
+interleaved sequences, and the question being investigated is always about one of them.
 
 ```bash
 dnt logs --grep 3f9c1a20
@@ -253,12 +265,12 @@ INFO  inject   inserting            dictation=3f9c1a20 chars=126 app=Mail access
 INFO  dictate  dictation complete   dictation=3f9c1a20 chars=126 totalMs=2140
 ```
 
-Three of these exist for questions people actually ask rather than for completeness:
+Three log lines exist for questions users actually ask rather than for completeness:
 
 - **`recording too short to send`** — "I pressed the key and nothing happened" is usually a tap
   rather than a hold, and it used to be silent.
 - **`nothing was said`** — a silent recording produces an empty transcript, which reads as a
-  failure. It is not one, and now it says so.
+  failure. It is not one, and the log now says so.
 - **`inserting … accessibility=MISSING`** — "it transcribed but nothing appeared" is a different
   failure from "it did not transcribe", and from outside they look identical. A paste sent without
   Accessibility is not refused, it is ignored.
@@ -273,7 +285,7 @@ Three of these exist for questions people actually ask rather than for completen
 | `warn` | degraded but recovered — a hedge fired, an encoder was missing |
 | `error` | it failed and you noticed |
 
-### Environment
+### Environment variables
 
 Every desktop executable honours these, including the app when it is launched from a shell. Android
 and iOS have no environment to set, which is why the level is a setting there — and on Windows for
@@ -292,15 +304,15 @@ DNT_LOG_LEVEL=debug dnt transcribe memo.wav
 DNT_LOG_JSON=1 DNT_LOG_LEVEL=debug dnt transcribe memo.wav 2>&1 >/dev/null | jq -r .message
 ```
 
-Note that a bundle opened from Finder inherits launchd's environment, not your shell's — which is
-also why the app has a level control in Settings rather than only an environment variable.
+A bundle opened from Finder inherits launchd's environment, not the shell's — which is also why the
+app has a level control in Settings rather than only an environment variable.
 
-### What is never logged
+### Content withheld from logs
 
-**Your words.** Transcripts and screen contents are content, and content is withheld by default: a
-log line says a 412-character transcript came back, not what it said. `DNT_LOG_CONTENT=1` or the
-"Include transcripts" toggle in Settings › Logs opens that door, and the app says out loud when it
-is open.
+**Transcripts and screen contents.** These are content, and content is withheld by default: a log
+line says a 412-character transcript came back, not what it said. `DNT_LOG_CONTENT=1` or the
+"Include transcripts" toggle in Settings › Logs opens that door, and the app indicates visibly
+when it is open.
 
 **Keys.** Two mechanisms, because either alone leaks. Every resolved key is registered with the
 logger before the first request, so the exact bytes are masked wherever they appear — including
@@ -308,17 +320,22 @@ inside a URL or a provider's error body. Anything else key-shaped is caught by p
 prefixes (`sk-`, `AIza`, `xai-`, …) and long opaque tokens. Credentials in URL query parameters are
 stripped before the URL is logged at all.
 
-**Request bodies, and the response body of anything that worked.** A request body is your audio and
-your screen; a successful response body is your transcript. What is logged is the shape: endpoint,
-model, bytes each way, status, duration.
+**Request bodies, and the response body of anything that worked.** A request body is the audio and
+the screen contents; a successful response body is the transcript. What is logged is the shape:
+endpoint, model, bytes each way, status, duration.
 
 **The one exception is a failed response**, which is logged in full at `warn`. A 4xx or 5xx body
-contains no audio and no transcript — what it contains is the provider saying which field it
-rejected and why, which is the single most useful thing for diagnosing a failure and is gone by the
-time anybody thinks to turn on `debug`. Registered keys are still masked inside it, as everywhere
-else.
+contains no audio and no transcript — it contains the provider saying which field it rejected and
+why, which is the single most useful thing for diagnosing a failure and is gone by the time anybody
+thinks to turn on `debug`. Registered keys are still masked inside it, as everywhere else.
 
-## What the CLI is not
+## Scope of the CLI
 
-It does not record. Dictation needs a hotkey, a microphone permission and something to type into,
-which is what the app is for. `dnt` starts where a recording already exists.
+The CLI does not record. Dictation needs a hotkey, a microphone permission and something to type
+into, which is what the app is for. `dnt` starts where a recording already exists.
+
+## See also
+
+- [EVALUATION.md](EVALUATION.md) — the `dnt-eval` tool and the measurement workflow
+- [PARITY.md](PARITY.md) — feature parity across platforms
+- [ARCHITECTURE.md](ARCHITECTURE.md) — how the apps and cores are organised

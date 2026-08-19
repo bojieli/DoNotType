@@ -10,6 +10,13 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **Project documentation is organized as a public reference.** The README now states the
+  project's motivation and operating principles, including its differences from built-in and
+  commercial AI dictation. Long-form documents live behind an indexed `docs/` entry point and
+  use a consistent, neutral structure. The rewrite preserves the commands, measured results,
+  falsified predictions, dated experiment history, platform caveats, and security boundaries
+  that support the project's claims.
+
 - **Mobile dictation and rewriting are separate choices.** iOS and Android now use a compact
   Dictate/Rewrite switch instead of presenting Verbatim beside Formal, Concise, and Bullets as if
   all four were one kind of setting. Rewrite style now lives in its own Settings section, separate
@@ -371,7 +378,7 @@ deliberate:
   transcription report needs, a PR template that asks for numbers when quality is touched, a code of
   conduct whose one non-boilerplate clause is that claims here are settled by measurement, a
   [manual checklist](docs/MANUAL-CHECKS.md) for the four things no runner can do, and
-  [what this project will never do](README.md#what-this-will-never-do).
+  [what this project will never do](README.md#principles).
 
 - **CI runs what ships, on every platform's own decoders.** Both CLIs are built and executed, the
   macOS app is launched and has to still be alive and to have logged its own startup, the Windows

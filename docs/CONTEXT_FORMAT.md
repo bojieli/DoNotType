@@ -1,11 +1,12 @@
-# CONTEXT_FORMAT.md
+# Context format
 
-How screen context is turned into request parts. Shared by every platform; `ContextEncoder` is
-the reference implementation.
+Reference specification for how screen context is turned into request parts. The format is shared
+by every platform; [`ContextEncoder`](../Sources/DoNotTypeCore/ContextEncoder.swift) is the
+reference implementation.
 
 ## Principle
 
-Send the screen **as it is**. No term extraction, no summarisation and no prior transcripts. A
+Send the screen **as it is**: no term extraction, no summarisation, and no prior transcripts. A
 multimodal model was chosen precisely so that raw context could be used directly; distilling it
 first throws away the information it was chosen for.
 
@@ -24,30 +25,42 @@ change are rejected. Learned entries remain distinguishable and removable.
 
 ## Personal dictionary
 
+### Storage
+
 The list is local, case-insensitively deduplicated, and capped at 100 entries of 50 characters —
 the smallest ceiling among supported recognition providers. The interface states the cap rather
 than silently truncating it and imports Typeless-compatible UTF-8, one-column CSV files.
 
+### Model providers
+
 For a model provider, the entries are JSON-encoded into a strongly delimited request part before
-the screen context. That block repeats three rules: an entry is only a possible spelling, it is not
-evidence the word was spoken, and digits still come from audio. The versioned base system prompt is
-not changed behind the prompt editor.
+the screen context. That block repeats three rules: an entry is only a possible spelling, it is
+not evidence the word was spoken, and digits still come from audio. The versioned base system
+prompt is not changed behind the prompt editor.
 
-For a speech-recognition provider, there is no system instruction to carry those rules. Entries are
-therefore sent as keyterms only when the endpoint has such a channel, and anything containing a
-digit is withheld. User entries consume the provider's budget before optional screen-derived terms.
-Voxtral has no hint channel, so the interface says the stored dictionary cannot affect it.
+### Speech-recognition providers
 
-Correction learning is off by default. On macOS it watches the inserted span for 60 seconds,
-requires the same correction in two consecutive observations, and feeds the before/after text to
-`TranscriptDiff`. Only `spelling-fixed` spans and capitalisation fixes become entries. The text
-field's value has to be read to locate that span, but the surrounding snapshot is immediately
-discarded and never stored as dictionary data. Moving focus to another field stops observation.
+For a speech-recognition provider, there is no system instruction to carry those rules. Entries
+are therefore sent as keyterms only when the endpoint has such a channel, and anything containing
+a digit is withheld. User entries consume the provider's budget before optional screen-derived
+terms. Voxtral has no hint channel, so the interface says the stored dictionary cannot affect it.
+
+### Correction learning
+
+Correction learning is off by default. On macOS it:
+
+- watches the inserted span for 60 seconds,
+- requires the same correction in two consecutive observations, and
+- feeds the before/after text to `TranscriptDiff`.
+
+Only `spelling-fixed` spans and capitalisation fixes become entries. The text field's value has to
+be read to locate that span, but the surrounding snapshot is immediately discarded and never
+stored as dictionary data. Moving focus to another field stops observation.
 
 ## Part order
 
-Context first, audio last. The model reads sequentially; reference material that arrives after
-the speech is reference material it has already finished without.
+Context first, audio last. The model reads sequentially; reference material that arrives after the
+speech is reference material it has already finished without.
 
 ```
 input[0]  text    header + delimiters + app identity
@@ -98,12 +111,14 @@ The audio that follows is the ONLY thing to transcribe.
    target after a potentially long block of untrusted text, some of which may contain imperative
    sentences.
 
-   **These caps are budget, not influence.** Measured on `gemini-3.6-flash`: a correct spelling in
-   the visible-text section transferred 0/12 times, and the same word in the caret window
-   transferred 12/12. A contradicting value substituted 3/10 from visible text and 7/10 from the
-   caret window. The caret sections are a tenth of the budget and carry most of the weight, in both
-   directions — see [docs/EVALUATION.md](docs/EVALUATION.md). Anyone retuning these numbers should
-   know that enlarging the visible-text cap buys much less than it looks like it should.
+## Measured influence of context sections
+
+These caps are budget, not influence. Measured on `gemini-3.6-flash`: a correct spelling in the
+visible-text section transferred 0/12 times, and the same word in the caret window transferred
+12/12. A contradicting value substituted 3/10 from visible text and 7/10 from the caret window.
+The caret sections are a tenth of the budget and carry most of the weight, in both directions —
+see [EVALUATION.md](EVALUATION.md). Anyone retuning these numbers should know that enlarging the
+visible-text cap buys much less than it looks like it should.
 
 ## Capture timing
 

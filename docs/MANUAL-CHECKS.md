@@ -1,19 +1,19 @@
-# The checks a machine cannot do
+# Manual release checks
 
 Almost everything in this project is tested automatically. Seven things are not, and the first four
-are what a user meets first.
+are what a user meets first. This document is the checklist of those checks, run by a person, once
+per release. Fifteen minutes for all four platforms.
 
 The gap is not laziness. **Microphone capture** needs a microphone and a person making a noise into
 it. **Text injection** needs a focused window belonging to another application and a permission CI
 will never be granted. **A real transcription** needs a paid key. And **whether the words are
 right** needs someone who knows what was said. No runner has any of those.
 
-So they are a checklist, run by a person, once per release. Fifteen minutes for all four platforms.
 Record the results in the release's draft notes: a release that says "dictation verified on macOS
 and Windows, Android untested this cycle" is worth more than one that says nothing and leaves a
 reader to assume the best.
 
-## Before you start
+## Prerequisites
 
 ```bash
 dnt doctor --probe
@@ -22,14 +22,12 @@ dnt doctor --probe
 One live request. If the key is wrong or the model is unavailable, find out here rather than halfway
 through the checklist with a sentence already spoken.
 
----
-
-## 1. The round trip
+## 1. Round trip
 
 The whole product in one gesture. On each platform, with a text field focused in some *other*
 application:
 
-| | |
+| Platform | Action |
 |---|---|
 | macOS | hold Right ⌘, say a sentence, release |
 | Windows | hold Right Ctrl, say a sentence, release |
@@ -52,7 +50,7 @@ stopped early), text landing in the wrong window (injection raced the focus), or
 "corrected" to something on screen (the failure this project is about — if you see it, it belongs in
 `eval/nearmiss/` as a case).
 
-### Finish with Return/Enter
+### Finishing with Return/Enter
 
 On macOS and Windows, try each post-insertion choice in turn. Start recording in a disposable chat
 or test field, speak, and press Return/Enter instead of releasing or tapping the recording key.
@@ -70,7 +68,7 @@ or test field, speak, and press Return/Enter instead of releasing or tapping the
 **Passes if** only the recording-time key is captured, a successful path submits exactly once, and
 focus movement, cancellation, transcription failure, or manual-paste fallback never submits.
 
-## 2. Permissions, from cold
+## 2. Permissions from cold
 
 On a machine that has never run it, or after revoking:
 
@@ -82,7 +80,7 @@ On a machine that has never run it, or after revoking:
 granting works without a restart. macOS revokes Accessibility whenever the signature changes, so an
 updated build must ask again rather than silently failing to hear anything.
 
-## 3. What happens when it goes wrong
+## 3. Failure modes
 
 Two of these have hardware in them, so they are here rather than in the automated suite:
 
@@ -93,7 +91,7 @@ Two of these have hardware in them, so they are here rather than in the automate
 - **Silence.** Hold the key, say nothing, release. Nothing should be typed and no history row
   written.
 
-## 4. Silence, which must produce nothing
+## 4. Silence must produce nothing
 
 The one failure that needs no interpretation. Run it against whichever backend the release
 recommends, and against a recogniser, because those never receive `prompt/system.md` at all:
@@ -111,7 +109,7 @@ first. What this checks is the assumption underneath that gate — and if a back
 for silence here, it is worth knowing which one, since the gate is the only thing standing between
 that behaviour and somebody's document.
 
-## 5. A recording, offline
+## 5. Offline file transcription
 
 The other half of the product, and the only one of the four you can check without speaking:
 
@@ -126,7 +124,7 @@ reachable — `--output` writes it to `.verbatim.txt`.
 Do the same through the GUI on one platform, by dropping a file on the macOS window or picking one
 on the others. The pickers and the drop handlers are the parts no test reaches.
 
-## 6. The level meter, which has to be your voice
+## 6. Level meter
 
 Thirty seconds per client, and all four draw one: the pill on macOS and Windows, the strip above the
 keyboard on Android, the row under the record button on iOS. The scale itself is asserted against
@@ -152,8 +150,6 @@ bar for a word is drawn while you are still saying the next one.
 long — this is what half-second buffers looked like on Windows), and amber at a normal speaking
 voice, which is a real finding rather than a bug: the input gain is set high enough to be damaging
 the recording before any backend sees it. Say which it was in the notes.
-
----
 
 ## Recording the result
 

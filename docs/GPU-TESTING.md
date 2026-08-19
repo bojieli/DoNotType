@@ -1,33 +1,36 @@
-# Handoff: testing open-weight models on your own GPU
+# Testing open-weight models on a local GPU
 
-Everything you need to run DoNotType against a locally hosted model and get numbers comparable to
-the hosted ones already in [MODELS.md](MODELS.md).
+This document describes how to run DoNotType against a locally hosted open-weight model and produce
+numbers comparable to the hosted results in [MODELS.md](MODELS.md): candidate selection, checkpoint
+download and verification, serving, DoNotType wiring, the measurement sequence, and the reporting
+format.
+
+## Scope and status
 
 **Scope note (2026-08-10).** The requested non-Mistral GPU campaign is complete. The uploaded real
-WAV fixtures were tested with six downloaded, pinned checkpoints; see the exact results in
+WAV fixtures were tested with six downloaded, pinned checkpoints; the exact results are in
 [`eval/results/local-real-audio-2026-08-10.json`](../eval/results/local-real-audio-2026-08-10.json).
 Mistral/Voxtral Transcribe 2 work is intentionally excluded by user direction and is not a blocker
-for the results below. The older Voxtral commands and observations in this handoff are retained as
+for the results below. The older Voxtral commands and observations in this document are retained as
 historical context only; do not run additional Mistral experiments for this scope.
 
-**Why this is worth doing.** The failure this project is stuck on — screen context overwriting a
-spoken version number, ~36% of runs against a ~21% no-context baseline — may not be fixable by
-instruction at all. Whisper's `initial_prompt` is famously leaky in exactly the same way, which
-suggests prompt-conditioned ASR has this property generally. Voxtral Transcribe 2 does context
-biasing *inside the decoder*, where a prior can be **weighted** rather than merely requested. That
-is a different mechanism, and it is the most promising lead available. Nobody has measured it
-against this workload.
+## Rationale
 
----
+The failure this project is stuck on — screen context overwriting a spoken version number, ~36% of
+runs against a ~21% no-context baseline — may not be fixable by instruction at all. Whisper's
+`initial_prompt` leaks in exactly the same way, which suggests prompt-conditioned ASR has this
+property generally. Voxtral Transcribe 2 performs context biasing *inside the decoder*, where a
+prior can be **weighted** rather than merely requested. That is a different mechanism, it is the
+most promising lead available, and it has not been measured against this workload.
 
-## 0. The short version
+## Quick start
 
 ```bash
 # on the GPU box
 pip install vllm
 vllm serve mistralai/Voxtral-Small-24B-2507 --port 8000
 
-# on your laptop
+# on the client machine
 export DNT_LOCAL_BASE_URL=http://<gpu-host>:8000/v1/chat/completions
 swift run dnt-eval probe  --provider local --model mistralai/Voxtral-Small-24B-2507 \
                           --audio eval/audio/real-talk-gemini15.wav
@@ -35,11 +38,11 @@ swift run dnt-eval ablate --provider local --model mistralai/Voxtral-Small-24B-2
 ```
 
 The app already speaks `/v1/chat/completions`, so no new client code is needed. `--provider local`
-exists purely to point that client at your machine.
+exists purely to point that client at the local machine.
 
----
+## Candidate models
 
-## 1. Candidates, in priority order
+Candidates in priority order:
 
 | Priority | Model | VRAM (bf16) | Why |
 |---|---|---|---|
@@ -52,15 +55,13 @@ exists purely to point that client at your machine.
 | control | `Qwen/Qwen3-ASR-0.6B-hf` | ~2 GB | Downloaded compact ASR control; its explicit hotword/prompt field permits a proper-noun context smoke test but it is not a general audio LLM. |
 | control | `openbmb/MiniCPM-o-4_5` | ~19 GB | Downloaded audio+LLM control; accepts text and audio in one chat turn, but its broader omni stack is outside the primary five-model comparison. |
 
-Quantised builds (AWQ/GPTQ/GGUF) cut these substantially if you are card-limited. Note the quant in
-your results — it is a confound worth recording.
+Quantised builds (AWQ/GPTQ/GGUF) cut these substantially for card-limited setups. Note the quant in
+the results — it is a confound worth recording.
 
-If VRAM is tight, **start with Gemma 4 E4B**. A cheap negative result is still a result, and the
+If VRAM is tight, start with **Gemma 4 E4B**. A cheap negative result is still a result, and the
 harness is identical.
 
----
-
-## 2. Serving
+## Serving
 
 Download and verify the actual checkpoint before starting a server. `snapshot_download` caches the
 immutable Hub revision and the helper refuses a snapshot that has no model weights; it never
@@ -72,8 +73,8 @@ python3 eval/download-checkpoint.py mistralai/Voxtral-Small-24B-2507
 ```
 
 Use the printed snapshot path with a direct Transformers runner, or use the model ID with vLLM;
-vLLM will load the same Hub checkpoint from its cache. Record the resolved revision in results so
-that a later model update cannot be mistaken for a reproduction.
+vLLM loads the same Hub checkpoint from its cache. Record the resolved revision in results so that
+a later model update cannot be mistaken for a reproduction.
 
 ### vLLM (recommended — closest to the hosted API shape)
 
@@ -98,7 +99,7 @@ vllm serve mistralai/Voxtral-Mini-4B-Realtime-2602 --port 8000
 Its real-checkpoint audio-only probe is recorded separately; do not interpret it as a context
 substitution result.
 
-Confirm it is up and the model name it reports:
+Confirm the server is up and the model name it reports:
 
 ```bash
 curl -s http://localhost:8000/v1/models | jq -r '.data[].id'
@@ -130,36 +131,32 @@ print(model.transcribe("real-talk-gemini15.wav",
 
 If "2.5" appears in the output, the leak reproduced.
 
----
-
-## 3. Wiring DoNotType to it
+## Connecting DoNotType
 
 Three environment variables, all optional except the first:
 
 ```bash
 export DNT_LOCAL_BASE_URL=http://<gpu-host>:8000/v1/chat/completions
 export DNT_LOCAL_MODEL=mistralai/Voxtral-Small-24B-2507   # default for --provider local
-export DNT_LOCAL_API_KEY=whatever                        # only if your server requires auth
+export DNT_LOCAL_API_KEY=whatever                        # only if the server requires auth
 ```
 
-Then, from the repo root on your laptop:
+Then, from the repo root on the client machine:
 
 ```bash
 swift build -c release
 swift run dnt-eval probe --provider local --audio eval/audio/real-talk-gemini15.wav
 ```
 
-**Read the `audioTok` line first.** If it says `0` the run aborts with
-`audioSilentlyDropped` — the server accepted the audio block and processed none of it, so any
-transcript would be invented. That check has already caught two hosted providers doing exactly
-this. If it says "not reported", your server does not return usage; the guard gives it the benefit
-of the doubt, so sanity-check the transcript by ear once before trusting the numbers.
+Read the `audioTok` line first. If it says `0`, the run aborts with `audioSilentlyDropped` — the
+server accepted the audio block and processed none of it, so any transcript would be invented. That
+check has already caught two hosted providers doing exactly this. If it says "not reported", the
+server does not return usage; the guard gives it the benefit of the doubt, so sanity-check the
+transcript by ear once before trusting the numbers.
 
 The macOS app can use the same server: Settings → Provider → **local**.
 
----
-
-## 4. What to measure
+## Measurements
 
 Three commands, in this order. Each only matters if the previous one passed.
 
@@ -178,15 +175,15 @@ The reference clip is 22 s of a real talk. The speaker says **"Gemini 1.5"**; th
 repeats **"Gemini 2.5"** five times. The number is unstressed and mid-sentence — deliberately hard,
 because an easy case measures nothing.
 
-### Baselines to beat
+### Historical hosted baselines
 
-`gemini-3.6-flash`, native API:
+`gemini-3.6-flash`, native API.
 
 These are historical handoff targets. The exact reference WAV is now supplied and verified; the
-uploaded-fixture campaign below is the current local evidence. Never compare these historical rates
-with the synthetic stand-in or the public real-audio smoke clips.
+uploaded-fixture campaign is the current local evidence. Never compare these historical rates with
+the synthetic stand-in or the public real-audio smoke clips.
 
-| condition | substitution | mean latency |
+| Condition | Substitution | Mean latency |
 |---|---|---|
 | no context at all | 21% (3/14) | 5.7 s |
 | **verbatim + context** | **36% (4/11)** | 5.5 s |
@@ -199,54 +196,64 @@ The current local runs do not establish a useful substitution rate when a checkp
 no-context `Gemini 1.5` recognition gate. A model must first recover the spoken value before a
 context substitution comparison is meaningful; the uploaded campaign records that gate explicitly.
 
----
+## Voxtral context biasing
 
-## 5. Voxtral's context biasing specifically
-
-This was the experiment that motivated the original doc. The Transcribe 2 serving surface exposes context
-biasing as a first-class input rather than as prose in the prompt, so the intended comparison is:
+This was the experiment that motivated the original document. The Transcribe 2 serving surface
+exposes context biasing as a first-class input rather than as prose in the prompt, so the intended
+comparison is:
 
 - **A.** Screen context passed as prompt text, exactly as DoNotType does today (`dnt-eval ablate`
   handles this).
 - **B.** The same screen text passed through Voxtral's context-biasing parameter instead.
 
 If B substitutes less than A at equal baseline accuracy, the answer is decoder-level biasing and
-this project's whole approach should change. The cached `Voxtral-Small-24B-2507` checkpoint tested
-here does **not** expose that parameter in either its Transformers processor or Mistral
+the project's whole approach should change. The cached `Voxtral-Small-24B-2507` checkpoint tested
+here does **not** expose that parameter in either its Transformers processor or the Mistral
 transcription request, so B was not run. Transcribe 2/Mistral is intentionally out of scope for the
 current campaign; no API credential or Hub checkpoint was requested. The installed `mistralai` SDK
 surface and the unavailable model are recorded only as historical provenance.
 
+### Decimal-number ordering control (SEAME clip)
+
 The downloaded Small checkpoint did permit a related real-speech control: on the public SEAME
 decimal clip, the same hostile text was tested both **after** the audio block and in DoNotType's
-production **text-before-audio** order. Audio-before-text retained the spoken `2.5` in 15/15 trials;
-the production order copied the hostile `3.5` in 15/15. This is an ordering observation, not the
-decoder-level biasing experiment above, and is recorded under `additional_decimal_number_smoke` in
-the result JSON. A paired Qwen3-Omni control retained `2.5` and omitted the decoy in all 15 hostile
-trials in both orders. MiniCPM-o changed its baseline rendering under audio-first ordering but still
-omitted the hostile decoy. Gemma 4 showed the inverse: audio-first improved its baseline to exact
-`2.5`, then copied hostile `3.5` in all 15 trials, while text-first produced near variants without
-the decoy. Ultravox matched the same ordering direction under explicit neutral delimiters: it
-copied hostile `3.5` in all 15 production text-before-audio trials but retained `2.5` and omitted
-the decoy in all 15 audio-before-text controls. The Voxtral flip is therefore not a generic
-property of every audio LLM, but it is also not unique to Voxtral.
+production **text-before-audio** order. This is an ordering observation, not the decoder-level
+biasing experiment above, and is recorded under `additional_decimal_number_smoke` in the result
+JSON.
+
+- **Voxtral Small:** audio-before-text retained the spoken `2.5` in 15/15 trials; the production
+  order copied the hostile `3.5` in 15/15.
+- **Qwen3-Omni (paired control):** retained `2.5` and omitted the decoy in all 15 hostile trials in
+  both orders.
+- **MiniCPM-o:** changed its baseline rendering under audio-first ordering but still omitted the
+  hostile decoy.
+- **Gemma 4:** the inverse — audio-first improved its baseline to exact `2.5`, then copied hostile
+  `3.5` in all 15 trials, while text-first produced near variants without the decoy.
+- **Ultravox:** matched the same ordering direction under explicit neutral delimiters — copied
+  hostile `3.5` in all 15 production text-before-audio trials but retained `2.5` and omitted the
+  decoy in all 15 audio-before-text controls.
+
+The Voxtral flip is therefore not a generic property of every audio LLM, but it is also not unique
+to Voxtral.
+
+### Proper-noun ordering control (Barcelona clip)
 
 A second order-neutral public-real control used the Barcelona weather clip (spoken `Barcelona`,
-hostile `Madrid`). Voxtral retained the anchor and rejected the decoy in all 15 trials in both
-orders, while changing output language from Spanish text-first to German audio-first. Ultravox
-retained the anchor and rejected the decoy in all 15 trials in both orders under explicit neutral
-delimiters. These are proper-noun controls, not scores for the uploaded DoNotType fixtures.
-Qwen3-Omni and MiniCPM-o also retained `Barcelona` and rejected `Madrid` in all 15 trials in both
-orders, providing order-insensitive controls under the same public-real setup.
-Gemma also retained the anchor and rejected the decoy in all 15 trials in both orders when rerun
-from the 16 kHz WAV; its older direct-MP3 row is excluded because the no-context decode was
-unusable.
+hostile `Madrid`). These are proper-noun controls, not scores for the uploaded DoNotType fixtures.
 
----
+- **Voxtral:** retained the anchor and rejected the decoy in all 15 trials in both orders, while
+  changing output language from Spanish text-first to German audio-first.
+- **Ultravox:** retained the anchor and rejected the decoy in all 15 trials in both orders under
+  explicit neutral delimiters.
+- **Qwen3-Omni and MiniCPM-o:** also retained `Barcelona` and rejected `Madrid` in all 15 trials in
+  both orders, providing order-insensitive controls under the same public-real setup.
+- **Gemma:** also retained the anchor and rejected the decoy in all 15 trials in both orders when
+  rerun from the 16 kHz WAV; its older direct-MP3 row is excluded because the no-context decode was
+  unusable.
 
-## 6. Reporting back
+## Reporting results
 
-Please record, per model:
+Record, per model:
 
 ```
 model:            mistralai/Voxtral-Small-24B-2507
@@ -274,21 +281,18 @@ have a pinned revision, raw probe, ablation rows appropriate to their architectu
 counts. Voxtral Realtime has a three-trial uploaded audio-only probe and explicitly cannot accept
 screen context or run the A/B.
 
----
-
-## 7. Things that will waste your time if unwarned
+## Pitfalls
 
 **Audio format.** The app records 16 kHz mono WAV and the eval clips are the same. Some servers
 want a specific sample rate; resample rather than assuming (`ffmpeg -ac 1 -ar 16000`).
 
-**Real-speech fixtures are now supplied under `eval/audio/`.**
-The uploaded `real-talk-gemini15.wav` and companion recordings are verified 16 kHz mono PCM and
-their SHA-256 hashes are recorded in `eval/audio/README.md` and the result JSON. The short
-`say`-generated clips remain transport/scorer smoke tests only. The real cases use
-`mustContain`/`mustNotContain` fragment assertions, so wording variation does not mask a
-version-number or language regression. The Python fallback recognizes the known synthetic stand-in
-by SHA-256 and blocks it by default; pass `--allow-synthetic` only for an explicitly labelled
-transport smoke test. The completed direct-checkpoint campaign is summarized in
+**Real-speech fixtures are supplied under `eval/audio/`.** The uploaded `real-talk-gemini15.wav`
+and companion recordings are verified 16 kHz mono PCM and their SHA-256 hashes are recorded in
+`eval/audio/README.md` and the result JSON. The short `say`-generated clips remain transport/scorer
+smoke tests only. The real cases use `mustContain`/`mustNotContain` fragment assertions, so wording
+variation does not mask a version-number or language regression. The Python fallback recognizes the
+known synthetic stand-in by SHA-256 and blocks it by default; pass `--allow-synthetic` only for an
+explicitly labelled transport smoke test. The completed direct-checkpoint campaign is summarized in
 [`docs/MODELS.md`](MODELS.md#uploaded-exact-fixture-campaign-real-wavs-downloaded-checkpoints).
 
 **Swift is optional on a GPU host.** The production harness is Swift, but a machine used only for
@@ -310,3 +314,9 @@ looked like a real finding for an hour.
 
 **Two runs disagree.** Transcription is non-deterministic. `--trials 15` is the floor for a number
 worth acting on; below about 10 the intervals are too wide to distinguish anything.
+
+## See also
+
+- [MODELS.md](MODELS.md) — hosted results and the completed uploaded-fixture campaign.
+- [`eval/results/local-real-audio-2026-08-10.json`](../eval/results/local-real-audio-2026-08-10.json)
+  — pinned revisions, raw probes, and per-case counts for the completed local campaign.

@@ -1,9 +1,14 @@
 # Architecture
 
-Read this before changing anything in `Sources/DoNotTypeCore` or its ports. Most of what looks
-arbitrary here is the residue of something that was measured and came out the other way.
+This document describes how DoNotType is built: the shared contract and its four platform ports,
+the dictation pipeline, the design decisions that were settled by measurement, the component map,
+the two-stage transcript model, long-dictation chunking, latency measurement, context grounding,
+platform differences, the evaluation harness, and the testing layers. Read it before changing
+anything in `Sources/DoNotTypeCore` or its ports. Design choices that look arbitrary here are
+generally the residue of something that was measured; the measured basis is recorded in this
+document.
 
-## The shape
+## Repository shape
 
 ```
                      prompt/           docs/CONTEXT_FORMAT.md
@@ -19,12 +24,13 @@ arbitrary here is the residue of something that was measured and came out the ot
    menu-bar app   app+keyboard  IME+a11y    tray app      measurement
 ```
 
-There are four implementations of the same contract. They are ports, not shared code — Swift,
+There are four implementations of the same contract. They are ports, not shared code: Swift,
 Kotlin and C# cannot share a library across these platforms without dragging in a runtime nobody
-wants inside a keyboard extension. What *is* shared is the pair of markdown files, copied into each
-bundle by that platform's build system so no platform can quietly drift.
+wants inside a keyboard extension. What is shared is the pair of markdown files — the contract
+under `prompt/` and the context-format specification — copied into each bundle by that platform's
+build system so that no platform can drift from the contract.
 
-## The pipeline
+## Dictation pipeline
 
 ```
 hotkey down ──┬─ start recording
@@ -44,43 +50,45 @@ finish input ──┬─ trigger release/tap, or recording-only Return when opt
                └─ if Return latched the intent, verify exact field and submit
 ```
 
-Both "not awaited" steps exist for the same reason: everything expensive should happen while the
-user is still talking, because that time is free. What they feel is only what happens after they
-let go.
+Both steps marked "not awaited" exist for the same reason: everything expensive happens while the
+user is still talking, because that time is free. Only what happens after the user lets go is
+perceived as latency.
 
-Finish-and-send carries an extra identity beside the ordinary process-level paste guard: process ID
-plus the focused accessibility/UI Automation element token. Return/Enter is consumed only while
+### Finish-and-send
+
+Finish-and-send carries an extra identity beside the ordinary process-level paste guard: process
+ID plus the focused accessibility/UI Automation element token. Return/Enter is consumed only while
 recording and latches the configured output action before recognition begins. It always finishes
-capture and inserts; the default output action stops there. After paste settles, only an exact field
-match may receive the optional Return/Enter, `⌘ Return`, or `Ctrl+Enter`. Cancellation, failure,
-manual-paste fallback, or an identity that could not be read has no submit path. For both configured
-Escape and recording-time Return/Enter, the physical key-down, every repeat, and the matching key-up
-are consumed; none reaches the target app.
+capture and inserts; the default output action stops there. After paste settles, only an exact
+field match may receive the optional Return/Enter, `⌘ Return`, or `Ctrl+Enter`. Cancellation,
+failure, manual-paste fallback, or an identity that could not be read has no submit path. For both
+configured Escape and recording-time Return/Enter, the physical key-down, every repeat, and the
+matching key-up are consumed; none reaches the target app.
 
-## Decisions that were measured
+## Measured design decisions
 
-Each of these was a guess first. The guess is recorded because the reasoning was plausible and
-still wrong, and that is worth knowing before someone re-derives it.
+Each decision began as a prediction. The record preserves both the plausible mechanism and the
+measurement that falsified it so the same prediction is not repeated.
 
-**Pre-uploading the recording was not worth its worst case.** A resumable Files API session
+**Pre-uploading was rejected because of tail latency.** A resumable Files API session was
 opened at hotkey-down, so the handshake was free, and the finished file was referenced by URI
-instead of carried as base64. Measured, it cost about a second of serial time after key release to
-save about a second of body transfer — and when the upload stalled it had sixty seconds of timeout
-to spend before falling back to a path that then worked first time. One dictation in six paid 54 s
-for it. The recording now always rides in the request.
+instead of carried as base64. Measured, this cost about a second of serial time after key release
+to save about a second of body transfer — and when the upload stalled it had sixty seconds of
+timeout to spend before falling back to a path that then worked first time. One dictation in six
+paid 54 s for it. The recording now always rides in the request.
 
-**Restating the fidelity rule nearer the audio made things worse.** 11/19 substitutions became
-15/18. The restatement used the decoy value as its example, which appears to prime it. Examples in
-a fidelity rule must never contain a concrete value that could be echoed.
+**Restating the fidelity rule nearer the audio increased substitutions.** Measured, substitutions went
+from 11/19 to 15/18. The restatement used the decoy value as its example, which appears to prime
+the model. Examples in a fidelity rule must never contain a concrete value that could be echoed.
 
-**Two-pass rewriting is worse than single-pass, and slower is not the trade.** 75% versus 38%
-substitution; the single request was the slower one (15.7 s versus 7.5 s) because one call doing
+**Two-pass rewriting increased substitution.** Substitution was
+75% versus 38%; the single request was the slower one (15.7 s versus 7.5 s) because one call doing
 two jobs emits far more output. A rewriter handed "Gemini 1.5" applies world knowledge and
 "corrects" a version it believes is stale, having never seen the screen context that would tell it
 the number came from audio.
 
 **A provider can accept audio and silently discard it.** One gateway returned HTTP 200, billed 14
-prompt tokens for a 6-second clip, and transcribed the *screen context* as though it were speech.
+prompt tokens for a 6-second clip, and transcribed the screen context as though it were speech.
 The guard lives on the provider protocol, not in an allowlist, because any backend can do this.
 
 ## Component map
@@ -106,65 +114,70 @@ The guard lives on the provider protocol, not in an allowlist, because any backe
 | `TranscriptMode` | verbatim, rewrite, summary | Ordering is the point: transcription first, always, and the second stage operates on text that has already been stored. |
 | `LogRouter` / `Log` | levels, sinks, redaction | A lock rather than an actor, because logging has to be callable from an audio callback without an `await` — a logger you cannot call from the hot path is one nobody calls. |
 
-## Two stages, and the wall between them
+## Two-stage transcription
 
 `rewrite` and `summary` both take a finished transcript and return different text, and they are
-deliberately not the same mechanism. The rewrite instruction's first rule is *never remove a fact*;
-a summary is defined by removing facts. Sharing a block would leave one style in that list quietly
+deliberately not the same mechanism. The rewrite instruction's first rule is *never remove a
+fact*; a summary is defined by removing facts. Sharing a block would leave one style in that list
 exempt from the block's first rule, and the exemption would be invisible at the call site.
 
-So the contract carries two separate parts — `prompt/rewrite.md` and `prompt/summary.md`, with
-their styles in separate directories — `PromptBuilder` exposes two methods with one router
-(`secondStageInstruction(for:)`) so nothing can reach the wrong one by accident, and `SummaryStyle`
-is a separate type from `RewriteStyle`. `DictationRecord.style` still records only a `RewriteStyle`,
-which is why `mode` exists beside it: a history row must not claim a summary was a rewrite, because
-that column drives "revert to what you said" and the two mean different things.
+The contract therefore carries two separate parts — `prompt/rewrite.md` and `prompt/summary.md`,
+with their styles in separate directories. `PromptBuilder` exposes two methods with one router
+(`secondStageInstruction(for:)`) so nothing can reach the wrong one by accident, and
+`SummaryStyle` is a separate type from `RewriteStyle`. `DictationRecord.style` still records only
+a `RewriteStyle`, which is why `mode` exists beside it: a history row must not claim a summary was
+a rewrite, because that column drives "revert to what you said" and the two mean different things.
 
-The invariant underneath both is the same one the app has always had: **the verbatim transcript is
-produced first and stored first.** A second stage is a derived artifact sitting next to the words
-that produced it, never instead of them.
+The invariant underneath both stages is the same one the app has always had: **the verbatim
+transcript is produced first and stored first.** A second stage is a derived artifact sitting next
+to the words that produced it, never instead of them.
 
 ## Long dictations
 
 Past 90 seconds a recording is split on silence and the pieces are transcribed concurrently, three
-at a time. A nine-minute dictation is roughly 17,000 audio tokens in one request, and by the time it
-returns the user has been waiting since they stopped talking.
+at a time. A nine-minute dictation is roughly 17,000 audio tokens in one request, and by the time
+it returns the user has been waiting since they stopped talking.
 
-Three details carry the design. Cuts land at the **middle of the quietest 100 ms** near the target
-rather than at its start, so both neighbours keep a little silence — audio that begins on the first
-sample of a word tends to lose that word's opening consonant. *Quietest* rather than a threshold,
-because an absolute threshold tuned for a quiet room finds no silence at all on a train and would
-then cut mid-word. And every chunk is sent with the **same screen context**, which is what stops
-chunk three spelling a name differently from chunk two — the requests are independent and none of
-them knows what the others produced.
+Three details carry the design:
+
+- Cuts land at the **middle of the quietest 100 ms** near the target rather than at its start, so
+  both neighbours keep a little silence. Audio that begins on the first sample of a word tends to
+  lose that word's opening consonant.
+- *Quietest* is used rather than an absolute threshold, because a threshold tuned for a quiet
+  room finds no silence at all on a train and would then cut mid-word.
+- Every chunk is sent with the **same screen context**, which is what stops chunk three spelling a
+  name differently from chunk two. The requests are independent, and none of them knows what the
+  others produced.
 
 Stitching joins with a single space and nothing else. Chunks are cut in silence, so there is no
-punctuation to infer, and inferring it would be inventing content — which the fidelity rules forbid
-at a seam as firmly as anywhere else.
+punctuation to infer, and inferring it would be inventing content — which the fidelity rules
+forbid at a seam as firmly as anywhere else.
 
-## Measuring the wait
+## Latency measurement
 
 Latency is recorded from **key release**, not from the request. Everything in between — the
-accessibility walk, a retry — is time the user spends
-looking at the overlay, and a figure that excluded it would be flattering and useless.
+accessibility walk, a retry — is time the user spends looking at the overlay, and a figure that
+excluded it would understate the wait the user actually experiences.
 
-Failures contribute no timings at all. How long an error took to arrive is a different quantity, and
-folding it in would make a fast app with a bad API key look slow.
+Failures contribute no timings at all. How long an error took to arrive is a different quantity,
+and folding it in would make a fast app with a bad API key look slow.
 
-## Grounding, in two phases
+## Grounding phases
 
-Phase 1 is synchronous at hotkey-down and reads only what is cheap — app identity and cursor state.
+Phase 1 is synchronous at hotkey-down and reads only what is cheap: app identity and cursor state.
 It has to happen there because that is the last moment the focused element is guaranteed to be the
 one being dictated into.
 
 Phase 2 is the expensive walk plus, when the tree comes back thin, a screenshot. It carries a hard
 500 ms deadline and returns partial results rather than failing.
 
-The privacy gate runs **before** capture, never after: filtering a context you already collected
-still means the text was in the process's memory. It re-checks once a browser URL is known, because
-a password page inside an allowed browser must still be excluded.
+The privacy gate runs **before** capture, never after: filtering a context that was already
+collected still means the text was in the process's memory. The gate re-checks once a browser URL
+is known, because a password page inside an allowed browser must still be excluded.
 
-## Platform differences that are not incidental
+## Platform differences
+
+These differences are structural, not incidental.
 
 | | Grounding | Recording | Why |
 |---|---|---|---|
@@ -177,32 +190,38 @@ iOS is not an unfinished port. Its keyboard owns the mic gesture and text insert
 containing app owns capture because the extension cannot. The two processes coordinate through the
 App Group and Darwin notifications; a persisted URL handoff recovers the first cold activation.
 
-## The harness runs the product
+## Evaluation harness
 
 `EvalRunner` does not build its own requests. It constructs a `TranscriptionService` — the same
 object the app dictates through — and calls it.
 
-This is load-bearing rather than tidy. Twice in one day the harness measured something the product
-does not do: it uploaded raw PCM after the app had moved to Opus, and separately it bypassed
-compression entirely by assembling its own parts. Both times every measured number improved and no
-user would have seen any of it. A measurement harness on a different code path measures the
-harness.
+This sharing of the code path is load-bearing rather than tidy. Twice in one day the harness
+measured something the product does not do: it uploaded raw PCM after the app had moved to Opus,
+and separately it bypassed compression entirely by assembling its own parts. Both times every
+measured number improved, and no user would have seen any of it. A measurement harness on a
+different code path measures the harness.
 
 The one deliberate divergence is chunking: the eval calls `transcribeWithRetry` rather than
-`transcribeLong`, because a suite that measured stitched output could not attribute a difference to
-grounding. Every eval clip is far below the chunking threshold, so nothing is skipped in practice.
+`transcribeLong`, because a suite that measured stitched output could not attribute a difference
+to grounding. Every eval clip is far below the chunking threshold, so nothing is skipped in
+practice.
 
 ## Testing layers
 
-- **Unit** (`swift test`, `dotnet test`, `./gradlew test`) — pure logic, no network; counts are
-  reported by each runner rather than copied here and allowed to go stale.
-  tests. Where a type exists on several platforms, the ports assert the same invariants: a stats
-  screen that reports different numbers on different platforms is worse than no stats screen.
+- **Unit** (`swift test`, `dotnet test`, `./gradlew test`) — pure logic, no network. Counts are
+  reported by each runner rather than copied here and allowed to go stale. Where a type exists on
+  several platforms, the ports assert the same invariants: a stats screen that reports different
+  numbers on different platforms is worse than no stats screen.
 - **Integration** (`DNT_INTEGRATION=1 swift test`) — live API on real recorded speech. Opt-in
   because it costs money and fails when the network does.
 - **Evaluation** (`dnt-eval suite`, `ablate`, `model-sweep.sh`) — measures behaviour that unit
   tests cannot see. See [EVALUATION.md](EVALUATION.md).
 
-The third layer is the unusual one and the reason it exists is in [EVALUATION.md](EVALUATION.md):
+The third layer is the unusual one, and the reason it exists is in [EVALUATION.md](EVALUATION.md):
 the failure this project is about is invisible to assertions, because a substituted version number
 reads as a correctly transcribed technical term.
+
+## See also
+
+- [EVALUATION.md](EVALUATION.md) — evaluation harness, suites, and methodology
+- [CONTEXT_FORMAT.md](CONTEXT_FORMAT.md) — how screen context is framed for the model

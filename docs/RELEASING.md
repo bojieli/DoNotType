@@ -1,5 +1,11 @@
 # Releasing
 
+This document describes the DoNotType release process: the tag-driven workflow, the artifacts it
+produces, the package-manager manifests, the signing configuration, and the gates to run before
+tagging.
+
+## Tag-driven releases
+
 Releases are cut by tag. Everything else is automatic.
 
 ```bash
@@ -7,20 +13,24 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-That runs [`.github/workflows/release.yml`](../.github/workflows/release.yml), which builds all four
-platforms, runs each one's tests first, and opens a **draft** GitHub release with the artifacts
-attached. Read the generated notes, then publish.
+Pushing a tag runs [`.github/workflows/release.yml`](../.github/workflows/release.yml), which builds
+all four platforms, runs each platform's tests first, and opens a **draft** GitHub release with the
+artifacts attached. Read the generated notes, then publish.
+
+### Version stamping
 
 Each job stamps the version into its own checkout first, with
-[`scripts/stamp-version.sh`](../scripts/stamp-version.sh) — four platforms keep four version fields,
-and a release that stamps some of them turns every bug report into a question about which build it
-came from. The tag is the only source; nothing is committed back.
+[`scripts/stamp-version.sh`](../scripts/stamp-version.sh). Four platforms keep four version fields,
+and a release that stamps only some of them turns every bug report into a question about which
+build it came from. The tag is the only source; nothing is committed back.
+
+### Dry runs
 
 To exercise the packaging without cutting a release, run the workflow manually from the Actions tab
-with **publish** unchecked. It builds and uploads everything as workflow artifacts and creates no
+with **publish** unchecked. This builds and uploads everything as workflow artifacts and creates no
 release.
 
-## What comes out
+## Release artifacts
 
 | artifact | contents |
 |---|---|
@@ -29,17 +39,19 @@ release.
 | `DoNotType-Android.apk` | installable APK |
 | `*.sha256` | one per artifact |
 
-iOS is **built but not shipped**. Distributing it needs a provisioning profile and App Store
-Connect, which is an account decision rather than a packaging one, and an unsigned `.app` nobody can
-install is not a release artifact. The job exists so a tag cannot be cut on a commit where iOS is
-broken.
+### iOS
+
+iOS is **built but not shipped**. Distributing it requires a provisioning profile and App Store
+Connect, which is an account decision rather than a packaging one, and an unsigned `.app` that
+nobody can install is not a release artifact. The job exists so that a tag cannot be cut on a
+commit where iOS is broken.
 
 ## Package managers
 
-Manifests live in [`packaging/`](../packaging/) and are **not** submitted yet: both registries want
-a signed installer and a release history, and this project has neither. They are kept in the tree so
-the shape is reviewable and so submitting is filling in a version rather than authoring three files
-under time pressure.
+Manifests live in [`packaging/`](../packaging/) and are **not** submitted yet: both registries
+require a signed installer and a release history, and the project has neither. They are kept in the
+tree so that the shape is reviewable and so that submitting is filling in a version rather than
+authoring three files under time pressure.
 
 After a release is published:
 
@@ -47,33 +59,35 @@ After a release is published:
 ./scripts/update-packaging.sh 0.2.0
 ```
 
-That reads the `.sha256` files the workflow published beside each artifact and writes the version
-and checksums into all four manifests. Nobody types a hash by hand — a cask with a stale one fails
-at install complaining about a corrupt download, and a winget manifest with one complains about a
-tampered package. Both read as something far more alarming than a forgotten field.
+The script reads the `.sha256` files the workflow published beside each artifact and writes the
+version and checksums into all four manifests. No hash is typed by hand: a cask with a stale
+checksum fails at install with a complaint about a corrupt download, and a winget manifest with one
+fails with a complaint about a tampered package. Both read as something far more alarming than a
+forgotten field.
 
-Submitting is deliberately manual, because each is a pull request to somebody else's repository:
+Submission is deliberately manual, because each submission is a pull request to somebody else's
+repository:
 
 | | where |
 |---|---|
-| Homebrew | copy `packaging/homebrew/donottype.rb` into your tap's `Casks/` |
+| Homebrew | copy `packaging/homebrew/donottype.rb` into the tap's `Casks/` |
 | winget | `wingetcreate submit packaging/winget/` |
 
 ## Signing
 
-The workflow runs without any secrets and produces working, unsigned builds. That is deliberate —
-someone should be able to fork this and get artifacts — but unsigned builds are for trying it out,
-not for living with:
+The workflow runs without any secrets and produces working, unsigned builds. This is deliberate: a
+fork should be able to produce artifacts. Unsigned builds are suitable for trying the app, not for
+daily use:
 
 - **macOS** refuses to open an ad-hoc-signed app normally, and because TCC keys permissions to the
-  code signature, every update makes the system forget your Accessibility grant. You would re-grant
-  it on every release.
-- **Android** falls back to a debug key. It installs from a file, but a debug-signed APK can never
-  be updated in place by a differently-signed one — you would uninstall and lose your history each
-  time.
+  code signature, every update makes the system forget the Accessibility grant, forcing it to be
+  re-granted on every release.
+- **Android** falls back to a debug key. The APK installs from a file, but a debug-signed APK can
+  never be updated in place by a differently-signed one; each update requires an uninstall and
+  loses the history each time.
 
-Configure these repository secrets to fix that. Each is optional and independent; the workflow
-checks for each and degrades rather than failing.
+Configuring the following repository secrets enables signed builds. Each secret is optional and
+independent; the workflow checks for each one and degrades rather than failing.
 
 | secret | what it is |
 |---|---|
@@ -86,41 +100,43 @@ checks for each and degrades rather than failing.
 | `ANDROID_KEYSTORE_PASSWORD` | its password |
 | `ANDROID_KEY_ALIAS` | key alias inside the keystore |
 
-Base64 for the two file secrets:
+Base64-encode the two file secrets with:
 
 ```bash
 base64 -i DeveloperID.p12 | pbcopy
 base64 -i release.keystore | pbcopy
 ```
 
-Notarization only runs when `NOTARY_KEY_ID` is set, and stapling means the app opens without a
+Notarization runs only when `NOTARY_KEY_ID` is set, and stapling means the app opens without a
 network round trip on first launch.
 
 ## libopus
 
 Windows is the only platform with no Opus encoder in the box, so the workflow **builds libopus from
 source** — a pinned tag, compiled in the open — rather than downloading a binary. A release `.dll`
-pulled from an arbitrary host is a supply-chain decision nobody reviewed; a compile anyone can audit
-from the build log is not.
+pulled from an arbitrary host is a supply-chain decision that nobody reviewed; a compile that
+anyone can audit from the build log is not.
 
 `opus.dll` ships beside the executable, which is where the import resolver looks first. Without it
-the app still dictates, it just uploads WAV: roughly 16× more data and noticeably slower.
+the app still dictates, but uploads WAV instead: roughly 16× more data and noticeably slower.
 
-## Before tagging
+## Pre-tagging gates
+
+### Platform tests
 
 The workflow runs each platform's tests, so a red suite fails the release rather than shipping. It
-does **not** run the evaluation suite — that calls a paid API and depends on the network, which
-would make releases a coin flip. Run it yourself when the prompt, the model, or the context encoder
+does **not** run the evaluation suite: the suite calls a paid API and depends on the network, which
+would make releases a coin flip. Run it manually when the prompt, the model, or the context encoder
 changed:
 
 ```bash
 swift run dnt-eval suite eval/nearmiss
 ```
 
-Read the per-pass ranges rather than the totals. The suite reports its own noise floor, and a change
-that moves a count by less than that range has not been shown to do anything.
+Read the per-pass ranges rather than the totals. The suite reports its own noise floor, and a
+change that moves a count by less than that range has not been shown to do anything.
 
-### The gate that is not about code
+### Dictation-accuracy gate
 
 **Ordinary-dictation accuracy is unmeasured, and a release that makes quality claims should not
 ship while it is.** Everything published about transcription quality comes from a 16-case
@@ -133,27 +149,36 @@ open eval/dictation/review.html      # ~20 clips, worst backend disagreement fir
 ./eval/score-review.py               # word error rate per backend, per language
 ```
 
-Roughly an hour, and it either supports the shipped default or overturns it. This project's claim
-on a reader's attention is that its numbers are honest; shipping while the central one is
-unmeasured would undercut that more than any bug would.
+The review takes roughly an hour and either supports the shipped default or overturns it.
+Rationale: the project requires its published numbers to be accurate, and shipping while the
+central result is unmeasured would violate that requirement.
 
-### Numbers in the announcement must have replicated
+### Replication requirements for announced numbers
 
-Four measurements were corrected within two days of being published — the keyterm latency cost, the
+Four measurements were corrected within two days of being published: the keyterm latency cost, the
 digit rule being "structurally safer", a truncation attribution, and both native-Gemini figures.
 Each correction was the process working, and none of them belonged in a launch post. Before quoting
 a number publicly:
 
-- It came from **two independent sessions**, not two passes of one run. `--repeat-count` varies the
-  model; it does not vary the day, and several of these figures move more between days than between
-  passes.
-- A substitution rate from a 10–12 trial ablation is a **screening result**. Those separate models
-  differing by 60 points and say nothing about differences under about 20.
-- Record it — `--record eval/cassettes/<name>.json`. Replay needs the audio, which is gitignored,
-  so this is not something a reader can re-run; it is every answer the provider gave, kept next to
-  the score, so a later disagreement about the grading can be settled without re-billing the suite.
+- It must come from **two independent sessions**, not two passes of one run. `--repeat-count`
+  varies the model; it does not vary the day, and several of these figures move more between days
+  than between passes.
+- A substitution rate from a 10–12 trial ablation is a **screening result**. Such ablations
+  separate models differing by 60 points and say nothing about differences under about 20.
+- Record the run with `--record eval/cassettes/<name>.json`. Replay needs the audio, which is
+  gitignored, so a reader cannot re-run the suite; the cassette keeps every answer the provider
+  gave next to the score, so a later disagreement about the grading can be settled without
+  re-billing the suite.
 
-Then run [the checks a machine cannot do](MANUAL-CHECKS.md) — the round trip, permissions from cold,
-the failure modes, and a file through the GUI. Fifteen minutes, and they cover the four things no
+### Manual checks
+
+Run [the checks a machine cannot do](MANUAL-CHECKS.md): the round trip, permissions from cold, the
+failure modes, and a file through the GUI. They take fifteen minutes and cover the four things no
 runner can: a microphone, a focused window in another app, a paid request, and somebody who knows
-what was said. Record the result in the draft notes, including anything you did not check.
+what was said. Record the result in the draft release notes, including anything that was not
+checked.
+
+## See also
+
+- [MANUAL-CHECKS.md](MANUAL-CHECKS.md) — the manual pre-release checks
+- [EVALUATION.md](EVALUATION.md) — the evaluation suite referenced by the pre-tagging gates
