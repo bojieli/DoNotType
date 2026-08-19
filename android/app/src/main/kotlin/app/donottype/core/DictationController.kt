@@ -62,6 +62,7 @@ class DictationController(
     private var levelRunnable: Runnable? = null
     private var holdRunnable: Runnable? = null
     private var noticeJob: Job? = null
+    private var transcribeJob: Job? = null
     private var pressStartedAt = 0L
 
     /** True once the press has lasted long enough to count as a hold rather than a tap. */
@@ -246,12 +247,34 @@ class DictationController(
         liveSession = null
 
         state = State.TRANSCRIBING
-        scope.launch {
+        transcribeJob = scope.launch {
             val outcome = withContext(Dispatchers.IO) {
                 service.transcribe(wav, screen, screen?.appName, style, live)
             }
+            transcribeJob = null
             onResult(outcome)
         }
+    }
+
+    /**
+     * Abandons a request that is already in flight, and returns the surface to [State.IDLE].
+     *
+     * The wait after somebody stops talking is dead time they cannot shorten, so a surface that
+     * shows it must also offer a way out of it -- otherwise a provider that never answers leaves
+     * the only control on the screen disabled indefinitely. Cancelling drops the words: nothing is
+     * written to history, because [DictationService.transcribe] records the dictation only once it
+     * has an outcome, and a cancelled one has none. That is the honest reading of the button --
+     * the user is saying they no longer want this dictation, not that they want it filed as failed.
+     *
+     * The host writes whatever it wants to say afterwards; this only stops the work.
+     */
+    fun cancelTranscription() {
+        if (state != State.TRANSCRIBING) return
+        transcribeJob?.cancel()
+        transcribeJob = null
+        discard()
+        log.info { "dictation cancelled" }
+        state = State.IDLE
     }
 
     /** Discards capture and every in-flight piece derived from it, without changing the state. */
@@ -267,6 +290,8 @@ class DictationController(
     /** Everything above, plus the timers, for a host being destroyed. */
     fun dispose() {
         noticeJob?.cancel()
+        transcribeJob?.cancel()
+        transcribeJob = null
         cancelPress()
         discard()
     }
