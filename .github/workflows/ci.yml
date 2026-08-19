@@ -108,6 +108,23 @@ jobs:
           .build/release/dnt providers --no-keychain
           test -n "$(.build/release/dnt prompt show --section summary)"
 
+      # The rolling prerelease is made from the same bundle this job launched and checked. It is
+      # deliberately separate from a versioned release, which may also be Developer ID signed and
+      # notarized; this is the newest green main build, not a claim that a release was cut.
+      - name: Package latest macOS build
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent .build/DoNotType.app dist/DoNotType-macOS.zip
+          (cd dist && shasum -a 256 DoNotType-macOS.zip > DoNotType-macOS.zip.sha256)
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: latest-macos
+          path: dist/
+          overwrite: true
+
   # The suite this project's claims rest on, re-run for free.
   #
   # It needs a recorded cassette to exist, and recording one costs a single paid run — so this job
@@ -255,6 +272,39 @@ jobs:
 
           Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 
+      # Match the versioned release layout: build the one native dependency from the reviewed
+      # source commit, then put it beside both self-contained executables before archiving.
+      - name: Build libopus for latest Windows artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: powershell
+        run: |
+          git clone --depth 1 --branch v1.5.2 https://github.com/xiph/opus.git $env:RUNNER_TEMP/opus
+          if ((git -C $env:RUNNER_TEMP/opus rev-parse HEAD) -ne "ddbe48383984d56acd9e1ab6a090c54ca6b735a6") {
+            throw "the libopus v1.5.2 tag no longer resolves to the reviewed commit"
+          }
+          cmake -S $env:RUNNER_TEMP/opus -B $env:RUNNER_TEMP/opus/build `
+            -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build $env:RUNNER_TEMP/opus/build --config Release
+          Copy-Item $env:RUNNER_TEMP/opus/build/Release/opus.dll publish/opus.dll
+
+      - name: Package latest Windows build
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path publish/* -DestinationPath dist/DoNotType-Windows-x64.zip
+          $hash = (Get-FileHash dist/DoNotType-Windows-x64.zip -Algorithm SHA256).Hash.ToLower()
+          [System.IO.File]::WriteAllText(
+            "$PWD/dist/DoNotType-Windows-x64.zip.sha256",
+            "$hash  DoNotType-Windows-x64.zip`n")
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: latest-windows
+          path: dist/
+          overwrite: true
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
@@ -322,6 +372,20 @@ jobs:
           working-directory: android
           script: ./gradlew connectedDebugAndroidTest --no-daemon
 
+      - name: Package latest Android build
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/DoNotType-Android.apk
+          (cd dist && sha256sum DoNotType-Android.apk > DoNotType-Android.apk.sha256)
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: latest-android
+          path: dist/
+          overwrite: true
+
   ios:
     name: iOS
     runs-on: macos-15
@@ -366,3 +430,70 @@ jobs:
           name: ios-test-results
           path: artifacts/ios-tests.xcresult
           if-no-files-found: warn
+
+  # A moving prerelease is the download surface for the newest fully tested main build. Official
+  # v* releases remain tag-driven and immutable; they use the separate release workflow so signing,
+  # notarization, version stamping, and a human review still gate anything called stable.
+  promote-latest:
+    name: Promote latest build
+    needs: [hygiene, contract, swift, replay, windows-core, windows-app, android, ios]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: latest-*
+          path: dist
+          merge-multiple: true
+
+      - name: Verify artifacts
+        run: |
+          expected=(
+            DoNotType-macOS.zip
+            DoNotType-macOS.zip.sha256
+            DoNotType-Windows-x64.zip
+            DoNotType-Windows-x64.zip.sha256
+            DoNotType-Android.apk
+            DoNotType-Android.apk.sha256
+          )
+          for asset in "${expected[@]}"; do test -s "dist/$asset"; done
+          (cd dist && sha256sum --check ./*.sha256)
+          unzip -tq dist/DoNotType-macOS.zip
+          unzip -tq dist/DoNotType-Windows-x64.zip
+          unzip -tq dist/DoNotType-Android.apk
+
+      - name: Write release notes
+        run: |
+          cat > latest-notes.md <<EOF
+          This rolling prerelease contains the newest **fully green main-branch build**.
+
+          - Commit: [$GITHUB_SHA](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)
+          - CI run: [$GITHUB_RUN_ID](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)
+          - Platforms: macOS, Windows x64, Android
+
+          These are development artifacts from CI: macOS is ad-hoc signed, Windows is unsigned,
+          and Android uses a debug key. Use a versioned release for stable, reviewed artifacts.
+          Verify every download with its adjacent SHA-256 file.
+          EOF
+
+      # Replace assets first and move the rolling tag last. A failed upload therefore cannot make
+      # an old archive appear to have been built from the new commit.
+      - name: Create or update rolling prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view latest >/dev/null 2>&1; then
+            gh release upload latest dist/* --clobber
+            gh release edit latest \
+              --title "Latest successful main build" --prerelease --notes-file latest-notes.md
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/latest" \
+              -f sha="$GITHUB_SHA" -F force=true >/dev/null
+          else
+            gh release create latest dist/* \
+              --target "$GITHUB_SHA" --title "Latest successful main build" \
+              --prerelease --notes-file latest-notes.md
+          fi
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/latest" --jq '.object.sha')" \
+            = "$GITHUB_SHA"

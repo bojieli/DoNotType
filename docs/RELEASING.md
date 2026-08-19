@@ -4,6 +4,16 @@ This document describes the DoNotType release process: the tag-driven workflow, 
 produces, the package-manager manifests, the signing configuration, and the gates to run before
 tagging.
 
+## Latest successful CI build
+
+Every fully green push to `main` updates the rolling `latest` prerelease with the macOS, Windows,
+and Android packages produced by that same CI run. The release links the exact commit and workflow
+run, verifies each archive before promotion, and publishes a matching `.sha256` beside every app.
+
+This is a development download surface, not a versioned release. The macOS bundle is ad-hoc signed,
+the Windows binaries are unsigned, and the Android APK uses a debug key. The moving `latest` tag is
+updated only after every CI job succeeds; stable `v*` tags are never moved or overwritten.
+
 ## Tag-driven releases
 
 Releases are cut by tag. Everything else is automatic.
