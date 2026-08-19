@@ -330,7 +330,7 @@ class SettingsTransferActivity : AppCompatActivity() {
         status.setTextColor(
             themeColor(
                 if (error) {
-                    android.R.attr.colorError
+                    androidx.appcompat.R.attr.colorError
                 } else {
                     com.google.android.material.R.attr.colorOnSurfaceVariant
                 },

@@ -38,6 +38,13 @@ import app.donottype.R
  * the point. It is expressed in Material 3, not in a SwiftUI impression: an Android user should
  * recognise the controls, and only the layout and generosity should feel familiar from the phone
  * in the other pocket.
+ *
+ * One namespace trap, because it costs a rebuild to rediscover: `colorPrimary`, `colorError`,
+ * `borderlessButtonStyle` and `selectableItemBackground` are read from `androidx.appcompat.R.attr`,
+ * not from material's R (which stopped declaring them in 1.14.0) and not from `android.R.attr`.
+ * The framework spelling compiles and resolves -- it just resolves to the *platform* attribute,
+ * which Theme.Material3 never assigns, so the app silently renders in the platform's slate instead
+ * of dnt_primary. Every other attribute here is material-only and stays on material's R.
  */
 
 // MARK: - Units
@@ -129,7 +136,7 @@ fun Context.screenSubtitle(text: String): TextView = TextView(this).apply {
 fun Context.sectionTitle(text: String): TextView = TextView(this).apply {
     this.text = text
     appearance(com.google.android.material.R.attr.textAppearanceTitleSmall)
-    setTextColor(themeColor(android.R.attr.colorPrimary))
+    setTextColor(themeColor(androidx.appcompat.R.attr.colorPrimary))
     layoutParams = columnParams(
         top = dimen(R.dimen.section_spacing),
         bottom = dimen(R.dimen.space_s),
@@ -339,7 +346,7 @@ fun Context.settingRow(
         if (onClick != null) {
             isClickable = true
             isFocusable = true
-            setBackgroundResource(context.themeStyle(android.R.attr.selectableItemBackground))
+            setBackgroundResource(context.themeStyle(androidx.appcompat.R.attr.selectableItemBackground))
             setOnClickListener { onClick() }
         }
     }
@@ -418,7 +425,7 @@ fun Context.textButton(title: String, onClick: () -> Unit): MaterialButton =
     MaterialButton(
         this,
         null,
-        android.R.attr.borderlessButtonStyle,
+        androidx.appcompat.R.attr.borderlessButtonStyle,
     ).apply {
         text = title
         setOnClickListener { onClick() }
@@ -463,7 +470,7 @@ fun Context.monospace(text: String): TextView = TextView(this).apply {
 fun Context.statusText(text: String, isError: Boolean): TextView = monospace(text).apply {
     setTextColor(
         if (isError) {
-            themeColor(android.R.attr.colorError)
+            themeColor(androidx.appcompat.R.attr.colorError)
         } else {
             androidx.core.content.ContextCompat.getColor(context, R.color.dnt_success)
         },

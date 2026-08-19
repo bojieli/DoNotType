@@ -230,7 +230,7 @@ class FileTranscriptionActivity : AppCompatActivity() {
         statusLabel.setTextColor(
             themeColor(
                 if (isError) {
-                    android.R.attr.colorError
+                    androidx.appcompat.R.attr.colorError
                 } else {
                     com.google.android.material.R.attr.colorOnSurfaceVariant
                 },
