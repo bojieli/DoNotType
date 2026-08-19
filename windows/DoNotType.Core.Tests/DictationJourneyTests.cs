@@ -56,7 +56,9 @@ public sealed class DictationJourneyTests : IDisposable
 
     private static DictationRecord Record(DictationStatus status) => new()
     {
-        Status = status, Model = "stub-model", Fidelity = Fidelity.Light,
+        Status = status,
+        Model = "stub-model",
+        Fidelity = Fidelity.Light,
     };
 
     // ---- The happy path ----------------------------------------------------------------------

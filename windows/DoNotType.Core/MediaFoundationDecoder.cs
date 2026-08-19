@@ -405,14 +405,17 @@ public static class MediaFoundationDecoder
         void GetStreamSelection_();                                                    // 0
         // Explicitly a 4-byte Win32 BOOL. The default marshalling for `bool` on a COM interface is
         // the 2-byte VARIANT_BOOL, which would put the wrong width on the stack.
-        [PreserveSig] int SetStreamSelection(
+        [PreserveSig]
+        int SetStreamSelection(
             uint index, [MarshalAs(UnmanagedType.Bool)] bool selected);                // 1
-        [PreserveSig] int GetNativeMediaType(                                          // 2
+        [PreserveSig]
+        int GetNativeMediaType( // 2
             uint index, uint typeIndex, out IMFMediaType type);
         [PreserveSig] int GetCurrentMediaType(uint index, out IMFMediaType type);       // 3
         [PreserveSig] int SetCurrentMediaType(uint index, IntPtr reserved, IMFMediaType type); // 4
         void SetCurrentPosition_();                                                    // 5
-        [PreserveSig] int ReadSample(                                                  // 6
+        [PreserveSig]
+        int ReadSample( // 6
             uint index, uint flags, IntPtr actualIndex, out int streamFlags,
             out long timestamp, out IntPtr sample);
         void Flush_();                                                                 // 7
@@ -432,7 +435,8 @@ public static class MediaFoundationDecoder
         void GetItemType_();        // 1
         void CompareItem_();        // 2
         void Compare_();            // 3
-        [PreserveSig] int GetUINT32(                                                          // 4
+        [PreserveSig]
+        int GetUINT32( // 4
             [MarshalAs(UnmanagedType.LPStruct)] Guid key, out int value);
         void GetUINT64_();          // 5
         void GetDouble_();          // 6
@@ -450,7 +454,8 @@ public static class MediaFoundationDecoder
         [PreserveSig] int SetUINT32([MarshalAs(UnmanagedType.LPStruct)] Guid key, int value); // 18
         void SetUINT64_();          // 19
         void SetDouble_();          // 20
-        [PreserveSig] int SetGUID(                                                            // 21
+        [PreserveSig]
+        int SetGUID( // 21
             [MarshalAs(UnmanagedType.LPStruct)] Guid key,
             [MarshalAs(UnmanagedType.LPStruct)] Guid value);
     }

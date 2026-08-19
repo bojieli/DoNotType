@@ -276,10 +276,10 @@ public static partial class PersonalDictionary
     {
         var lengths = new int[left.Count + 1, right.Count + 1];
         for (var i = left.Count - 1; i >= 0; i--)
-        for (var j = right.Count - 1; j >= 0; j--)
-            lengths[i, j] = NormalForm(left[i]) == NormalForm(right[j])
-                ? lengths[i + 1, j + 1] + 1
-                : Math.Max(lengths[i + 1, j], lengths[i, j + 1]);
+            for (var j = right.Count - 1; j >= 0; j--)
+                lengths[i, j] = NormalForm(left[i]) == NormalForm(right[j])
+                    ? lengths[i + 1, j + 1] + 1
+                    : Math.Max(lengths[i + 1, j], lengths[i, j + 1]);
 
         var result = new List<Span>();
         var lhs = new List<string>();
@@ -317,16 +317,16 @@ public static partial class PersonalDictionary
     {
         (int Coverage, string Term)? best = null;
         for (var ls = 0; ls < left.Count; ls++)
-        for (var rs = 0; rs < right.Count; rs++)
-        for (var lc = 1; lc <= Math.Min(3, left.Count - ls); lc++)
-        for (var rc = 1; rc <= Math.Min(3, right.Count - rs); rc++)
-        {
-            var lhs = left.Skip(ls).Take(lc).ToList();
-            var rhs = right.Skip(rs).Take(rc).ToList();
-            if (Classify(lhs, rhs) != Difference.SpellingFixed
-                || UsableLearnedTerm(string.Join(' ', rhs)) is not { } term) continue;
-            if (best is null || lc + rc > best.Value.Coverage) best = (lc + rc, term);
-        }
+            for (var rs = 0; rs < right.Count; rs++)
+                for (var lc = 1; lc <= Math.Min(3, left.Count - ls); lc++)
+                    for (var rc = 1; rc <= Math.Min(3, right.Count - rs); rc++)
+                    {
+                        var lhs = left.Skip(ls).Take(lc).ToList();
+                        var rhs = right.Skip(rs).Take(rc).ToList();
+                        if (Classify(lhs, rhs) != Difference.SpellingFixed
+                            || UsableLearnedTerm(string.Join(' ', rhs)) is not { } term) continue;
+                        if (best is null || lc + rc > best.Value.Coverage) best = (lc + rc, term);
+                    }
         return best?.Term;
     }
 

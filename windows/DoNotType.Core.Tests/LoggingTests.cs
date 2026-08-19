@@ -195,7 +195,9 @@ public sealed class LoggingTests : IDisposable
             1, DateTimeOffset.Now, LogLevel.Info, "http", "response",
             new Dictionary<string, string>
             {
-                ["status"] = "200", ["ms"] = "412", ["provider"] = "gemini",
+                ["status"] = "200",
+                ["ms"] = "412",
+                ["provider"] = "gemini",
             });
         Assert.EndsWith("ms=412 provider=gemini status=200", entry.Render(includeTime: false));
     }

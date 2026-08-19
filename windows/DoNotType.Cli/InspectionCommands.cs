@@ -489,19 +489,19 @@ public static class PromptCommand
                 Out.Line(builder.SystemInstruction(arguments.ResolveFidelity()));
                 return 0;
             case "rewrite":
-            {
-                var mode = TranscriptMode.Parse($"rewrite:{arguments.Option("style") ?? "formal"}")
-                    ?? throw new UsageException("unknown rewrite style.");
-                Out.Line(builder.SecondStageInstruction(mode) ?? string.Empty);
-                return 0;
-            }
+                {
+                    var mode = TranscriptMode.Parse($"rewrite:{arguments.Option("style") ?? "formal"}")
+                        ?? throw new UsageException("unknown rewrite style.");
+                    Out.Line(builder.SecondStageInstruction(mode) ?? string.Empty);
+                    return 0;
+                }
             case "summary":
-            {
-                var mode = TranscriptMode.Parse($"summary:{arguments.Option("summary") ?? "brief"}")
-                    ?? throw new UsageException("unknown summary style.");
-                Out.Line(builder.SecondStageInstruction(mode) ?? string.Empty);
-                return 0;
-            }
+                {
+                    var mode = TranscriptMode.Parse($"summary:{arguments.Option("summary") ?? "brief"}")
+                        ?? throw new UsageException("unknown summary style.");
+                    Out.Line(builder.SecondStageInstruction(mode) ?? string.Empty);
+                    return 0;
+                }
             default:
                 throw new UsageException(
                     $"unknown section '{section}'. Options: system, rewrite, summary");
