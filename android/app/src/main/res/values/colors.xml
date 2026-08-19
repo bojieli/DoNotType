@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The light half of the palette. Every colour the code used to spell as a hex literal lives here
+  instead, so the night variant in values-night/ can answer the same name with a different value.
+
+  Only the primary family is overridden; surfaces and outlines come from the Material 3 baseline,
+  which already has a coherent light and dark pair for them.
+-->
+<resources>
+    <color name="dnt_primary">#2C5FB3</color>
+    <color name="dnt_on_primary">#FFFFFF</color>
+    <color name="dnt_primary_container">#D8E2FF</color>
+    <color name="dnt_on_primary_container">#001A41</color>
+
+    <!--
+      Material 3 has no success or warning role, and both are things this app has to say: a setup
+      step is done, or a recording was loud enough to be clipped on the way in. Defined here rather
+      than as theme attributes because a colour with a night variant is all that is needed.
+    -->
+    <color name="dnt_success">#1E7A3C</color>
+    <color name="dnt_warning">#8A5200</color>
+</resources>

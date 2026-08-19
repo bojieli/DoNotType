@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The dark half. These are not the light values darkened: a saturated mid-tone that reads as
+  emphatic on white turns muddy on a dark surface, so each one is lifted until it carries the same
+  weight against the dark background that its counterpart carries against the light one.
+-->
+<resources>
+    <color name="dnt_primary">#A9C7FF</color>
+    <color name="dnt_on_primary">#00305F</color>
+    <color name="dnt_primary_container">#12457E</color>
+    <color name="dnt_on_primary_container">#D8E2FF</color>
+
+    <color name="dnt_success">#6FD68F</color>
+    <!-- The amber the keyboard meter already used for clipped audio; it was chosen against dark. -->
+    <color name="dnt_warning">#F0A05A</color>
+</resources>

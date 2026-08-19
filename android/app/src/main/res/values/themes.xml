@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Material 3 rather than AppCompat, which is what makes the type scale and the surface roles
+  available to the screens at all. Still NoActionBar for the reason the manifest gave: the screens
+  draw their own headings, and an action bar put the title on screen twice.
+-->
+<resources>
+    <style name="Theme.DoNotType" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/dnt_primary</item>
+        <item name="colorOnPrimary">@color/dnt_on_primary</item>
+        <item name="colorPrimaryContainer">@color/dnt_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/dnt_on_primary_container</item>
+
+        <!--
+          The app owns the area behind the system bars on Android 15 whether it asks or not, so the
+          bars are transparent and each screen pads itself out from under them.
+        -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

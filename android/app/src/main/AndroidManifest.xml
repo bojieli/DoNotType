@@ -7,15 +7,16 @@
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <!--
-      NoActionBar because the settings screen draws its own "DoNotType" heading. With the action
-      bar the title appeared twice: once in a bar the status bar was clipping, once in the content.
+      Theme.DoNotType is Material 3; see res/values/themes.xml for what it sets and why. Still
+      NoActionBar because the screens draw their own headings - with the action bar the title
+      appeared twice, once in a bar the status bar was clipping and once in the content.
     -->
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+        android:theme="@style/Theme.DoNotType">
 
         <activity
             android:name=".SettingsActivity"

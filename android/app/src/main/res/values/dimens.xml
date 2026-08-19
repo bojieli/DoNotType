@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One spacing scale, in dp.
+
+  The screens previously passed raw pixels to setPadding — 56 read as generous in source and
+  arrived as about 21dp on a 2.6x phone, and less on a denser one. Density-independent units are
+  the actual fix for the cramped look, so the values live here where they can only be dp.
+-->
+<resources>
+    <dimen name="space_xs">4dp</dimen>
+    <dimen name="space_s">8dp</dimen>
+    <dimen name="space_m">16dp</dimen>
+    <dimen name="space_l">24dp</dimen>
+    <dimen name="space_xl">32dp</dimen>
+    <!-- Trailing room under the last row, so a screen does not end flush against the bar. -->
+    <dimen name="space_xxl">48dp</dimen>
+
+    <!-- The gutter every screen's scrolling column keeps to its left and right. -->
+    <dimen name="screen_gutter">20dp</dimen>
+    <!-- Above a section title, which needs to separate from the section that just ended. -->
+    <dimen name="section_spacing">28dp</dimen>
+    <dimen name="card_corner">16dp</dimen>
+    <!-- Android's minimum comfortable touch target; rows are never shorter than this. -->
+    <dimen name="row_min_height">56dp</dimen>
+</resources>
