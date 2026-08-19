@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0-windows7.0": {
+      "System.Security.Cryptography.ProtectedData": {
+        "type": "Direct",
+        "requested": "[9.0.0, )",
+        "resolved": "9.0.0",
+        "contentHash": "CJW+x/F6fmRQ7N6K8paasTw9PDZp4t7G76UjGNlSDgoHPF0h08vTzLYbLZpOLEJSg35d5wy2jCXGo84EN05DpQ=="
+      },
+      "Microsoft.ML.OnnxRuntime": {
+        "type": "Transitive",
+        "resolved": "1.24.2",
+        "contentHash": "BciFVPzmPP+RNbBcCXVUhuXjrPlj0CZxVGShP3EThxrnDMmEx9QoYntAcnaOLN8uPacHb8uVyGBWMOn/MgSKLw==",
+        "dependencies": {
+          "Microsoft.ML.OnnxRuntime.Managed": "1.24.2"
+        }
+      },
+      "Microsoft.ML.OnnxRuntime.Managed": {
+        "type": "Transitive",
+        "resolved": "1.24.2",
+        "contentHash": "QO+BKceFIsz+p3loUgPjjDZ/pGN/e8NnEvD9wZoIXt01ZIJ0WK83OLcbZ6HjGGY/M3hioXSnxiiEd59oDJUDkQ==",
+        "dependencies": {
+          "System.Numerics.Tensors": "9.0.0"
+        }
+      },
+      "System.Numerics.Tensors": {
+        "type": "Transitive",
+        "resolved": "9.0.0",
+        "contentHash": "hyJB4UlpAi19Xr9AXzu2NuagKC4lPfHObNMEAA0HmqFz2rX7wKgzeYzO/jM/eBHDhnUGFFEjk5cOoJaxqg5J4A=="
+      },
+      "donottype.core": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.ML.OnnxRuntime": "[1.24.2, )"
+        }
+      }
+    }
+  }
+}

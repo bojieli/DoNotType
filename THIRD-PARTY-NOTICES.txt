@@ -51,7 +51,7 @@ License: Apache-2.0
 JSON-Java (org.json)
 --------------------
 https://github.com/stleary/JSON-java
-License: JSON.org license (MIT-like; see http://www.json.org/license.html)
+License: Public Domain (see https://github.com/stleary/JSON-java/blob/master/LICENSE)
 
 System.Security.Cryptography.ProtectedData
 ------------------------------------------

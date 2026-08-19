@@ -4,6 +4,10 @@
     <Copyright>Copyright © 2026 Bojie Li</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/bojieli/DoNotType</RepositoryUrl>
+    <!-- Commit NuGet's transitive graph just like Package.resolved and Gradle's verified wrapper.
+         Local restores may update it deliberately; CI must consume exactly the reviewed graph. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
     <!-- The dev-build version; scripts/stamp-version.sh keeps it current and release builds
          override it with -p:Version. -->
     <Version>0.1.0</Version>
