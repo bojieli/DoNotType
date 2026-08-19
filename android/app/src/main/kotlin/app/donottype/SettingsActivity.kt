@@ -49,6 +49,7 @@ import app.donottype.ui.card
 import app.donottype.ui.cardHolding
 import app.donottype.ui.controlRow
 import app.donottype.ui.divider
+import app.donottype.ui.fieldContainer
 import app.donottype.ui.dp
 import app.donottype.ui.monospace
 import app.donottype.ui.primaryButton
@@ -235,10 +236,10 @@ class SettingsActivity : AppCompatActivity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setText(Settings.apiKey.orEmpty())
         }
-        apiKeyLayout = passwordField("API key", apiKeyField)
+        apiKeyLayout = fieldContainer("API key", apiKeyField, password = true)
 
         modelField = TextInputEditText(this).apply { setText(Settings.model) }
-        modelLayout = plainField("Model", modelField)
+        modelLayout = fieldContainer("Model", modelField)
 
         column.addView(
             card(
@@ -293,13 +294,15 @@ class SettingsActivity : AppCompatActivity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setText(Settings.fallbackProvider?.let { Settings.keyFor(it) }.orEmpty())
         }
-        fallbackKeyLayout = passwordField("Fallback API key", fallbackKeyField)
+        fallbackKeyLayout =
+            fieldContainer("Fallback API key", fallbackKeyField, password = true)
 
         fallbackDelayField = TextInputEditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
             setText(Settings.fallbackAfterSeconds.toString())
         }
-        fallbackDelayLayout = plainField("Start it after (seconds)", fallbackDelayField)
+        fallbackDelayLayout =
+            fieldContainer("Start it after (seconds)", fallbackDelayField)
 
         fallbackKeyRow = controlRow(null, fallbackKeyLayout)
         fallbackDelayRow = controlRow(null, fallbackDelayLayout)
@@ -366,7 +369,7 @@ class SettingsActivity : AppCompatActivity() {
         // ---- Dictionary ----
         column.addView(sectionTitle("Personal dictionary"))
         dictionaryEntry = TextInputEditText(this)
-        dictionaryEntryLayout = plainField("Word or phrase", dictionaryEntry)
+        dictionaryEntryLayout = fieldContainer("Word or phrase", dictionaryEntry)
         column.addView(
             card(
                 switchRow(
@@ -411,7 +414,8 @@ class SettingsActivity : AppCompatActivity() {
                 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
             })
         }
-        searchFieldLayout = plainField("Search transcripts, errors, apps", searchField)
+        searchFieldLayout =
+            fieldContainer("Search transcripts, errors, apps", searchField)
 
         column.addView(
             card(
@@ -518,7 +522,7 @@ class SettingsActivity : AppCompatActivity() {
         column.addView(
             card(
                 controlRow("Part", partPicker),
-                controlRow(null, plainField("Contract text", promptEditor)),
+                controlRow(null, fieldContainer("Contract text", promptEditor)),
             )
         )
         column.addView(promptStatus)
@@ -614,27 +618,6 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun passwordField(label: String, field: TextInputEditText): TextInputLayout =
-        TextInputLayout(
-            this,
-            null,
-            com.google.android.material.R.attr.textInputOutlinedStyle,
-        ).apply {
-            hint = label
-            endIconMode = TextInputLayout.END_ICON_PASSWORD_TOGGLE
-            addView(field)
-        }
-
-    private fun plainField(label: String, field: TextInputEditText): TextInputLayout =
-        TextInputLayout(
-            this,
-            null,
-            com.google.android.material.R.attr.textInputOutlinedStyle,
-        ).apply {
-            hint = label
-            addView(field)
-        }
-
     private fun addDictionaryEntry() {
         dictionaryStatus.text = runCatching {
             val term = PersonalDictionary.normalize(dictionaryEntry.text.toString())
@@ -670,7 +653,10 @@ class SettingsActivity : AppCompatActivity() {
                 contentDescription = "dictionary-${if (learned) "learned" else "added"}-$term"
             }
             row.addView(
-                plainField(if (learned) "Learned from an edit" else "Added by you", editor),
+                fieldContainer(
+                    if (learned) "Learned from an edit" else "Added by you",
+                    editor,
+                ),
             )
             val actions = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL

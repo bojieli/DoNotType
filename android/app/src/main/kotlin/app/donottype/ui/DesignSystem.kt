@@ -5,8 +5,10 @@ import android.graphics.Typeface
 import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -376,7 +378,13 @@ fun Context.setupRow(title: String, detail: String? = null, done: Boolean?): Lin
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { rightMargin = dimen(R.dimen.space_m) },
+            ).apply {
+                // Beside the title rather than centred on the whole row: with a two-line detail
+                // underneath, a centred mark drifts down to the gap between the lines and stops
+                // reading as the title's own state.
+                gravity = Gravity.TOP
+                rightMargin = dimen(R.dimen.space_m)
+            },
         )
     }
 }
@@ -465,9 +473,43 @@ fun Context.statusText(text: String, isError: Boolean): TextView = monospace(tex
 // MARK: - Fields
 
 /**
- * A labelled text field. Outlined rather than filled, because these sit inside cards that are
- * already a filled surface and a filled field on a filled card has no edge.
+ * Wraps an existing editor in a labelled outlined field.
+ *
+ * Takes the [EditText] rather than building one, because every caller here keeps a reference to
+ * the editor and reads it back later. The label persists above the text once you start typing,
+ * which a bare `hint` does not -- a screen of half-filled fields whose hints have all vanished is
+ * one of the things that made this app read as a prototype.
+ *
+ * The shell is inflated from res/layout/dnt_field.xml; see that file for why it cannot be
+ * constructed here. Because the editor comes from the caller it misses the box style's own
+ * editText overlay, so the padding the outlined box needs is applied to it directly.
  */
+fun Context.fieldContainer(
+    label: String,
+    field: EditText,
+    password: Boolean = false,
+    helper: String? = null,
+): TextInputLayout =
+    (LayoutInflater.from(this).inflate(R.layout.dnt_field, null, false) as TextInputLayout).apply {
+        hint = label
+        helperText = helper
+        isHelperTextEnabled = helper != null
+        // A key you cannot read back is a key you cannot check a typo in.
+        if (password) endIconMode = TextInputLayout.END_ICON_PASSWORD_TOGGLE
+        val inset = dimen(R.dimen.space_m)
+        field.background = null
+        field.setPadding(inset, inset, inset, inset)
+        addView(
+            field,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        layoutParams = columnParams(top = dimen(R.dimen.space_s))
+    }
+
+/** [fieldContainer] over an editor it builds itself, for callers that only need the text once. */
 fun Context.textField(
     label: String,
     value: String = "",
@@ -482,18 +524,7 @@ fun Context.textField(
         }
         configure(this)
     }
-    return TextInputLayout(
-        this,
-        null,
-        com.google.android.material.R.attr.textInputOutlinedStyle,
-    ).apply {
-        hint = label
-        helperText = helper
-        isHelperTextEnabled = helper != null
-        if (password) endIconMode = TextInputLayout.END_ICON_PASSWORD_TOGGLE
-        addView(field)
-        layoutParams = columnParams(top = dimen(R.dimen.space_s))
-    }
+    return fieldContainer(label, field, password, helper)
 }
 
 // MARK: - Layout params

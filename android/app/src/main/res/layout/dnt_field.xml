@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The outlined text field, as a layout rather than as code.
+
+  This file exists because of a real Material limitation, not by preference: TextInputLayout picks
+  its box mode from the `style` attribute, and `style` is read by the XML inflater alone. A theme
+  that maps `textInputStyle` does not reach it, so a TextInputLayout constructed in Kotlin is the
+  legacy underlined widget whatever you wrap its context in. Inflating this shell is what makes the
+  field outlined; DesignSystem.fieldContainer then adds the caller's editor into it.
+
+  Outlined rather than filled because these fields sit inside cards that are already a filled
+  surface, and a filled field on a filled card has no visible edge.
+-->
+<com.google.android.material.textfield.TextInputLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content" />
