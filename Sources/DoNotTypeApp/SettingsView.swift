@@ -49,8 +49,12 @@ struct SettingsView: View {
 private struct DictionaryTab: View {
     @Bindable var model: SettingsModel
 
-    @State private var draft = ""
-    @State private var search = ""
+    /// Draft and filter live on the model. The settings window rebuilds a panel each time you
+    /// navigate back to it, so held here the half-typed term would vanish and — worse — the filter
+    /// would silently reset to the whole list while still looking like a filtered one.
+    private var draft: String { model.dictionaryDraft }
+    private var search: String { model.dictionarySearch }
+
     @State private var isImporting = false
     @State private var editing: SettingsModel.DictionaryEntry?
 
@@ -66,7 +70,7 @@ private struct DictionaryTab: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    TextField("New word, name, or phrase", text: $draft)
+                    TextField("New word, name, or phrase", text: $model.dictionaryDraft)
                         .onSubmit(add)
                     Button("Add", action: add)
                         .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -84,7 +88,7 @@ private struct DictionaryTab: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-                TextField("Search dictionary", text: $search)
+                TextField("Search dictionary", text: $model.dictionarySearch)
                     .textFieldStyle(.roundedBorder)
             }
             .padding(20)
@@ -177,7 +181,7 @@ private struct DictionaryTab: View {
     }
 
     private func add() {
-        if model.addDictionaryTerm(draft) { draft = "" }
+        if model.addDictionaryTerm(draft) { model.dictionaryDraft = "" }
     }
 }
 
@@ -262,8 +266,17 @@ private struct GeneralTab: View {
 
                 SecureField("API key", text: $model.apiKey)
                     .focused($keyFieldFocused)
-                    .onChange(of: model.keyStatus, initial: true) {
+                    // Not `initial: true`. This panel is rebuilt every time the sidebar returns to
+                    // it, and an initial fire would re-steal the caret on each visit — the intent
+                    // is the window opening on a missing key, not every look at General.
+                    .onChange(of: model.keyStatus) {
                         if model.keyStatus == .missing { keyFieldFocused = true }
+                    }
+                    .task {
+                        if !model.hasFocusedEmptyKeyField, model.keyStatus == .missing {
+                            model.hasFocusedEmptyKeyField = true
+                            keyFieldFocused = true
+                        }
                     }
 
                 // The paragraph that answers "but I did set it". A key exported in ~/.zshrc is
@@ -610,6 +623,7 @@ private struct GroundingTab: View {
             Section("Never read these apps") {
                 ListEditor(
                     items: $model.blockedBundleIDs,
+                    draft: $model.blockedBundleIDDraft,
                     placeholder: "com.example.app",
                     caption: "Bundle identifiers. Checked before anything is captured.")
             }
@@ -617,6 +631,7 @@ private struct GroundingTab: View {
             Section("Never read these pages") {
                 ListEditor(
                     items: $model.blockedURLPrefixes,
+                    draft: $model.blockedURLPrefixDraft,
                     placeholder: "https://example.com/private",
                     caption: "URL prefixes, re-checked once the page address is known.")
             }
@@ -628,10 +643,11 @@ private struct GroundingTab: View {
 /// A minimal add/remove list. Used for both blocklists.
 private struct ListEditor: View {
     @Binding var items: [String]
+    /// Bound rather than held: the panel is rebuilt whenever the settings window navigates back to
+    /// it, which would drop whatever was half-typed. Each blocklist owns its own draft on the model.
+    @Binding var draft: String
     let placeholder: String
     let caption: String
-
-    @State private var draft = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

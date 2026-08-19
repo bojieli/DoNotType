@@ -10,9 +10,17 @@ import UniformTypeIdentifiers
 struct SettingsTransferView: View {
     @Bindable var model: SettingsModel
 
-    @State private var json = ""
-    @State private var status: String?
-    @State private var statusIsError = false
+    /// The document and its result line live on the model, not here: this view is torn down and
+    /// rebuilt every time the settings window navigates away from it, and an emptied editor would
+    /// be refilled from the local machine over whatever was pasted into it. See
+    /// `SettingsModel.transferJSON`. These proxies keep the rest of the file reading as before.
+    private var json: String {
+        get { model.transferJSON }
+        nonmutating set { model.transferJSON = newValue }
+    }
+    private var status: String? { model.transferStatus }
+    private var statusIsError: Bool { model.transferStatusIsError }
+
     @State private var exporting = false
     @State private var importingFile = false
     @State private var importingQRImage = false
@@ -45,7 +53,7 @@ struct SettingsTransferView: View {
                 Spacer()
             }
 
-            TextEditor(text: $json)
+            TextEditor(text: $model.transferJSON)
                 .font(.system(.body, design: .monospaced))
                 .textSelection(.enabled)
                 .border(.quaternary)
@@ -178,8 +186,8 @@ struct SettingsTransferView: View {
     }
 
     private func setStatus(_ value: String, isError: Bool = false) {
-        status = value
-        statusIsError = isError
+        model.transferStatus = value
+        model.transferStatusIsError = isError
     }
 }
 

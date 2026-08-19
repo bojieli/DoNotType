@@ -3,9 +3,12 @@ import SwiftUI
 /// The About tab: which build this is, and the licences of everything it ships. Takes no model
 /// because nothing here is editable.
 struct AboutView: View {
-    /// Loaded once rather than on every body evaluation: the text is fixed for the life of the
-    /// process, and re-reading the bundle on each redraw buys nothing.
-    @State private var licenses = AboutView.loadLicenses()
+    /// Loaded once per process rather than once per view: the text is fixed for the life of the
+    /// process, and re-reading the bundle buys nothing. Held statically because the settings
+    /// window rebuilds this panel every time you navigate back to it, and as `@State` the
+    /// initialiser ran again on each visit — three file reads and a `Bundle(url:)` on the main
+    /// thread, to produce the same string.
+    private static let licenses = loadLicenses()
 
     var body: some View {
         Form {
@@ -23,7 +26,7 @@ struct AboutView: View {
                 // Scrollable rather than clipped: the notices are the kind of text nobody reads
                 // until they need a specific line of it, and then they need all of it.
                 ScrollView {
-                    Text(licenses)
+                    Text(Self.licenses)
                         .font(.system(.footnote, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)

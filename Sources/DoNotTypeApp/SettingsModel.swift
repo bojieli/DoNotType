@@ -320,6 +320,13 @@ final class SettingsModel {
         didSet { Settings.shared.blockedURLPrefixes = blockedURLPrefixes }
     }
 
+    /// The half-typed entries in the two blocklist editors, and below them the dictionary's search
+    /// and draft. None of this is a setting, so none of it is persisted — it lives here only
+    /// because the settings window rebuilds a panel every time you navigate away from it, and view
+    /// state does not survive that. `promptText` is here for the same reason.
+    var blockedBundleIDDraft = ""
+    var blockedURLPrefixDraft = ""
+
     // MARK: - Dictionary
 
     enum DictionarySource: String, Sendable {
@@ -348,6 +355,12 @@ final class SettingsModel {
     }
 
     var dictionaryCount: Int { dictionaryEntries.count }
+
+    /// The term being typed and the filter over the list. See the note beside the blocklist drafts:
+    /// a lost draft is a nuisance, but a filter that silently resets to "everything" while the user
+    /// believes it is still applied is worse, because the list looks answered rather than reset.
+    var dictionaryDraft = ""
+    var dictionarySearch = ""
 
     /// Re-read after the background correction watcher learns something while Settings is open.
     func refreshDictionary() {
@@ -496,6 +509,11 @@ final class SettingsModel {
     /// Fires whenever `keyStatus` settles, so the menu bar can say so without an open window.
     var onKeyStatusChange: (() -> Void)?
 
+    /// Whether the caret has already been put in the empty API key field once. The window opens
+    /// itself when there is no key, so that placement is a per-window courtesy — and the General
+    /// panel is rebuilt on every visit, which without this would make it a per-visit grab.
+    var hasFocusedEmptyKeyField = false
+
     /// Live connection check, so "it isn't working" has an answer in the UI.
     ///
     /// This one is the *primary*'s, and always was. The button used to sit under the Fallback
@@ -599,6 +617,18 @@ final class SettingsModel {
     }
 
     // MARK: - Settings transfer
+
+    /// The transfer editor's document and its result line.
+    ///
+    /// This one is not a convenience. The editor is also the paste route — a config arrives from
+    /// another machine on the clipboard — and the panel fills an empty editor with *this* machine's
+    /// settings when it appears. Left as view state, navigating away and back would empty it,
+    /// refill it from the local machine, and report "Loaded the current settings." The pasted
+    /// document would be gone, the status would read like success, and the next click would import
+    /// the user's own config back over itself.
+    var transferJSON = ""
+    var transferStatus: String?
+    var transferStatusIsError = false
 
     func settingsTransferDocument() -> SettingsTransferDocument {
         let settings = Settings.shared
