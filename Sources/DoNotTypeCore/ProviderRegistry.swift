@@ -201,10 +201,11 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     /// the good case. Others accept it, drop it, and answer HTTP 200 with a fluent invention —
     /// see the incident in `TranscriptionProvider.assertAudioWasProcessed`.
     ///
-    /// Stated here rather than left to `audioSilentlyDropped` to catch, because that guard only
-    /// fires when the provider reports zero audio tokens, and a third party that reports no usage
-    /// at all is given the benefit of the doubt. The endpoint field is the last moment where the
-    /// question is cheap to answer.
+    /// Stated here rather than left to the connection test to catch, because that test can only
+    /// prove the negative it is shown: `assertAudioWasProcessed` calls a *reported* zero a dropped
+    /// recording, and a third party that reports no usage at all is given the benefit of the
+    /// doubt. That is the residual gap the wording below points at, and the endpoint field is the
+    /// last moment where reading the service's own documentation is cheap.
     ///
     /// - Parameter endpointOverride: the contents of the endpoint field; empty when unset.
     /// - Returns: `nil` when there is nothing to warn about — see the guards below.
@@ -218,10 +219,10 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         guard self == .local || !endpointOverride.trimmed.isEmpty else { return nil }
         return """
             Dictation sends the recording itself to this URL, so the service has to accept audio \
-            input — plenty that speak this API serve text and images only. Confirm it documents \
-            audio for the model above: the connection test below sends text, so it can pass \
-            against an endpoint that drops every recording and answers with a transcript it \
-            invented.
+            input — plenty that speak this API serve text and images only. The connection test \
+            below sends a real recording, and catches an endpoint that refuses one or accepts it \
+            and quietly discards it — but only while the service reports its token usage. If it \
+            reports none, confirm from its own documentation that the model above takes audio.
             """
     }
 

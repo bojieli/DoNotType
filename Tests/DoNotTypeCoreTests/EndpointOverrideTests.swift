@@ -162,25 +162,44 @@ final class EndpointOverrideTests: XCTestCase {
         }
     }
 
-    /// What the note has to say to be worth its space. The middle claim is the one that decays
-    /// silently: `ProviderProbe` sends *text* to a multimodal backend, so a green connection test
-    /// says nothing about audio. If that probe ever starts sending audio, this assertion should
-    /// fail and the sentence should go — not the other way round.
-    func testTheCaveatNamesAudioAndDoesNotLetTheConnectionTestStandInForIt() throws {
+    /// What the note has to say to be worth its space, and the claim in it that can decay
+    /// silently: that the connection test sends a recording. It said the opposite until the probe
+    /// was changed to send one, and a sentence describing the wrong probe is worse than no
+    /// sentence — it tells people the check they just passed proves less than it does.
+    func testTheCaveatNamesAudioAndDescribesWhatTheConnectionTestActuallySends() async throws {
         let note = try XCTUnwrap(
             ProviderKind.openrouter.thirdPartyAudioNote(
                 endpointOverride: "https://mirror.example.com/v1/chat/completions"))
         XCTAssertTrue(note.contains("audio input"))
-        XCTAssertTrue(note.contains("connection test below sends text"))
+        XCTAssertTrue(note.contains("sends a real recording"))
 
-        // The branch that makes the sentence true: `ProviderProbe.check` sends text wherever
-        // grounding is `.multimodal`, and audio only where it is not. Every backend that can show
-        // this note is on the text side of it.
-        for kind in ProviderKind.allCases where !kind.isSpeechRecognition {
-            let backend = try ProviderFactory.make(kind, apiKey: "k", environment: key)
-            XCTAssertEqual(
-                backend.grounding(forModel: kind.defaultModel), .multimodal,
-                "\(kind.rawValue) is probed with audio; the note's middle sentence is now false")
-        }
+        // The behaviour the sentence describes, asserted rather than trusted. `ProviderProbe`
+        // decides this without consulting the backend, so one call covers every kind that can
+        // show the note; `ProviderProbeTests` is where the grounding cases are enumerated.
+        let recorder = RequestRecorder(grounding: .multimodal)
+        _ = await ProviderProbe.check(recorder, model: ProviderKind.openrouter.defaultModel)
+        XCTAssertTrue(
+            (recorder.lastRequest?.parts ?? []).contains {
+                if case .audio = $0 { true } else { false }
+            },
+            "the probe sends no recording, so the note now overpromises")
+    }
+}
+
+/// Answers anything, and remembers what it was asked.
+private final class RequestRecorder: TranscriptionProvider, @unchecked Sendable {
+    let name = "recorder"
+    private let support: GroundingSupport
+    private(set) var lastRequest: TranscriptionRequest?
+
+    init(grounding: GroundingSupport) { self.support = grounding }
+
+    func grounding(forModel model: String) -> GroundingSupport { support }
+
+    func transcribe(_ request: TranscriptionRequest) async throws -> TranscriptionResult {
+        lastRequest = request
+        return TranscriptionResult(
+            transcript: Transcript(transcript: "ok", language: "en"), usage: TokenUsage(),
+            rawOutput: "ok")
     }
 }
