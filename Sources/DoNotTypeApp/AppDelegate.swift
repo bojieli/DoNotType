@@ -296,17 +296,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Wide enough for the tab bar, and resizable so it stays that way. A macOS tab bar is a
-        // single toolbar item: it lays out whole or collapses whole into the overflow chevron,
-        // taking every tab with it. Six tabs need 625pt and this window used to be 620, so the
-        // entire settings UI was one unlabelled `»` button. `contentMinSize` is the actual fix —
-        // the width can no longer be dragged below the point where the tabs disappear.
+        // These two numbers used to be measurements of the tab bar: how much width nine tabs
+        // needed before they collapsed into one `»` chevron. The navigation is a sidebar now and
+        // cannot run out of room, so they measure the panels instead — and the panels are what
+        // they should always have been measuring.
+        //
+        // The sidebar costs about 180pt off the top of every panel, so the window gets wider
+        // rather than the panels getting narrower: at 980 the content keeps the ~800pt it had
+        // under the tab bar. That matters because three panels have no slack at that width —
+        // Transfer's buttons, History's toolbar, and Stats' four tiles, whose text is already
+        // capped at minimumScaleFactor(0.8). The minimum leaves the widest of them intact.
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 840, height: 600),
+            contentRect: NSRect(x: 0, y: 0, width: 980, height: 640),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         window.title = "DoNotType Settings"
-        window.contentMinSize = NSSize(width: 820, height: 500)
+        window.contentMinSize = NSSize(width: 880, height: 520)
         window.contentView = NSHostingView(rootView: SettingsView(model: settingsModel))
         window.center()
         window.isReleasedWhenClosed = false

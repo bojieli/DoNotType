@@ -61,10 +61,9 @@ struct SettingsView: View {
             detail
         }
         .navigationSplitViewStyle(.balanced)
-        // A minimum rather than a fixed size. It is a content measurement now, not a
-        // navigation one — the sidebar cannot run out of room, so what the number has to buy
-        // is the widest panel's own layout.
-        .frame(minWidth: 820, minHeight: 500)
+        // A minimum rather than a fixed size, and it has to agree with the window's
+        // `contentMinSize` in AppDelegate — the reasoning behind the number is there.
+        .frame(minWidth: 880, minHeight: 520)
         .task {
             await model.refresh()
             // Only when the launch check never ran — the window opens before the permissions
