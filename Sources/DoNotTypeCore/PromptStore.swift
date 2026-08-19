@@ -6,7 +6,7 @@ import Foundation
 /// but not editable would be an odd place to draw the line. Every part can be edited on its own and
 /// restored on its own; the shipped text is always one button away.
 ///
-/// One caveat is worth surfacing in any UI that exposes this: the numbers in `PROMPT.md`'s
+/// One caveat is worth surfacing in any UI that exposes this: the numbers in `docs/PROMPT.md`'s
 /// changelog were measured against the shipped parts. An edited part invalidates them, which is
 /// why `dnt-eval --prompt` exists — so a custom prompt can be measured rather than assumed.
 public struct PromptStore: Sendable {

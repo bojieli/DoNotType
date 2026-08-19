@@ -3,7 +3,8 @@ import Foundation
 /// Deepgram's `/v1/listen` speech recognition endpoint.
 ///
 /// The first backend here that is not a language model, which changes what the rest of the app can
-/// expect of it. There is no system instruction, so `PROMPT.md` never reaches it; there is no
+/// expect of it. There is no system instruction, so the contract in `prompt/` never reaches it;
+/// there is no
 /// image input, so the screenshot path is unavailable; and there is no conversation, so
 /// `TranscriptionService.rewrite` cannot run through it. Each of those is declared rather than
 /// discovered — see `grounding` and `ProviderError.audioRequired`.
@@ -166,7 +167,7 @@ public struct DeepgramProvider: TranscriptionProvider {
         var items = [URLQueryItem(name: "model", value: request.model)]
 
         // The fidelity ladder, in the only vocabulary this endpoint has — which has two rungs
-        // where `PROMPT.md` has three.
+        // where `prompt/fidelity/` has three.
         //
         // `raw` and `tidy` map exactly. `light` does not, and cannot: its clause says "do not add
         // punctuation the speaker did not imply" *and* "do not change capitalisation beyond

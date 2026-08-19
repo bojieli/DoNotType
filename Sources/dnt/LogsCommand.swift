@@ -238,7 +238,7 @@ struct PromptCommand: ParsableCommand {
             if !source.overriddenParts.isEmpty {
                 Out.note(
                     "\(source.overriddenParts.count) part(s) edited — the measured numbers in "
-                        + "PROMPT.md's changelog do not apply to them")
+                        + "docs/PROMPT.md's changelog do not apply to them")
             }
         }
 

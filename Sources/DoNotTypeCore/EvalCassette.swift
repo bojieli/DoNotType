@@ -29,7 +29,7 @@ import Foundation
 /// same request identically forever. Three recorded passes replay as three different passes.
 ///
 /// **It does not survive a prompt change.** The system instruction is part of the key, so editing
-/// `PROMPT.md` misses every take and the run fails with a message saying to re-record. Replayed
+/// `prompt/` misses every take and the run fails with a message saying to re-record. Replayed
 /// numbers can therefore never be attributed to a prompt that did not produce them, which is the
 /// one way a cache like this could actively mislead.
 public struct Cassette: Codable, Sendable {
@@ -137,7 +137,7 @@ public actor CassetteStore {
                 Nothing recorded for this request (\(hint)).
 
                 The prompt, the model, the fidelity and the audio are all part of the key, so this \
-                means one of them differs from the recording. If you edited PROMPT.md that is \
+                means one of them differs from the recording. If you edited prompt/ that is \
                 expected and correct — replayed numbers must never be attributed to a prompt that \
                 did not produce them. Re-record with --record.
                 """

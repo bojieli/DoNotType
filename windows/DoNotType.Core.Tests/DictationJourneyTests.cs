@@ -155,7 +155,7 @@ public sealed class DictationJourneyTests : IDisposable
 
     // ---- Grounding reaches the request --------------------------------------------------------
 
-    /// <summary>Screen text arrives as parts, audio last — CONTEXT_FORMAT.md says order matters.</summary>
+    /// <summary>Screen text arrives as parts, audio last — docs/CONTEXT_FORMAT.md says order matters.</summary>
     [Fact]
     public void ScreenContextReachesTheProviderAheadOfTheAudio()
     {

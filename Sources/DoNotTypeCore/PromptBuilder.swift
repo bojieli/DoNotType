@@ -156,7 +156,7 @@ public struct PromptBuilder: Sendable {
     ///
     /// A separate part from `rewriteInstruction` rather than another style inside it, because the
     /// two have opposite contracts: a rewrite may never drop a fact, and a summary exists to. See
-    /// "The summary stage" in `PROMPT.md`.
+    /// "The summary stage" in `docs/PROMPT.md`.
     public func summaryInstruction(style: SummaryStyle) throws -> String {
         try assemble(.summary, filling: .summaryStyle(style))
     }

@@ -156,7 +156,7 @@ public struct XAISpeechProvider: TranscriptionProvider {
 
         // `format` is Inverse Text Normalization — "three point five" becoming "3.5", dates and
         // currency written as numerals. Left on for `light` as well as `tidy`, for the reason
-        // spelled out in `DeepgramProvider`: a recogniser has two rungs where `PROMPT.md` has
+        // spelled out in `DeepgramProvider`: a recogniser has two rungs where `prompt/fidelity/` has
         // three, and the alternative makes `light` diverge from every other backend on numbers.
         body.addField("format", request.fidelity == .raw ? "false" : "true")
         body.addField("filler_words", request.fidelity == .raw ? "true" : "false")

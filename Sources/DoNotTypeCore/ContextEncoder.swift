@@ -4,7 +4,7 @@ import Foundation
 ///
 /// This type deliberately does no analysis. It does not extract terms, rank candidates, or
 /// summarise; it clips to a budget, labels, and orders. Everything it emits is text that was
-/// literally on the user's screen. See `CONTEXT_FORMAT.md` for the rationale.
+/// literally on the user's screen. See `docs/CONTEXT_FORMAT.md` for the rationale.
 public struct ContextEncoder: Sendable {
     public struct Limits: Sendable, Equatable {
         public var visibleTextChars: Int

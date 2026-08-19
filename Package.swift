@@ -8,7 +8,7 @@ let package = Package(
     products: [
         .library(name: "DoNotTypeCore", targets: ["DoNotTypeCore"]),
         // Two command-line tools, with different jobs. `dnt-eval` measures the prompt — it runs
-        // cases and prints scores, and only a contributor changing PROMPT.md needs it. `dnt` uses
+        // cases and prints scores, and only a contributor changing prompt/ needs it. `dnt` uses
         // the product: transcribe a file, read the log, inspect the history, check the key.
         .executable(name: "dnt", targets: ["dnt"]),
         .executable(name: "dnt-eval", targets: ["dnt-eval"]),

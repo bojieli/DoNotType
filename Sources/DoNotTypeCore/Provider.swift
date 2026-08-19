@@ -4,7 +4,7 @@ import Foundation
 public struct TranscriptionRequest: Sendable {
     public var model: String
     public var systemInstruction: String
-    /// Context parts followed by exactly one audio part. Order matters — see `CONTEXT_FORMAT.md`.
+    /// Context parts followed by exactly one audio part. Order matters — see `docs/CONTEXT_FORMAT.md`.
     public var parts: [InputPart]
     public var maxOutputTokens: Int
     /// How much cleanup the transcript may receive.
@@ -164,8 +164,8 @@ public enum ProviderError: Error, LocalizedError, Sendable {
 /// What a backend can do with what is on screen.
 ///
 /// This exists because the two kinds of backend are not interchangeable, and the difference is
-/// invisible at the call site. A model provider reads `PROMPT.md`, the labelled context sections
-/// and the screenshot. A speech recognition endpoint reads none of them — it has no system
+/// invisible at the call site. A model provider reads the contract in `prompt/`, the labelled
+/// context sections and the screenshot. A speech recognition endpoint reads none of them — it has no system
 /// instruction, no eyes, and no notion of a conversation. Handing it a `ScreenContext` and
 /// carrying on would produce a transcript that looks grounded, is billed as grounded, is recorded
 /// in history as grounded, and was in fact produced by a model that never saw the screen.
@@ -185,8 +185,8 @@ public enum GroundingSupport: Sendable, Equatable {
     /// A recogniser with no biasing channel at all. Screen context is unusable, full stop.
     case none
 
-    /// Whether the system instruction — and therefore `PROMPT.md` and the fidelity ladder it
-    /// encodes — reaches the model at all.
+    /// Whether the system instruction — and therefore the contract in `prompt/` and the fidelity
+    /// ladder it encodes — reaches the model at all.
     public var readsSystemInstruction: Bool { self == .multimodal }
 }
 

@@ -4,7 +4,7 @@ package app.donottype.core
  * What a backend can do with what is on screen.
  *
  * This exists because the two kinds of backend are not interchangeable and the difference is
- * invisible at the call site. A model provider reads PROMPT.md, the labelled screen text and the
+ * invisible at the call site. A model provider reads the contract in prompt/, the labelled screen text and the
  * screenshot. A speech recognition endpoint reads none of them — it has no system instruction, no
  * eyes and no notion of a conversation. Handing one a screen context and carrying on would produce
  * a transcript that looks grounded, is recorded in history as grounded, and was produced by a

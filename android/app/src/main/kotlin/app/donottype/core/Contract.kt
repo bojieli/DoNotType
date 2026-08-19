@@ -6,7 +6,7 @@ import org.json.JSONObject
  * How much cleanup the transcript may receive.
  *
  * Even [TIDY] may only change typography, never words. Kept identical to the Swift enum and to the
- * clauses in PROMPT.md — the whole point of a versioned contract is that the platforms agree.
+ * clauses in prompt/fidelity/ — the whole point of a versioned contract is that the platforms agree.
  */
 enum class Fidelity(val id: String) {
     RAW("raw"),
@@ -132,7 +132,7 @@ sealed interface InputPart {
 /**
  * Turns a [ScreenContext] into request parts, verbatim.
  *
- * Does no analysis: no term extraction, no ranking, no summarising. See CONTEXT_FORMAT.md.
+ * Does no analysis: no term extraction, no ranking, no summarising. See docs/CONTEXT_FORMAT.md.
  */
 class ContextEncoder(
     private val visibleTextChars: Int = 10_000,

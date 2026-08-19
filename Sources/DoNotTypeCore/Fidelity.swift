@@ -3,7 +3,7 @@ import Foundation
 /// How much cleanup the transcript may receive.
 ///
 /// This is the dial that separates DoNotType from a rewriting tool: even `tidy` is only allowed
-/// to change typography, never words. See `PROMPT.md` for the clauses these map onto.
+/// to change typography, never words. See `prompt/fidelity/` for the clauses these map onto.
 public enum Fidelity: String, CaseIterable, Sendable, Codable {
     /// Every um, uh, false start and repetition, exactly where it occurred.
     case raw

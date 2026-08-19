@@ -4,7 +4,7 @@ namespace DoNotType.Core;
 
 /// <summary>
 /// How much cleanup the transcript may receive. Even <see cref="Tidy"/> may only change
-/// typography, never words. Kept identical to the Swift and Kotlin enums and to PROMPT.md.
+/// typography, never words. Kept identical to the Swift and Kotlin enums and to prompt/fidelity/.
 /// </summary>
 public enum Fidelity
 {
@@ -110,7 +110,7 @@ public abstract record InputPart
 /// <summary>
 /// Turns a <see cref="ScreenContext"/> into request parts, verbatim.
 ///
-/// Does no analysis: no term extraction, no ranking, no summarising. See CONTEXT_FORMAT.md.
+/// Does no analysis: no term extraction, no ranking, no summarising. See docs/CONTEXT_FORMAT.md.
 /// </summary>
 public sealed class ContextEncoder(
     int visibleTextChars = 10_000,

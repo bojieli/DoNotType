@@ -10,7 +10,7 @@ cannot see from the diff.
 ## Numbers, if this touches transcription quality
 
 <!--
-Required for changes to prompt/, CONTEXT_FORMAT.md, the token budgets, part ordering, or the
+Required for changes to prompt/, docs/CONTEXT_FORMAT.md, the token budgets, part ordering, or the
 default backend. Before and after, from `dnt-eval suite --repeat-count 5` or `dnt-eval ablate`.
 
 Three plausible-sounding changes in this project's history were measured and did the opposite of

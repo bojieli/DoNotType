@@ -77,7 +77,7 @@ class DictationService(private val context: Context) {
 
         // Nothing without speech in it is ever sent. A model handed room tone does not reliably
         // return silence — it returns a plausible sentence, and a keyboard that commits words
-        // nobody said has done the one thing this project exists to prevent. PROMPT.md rule 7 asks
+        // nobody said has done the one thing this project exists to prevent. prompt/system.md rule 7 asks
         // for an empty transcript, but it only reaches model providers: a speech recogniser has no
         // system instruction, so for Deepgram, xAI and Voxtral the rule is never sent at all. Not
         // transmitting the audio is the only defence that holds for every backend.

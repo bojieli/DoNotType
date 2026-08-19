@@ -7,7 +7,7 @@ namespace DoNotType.Core;
 /// but not editable would be an odd line to draw. Every part can be edited on its own and restored
 /// on its own; the shipped text is always one button away.
 ///
-/// One caveat belongs in any UI that exposes this: the numbers in PROMPT.md's changelog were
+/// One caveat belongs in any UI that exposes this: the numbers in docs/PROMPT.md's changelog were
 /// measured against the shipped parts, and an edited part invalidates them.
 /// </summary>
 public sealed class PromptStore(string directory)

@@ -110,7 +110,7 @@ class DeepgramClient(
 
         val query = StringBuilder("?model=").append(URLEncoder.encode(model, "UTF-8"))
         // The fidelity ladder in the only vocabulary this endpoint has, which has two rungs where
-        // PROMPT.md has three. `light` and `tidy` collapse: Deepgram's only unpunctuated mode also
+        // prompt/fidelity/ has three. `light` and `tidy` collapse: Deepgram's only unpunctuated mode also
         // returns everything lower case, which breaks `light`'s "keep proper nouns" clause more
         // visibly than adding punctuation breaks its other half.
         when (fidelity) {

@@ -139,7 +139,7 @@ final class CassetteTests: XCTestCase {
         } catch let error as CassetteStore.CassetteError {
             let message = error.errorDescription ?? ""
             XCTAssertTrue(
-                message.contains("PROMPT.md"),
+                message.contains("prompt/"),
                 "the error should explain why a prompt change misses, got: \(message)")
         }
     }

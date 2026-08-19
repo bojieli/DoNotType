@@ -52,7 +52,7 @@ public interface ITranscriptionProvider
 /// What a backend can do with what is on screen.
 ///
 /// This exists because the two kinds of backend are not interchangeable and the difference is
-/// invisible at the call site. A model provider reads PROMPT.md, the labelled screen text and the
+/// invisible at the call site. A model provider reads the contract in prompt/, the labelled screen text and the
 /// screenshot. A speech recognition endpoint reads none of them — no system instruction, no eyes,
 /// no conversation. Handing one a <see cref="ScreenContext"/> and carrying on would produce a
 /// transcript that looks grounded, is recorded in history as grounded, and was produced by a model

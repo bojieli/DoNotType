@@ -171,7 +171,7 @@ class DictationJourneyTest {
 
     // ---- Grounding reaches the request --------------------------------------------------------
 
-    /** Screen text arrives as parts, audio last. CONTEXT_FORMAT.md says the order matters. */
+    /** Screen text arrives as parts, audio last. docs/CONTEXT_FORMAT.md says the order matters. */
     @Test
     fun `screen context reaches the provider ahead of the audio`() {
         val context = ScreenContext(

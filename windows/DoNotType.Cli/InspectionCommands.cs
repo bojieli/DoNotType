@@ -532,7 +532,7 @@ public static class PromptCommand
         {
             Out.Note(
                 $"{source.OverriddenParts.Count} part(s) edited — the measured numbers in "
-                + "PROMPT.md's changelog do not apply to them");
+                + "docs/PROMPT.md's changelog do not apply to them");
         }
         return 0;
     }

@@ -3,7 +3,7 @@ import Foundation
 /// Everything captured from the screen for one dictation.
 ///
 /// Field names mirror the channels Typeless uses, because those budgets are field-tested — see
-/// `CONTEXT_FORMAT.md`. Every field is optional: a capture that yields nothing is valid and
+/// `docs/CONTEXT_FORMAT.md`. Every field is optional: a capture that yields nothing is valid and
 /// simply produces no context part.
 public struct ScreenContext: Sendable, Codable, Equatable {
     /// Foreground application name, e.g. "Xcode".

@@ -236,7 +236,7 @@ final class DictationJourneyTests: XCTestCase {
 
     // MARK: - Grounding reaches the request
 
-    /// The screen text has to arrive as parts, in front of the audio. `CONTEXT_FORMAT.md` says the
+    /// The screen text has to arrive as parts, in front of the audio. `docs/CONTEXT_FORMAT.md` says the
     /// order matters, and nothing else asserts it offline.
     func testScreenContextReachesTheProviderAheadOfTheAudio() async throws {
         let provider = RecordingJourneyProvider()

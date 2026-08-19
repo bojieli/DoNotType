@@ -378,7 +378,7 @@ object Settings {
         ) { "started" }
     }
 
-    /** Evaluated before capture, never after — see CONTEXT_FORMAT.md. */
+    /** Evaluated before capture, never after — see docs/CONTEXT_FORMAT.md. */
     fun isBlocked(packageName: String?): Boolean {
         if (packageName == null) return false
         if (packageName == "app.donottype") return true

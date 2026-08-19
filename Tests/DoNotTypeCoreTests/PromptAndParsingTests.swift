@@ -63,7 +63,7 @@ final class PromptBuilderTests: XCTestCase {
     }
 
     /// Substituting a clause must place it once. The fidelity rule appearing twice is measurable
-    /// harm, not cosmetic — see the 2026-08-09 entry in PROMPT.md, where restating it moved
+    /// harm, not cosmetic — see the 2026-08-09 entry in docs/PROMPT.md, where restating it moved
     /// substitution from 11/19 to 15/18.
     func testTheFidelityClauseAppearsExactlyOnce() throws {
         let builder = try shipped()

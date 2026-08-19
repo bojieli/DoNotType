@@ -10,7 +10,7 @@ package app.donottype.core
  * topically-plausible prose the user had never said. It was not copied off the screen either: the
  * longest verbatim run shared with the screen context was nine words.
  *
- * PROMPT.md rule 7 asks for an empty transcript, which is an *omission* — a model already inventing
+ * prompt/system.md rule 7 asks for an empty transcript, which is an *omission* — a model already inventing
  * cannot notice it is failing to omit something. So the prompt asks for a token it must positively
  * write, and this checks for it. The rate ceiling is the backstop for models that ignore both; it
  * is a physical claim rather than a stylistic one, since speech has a maximum rate and text far
