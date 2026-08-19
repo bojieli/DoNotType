@@ -352,7 +352,11 @@ private struct KeyboardReturnToHostView: View {
 
                 Image(systemName: "arrow.left.and.right")
                     .font(.system(size: 38, weight: .medium))
-                    .symbolEffect(.pulse)
+                    // A permanently repeating symbol prevents UI automation from ever observing
+                    // the app as idle, and it keeps consuming animation work while somebody is
+                    // speaking. Three pulses draw attention without turning this screen into an
+                    // indefinite animation.
+                    .symbolEffect(.pulse, options: .repeat(3))
                     .accessibilityHidden(true)
 
                 if state == .recording || state == .transcribing {
@@ -380,7 +384,6 @@ private struct KeyboardReturnToHostView: View {
             }
             .padding()
         }
-        .accessibilityIdentifier("keyboard-return-to-host")
     }
 }
 

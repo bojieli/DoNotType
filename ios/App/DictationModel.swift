@@ -410,6 +410,11 @@ final class DictationModel {
             state = .transcribing
         } else if arguments.contains("-ui-testing-keyboard-return-state") {
             state = .recording
+            // Match the production cold-launch invariant. Scene activation can briefly report
+            // inactive while the app is coming forward; without this marker the lifecycle handler
+            // mistakes the keyboard-owned recording for an ordinary in-app recording and removes
+            // the return instructions before they are visible.
+            currentDictationIsFromKeyboard = true
             isReturnToHostPresented = true
         }
         #endif
@@ -714,6 +719,11 @@ final class DictationModel {
             Date().timeIntervalSince(updatedAt) < 10
         else { return }
 
+        // Mark ownership before creating the task. A cold launch can emit an inactive scene phase
+        // between this synchronous URL handler and `beginRecording`; the lifecycle handler must
+        // already know that the keyboard remains the recording's visible surface at that point.
+        guard !isStartingRecording, state != .recording, state != .transcribing else { return }
+        currentDictationIsFromKeyboard = true
         syncRewriteModeFromKeyboard()
         isReturnToHostPresented = true
         Task { await beginRecording(fromKeyboard: true) }
@@ -726,6 +736,8 @@ final class DictationModel {
     private func handleKeyboardCommand(_ command: VoiceKeyboardBridge.Command) {
         switch command {
         case .start:
+            guard !isStartingRecording, state != .recording, state != .transcribing else { return }
+            currentDictationIsFromKeyboard = true
             syncRewriteModeFromKeyboard()
             Task { await beginRecording(fromKeyboard: true) }
         case .stop:
