@@ -93,6 +93,15 @@ struct Silence: AsyncParsableCommand {
                         Attempt(
                             recording: name, run: run, transcript: text, isEmpty: text.isEmpty,
                             error: nil))
+                } catch ProviderError.emptyOutput {
+                    // Provider clients reject a blank transcript on ordinary speech because losing
+                    // a real dictation must be visible. In this command blank is the expected
+                    // result: Deepgram and the other recognisers represent it with `emptyOutput`,
+                    // just as ProviderProbe already accepts when its silent recording completes.
+                    attempts.append(
+                        Attempt(
+                            recording: name, run: run, transcript: "", isEmpty: true,
+                            error: nil))
                 } catch {
                     // An error is not a hallucination. It is reported separately rather than
                     // counted as a pass, because a backend that fails on silence has not
