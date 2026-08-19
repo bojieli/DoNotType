@@ -3,22 +3,17 @@ package app.donottype.ime
 import app.donottype.PromptAssets
 import app.donottype.Settings
 import app.donottype.accessibility.ScreenReaderService
-import app.donottype.audio.WavRecorder
 import app.donottype.SettingsActivity
+import app.donottype.core.DictationController
+import app.donottype.core.DictationController.State
+import app.donottype.core.DictationRecord
 import app.donottype.core.DictationService
 import app.donottype.core.FailureAdvice
 import app.donottype.core.NoSpeechException
 import app.donottype.core.Log as DntLog
-import app.donottype.core.LiveTranscriptionSession
 import app.donottype.core.RewriteAvailability
-import app.donottype.core.ProviderFactory
-import app.donottype.core.ProviderKind
-import app.donottype.core.ProviderTransport
 import app.donottype.core.PersonalDictionary
-import app.donottype.core.ScreenContext
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Color
 import android.inputmethodservice.InputMethodService
 import android.util.Log
@@ -33,7 +28,6 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import kotlinx.coroutines.CoroutineScope
@@ -61,38 +55,26 @@ class DoNotTypeIME : InputMethodService() {
     private val log = DntLog("dictate")
 
 
-    private enum class State { IDLE, RECORDING, TRANSCRIBING, NOTICE, ERROR }
-
-    private val recorder = WavRecorder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val service by lazy { DictationService(this) }
+
+    /**
+     * The dictation itself, shared with the app's own dictation screen rather than written twice.
+     * What is left in this file is the half a keyboard cannot share: which field the words are for,
+     * typing them into it, and watching what the user does to them afterwards.
+     */
+    private val dictation by lazy { DictationController(this, scope, service) }
 
     private lateinit var statusLabel: TextView
     private lateinit var modeButton: Button
     private lateinit var talkButton: Button
     private lateinit var indicator: DictationIndicatorView
 
-    /// True once the press has lasted long enough to count as a hold rather than a tap.
-    private var pressBecameHold = false
-    private var pressStartedAt = 0L
-    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
-    private var holdRunnable: Runnable? = null
-    private var levelRunnable: Runnable? = null
-
-    private var state = State.IDLE
-        set(value) {
-            field = value
-            render()
-        }
-
-    /** Captured at press, before focus can move. */
-    private var pendingContext: ScreenContext? = null
-    private var liveSession: LiveTranscriptionSession? = null
+    private val state: State get() = dictation.state
 
     /** Which field was focused when the key went down: its app, and the editor's id within it. */
     private var pendingTarget: Pair<String?, Int>? = null
     private var correctionWatch: Job? = null
-    private var noticeJob: Job? = null
     private var pendingLifecycleNotice: String? = null
     private var lastLearnedTerms: List<String> = emptyList()
 
@@ -107,18 +89,61 @@ class DoNotTypeIME : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         Settings.initialise(this)
+        wireDictation()
     }
 
     override fun onDestroy() {
         scope.cancel()
         correctionWatch?.cancel()
-        noticeJob?.cancel()
-        stopLevelUpdates()
-        holdRunnable?.let { handler.removeCallbacks(it) }
-        recorder.cancel()
-        recorder.onPcm = null
-        liveSession?.cancel()
+        dictation.dispose()
         super.onDestroy()
+    }
+
+    /**
+     * What the keyboard contributes to a dictation: the screen behind the field, the words for a
+     * refusal, and somewhere to put the transcript.
+     */
+    private fun wireDictation() {
+        dictation.onState = { state ->
+            if (state == State.RECORDING) {
+                // The last moment the focused field is still the one being dictated into. The
+                // recorder opens synchronously with the press, so this is the press.
+                pendingTarget = currentInputEditorInfo?.let { it.packageName to it.fieldId }
+            }
+            render()
+        }
+        dictation.onLevels = { bars -> indicator.appendLevels(bars) }
+        dictation.logContext = {
+            mapOf("package" to (currentInputEditorInfo?.packageName ?: "?"))
+        }
+        // Phase 1 equivalent of the screen capture: read at press, while the field being dictated
+        // into is still the focused one. Never for a password field, whatever grounding says.
+        dictation.screenContext = {
+            val passwordField =
+                currentInputEditorInfo?.let { isPasswordField(it.inputType) } == true
+            if (Settings.groundingEnabled && !passwordField) {
+                ScreenReaderService.instance?.capture()
+            } else {
+                null
+            }
+        }
+        // A keyboard cannot grant itself a permission or hold an API key, so both refusals point
+        // at the app, and the label becomes the way to get there.
+        dictation.onRefused = { reason, error ->
+            when (reason) {
+                DictationController.Refusal.NO_API_KEY ->
+                    showFixInTheApp("No API key yet — tap here to add one")
+                DictationController.Refusal.NO_MICROPHONE ->
+                    showFixInTheApp("Microphone access is off — tap here to grant it")
+                // A tap rather than a hold is not an error, but returning straight to the ordinary
+                // idle label makes the gesture look ignored.
+                DictationController.Refusal.TOO_SHORT ->
+                    showStatus("Recording was too short — try again")
+                DictationController.Refusal.COULD_NOT_START ->
+                    showStatus(error?.message ?: "Could not start recording")
+            }
+        }
+        dictation.onResult = { outcome -> deliver(outcome) }
     }
 
     override fun onStartInputView(info: android.view.inputmethod.EditorInfo?, restarting: Boolean) {
@@ -137,9 +162,7 @@ class DoNotTypeIME : InputMethodService() {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
-        holdRunnable?.let { handler.removeCallbacks(it) }
-        holdRunnable = null
-        pressBecameHold = false
+        dictation.cancelPress()
 
         if (state == State.RECORDING) {
             log.info { "recording stopped because the keyboard closed" }
@@ -147,7 +170,7 @@ class DoNotTypeIME : InputMethodService() {
             // The view is going away, so retain the explanation and show it when the keyboard next
             // opens instead of starting a three-second notice that expires while nobody can see it.
             pendingLifecycleNotice = "Recording stopped when the keyboard closed"
-            state = State.IDLE
+            dictation.idle()
         }
         super.onFinishInputView(finishingInput)
     }
@@ -205,11 +228,11 @@ class DoNotTypeIME : InputMethodService() {
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
                         view.performClick()
-                        onPressDown(event.eventTime)
+                        dictation.pressDown(event.eventTime)
                         true
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        onPressUp(
+                        dictation.pressUp(
                             cancelled = event.action == MotionEvent.ACTION_CANCEL,
                             eventTime = event.eventTime,
                         )
@@ -302,108 +325,12 @@ class DoNotTypeIME : InputMethodService() {
         }
     }
 
-    // MARK: - Gestures
-
-    /**
-     * A press starts recording immediately either way -- waiting to find out whether it is a tap
-     * or a hold would clip the first word, which is the one people say fastest.
-     */
-    /**
-     * Touch-down. [eventTime] is the touch's own timestamp, not the moment this ran: [beginRecording]
-     * blocks the UI thread while the audio stack is built, and the release that arrives during that
-     * work would otherwise measure as a hold and end a recording the user had only tapped to start.
-     * Both ends of the measurement are on [MotionEvent.getEventTime]'s uptime clock, which is also
-     * the one [handler] schedules on.
-     */
-    private fun onPressDown(eventTime: Long) {
-        if (state == State.TRANSCRIBING) return
-
-        // A second tap while already recording ends it. This is the toggle half of the gesture.
-        if (state == State.RECORDING && !pressBecameHold) {
-            finishRecording()
-            return
-        }
-
-        pressBecameHold = false
-        pressStartedAt = eventTime
-        beginRecording()
-
-        holdRunnable = Runnable { pressBecameHold = true }.also {
-            handler.postDelayed(it, HOLD_THRESHOLD_MS)
-        }
-    }
-
-    private fun onPressUp(cancelled: Boolean, eventTime: Long) {
-        holdRunnable?.let { handler.removeCallbacks(it) }
-        holdRunnable = null
-
-        if (cancelled) {
-            // A finger dragged off the button, or the system stealing the gesture. Discard rather
-            // than transcribe: the user did not choose to end here.
-            if (state == State.RECORDING) {
-                discardRecording()
-                state = State.IDLE
-            }
-            pressBecameHold = false
-            return
-        }
-
-        val heldFor = eventTime - pressStartedAt
-        if (heldFor >= HOLD_THRESHOLD_MS) {
-            // It was a hold: releasing ends it, exactly as before.
-            pressBecameHold = false
-            finishRecording()
-        } else {
-            // It was a tap: recording stays on until the next tap.
-            pressBecameHold = false
-        }
-    }
-
-    private fun startLevelUpdates() {
-        stopLevelUpdates()
-        levelRunnable = object : Runnable {
-            override fun run() {
-                // Collects whatever the capture thread has measured since the last pass. A bar is
-                // 60 ms of audio, so this asks about twice as often as one can appear and never
-                // has to interpolate.
-                indicator.appendLevels(recorder.drainLevels())
-                handler.postDelayed(this, 33)
-            }
-        }.also { handler.post(it) }
-    }
-
-    private fun stopLevelUpdates() {
-        levelRunnable?.let { handler.removeCallbacks(it) }
-        levelRunnable = null
-    }
-
-    /** Discards capture and every in-flight piece derived from it without changing the UI state. */
-    private fun discardRecording() {
-        recorder.cancel()
-        recorder.onPcm = null
-        liveSession?.cancel()
-        liveSession = null
-        pendingContext = null
-        pendingTarget = null
-        stopLevelUpdates()
-    }
-
     // MARK: - Dictation
 
-    /**
-     * Opens the connection the dictation about to be recorded will need.
-     *
-     * Silent on failure by design: nothing has been asked for yet, so there is nothing to report.
-     * A dead connection found here is replaced and the user never learns it happened.
-     */
-    private fun warmUpConnection() {
-        val key = Settings.apiKey
-        if (key.isNullOrBlank()) return
-        scope.launch(Dispatchers.IO) {
-            runCatching {
-                ProviderFactory.create(Settings.provider, key, Settings.model).endpointOrigin
-            }.getOrNull()?.let { ProviderTransport.warmUp(it) }
-        }
+    /** Discards capture, and the keyboard's note of where its words were going. */
+    private fun discardRecording() {
+        dictation.discard()
+        pendingTarget = null
     }
 
     /**
@@ -421,179 +348,78 @@ class DoNotTypeIME : InputMethodService() {
         }
     }
 
-    private fun beginRecording() {
-        if (state == State.RECORDING || state == State.TRANSCRIBING) return
-        // ERROR and NOTICE both render a live button. They must also accept it: previously ERROR
-        // looked retryable but beginRecording silently rejected every tap until the IME reopened.
-        noticeJob?.cancel()
-        state = State.IDLE
-
-        // Do not capture speech that cannot be sent. The keyboard points directly to the app so
-        // the missing key is fixed before recording, rather than reported after the user talks.
-        if (Settings.apiKey.isNullOrBlank()) {
-            showFixInTheApp("No API key yet — tap here to add one")
-            state = State.ERROR
-            return
-        }
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            // An IME cannot request a runtime permission itself; it has to be granted from the
-            // settings activity, which is why onboarding sends the user there first.
-            log.warn(
-                mapOf("permission" to "RECORD_AUDIO"),
-            ) { "cannot record: the microphone permission is not granted" }
-            showFixInTheApp("Microphone access is off — tap here to grant it")
-            state = State.ERROR
-            return
-        }
-
-        log.info(
-            mapOf(
-                "provider" to Settings.provider.id,
-                "model" to Settings.model,
-                "fidelity" to Settings.fidelity.id,
-                "grounding" to if (Settings.groundingEnabled) "on" else "off",
-                "package" to (currentInputEditorInfo?.packageName ?: "?"),
-            ),
-        ) { "recording started" }
-
-        // Which field the words are meant for, decided now rather than when they arrive.
-        pendingTarget = currentInputEditorInfo?.let { it.packageName to it.fieldId }
-
-        // The same trick as the screen capture below, for the network. Opening a connection costs
-        // about a second, and whether the pooled one is still alive cannot be known without using
-        // it — so both happen here, against speech the user was going to produce anyway, rather
-        // than after they stop with somebody watching. See ProviderTransport.
-        warmUpConnection()
-
-        // Phase 1 equivalent: snapshot the screen at press, while the field being dictated into is
-        // still the focused one.
-        val passwordField = currentInputEditorInfo?.let { isPasswordField(it.inputType) } == true
-        pendingContext = if (Settings.groundingEnabled && !passwordField) {
-            ScreenReaderService.instance?.capture()
-        } else {
-            null
-        }
-
-        liveSession = service.createLiveSession(pendingContext)
-        recorder.onPcm = liveSession?.let { session -> { pcm -> session.append(pcm) } }
-
-        runCatching { recorder.start() }
-            .onSuccess { state = State.RECORDING }
-            .onFailure {
-                recorder.onPcm = null
-                liveSession?.cancel()
-                liveSession = null
-                Log.e(TAG, "could not start recording", it)
-                showStatus(it.message ?: "Could not start recording")
-                state = State.ERROR
-            }
-    }
-
-    private fun finishRecording() {
-        if (state != State.RECORDING) return
-
-        val wav = recorder.stop()
-        recorder.onPcm = null
-        val context = pendingContext
-        pendingContext = null
-
-        if (wav == null) {
-            // A tap rather than a hold is not an error, but returning straight to the ordinary
-            // idle label makes the gesture look ignored.
-            liveSession?.cancel()
-            liveSession = null
-            showNotice("Recording was too short — try again")
-            return
-        }
-
-        val key = Settings.apiKey
-        if (key.isNullOrBlank()) {
-            liveSession?.cancel()
-            liveSession = null
-            showFixInTheApp("No API key yet — tap here to add one")
-            state = State.ERROR
-            return
-        }
-
-        // Read at the moment the recording ends: this accepts a mode correction made while the
-        // user was speaking, while a tap during the request cannot change what it becomes.
-        val style = Settings.liveStyle
-        val live = liveSession
-        liveSession = null
-
-        state = State.TRANSCRIBING
-        scope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                service.transcribe(wav, context, context?.appName, style, live)
-            }
-            outcome.fold(
-                onSuccess = { record ->
-                    // The rewrite when there is one, the transcript when there is not.
-                    val delivered = record.styledText ?: record.text
-                    // Where the user was looking when they spoke, not where they are looking now.
-                    //
-                    // commitText goes to whatever field holds focus at the moment it fires, which
-                    // is the right answer only while that is still the same field. It stopped
-                    // being the same field every time a dictation took a minute: the user gave up
-                    // waiting and moved on, and the transcript arrived in whatever they had moved
-                    // on to. On desktop, where this was found, that typed 292 characters of speech
-                    // into the app's own settings window.
-                    //
-                    // Nothing is lost when this fires: the transcript is in the history and on the
-                    // clipboard, one paste from where it was going.
-                    val focusedNow = currentInputEditorInfo?.let { it.packageName to it.fieldId }
-                    val movedOn = pendingTarget != null && focusedNow != pendingTarget
-                    if (delivered.isNotEmpty() && movedOn) {
-                        copyForManualPaste(delivered)
-                        log.warn(
-                            mapOf(
-                                "spokeInto" to (pendingTarget?.first ?: "?"),
-                                "nowFocused" to (focusedNow?.first ?: "none"),
-                            ),
-                        ) { "focus moved while transcribing; not typing into a field the user did not dictate into" }
-                        showStatus("Copied — paste it where you want it")
-                        state = State.ERROR
-                        return@fold
-                    }
-                    if (delivered.isNotEmpty()) {
-                        val insertionTarget = if (Settings.learnDictionaryFromEdits) {
-                            captureEditableSnapshot()
-                        } else {
-                            null
-                        }
-                        currentInputConnection?.commitText(delivered, 1)
-                        insertionTarget?.let { watchForCorrection(it, delivered) }
-                    }
-                    if (record.rewriteFailed) {
-                        // The words landed either way, but somebody who chose Formal and got their
-                        // own words back should be told that is what happened.
-                        showStatus("Inserted — not rewritten")
-                        state = State.ERROR
+    /**
+     * Where a finished dictation goes.
+     *
+     * Everything up to here is shared with the app's dictation screen; this is not. A keyboard has
+     * a field it was aimed at, and typing into the wrong one is worse than not typing at all.
+     */
+    private fun deliver(outcome: Result<DictationRecord>) {
+        outcome.fold(
+            onSuccess = { record ->
+                // The rewrite when there is one, the transcript when there is not.
+                val delivered = record.styledText ?: record.text
+                // Where the user was looking when they spoke, not where they are looking now.
+                //
+                // commitText goes to whatever field holds focus at the moment it fires, which
+                // is the right answer only while that is still the same field. It stopped
+                // being the same field every time a dictation took a minute: the user gave up
+                // waiting and moved on, and the transcript arrived in whatever they had moved
+                // on to. On desktop, where this was found, that typed 292 characters of speech
+                // into the app's own settings window.
+                //
+                // Nothing is lost when this fires: the transcript is in the history and on the
+                // clipboard, one paste from where it was going.
+                val focusedNow = currentInputEditorInfo?.let { it.packageName to it.fieldId }
+                val movedOn = pendingTarget != null && focusedNow != pendingTarget
+                if (delivered.isNotEmpty() && movedOn) {
+                    copyForManualPaste(delivered)
+                    log.warn(
+                        mapOf(
+                            "spokeInto" to (pendingTarget?.first ?: "?"),
+                            "nowFocused" to (focusedNow?.first ?: "none"),
+                        ),
+                    ) { "focus moved while transcribing; not typing into a field the user did not dictate into" }
+                    showStatus("Copied — paste it where you want it")
+                    dictation.failed()
+                    return@fold
+                }
+                if (delivered.isNotEmpty()) {
+                    val insertionTarget = if (Settings.learnDictionaryFromEdits) {
+                        captureEditableSnapshot()
                     } else {
-                        state = State.IDLE
+                        null
                     }
-                },
-                onFailure = { error ->
-                    // Not a failure worth alarming anybody about: the microphone worked, the
-                    // request was never made, and nothing was said. Reported plainly rather than
-                    // as an error, and never as a transcript.
-                    if (error is NoSpeechException) {
-                        showNotice("No speech detected — recording wasn't sent")
-                        return@fold
-                    }
-                    Log.e(TAG, "transcription failed", error)
-                    // What happened and what to do about it, rather than a generic reassurance
-                    // or a raw exception. On a keyboard there is one line for it, which is why the
-                    // advice is written to fit one.
-                    showStatus(FailureAdvice.describe(error).message)
-                    state = State.ERROR
-                },
-            )
-        }
+                    currentInputConnection?.commitText(delivered, 1)
+                    insertionTarget?.let { watchForCorrection(it, delivered) }
+                }
+                if (record.rewriteFailed) {
+                    // The words landed either way, but somebody who chose Formal and got their
+                    // own words back should be told that is what happened.
+                    showStatus("Inserted — not rewritten")
+                    dictation.failed()
+                } else {
+                    dictation.idle()
+                }
+            },
+            onFailure = { error ->
+                // Not a failure worth alarming anybody about: the microphone worked, the
+                // request was never made, and nothing was said. Reported plainly rather than
+                // as an error, and never as a transcript.
+                if (error is NoSpeechException) {
+                    showNotice("No speech detected — recording wasn't sent")
+                    return@fold
+                }
+                Log.e(TAG, "transcription failed", error)
+                // What happened and what to do about it, rather than a generic reassurance
+                // or a raw exception. On a keyboard there is one line for it, which is why the
+                // advice is written to fit one.
+                showStatus(FailureAdvice.describe(error).message)
+                dictation.failed()
+            },
+        )
     }
+
 
     /// Whether tapping the status label should open the app. Only when it is showing something
     /// the app can fix, so an ordinary status line is not a surprise button.
@@ -696,13 +522,8 @@ class DoNotTypeIME : InputMethodService() {
 
     /** Keeps a harmless outcome visible while leaving the talk button immediately reusable. */
     private fun showNotice(message: String) {
-        noticeJob?.cancel()
         showStatus(message)
-        state = State.NOTICE
-        noticeJob = scope.launch {
-            delay(3_000)
-            if (state == State.NOTICE) state = State.IDLE
-        }
+        dictation.notice()
     }
 
     private fun openTheApp() {
@@ -737,14 +558,12 @@ class DoNotTypeIME : InputMethodService() {
                 talkButton.text = if (hasAPIKey) "Tap to talk" else "API key required"
                 talkButton.isEnabled = hasAPIKey
                 indicator.mode = DictationIndicatorView.Mode.IDLE
-                stopLevelUpdates()
             }
             State.RECORDING -> {
                 showStatus("Listening…")
                 talkButton.text = "Tap to stop"
                 talkButton.isEnabled = true
                 indicator.mode = DictationIndicatorView.Mode.RECORDING
-                startLevelUpdates()
             }
             State.TRANSCRIBING -> {
                 // Named rather than left as a spinner: after you stop talking the wait is dead
@@ -753,7 +572,6 @@ class DoNotTypeIME : InputMethodService() {
                 talkButton.text = "Working…"
                 talkButton.isEnabled = false
                 indicator.mode = DictationIndicatorView.Mode.TRANSCRIBING
-                stopLevelUpdates()
             }
             State.NOTICE -> {
                 // showNotice already supplied the meaningful line; do not overwrite it with the
@@ -761,13 +579,11 @@ class DoNotTypeIME : InputMethodService() {
                 talkButton.text = "Tap to talk"
                 talkButton.isEnabled = hasAPIKey
                 indicator.mode = DictationIndicatorView.Mode.IDLE
-                stopLevelUpdates()
             }
             State.ERROR -> {
                 talkButton.text = if (hasAPIKey) "Tap to talk" else "API key required"
                 talkButton.isEnabled = hasAPIKey
                 indicator.mode = DictationIndicatorView.Mode.IDLE
-                stopLevelUpdates()
             }
         }
         refreshModeButton()
@@ -782,20 +598,5 @@ class DoNotTypeIME : InputMethodService() {
         const val PAD_SIDE = 48
         const val PAD_TOP = 32
         const val PAD_BOTTOM = 32
-
-        /**
-         * How long a press has to last before releasing it ends the recording.
-         *
-         * It is [WavRecorder.MIN_DURATION_MS] exactly, and the two are the same number on purpose:
-         * a release may only end a recording the recorder would accept. While this was the shorter
-         * 350 ms it read as the more comfortable choice, but it opened a 150 ms window where a
-         * press was long enough to be called a hold and too short to survive
-         * [WavRecorder.MIN_DURATION_MS]. A press landing in it stopped the recording and then threw
-         * it away, so the gesture that felt most like a tap was the one guaranteed to produce
-         * nothing. Nobody says anything in under half a second, so every press that used to send
-         * still sends; what changes is that a press between the two lengths now leaves the
-         * recording running, with the button still showing it, instead of discarding it in silence.
-         */
-        const val HOLD_THRESHOLD_MS = WavRecorder.MIN_DURATION_MS
     }
 }
