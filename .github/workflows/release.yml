@@ -152,6 +152,9 @@ jobs:
           (cd dist && shasum -a 256 DoNotType-macOS.zip | tee DoNotType-macOS.zip.sha256)
 
       - name: Attest build provenance
+        # GitHub does not support attestations for user-owned private repositories. Keep the
+        # release usable while private, and turn provenance on automatically if visibility changes.
+        if: github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/DoNotType-macOS.zip
@@ -329,6 +332,7 @@ jobs:
             "$hash  DoNotType-Windows-x64.zip`n")
 
       - name: Attest build provenance
+        if: github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/DoNotType-Windows-x64.zip
@@ -445,6 +449,7 @@ jobs:
           (cd dist && sha256sum DoNotType-Android.apk | tee DoNotType-Android.apk.sha256)
 
       - name: Attest build provenance
+        if: github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/DoNotType-Android.apk
