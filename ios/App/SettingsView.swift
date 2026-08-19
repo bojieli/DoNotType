@@ -185,16 +185,26 @@ struct SettingsView: View {
                     Spacer()
                     if model.isCheckingConnection {
                         ProgressView()
-                    } else if let status = model.connectionStatus {
-                        Text(status)
-                            .font(.footnote)
-                            .foregroundStyle(status.hasPrefix("✓") ? .green : .red)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.trailing)
+                    } else if let status = model.connectionStatus, status.hasPrefix("✓") {
+                        Text(status).font(.footnote).foregroundStyle(.green)
                     }
                 }
             }
             .disabled(model.isCheckingConnection || !model.hasAPIKey)
+
+            // A failure gets its own row rather than the trailing edge of the button, and no line
+            // limit. It is the one message a user most needs to read in full and most likely wants
+            // to paste into a search or an issue — and since the probe started sending a recording,
+            // the longest of them is a provider explaining, in its own words, that it will not take
+            // one. Two clipped lines at the end of a button hid exactly that sentence.
+            if let status = model.connectionStatus, !status.hasPrefix("✓") {
+                Text(status)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("connection-failure")
+            }
         } header: {
             Text("Provider")
         } footer: {
