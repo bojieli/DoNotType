@@ -7,11 +7,9 @@ import app.donottype.core.TranscriptMode
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
-import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -23,6 +21,19 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import app.donottype.ui.body
+import app.donottype.ui.card
+import app.donottype.ui.controlRow
+import app.donottype.ui.primaryButton
+import app.donottype.ui.screenScaffold
+import app.donottype.ui.screenSubtitle
+import app.donottype.ui.screenTitle
+import app.donottype.ui.sectionFooter
+import app.donottype.ui.sectionTitle
+import app.donottype.ui.settingRow
+import app.donottype.ui.textButton
+import app.donottype.ui.themeColor
+import app.donottype.ui.tonalButton
 import kotlinx.coroutines.launch
 
 /**
@@ -44,6 +55,7 @@ class FileTranscriptionActivity : AppCompatActivity() {
     private lateinit var transcribeButton: Button
     private lateinit var toggleButton: Button
     private lateinit var resultView: TextView
+    private lateinit var resultSection: LinearLayout
 
     private val service by lazy { DictationService(this) }
     private val transcriber by lazy { FileTranscriber(this, service) }
@@ -61,7 +73,7 @@ class FileTranscriptionActivity : AppCompatActivity() {
         outcome = null
         fileLabel.text = pickedName ?: "a recording"
         resultView.text = ""
-        statusLabel.text = ""
+        say("", isError = false)
         refresh()
     }
 
@@ -73,15 +85,10 @@ class FileTranscriptionActivity : AppCompatActivity() {
         refresh()
     }
 
-    private fun buildLayout(): ScrollView {
-        val column = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(56, 64, 56, 96)
-        }
-
-        column.addView(heading("Transcribe a recording", 24f))
+    private fun buildLayout(): ScrollView = screenScaffold { column ->
+        column.addView(screenTitle("Transcribe a recording"))
         column.addView(
-            body(
+            screenSubtitle(
                 "${AudioDecoder.SUPPORTED_FORMATS}, and anything else this phone can play. " +
                     "Recordings over 90 seconds are split on silence and sent in parallel. The " +
                     "transcript is stored in History like a dictation; the recording stays where " +
@@ -89,16 +96,22 @@ class FileTranscriptionActivity : AppCompatActivity() {
             ),
         )
 
-        fileLabel = body("No recording chosen").apply { setTypeface(null, Typeface.BOLD) }
-        column.addView(fileLabel)
+        column.addView(sectionTitle("Recording"))
         column.addView(
-            button("Choose a recording…") {
-                // audio/* misses some voice-memo containers that report a video MIME type, so the
-                // filter is broad and the decoder gives the honest error for anything it cannot
-                // open.
-                picker.launch(arrayOf("audio/*", "video/*", "application/octet-stream"))
-            },
+            card(
+                settingRow(
+                    "Choose a recording…",
+                    "A voice memo, a call, a file someone sent you.",
+                ) {
+                    // audio/* misses some voice-memo containers that report a video MIME type, so
+                    // the filter is broad and the decoder gives the honest error for anything it
+                    // cannot open.
+                    picker.launch(arrayOf("audio/*", "video/*", "application/octet-stream"))
+                },
+            ),
         )
+        fileLabel = sectionFooter("No recording chosen")
+        column.addView(fileLabel)
 
         column.addView(sectionTitle("Produce"))
         modeSpinner = Spinner(this).apply {
@@ -117,50 +130,47 @@ class FileTranscriptionActivity : AppCompatActivity() {
                 override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             }
         }
-        column.addView(modeSpinner)
+        column.addView(card(controlRow("Mode", modeSpinner)))
 
         // Stated before the button is pressed rather than as an error afterwards: with a
         // recogniser selected, "summarise this" is not slow, it is impossible.
-        modeNote = body("")
+        modeNote = sectionFooter("")
         column.addView(modeNote)
 
-        transcribeButton = button("Transcribe") { start() }
+        transcribeButton = primaryButton("Transcribe") { start() }
         column.addView(transcribeButton)
 
-        statusLabel = body("")
+        statusLabel = body("").apply { visibility = android.view.View.GONE }
         column.addView(statusLabel)
 
-        toggleButton = button("Show what was said") {
+        toggleButton = textButton("Show what was said") {
             showingVerbatim = !showingVerbatim
             refresh()
         }
         column.addView(toggleButton)
 
-        resultView = TextView(this).apply {
-            textSize = 14f
-            setTextIsSelectable(true)
-            setPadding(0, 16, 0, 16)
-        }
-        column.addView(resultView)
-
-        column.addView(
-            button("Copy") {
-                val text = resultView.text.toString()
-                if (text.isEmpty()) return@button
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("transcript", text))
-                Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
-            },
-        )
-
-        return ScrollView(this).apply {
+        // Selectable and unlimited: the transcript is the thing the user came for, and a long one
+        // that has been cut off is worse than no result at all.
+        resultView = body("").apply { setTextIsSelectable(true) }
+        // Title, result and Copy together, so an empty result is absent rather than a titled empty
+        // box above a button with nothing to put on the clipboard.
+        resultSection = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = android.view.View.GONE
+            addView(sectionTitle("Result"))
+            addView(card(controlRow(null, resultView)))
             addView(
-                column,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                ),
+                tonalButton("Copy") {
+                    val text = resultView.text.toString()
+                    if (text.isEmpty()) return@tonalButton
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("transcript", text))
+                    Toast.makeText(this@FileTranscriptionActivity, "Copied", Toast.LENGTH_SHORT)
+                        .show()
+                },
             )
         }
+        column.addView(resultSection)
     }
 
     private fun start() {
@@ -184,16 +194,19 @@ class FileTranscriptionActivity : AppCompatActivity() {
                 mode = Settings.fileMode,
                 onProgress = { progress ->
                     runOnUiThread {
-                        statusLabel.text = when (progress) {
-                            is FileTranscriber.Progress.Decoding -> "Reading the file…"
-                            is FileTranscriber.Progress.Transcribing ->
-                                if (progress.of > 1) {
-                                    "Transcribing part ${progress.done} of ${progress.of}…"
-                                } else {
-                                    "Transcribing…"
-                                }
-                            is FileTranscriber.Progress.Deriving -> progress.mode.progressLabel
-                        }
+                        say(
+                            when (progress) {
+                                is FileTranscriber.Progress.Decoding -> "Reading the file…"
+                                is FileTranscriber.Progress.Transcribing ->
+                                    if (progress.of > 1) {
+                                        "Transcribing part ${progress.done} of ${progress.of}…"
+                                    } else {
+                                        "Transcribing…"
+                                    }
+                                is FileTranscriber.Progress.Deriving -> progress.mode.progressLabel
+                            },
+                            isError = false,
+                        )
                     }
                 },
             )
@@ -201,11 +214,32 @@ class FileTranscriptionActivity : AppCompatActivity() {
             result.onSuccess {
                 outcome = it
                 showingVerbatim = false
-                statusLabel.text = summarise(it)
+                say(summarise(it), isError = false)
             }.onFailure {
-                statusLabel.text = it.message ?: "That did not work."
+                // In full and in the error colour. These messages are FailureAdvice's own words,
+                // written to be acted on, and clipping or greying one out defeats the point.
+                say(it.message ?: "That did not work.", isError = true)
             }
             refresh()
+        }
+    }
+
+    /** The one place the status line is written, so its colour never lags behind its text. */
+    private fun say(text: String, isError: Boolean) {
+        statusLabel.text = text
+        statusLabel.setTextColor(
+            themeColor(
+                if (isError) {
+                    com.google.android.material.R.attr.colorError
+                } else {
+                    com.google.android.material.R.attr.colorOnSurfaceVariant
+                },
+            ),
+        )
+        statusLabel.visibility = if (text.isEmpty()) {
+            android.view.View.GONE
+        } else {
+            android.view.View.VISIBLE
         }
     }
 
@@ -234,6 +268,11 @@ class FileTranscriptionActivity : AppCompatActivity() {
                     "${transcriber.secondStageBackend()?.id} in a second request."
             else -> ""
         }
+        modeNote.visibility = if (modeNote.text.isEmpty()) {
+            android.view.View.GONE
+        } else {
+            android.view.View.VISIBLE
+        }
 
         // The verbatim transcript is always kept, so it is always one tap away — for a summary it
         // is the only way to see what was dropped.
@@ -249,6 +288,11 @@ class FileTranscriptionActivity : AppCompatActivity() {
             showingVerbatim -> produced.verbatim
             else -> produced.delivered
         }
+        resultSection.visibility = if (resultView.text.isEmpty()) {
+            android.view.View.GONE
+        } else {
+            android.view.View.VISIBLE
+        }
     }
 
     /** The name the picker shows, so the screen and the history row agree with the user's file. */
@@ -257,27 +301,4 @@ class FileTranscriptionActivity : AppCompatActivity() {
             ?.use { cursor ->
                 if (cursor.moveToFirst()) cursor.getString(0) else null
             }
-
-    private fun sectionTitle(text: String) = heading(text, 18f)
-
-    private fun heading(text: String, size: Float) = TextView(this).apply {
-        this.text = text
-        textSize = size
-        setTypeface(null, Typeface.BOLD)
-        setPadding(0, 48, 0, 12)
-    }
-
-    private fun body(text: String) = TextView(this).apply {
-        this.text = text
-        textSize = 13f
-        setPadding(0, 0, 0, 16)
-    }
-
-    private fun button(title: String, onClick: () -> Unit) = Button(this).apply {
-        text = title
-        layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-        )
-        setOnClickListener { onClick() }
-    }
 }
