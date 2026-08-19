@@ -3,10 +3,15 @@
 Notable changes, newest first. Behaviour changes that affect transcription quality carry the
 measurement that justified them; see [docs/EVALUATION.md](docs/EVALUATION.md).
 
-Format loosely follows [Keep a Changelog](https://keepachangelog.com/). This project has not cut a
-release yet, so everything below is unreleased.
+Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Release dates use the
+repository's local calendar date.
 
 ## Unreleased
+
+## 0.2.0 - 2026-08-19
+
+Release preparation repaired the Android build after the AGP 9 migration and refreshed the
+Windows app's locked transitive dependency graph after the ONNX Runtime update.
 
 ### Added
 
@@ -1216,8 +1221,10 @@ deliberate:
   writes the on-screen version number instead of the spoken one in roughly 36% of runs, against a
   21% baseline error rate with no context at all. Numbers, method and failed mitigations are in
   [docs/EVALUATION.md](docs/EVALUATION.md). This is the central open problem.
-- **The Windows app has never been run.** It compiles and its core tests pass, but every Win32 path
-  — keyboard hook, `waveIn` capture, `SendInput`, UI Automation, DPAPI — is unexercised.
+- **Windows microphone capture and text injection still require a manual release check.** CI
+  launches the packaged app and exercises the packaged CLI on Windows, and the native boundaries
+  have unit coverage, but a hosted runner cannot speak into `waveIn` or verify `SendInput` in a
+  separately focused application.
 - **The near-miss suite is red, deliberately.** Adding real-speech cases took it from 0 regressions
   to 3, which is the honest state: two are the version-number substitution reproducing, and one is
   a case written as a positive control that failed in the opposite direction. It is not to be made
