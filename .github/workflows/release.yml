@@ -124,7 +124,8 @@ jobs:
           bundled_version=$(/usr/libexec/PlistBuddy \
             -c 'Print :CFBundleShortVersionString' .build/DoNotType.app/Contents/Info.plist)
           test "$bundled_version" = "$VERSION"
-          .build/DoNotType.app/Contents/MacOS/dnt --version | grep -q "^dnt $VERSION ("
+          cli_version=$(.build/DoNotType.app/Contents/MacOS/dnt --version)
+          test "$cli_version" = "$VERSION"
 
       - name: Notarize
         if: env.NOTARY_KEY_ID != ''
