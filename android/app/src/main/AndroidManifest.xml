@@ -18,8 +18,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.DoNotType">
 
+        <!--
+          What the app opens on. The launcher used to be SettingsActivity, so the first thing
+          anybody saw of a dictation app was its configuration; everything that is a setting is now
+          one gear away, as it is on iOS.
+        -->
         <activity
-            android:name=".SettingsActivity"
+            android:name=".DictationActivity"
             android:exported="true"
             android:label="@string/app_name">
             <intent-filter>
@@ -27,6 +32,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          Exported, because the keyboard reaches it: an IME cannot hold an API key or grant itself
+          the microphone, so every dead end it has is "go to the app", and it starts this activity
+          from its own process with no task of its own.
+        -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="true"
+            android:label="@string/app_name" />
 
         <!--
           The offline path: a recording that already exists rather than speech into the keyboard.
