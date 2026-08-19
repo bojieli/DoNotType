@@ -101,9 +101,9 @@ public sealed class SettingsForm : Form
         Text = "DoNotType Settings";
         Icon = AppIcon.Window;
         Size = new Size(660, 620);
-        // A floor, matching the one macOS needs. A WinForms TabControl scrolls its tabs rather
-        // than hiding them the way an NSToolbar does, so this cannot lose the tab strip outright —
-        // but a settings window that can be dragged down to nothing is no more usable for it.
+        // A floor, as macOS has one. A WinForms TabControl scrolls its tabs rather than hiding
+        // them the way an NSToolbar does, so this cannot lose the tab strip outright — but a
+        // settings window that can be dragged down to nothing is no more usable for it.
         MinimumSize = new Size(620, 520);
         StartPosition = FormStartPosition.CenterScreen;
         MinimizeBox = false;

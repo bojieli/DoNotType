@@ -151,8 +151,8 @@ struct LogsCommand: AsyncParsableCommand {
 ///
 /// "Which prompt am I running?" has three possible answers — the shipped one, an edited copy in
 /// Application Support, or one passed with `--prompt` — and until now the only way to tell them
-/// apart was to open the app's Prompt tab. This also expands the placeholders, so what it prints is
-/// the exact text a request carries rather than the template.
+/// apart was to open the app's prompt editor. This also expands the placeholders, so what it prints
+/// is the exact text a request carries rather than the template.
 struct PromptCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "prompt",

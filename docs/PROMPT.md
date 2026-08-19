@@ -32,7 +32,7 @@ Two rules govern the whole directory:
    numbered list item, so hard wraps in them are joined with a single space on load. Nothing else
    is transformed.
 
-Each part can be edited on its own, in the app's Prompt tab or by hand, and restored on its own.
+Each part can be edited on its own, in the app's prompt editor or by hand, and restored on its own.
 Editing one part does not freeze the others at the edited version — that is what the old
 single-file override did, and it is why a prompt customised before summaries existed used to break
 the summary stage outright.

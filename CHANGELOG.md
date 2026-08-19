@@ -436,6 +436,43 @@ deliberate:
 
 ### Changed
 
+- **macOS Settings navigates from a sidebar, because its tab bar had hidden every panel again.**
+  The window opened on one unlabelled `»` chevron and nothing else, so all nine sections were
+  unreachable without knowing to click it.
+
+  The changelog already records this bug once, for six tabs. That fix widened the window and set a
+  700pt floor, and its own note said widening alone would only move the cliff. Three tabs were
+  added afterwards, the floor went to 820 to keep up, and nine tabs wanted more than the 840 the
+  window opened at. So the cliff moved and we walked into it, which is the argument for changing
+  axis rather than measuring again: a macOS tab bar is a single toolbar item, not one per tab, and
+  it lays out whole or collapses whole. However wide the window is, there is a number of sections
+  that hides all of them.
+
+  A sidebar list scrolls. Its capacity is bounded by window height, which this window has to
+  spare, so a tenth section can never hide the other nine — and it is where macOS itself went when
+  System Settings dropped top tabs in Ventura. All nine panels keep their names and symbols, now
+  in three groups a tab bar could not express: what shapes the text, what already happened, and
+  the app itself. The sidebar is pinned open with no toggle, since one that can be hidden is the
+  same defect by another route.
+
+  The window is 980x640 rather than 840x600 and its floor is 880 rather than 820 — both up, not
+  down. The sidebar costs about 180pt off the top of every panel, and Transfer's buttons,
+  History's toolbar and Stats' four tiles had no slack to give; the tiles' text is already capped
+  at `minimumScaleFactor(0.8)`. Paying for the sidebar out of panel width would have traded a
+  navigation bug for a legibility one. Transfer's seven buttons move to two rows regardless, along
+  the seam a divider already marked, since that row was the first thing to break at any width.
+
+  A split view rebuilds the panel on every visit where a tab view kept all of them alive, so what
+  a panel must not lose now lives on the model. One of those was destructive rather than
+  cosmetic: the Transfer editor fills itself from *this* machine when it appears empty, a guard
+  written when empty could only mean "first look". Pasting a config from another Mac, checking an
+  endpoint against it and coming back would have replaced the pasted document with your own
+  settings under the words "Loaded the current settings", one click from importing them. The
+  dictionary's search filter is the same shape one step down — a filter silently reset to
+  everything still looks like a filtered list. Alongside them, the empty API key field no longer
+  re-steals the caret on every visit to General, and the licence text is read once per process
+  rather than once per view.
+
 - **Casual replaces Bullets as a rewrite style, and is the default rewrite everywhere.** The
   bullet formatter left the rewrite picker on the owner's call: it overlapped the summary styles
   in appearance without their purpose. The new `casual` style rewrites as relaxed, typed prose
