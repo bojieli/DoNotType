@@ -120,11 +120,44 @@ screen context broke it. That is the failure this contract exists to prevent, an
 
 | Date | Change | Provider / model | runs | matched | improved | regressed |
 |------|--------|------------------|------|---------|----------|-----------|
+| 2026-08-19 | Light vocal fillers made unconditional | **gemini** · gemini-3.5-flash | 48 | 36 | 10 | **2** |
 | 2026-08-17 | Light self-correction cleanup | **gemini** · gemini-3.5-flash | 48 | 35 | 7 | **2** |
 | 2026-08-17 | Concise contracts and filler cleanup | **gemini** · gemini-3.5-flash | 48 | 38 | 12 | **2** |
 | 2026-08-17 | Pre-change 972-word control | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
 | 2026-08-09 | Initial contract | **gemini** · gemini-3.6-flash | 15 | 15 | 0 | **0** |
 | 2026-08-09 | Initial contract | openrouter · google/gemini-3.6-flash | 15 | 12 | 0 | 1 |
+
+### 2026-08-19 — light fidelity: vocal fillers split out of the dangling conditional
+
+The retained-hotkey benchmark (497 real dictations × five models,
+`eval/results/hotkey-model-benchmark-2026-08-18.json`) put numbers on the complaint that vocal
+fillers survive light fidelity: 146 of 190 "um/uh/ah" hits belonged to gemini-3.5-flash, while
+gemini-3-flash-preview had 2 (a quoted "um ah" used as content, correctly retained), 3.6 had 17,
+3.7 had 25 alongside 65 safety-blocked requests, and grok-stt had none because its API flag strips
+them server-side. Same prompt, same audio — filler compliance is mostly a model property.
+
+The one prompt-side flaw was grammatical. `fidelity/light.md` was the only part whose condition
+dangled: "Remove vocal fillers …, and discourse fillers such as … when they add no meaning" lets
+the condition scope over the whole list, so a model may treat a hesitation as meaningful and keep
+it. `tidy.md` and `rewrite.md` use the adjective form ("empty discourse fillers"), and the rewrite
+stage measured 45/45 filler-free. The clause now gives vocal fillers an unconditional sentence of
+their own and confines the conditional to a separate discourse-filler sentence. The assembled light
+instruction was already at the 160-word test cap and stays there; "I mean" left the example list to
+make room ("you know" out-occurs it 40:22 in the benchmark) and remains covered by the category.
+
+A/B on the benchmark's seven worst leaking clips — retained real audio, gemini-3.5-flash, eight
+samples per clip per arm: vocal-filler hits **182 → 75**, leaky samples 21/56 → 17/56. The two
+worst clips went 65→6 and 62→2, no clip got meaningfully worse, and a quoted-filler control kept
+its quoted "um ah" in both arms. A third arm also rewording rule 2 of `system.md` ("Apart from
+those removals, …") netted 67 hits against the clause-only arm's 73 on the shared four clips —
+inside per-clip noise — so `system.md` is unchanged.
+
+The required near-miss run, both arms same day, gemini-3.5-flash, 48 runs each: baseline matched
+36 / improved 9 / regressed 1; the variant matched 36 / improved 10 / regressed 2. The per-pass
+regression range is 0–1 in both arms, so 1 versus 2 is the suite's own noise floor: the variant's
+second regression is the flaky `benefit-novel-repo` flipping on its unstable baseline draw, and
+`real-acronym` regressed as it has in every recorded run. The zero-regression gate remains failed,
+as it has since the real-speech cases were added.
 
 ### 2026-08-17 — concise contracts and measurable filler removal
 

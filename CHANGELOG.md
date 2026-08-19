@@ -386,6 +386,16 @@ deliberate:
 
 ### Changed
 
+- **Light fidelity now removes vocal fillers unconditionally, measured on retained real
+  dictations.** The light clause's "when they add no meaning" used to dangle at the end of the
+  whole removal list, vocal fillers included; it now governs only discourse fillers, and
+  "um/uh/ah/er" removal stands in its own sentence. The retained-hotkey benchmark (497 real
+  dictations × five models) showed filler survival was overwhelmingly a gemini-3.5-flash behavior —
+  146 of 190 hits — and on the seven worst clips the rewritten clause cut vocal-filler hits from
+  182 to 75, with the near-miss suite indistinguishable between arms (36 matched in both; the
+  regression-count difference is inside the suite's per-pass noise floor). The assembled
+  instruction stays at the 160-word cap. Full numbers in [PROMPT.md](PROMPT.md).
+
 - **The local speech gate is Silero VAD, replacing the recording-relative heuristic that could
   delete an entire dictation.** The old detector assumed every recording contained a quiet section
   and derived its threshold from the quietest tenth. Continuous speech after aggressive microphone
@@ -1131,6 +1141,10 @@ deliberate:
 
 Recorded because the reasoning was plausible and someone will otherwise re-derive it.
 
+- **Making rule 2's carve-out explicit ("Apart from those removals, …" instead of "Otherwise …").**
+  The suspicion was that "preserve wording" pulls fillers back in against the cleanup rule; on the
+  four worst filler clips it netted 67 hits against the clause-only fix's 73 — inside per-clip
+  noise — while editing the contract shared by all three fidelities. `system.md` unchanged.
 - **Restating the fidelity rule immediately before the audio.** Substitution rose from 11/19 to
   15/18. The restatement named the decoy value as its example, which appears to prime it.
 - **Two-pass rewriting to protect number fidelity.** Twice as bad as single-pass (75% versus 38%),
