@@ -11,8 +11,6 @@ and reads your screen so it spells the hard words right.
 
 macOS · Windows · Android · iOS. Your own API key, no server in the middle.
 
-<img src="Resources/Demo/hero.svg" alt="You say 'switch to Gemini three point five Flash' while the screen shows 'Gemini 3 Flash' five times. An opaque vocabulary prior types 'Gemini 3 Flash'. DoNotType types 'Gemini 3.5 Flash'." width="880">
-
 ## Why DoNotType
 
 Voice input comes in two kinds today, and both fail technical work.
@@ -33,13 +31,10 @@ DoNotType is the third option: a fully open-source, configurable voice input met
 large language models **while keeping your original utterances**. Verbatim first, grounded in
 your screen, with every part inspectable.
 
-| | Built-in dictation | Commercial AI dictation | **DoNotType** |
-|---|---|---|---|
-| Model | small on-device ASR | large language model | large model, provider is your choice |
-| Technical terms | often wrong | right, via context | right, via screen grounding |
-| What you get | your words, with errors | a rewrite of your words | your words, verbatim |
-| Original utterance | kept, but wrong | discarded | always stored and recoverable |
-| Source | closed | closed, subscription | MIT, your API key, no middle server |
+<img src="Resources/Demo/hero.svg" alt="Illustrative example: a paper page shows ByteDance Research and UI-TARS. Audio-only dictation writes 'Best Dong's UI task'; DoNotType combines the audio with screen context and writes 'ByteDance's UI-TARS'." width="880">
+
+*An illustrative example, not a benchmark result. The screen contributes the exact spelling;
+the recording remains the authority for what was said.*
 
 ## Principles
 
@@ -151,10 +146,39 @@ Method, per-channel numbers and falsified mitigations: [docs/EVALUATION.md](docs
 
 Full index, including maintainer docs: [docs/README.md](docs/README.md).
 
-## Contributing
+## Research and contribute
 
-Contributions are welcome, with one unusual rule: changes to `prompt/` or the context format
-need **a measurement, not an argument**. See [CONTRIBUTING.md](CONTRIBUTING.md).
+The central research question is not whether more context helps. It is **which context helps,
+under a finite token, latency, and privacy budget, without overriding the recording**. The shipped
+system deliberately uses bounded screen context and an optional personal dictionary; prior
+transcripts are not sent. Better context policies should be established by ablation rather than
+intuition.
+
+Questions worth testing include:
+
+- Which screen regions carry the most useful signal: the caret neighborhood, visible text,
+  window title, browser URL, screenshot, or application identity?
+- Do recent transcripts improve project vocabulary, or anchor the model to words the speaker did
+  not say this time?
+- Can edits made immediately after dictation become safe, spelling-only correction signals?
+- How should a fixed context budget be divided among screen text, a personal dictionary, recent
+  vocabulary, and other opt-in sources?
+- Which sources improve names and technical terms without increasing substitution when the
+  context and audio disagree?
+
+Community contributions are welcome across the full stack:
+
+| Area | Useful contributions |
+|---|---|
+| **Context research** | Controlled ablations of individual context sources and fixed-budget combinations, including accuracy, substitution, latency, and privacy tradeoffs. |
+| **Prompts** | Prompt and context-format improvements with before/after evaluation results. |
+| **Models and providers** | New hosted or local backends, capability declarations, live probes, and model comparisons. |
+| **Benchmarks** | Reproducible cases, legally shareable corpora, cassettes, scoring improvements, and independently replicated results. |
+| **Clients and tooling** | Cross-platform parity, diagnostics, evaluation infrastructure, accessibility, and documentation. |
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md), the current
+[context format](docs/CONTEXT_FORMAT.md), and the [evaluation method](docs/EVALUATION.md). Changes
+to `prompt/` or the context format need **a measurement, not an argument**.
 
 ## Security
 

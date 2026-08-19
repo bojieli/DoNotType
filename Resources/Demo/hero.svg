@@ -1,57 +1,67 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 260" width="880" height="260"
-     font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-     role="img" aria-label="You say Gemini three point five Flash while the screen shows Gemini 3 Flash five times. A rewriting tool types Gemini 3 Flash. DoNotType types Gemini 3.5 Flash, because the screen may correct spelling but never content.">
-  <title>Context corrects spelling, never content</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 390" width="880" height="390"
+     font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+     role="img" aria-label="Illustrative example. The screen shows ByteDance Research and the paper UI-TARS: Pioneering Automated GUI Interaction with Native Agents. Audio-only dictation writes Best Dong's UI task. DoNotType combines the audio with screen context and writes ByteDance's UI-TARS.">
+  <title>Screen context supplies the spelling that audio alone cannot</title>
 
   <!--
-    A diagram, deliberately, rather than a screenshot: it illustrates the rule the project is built
-    on without dressing a claim up as a captured result. The measured numbers, including where this
-    rule still fails on real speech, are in docs/EVALUATION.md and linked from the README beneath.
-
-    Colours are fixed rather than inherited so it reads the same on a light or dark README, and the
-    panels carry their own backgrounds for the same reason.
+    This is an illustrative diagram, not a captured benchmark result. Its copy is intentionally
+    editable SVG text so the example can evolve with the README without regenerating an image.
   -->
 
   <defs>
     <style>
-      .label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; fill: #8b8b8b; }
-      .body  { font-size: 15px; fill: #e8e8e8; }
-      .mono  { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
-      .good  { fill: #4ade80; }
-      .bad   { fill: #f87171; }
-      .dim   { fill: #6b7280; }
-      .panel { fill: #17181c; }
-      .rule  { stroke: #2a2c33; stroke-width: 1; }
+      .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .10em; fill: #8b949e; }
+      .body { font-size: 15px; fill: #e6edf3; }
+      .small { font-size: 12px; fill: #8b949e; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .panel { fill: #161b22; stroke: #30363d; }
+      .good { fill: #3fb950; }
+      .bad { fill: #f85149; }
+      .arrow { fill: none; stroke: #484f58; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     </style>
+    <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L6,3 z" fill="#484f58"/>
+    </marker>
   </defs>
 
-  <rect width="880" height="260" rx="10" fill="#0d0e11"/>
+  <rect width="880" height="390" rx="12" fill="#0d1117"/>
 
-  <!-- What you said -->
-  <text x="28" y="34" class="label">You say</text>
-  <text x="28" y="62" class="body mono">“switch to Gemini <tspan class="good">three point five</tspan> Flash”</text>
+  <text x="28" y="30" class="eyebrow">THE TERM IS ALREADY ON YOUR SCREEN</text>
 
-  <!-- What is on screen -->
-  <text x="28" y="104" class="label">On your screen</text>
-  <rect x="28" y="116" width="360" height="64" rx="6" class="panel"/>
-  <text x="42" y="139" class="mono" font-size="13" fill="#9ca3af">Gemini <tspan class="bad">3</tspan> Flash is our fastest model.</text>
-  <text x="42" y="159" class="mono" font-size="13" fill="#9ca3af">Gemini <tspan class="bad">3</tspan> Flash pricing: $0.50 input…</text>
-  <text x="42" y="176" class="mono" font-size="11" fill="#4b5563">…and “Gemini 3 Flash” three more times</text>
+  <!-- A paper page open in the focused window. -->
+  <rect x="28" y="44" width="824" height="112" rx="8" class="panel"/>
+  <circle cx="46" cy="61" r="4" fill="#f85149"/>
+  <circle cx="60" cy="61" r="4" fill="#d29922"/>
+  <circle cx="74" cy="61" r="4" fill="#3fb950"/>
+  <rect x="92" y="54" width="742" height="15" rx="4" fill="#0d1117"/>
+  <text x="104" y="65" class="small mono" font-size="9px">arxiv.org · ByteDance Research</text>
+  <text x="48" y="98" font-size="24px" font-weight="700" fill="#f0f6fc">UI-TARS</text>
+  <text x="48" y="123" font-size="16px" fill="#c9d1d9">Pioneering Automated GUI Interaction with Native Agents</text>
+  <rect x="48" y="134" width="124" height="3" rx="1.5" fill="#58a6ff"/>
+  <text x="184" y="139" class="small">ByteDance Research</text>
 
-  <!-- Divider -->
-  <line x1="430" y1="24" x2="430" y2="236" class="rule"/>
+  <!-- The same utterance feeds both paths. -->
+  <rect x="228" y="177" width="424" height="48" rx="24" fill="#1f2937" stroke="#58a6ff" stroke-opacity=".45"/>
+  <circle cx="254" cy="201" r="11" fill="#58a6ff" fill-opacity=".16"/>
+  <path d="M254 194 v9 M250 201 a4 4 0 0 0 8 0 M254 205 v4 M250 209 h8"
+        fill="none" stroke="#58a6ff" stroke-width="1.7" stroke-linecap="round"/>
+  <text x="276" y="207" class="body">“Compare it with ByteDance’s UI-TARS.”</text>
 
-  <!-- The two outcomes -->
-  <text x="466" y="34" class="label">An opaque vocabulary prior</text>
-  <rect x="466" y="46" width="386" height="44" rx="6" class="panel"/>
-  <text x="482" y="74" class="mono" fill="#d1d5db">switch to Gemini <tspan class="bad">3</tspan> Flash</text>
-  <text x="466" y="108" font-size="12" class="dim">the screen won, and you cannot see that it did</text>
+  <path d="M440 225 V242 H224 V259" class="arrow" marker-end="url(#arrowhead)"/>
+  <path d="M440 225 V242 H656 V259" class="arrow" marker-end="url(#arrowhead)"/>
 
-  <text x="466" y="150" class="label">DoNotType</text>
-  <rect x="466" y="162" width="386" height="44" rx="6" class="panel" stroke="#22c55e" stroke-opacity=".35"/>
-  <text x="482" y="190" class="mono" fill="#e8e8e8">switch to Gemini <tspan class="good">3.5</tspan> Flash</text>
-  <text x="466" y="224" font-size="12" class="dim">numbers come from the audio alone — rule 4 of PROMPT.md</text>
+  <!-- Context-blind output. -->
+  <rect x="28" y="264" width="392" height="82" rx="8" class="panel" stroke="#f85149" stroke-opacity=".45"/>
+  <text x="48" y="287" class="eyebrow">AUDIO ONLY</text>
+  <text x="48" y="317" class="body mono">“Best Dong’s <tspan class="bad">UI task</tspan>”</text>
+  <text x="48" y="337" class="small">The sound is plausible; the spelling is not.</text>
 
-  <text x="28" y="224" font-size="12" class="dim">Screen text may fix spelling.</text>
-  <text x="28" y="240" font-size="12" class="dim">It may never change a word you said.</text>
+  <!-- Grounded output. -->
+  <rect x="460" y="264" width="392" height="82" rx="8" class="panel" stroke="#3fb950" stroke-opacity=".55"/>
+  <text x="480" y="287" class="eyebrow">AUDIO + SCREEN CONTEXT</text>
+  <text x="480" y="317" class="body mono">“<tspan class="good">ByteDance’s UI-TARS</tspan>”</text>
+  <text x="480" y="337" class="small">The screen supplies spelling; the audio supplies content.</text>
+
+  <text x="28" y="374" class="small">Illustrative example — not a benchmark result.</text>
+  <text x="852" y="374" text-anchor="end" class="small">Verbatim first. Context grounded. Fully inspectable.</text>
 </svg>

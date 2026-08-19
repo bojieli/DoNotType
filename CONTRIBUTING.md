@@ -24,6 +24,31 @@ before/after numbers from `swift run dnt-eval ablate` or `dnt-eval suite --repea
 [docs/EVALUATION.md](docs/EVALUATION.md). A PR that improves the numbers is welcome even if the
 reasoning is unclear. A PR with clear reasoning and no numbers will be asked for numbers.
 
+## Research contributions
+
+Context construction is an open research area in this project. The context cannot be infinite:
+every source consumes tokens, may add latency or expose private data, and may pull a transcript
+away from the recording. The current product sends bounded screen context plus an optional
+personal dictionary. Historical transcripts are not sent.
+
+Useful experiments compare one variable at a time under a fixed budget. Candidate sources include:
+
+- text around the caret, visible window text, screenshots, app identity, window title, and URL;
+- recent transcripts or vocabulary derived from them, with explicit opt-in and retention rules;
+- corrections inferred from what a user types after dictation;
+- personal-dictionary entries and project-specific terms;
+- combinations of those sources with a fixed total token budget.
+
+Report both benefit and harm. A context source that fixes five names but causes one previously
+correct recording to be overwritten has a different risk profile from one that only helps. Include
+the grounded and ungrounded outputs, per-pass variance, request latency, context size, privacy and
+retention assumptions, and enough artifacts to reproduce or audit the score.
+
+Other high-value research contributions include prompt improvements, new model and provider
+integrations, model comparisons, benchmark cases, shareable corpora, scoring improvements, and
+independent replications of published results. Start with [docs/CONTEXT_FORMAT.md](docs/CONTEXT_FORMAT.md),
+[docs/EVALUATION.md](docs/EVALUATION.md), and [docs/MODELS.md](docs/MODELS.md).
+
 ## Setup
 
 ```bash
