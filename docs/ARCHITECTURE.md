@@ -6,7 +6,7 @@ arbitrary here is the residue of something that was measured and came out the ot
 ## The shape
 
 ```
-                     prompt/           CONTEXT_FORMAT.md
+                     prompt/           docs/CONTEXT_FORMAT.md
                 (the contract)        (how context is framed)
                         │                      │
                         └──────────┬───────────┘

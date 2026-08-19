@@ -2,138 +2,68 @@
 
 # DoNotType
 
-A voice input method that **transcribes what you said** instead of rewriting it, and reads your
-screen so it spells the hard words right.
+An open-source voice input method that **transcribes what you said** instead of rewriting it —
+and reads your screen so it spells the hard words right.
 
-macOS · Windows · Android · iOS. Open source, your own API key, no server in the middle.
+[![CI](https://github.com/bojieli/DoNotType/actions/workflows/ci.yml/badge.svg)](https://github.com/bojieli/DoNotType/actions/workflows/ci.yml)
+[![Release](https://github.com/bojieli/DoNotType/actions/workflows/release.yml/badge.svg)](https://github.com/bojieli/DoNotType/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-```
-        hold a key ──▶ speak ──▶ release ──▶ your words, where your cursor was
-                                    │
-                        grounded in what is on your screen,
-                        so "koffi" stays koffi and 3.5 stays 3.5
-```
+macOS · Windows · Android · iOS. Your own API key, no server in the middle.
 
 <img src="Resources/Demo/hero.svg" alt="You say 'switch to Gemini three point five Flash' while the screen shows 'Gemini 3 Flash' five times. An opaque vocabulary prior types 'Gemini 3 Flash'. DoNotType types 'Gemini 3.5 Flash'." width="880">
 
-That is the rule, drawn. Whether it *holds* is a separate question with a measured answer, and the
-honest one is below: it holds for words and fails for digits, which is why a second screen-blind
-pass supplies the numbers.
+## Why DoNotType
 
-## Why
+Voice input comes in two kinds today, and both fail technical work.
 
-Dictation tools in this category get two things wrong.
+**Built-in dictation uses small models with no context.** The voice input shipped with macOS,
+iOS, Android and Windows transcribes with relatively small, general-purpose models. They cannot
+see what you are working on, so technical terms, project names and jargon come out wrong —
+the exact words you dictated most carefully.
 
-**They rewrite.** Speak casually, get back something formal. The refinement *is* the product, so
-there is no setting to turn it off and no raw transcript kept anywhere. In the tool this project
-was built to replace, the only stored field is `refined_text` — going back through every schema
-version, what you actually said was never saved.
+**Commercial AI dictation rewrites you.** Tools like Typeless add a large language model and
+context grounding, which fixes the spelling — but the product is the rewrite, not the
+transcription. Casual speech comes back formal and reads as AI-written rather than naturally
+spoken. What you actually said is not kept: the stored field is the refined text. And the
+software is closed-source and commercial, with your audio and screen context flowing through
+servers you do not control.
 
-**Their grounding overrules you.** An opaque vocabulary of "correct" terms can become a prior that
-beats clear audio: say "Gemini 3.5 Flash" and get "Gemini 3 Flash", because that string is the one
-the system already knows. A correction-fed dictionary can make that failure self-reinforcing when
-mistakes are learned silently and cannot be inspected or undone.
+DoNotType is the third option: a fully open-source, configurable voice input method that uses
+large language models **while keeping your original utterances**. Verbatim first, grounded in
+your screen, with every part inspectable.
 
-DoNotType inverts both. The prompt is a directory of versioned files you can read, edit and measure
-([`prompt/`](prompt/), one part per file, argued for in [`PROMPT.md`](docs/PROMPT.md)). Screen context is
-sent **raw** — no term extraction and no prior transcripts — and its authority is scoped to
-spelling, never content. The separate personal dictionary is local, visible and optional: entries
-can be added directly or imported from a one-column CSV, and correction learning is opt-in. Learned
-entries are labelled and removable. Number-bearing entries are never sent through a recogniser's
-bare keyterm channel, where the app cannot attach the rule that audio wins.
+| | Built-in dictation | Commercial AI dictation | **DoNotType** |
+|---|---|---|---|
+| Model | small on-device ASR | large language model | large model, provider is your choice |
+| Technical terms | often wrong | right, via context | right, via screen grounding |
+| What you get | your words, with errors | a rewrite of your words | your words, verbatim |
+| Original utterance | kept, but wrong | discarded | always stored and recoverable |
+| Source | closed | closed, subscription | MIT, your API key, no middle server |
 
-## Status, honestly
+## Principles
 
-This is a working tool with one unsolved problem, and it is the central one.
+1. **Dictation, not authorship.** The verbatim transcript is always produced first, stored
+   first, and recoverable. Rewrite and summary are optional second stages that sit *beside* the
+   original, never instead of it — so undo is one keystroke (`⌘⌥Z` / `Ctrl+Alt+Z`).
+2. **Grounding spells, it never decides.** Screen context is sent raw — no term extraction, no
+   prior transcripts — and its authority is scoped to spelling, never content. When the screen
+   and the audio disagree, the audio wins.
+3. **No server in the middle.** No account, no sign-in, no subscription, no telemetry, no
+   analytics. Requests go straight from your machine to the provider you configured, with
+   `store: false` set. Keys live in the Keychain / DPAPI / Android Keystore.
+4. **Everything is inspectable.** The transcription prompt is a directory of versioned files you
+   can read, edit and restore ([`prompt/`](prompt/)). Every dictation keeps the context it was
+   sent with, and the Context Inspector renders exactly what went over the wire.
+5. **Claims carry numbers.** Changes to the prompt, the context format or the default backend
+   require before/after measurements, not arguments. Known limitations are stated below, not
+   hidden.
 
-**Substitution is not fixed, and it is always a number.** Across the near-miss suite every
-word-level case passes — names, acronym chains, brands, code-switched Mandarin. What fails is
-digits: a version number on screen replacing the one you said. A wrong name you notice by reading
-it; a wrong version number reads perfectly.
+## Quick start
 
-Where it bites is the text right beside your caret. With a contradicting value there, the model
-took the screen's over the speaker's **75%** of the time. The mitigation that ships — a second
-transcription that never sees the screen, from which the digits are taken — brings that to **20%**,
-and on the reference clip it matched the no-screen baseline exactly (8% against 8%). It is on by
-default, and only for dictations where the text around the caret actually contains digits.
-
-So: better than it was, not solved. 20% is still worse than not grounding at all, and the fix costs
-a second request and about 1.5 seconds.
-
-Two caveats about the numbers themselves, since this project's argument is that claims should be
-checkable. **An earlier ablation is often quoted at 36% against a 21% baseline — do not cite it.**
-It predates the guard, and the recording it used is no longer in the repository, so nobody can
-reproduce or audit it. And **accuracy on ordinary dictation is unmeasured**: everything above
-describes deliberately adversarial cases. Method, per-channel numbers and two falsified mitigations
-are in [docs/EVALUATION.md](docs/EVALUATION.md).
-
-Everything else works and is tested. Each app is now driven by a UI test on the platform it ships
-to — the iOS app is installed and exercised in a simulator, the Android app in an emulator, and the
-Windows tray app is launched on a Windows runner and has to still be alive with its settings window
-open before the build passes. That last one is new: for most of this project's life the Windows app
-compiled and had **never been started on Windows**, and until recently the iOS app could not be
-installed anywhere at all.
-
-The iOS keyboard extension is covered where it can be. Its interface cannot be reached by a UI
-test — a custom keyboard runs in its own process and its views never enter the host app's
-accessibility tree — so the tests cover its cross-process protocol instead: cold/warm voice-command
-state, transcript handoff, dictionary state, and correction anchors that survive switching
-keyboards.
-
-The dictation pipeline is now covered offline against a stub backend — a transcript is stored with
-the backend that produced it, silence writes no row, a failure keeps its audio and retry recovers
-it, a rewrite is stored beside the verbatim text rather than instead of it, and screen context
-arrives ahead of the audio. Those run in every `swift test`, so CI protects the path a first user
-walks.
-
-Still unexercised by CI: the two ends that need hardware — microphone capture and text injection
-into another app. Those are a [manual checklist](docs/MANUAL-CHECKS.md) run once per release, and
-the release notes say which platforms were actually checked. And **accuracy on ordinary dictation is unmeasured**, because it needs ground truth
-and nobody has verified the corpus by ear yet. `eval/make-review-sheet.py` exists to make that an
-hour's work rather than a project.
-
-## Platforms
-
-| | Dictation | Screen grounding | Personal dictionary | WAV·MP3·M4A·Opus | CLI | Build |
-|---|---|---|---|---|---|---|
-| **macOS** | menu-bar app, hold Right ⌘ | ✅ accessibility tree + screenshot fallback | ✅ manual, CSV, optional learning | ✅ | `dnt` | `make app` |
-| **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | ✅ manual, CSV, optional learning | ✅ | `dnt.exe` | `cd windows && dotnet build` |
-| **Android** | keyboard, records in-process | ✅ `AccessibilityService`, pull-based | ✅ manual, CSV, optional learning | ✅ | — | `cd android && ./gradlew assembleDebug` |
-| **iOS** | voice keyboard; containing app records | ❌ not possible in the sandbox | ✅ manual, CSV, best-effort learning | ✅ | — | `cd ios && xcodegen generate` |
-
-Feature by feature, with the reason for every gap: [docs/PARITY.md](docs/PARITY.md). The only
-platform-imposed gap is screen grounding on iOS; its correction learner also has to wait until the
-DoNotType keyboard is active again because iOS reveals document context only to the active keyboard.
-
-All four send the **same** `prompt/`, copied into each bundle at build time rather than
-duplicated, so no platform can quietly drift from what the evaluation measures. All four also
-transcribe recordings you already have, in all three modes, and write a readable log — see
-[docs/CLI.md](docs/CLI.md) for what differs and why.
-
-iOS is the odd one out for a reason: a keyboard extension cannot open a microphone — "Allow Full
-Access" grants network and a shared container, not the mic. Its centred keyboard button therefore
-hands cold capture to the containing app, then controls the app's short-lived warm audio session
-for later dictations. See [ios/README.md](ios/README.md).
-
-That also makes iOS the one platform where a **speech recognition** backend costs nothing: there is
-no screen grounding to give up, so Deepgram or Voxtral are simply several times faster and cheaper
-than a model, with no trade at all. All four platforms let you pick the backend, and store the key
-and model per provider so switching is one dropdown.
-
-## Install
-
-Prebuilt macOS, Windows and Android artifacts are attached to each
-[release](../../releases), with a `.sha256` beside every one. Both desktop archives also contain
-`dnt`, the command line. iOS is not distributed — it needs a provisioning profile, so build it from
-source.
-
-If a build was made without signing secrets, macOS refuses to open it on a double-click: right-click
-the app and choose **Open** once, and Gatekeeper asks instead of refusing.
-
-Homebrew and winget manifests are written and waiting in [`packaging/`](packaging/); neither is
-submitted, because both registries want a signed installer and a release history first.
-
-From source on macOS:
+Download a prebuilt macOS, Windows or Android package from
+[Releases](https://github.com/bojieli/DoNotType/releases) (`.sha256` beside every artifact), or
+build from source on macOS:
 
 ```bash
 git clone https://github.com/bojieli/DoNotType && cd DoNotType
@@ -141,260 +71,96 @@ export GEMINI_API_KEY=...       # or add it in Settings
 make app && make install        # builds, signs, installs to /Applications
 ```
 
-On first launch it walks you through Accessibility and Microphone permissions, and re-checks them
-every launch — macOS revokes Accessibility whenever an app's signature changes.
+Then: **hold Right ⌘, speak, release** — your words appear where your cursor was. On first
+launch the app walks you through Accessibility and Microphone permissions.
 
-## How it works
-
-**Two-phase capture.** At hotkey-down it takes a cheap snapshot (app identity, cursor state) and
-opens an upload session. While you are still speaking it runs the expensive accessibility walk
-(10,000 characters, 500 ms cap) and, if the tree comes back thin, captures the focused window.
-Everything expensive happens during the recording, because that time is free. What you feel is only
-what happens after you let go.
-
-**Upload with a fallback.** The finished recording is uploaded and referenced by URI, turning
-megabytes of base64 into a few hundred bytes of JSON. Anything that fails falls back to inline
-rather than failing the dictation — a flaky network should cost latency, never words.
-
-**Offline queues rather than fails.** Being offline is detected *before* a request is spent, so the
-dictation goes straight to history and sends itself when you reconnect.
-
-**Failed dictations keep their audio** until they succeed. Otherwise "Retry" would be a button that
-cannot work.
-
-**Undo is cheap because the verbatim transcript is always kept.** A wrong transcript, or a rewrite
-that came out too formal, is one key away from being fixed — `⌘⌥Z` swaps in what you actually said.
-A tool that discards the original cannot offer this at all, which is the difference being argued.
-
-**Finish with Return is one key, but never a global Return key.** Press Return/Enter while
-recording: DoNotType stops, transcribes, and inserts into the original field. By default it stops
-there; optionally it then sends Return/Enter or the configured `⌘ Return` / `Ctrl+Enter`. The
-intent is latched before the wait, and the final key is emitted only if that exact field still has
-focus after insertion. At idle and while transcription is running, Return/Enter is never
-intercepted.
-
-More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Files, modes, and a command line
-
-The hotkey covers speech you are about to make. Recordings you already have — a voice memo, a call,
-an interview — go through the same pipeline on **all four platforms**: **Transcribe a Recording…**
-in the macOS menu, a **Recordings** tab on Windows, a screen in the Android and iOS apps, or the
-CLI:
+Existing recordings go through the same pipeline, in every app and from the CLI:
 
 ```bash
 dnt transcribe interview.m4a                          # verbatim, to stdout
 dnt transcribe standup.wav --mode summary:actions     # decisions and next steps
-dnt transcribe *.m4a --output notes/ --save-history
+dnt doctor --probe                                    # keys, prompt, history, one live request
 ```
 
-Three modes, in both places:
+Full CLI reference: [docs/CLI.md](docs/CLI.md).
 
-| | | |
-|---|---|---|
-| **verbatim** | word for word, at the chosen fidelity | one request |
-| **rewrite** | formal, concise or bullets — may never lose a fact | two |
-| **summary** | brief, key points, or decisions and next steps | two |
+## Features
 
-**The verbatim transcript is always produced and always kept**, including under a summary, where it
-is the only way to check what was dropped. The GUI shows it behind a toggle; `--output` writes it to
-`name.verbatim.txt` beside the result; `--json` carries both.
+- **Four platforms, one contract.** macOS (menu bar), Windows (tray), Android (keyboard), iOS
+  (voice keyboard). The same [`prompt/`](prompt/) is copied into every bundle at build time, so
+  no platform can drift from what the evaluation measures.
+- **Three modes, everywhere.** `verbatim` (one request), `rewrite` (formal, concise, casual),
+  `summary` (brief, bullets, actions). The verbatim transcript is always kept; a summary is the
+  only stage allowed to discard content, and it is a separate mechanism from rewrite by design.
+- **Screen grounding.** Accessibility tree (macOS), UI Automation (Windows), or
+  `AccessibilityService` (Android), with a screenshot fallback — captured with a 500 ms budget
+  while you are still speaking, so it costs no wait.
+- **Provider choice.** Google Gemini (default), OpenRouter, self-hosted (vLLM, llama.cpp), or
+  speech-recognition services (xAI, Deepgram, Mistral Voxtral). Keys and models are stored per
+  provider, so switching is one dropdown. An optional fallback backend bounds the latency tail.
+- **Personal dictionary.** Local, visible, optional. Add entries directly or import a one-column
+  CSV; correction learning is opt-in and learned entries are labelled and removable.
+- **File transcription.** WAV, MP3, M4A and Opus recordings through the same pipeline on all
+  four platforms, with per-item history and retry.
+- **Offline-tolerant.** Offline is detected before a request is spent; dictations queue and send
+  on reconnect. Failed dictations keep their audio until they succeed.
+- **Honest logging and stats.** Structured logs on every platform with transcripts withheld by
+  default; median/p95 wait and per-model success rates measured on your microphone and network.
 
-Summarising is the one stage in this codebase allowed to discard content, so it is not a rewrite
-style — it has its own part (`prompt/summary.md`), its own directory of styles, its own type, and no
-path to it from a rewrite. The first rule in `prompt/rewrite.md` is *never remove a fact*, and a
-summary style sitting in `prompt/style/` would be one entry quietly exempt from it.
+## Platforms
 
-Rewriting and summarising need a language model. With a recogniser selected the CLI says so before
-uploading anything, and can split the work — audio to the fast recogniser, text to a model:
+| | Dictation | Screen grounding | Personal dictionary | File transcription | CLI | Build |
+|---|---|---|---|---|---|---|
+| **macOS** | menu-bar app, hold Right ⌘ | ✅ accessibility tree + screenshot | ✅ manual, CSV, optional learning | ✅ | `dnt` | `make app` |
+| **Windows** | tray app, hold Right Ctrl | ✅ UI Automation | ✅ manual, CSV, optional learning | ✅ | `dnt.exe` | `cd windows && dotnet build` |
+| **Android** | keyboard, records in-process | ✅ `AccessibilityService` | ✅ manual, CSV, optional learning | ✅ | — | `cd android && ./gradlew assembleDebug` |
+| **iOS** | voice keyboard; containing app records | ❌ not possible in the sandbox | ✅ manual, CSV, best-effort learning | ✅ | — | `cd ios && xcodegen generate` |
 
-```bash
-dnt transcribe long-meeting.m4a --mode summary:bullets --provider xai --text-provider google
-```
+Feature by feature, with the reason for every gap: [docs/PARITY.md](docs/PARITY.md).
 
-`dnt` also answers the questions that previously needed the app open, or the source:
+## Status and known limitations
 
-```bash
-dnt doctor --probe        # keys, prompt, history, audio support, one live request
-dnt providers             # which backends have a key, and which are models at all
-dnt logs --follow         # what the app is doing right now
-dnt history retry --all   # re-send what failed, with its stored audio and context
-dnt prompt show           # the exact instruction a request will carry
-```
+DoNotType is a working, tested tool with one central unsolved problem. It is stated here because
+a tool that reads your screen must be trusted, and trust starts with the bad news.
 
-<img src="Resources/Demo/cli.svg" alt="A terminal running dnt providers, dnt prompt validate and dnt doctor." width="880">
+- **Digit substitution is mitigated, not solved.** When the text beside your caret contains a
+  number that contradicts the one you said, the model took the screen's value 75% of the time.
+  The shipped mitigation — a second, screen-blind transcription that supplies the digits —
+  brings that to 20%, on by default, at the cost of a second request and about 1.5 s. Word-level
+  grounding (names, acronyms, brands, code-switching) passes the entire adversarial suite.
+- **Accuracy on ordinary dictation is unmeasured.** Everything above describes deliberately
+  adversarial cases; a verified corpus for everyday speech is in progress.
+- **iOS cannot read the screen.** Nothing in the sandbox allows it, and there is no
+  user-grantable escape hatch. This is a platform restriction, not a roadmap item.
+- **Microphone capture and text injection are not covered by CI** (they need hardware); they are
+  a manual checklist run once per release.
 
-Every line in that image is real output. There is no `dnt transcribe` frame in it for the same
-reason there are no invented numbers anywhere else here: its output needs a configured backend, and
-a repository has no key, so any transcript shown would have had to be made up.
-
-Full reference, including the logging: [docs/CLI.md](docs/CLI.md).
-
-## Logging
-
-Structured, levelled, and written to a file you can attach to an issue — on every platform, with a
-viewer in the app so turning the level up never means relaunching from a terminal. At `debug` every
-provider request, the grounding route each backend was given, every retry and every fallback is a
-line.
-
-That matters most where it is least convenient. A Mac or Windows user can open a file; on Android
-logcat needs a cable and a computer, and on iOS there is no shell at all — so both share the log out
-instead. Each platform also keeps its native sink (`os.Logger`, logcat), so nothing that used to be
-visible stopped being.
-
-Two things never reach it. **Your words**: transcripts and screen text are withheld by default, so a
-line records that a 412-character transcript came back, not what it said — `DNT_LOG_CONTENT=1` opens
-that door and the app says out loud when it is open. **Your key**: every resolved key is registered
-for masking before the first request, and anything else key-shaped is caught by pattern.
-
-## Settings
-
-- **Providers and keys** — the provider is who serves the request and the model is what runs it,
-  so they are two fields and the window states the pair: *gemini-3.5-flash via Google*. Google,
-  OpenRouter, a server you run yourself (vLLM, llama.cpp), or a speech recognition service
-  (xAI, Deepgram, Mistral Voxtral), with a live connection test. Keys **and models are stored per
-  provider**, so switching backends to compare them is one dropdown rather than a re-typing
-  exercise. Keys live in the Keychain / DPAPI / Android Keystore, never in a config file.
-- **Recognition services are a different trade, and the app says so.** They return a transcript in
-  around 1.2 s against 6.5 s for a model, and cannot read your screen. xAI can still rewrite, on a
-  Grok chat model behind the same key; Deepgram and Voxtral cannot. Selecting one
-  states that under the picker rather than leaving grounding controls that quietly do nothing.
-  Spelling hints from the screen are **not offered**: measured, they made transcripts worse, by
-  feeding the recogniser whatever was on screen — including the term you did not say. Without them
-  xAI scores **15/48** on the near-miss suite against native Gemini's **43–44/48**, at 1.19 s
-  against 5–60 s — an order of magnitude faster, and much less accurate on exactly the identifiers
-  that suite is built from. **Gemini via Google is the default**, because grounding is what this
-  tool is for and a recogniser cannot do it at all: defaulting to one shipped a fresh install with
-  the headline feature structurally inert. The speed is a real preference and xAI is one dropdown
-  away, keeping its own key and model. Deepgram cannot transcribe Chinese under any
-  autodetecting setting, failing 44 of 68 Mandarin clips outright. Voxtral and xAI both handle
-  Mandarin and English together. Measured in [docs/EVALUATION.md](docs/EVALUATION.md).
-- **Fallback** — an optional second backend, started only once the primary has clearly stalled.
-  The first-party Gemini API is the most accurate measured and its latency is *bimodal*: six
-  sequential requests for one three-second clip took 4.9, 61.6, 50.5, 5.8, 5.9 and 30.2 s. The
-  fallback bounds that tail. You pick both services, both keys and how long the primary gets
-  alone; history records which one actually answered, because a tool whose transcript quality
-  varied invisibly would not be worth trusting.
-- **Hotkey** — which key, whether a tap toggles or a hold talks, and an optional **second key
-  bound to a rewrite** (formal, concise, bullets) for when you want an email rather than a
-  transcript. Your main key always stays verbatim. An opt-in **finish and send** action makes
-  Return/Enter during recording insert and then submit with plain Return/Enter, `⌘ Return`, or
-  `Ctrl+Enter`; the key continues to belong to the foreground app whenever recording is not active.
-- **Shortcuts** — undo the last insertion, or revert a rewrite to what you actually said: `⌘⇧Z` /
-  `⌘⌥Z` on macOS, `Ctrl+Shift+Z` / `Ctrl+Alt+Z` on Windows. Both are cheap only because the
-  verbatim transcript is always kept. Not `Ctrl+Z`, which belongs to whatever you are typing into.
-- **Audio** — pin a microphone rather than following the system default; start/stop tones are on
-  by default and can be disabled.
-- **Fidelity** — `raw` keeps every filler and correction; `light` (default) removes empty fillers,
-  repetitions, false starts, and superseded corrections; `tidy` also applies standard casing and
-  punctuation without rephrasing.
-- **Grounding** — on/off, screenshot fallback, and two blocklists evaluated *before* capture.
-- **History** — search, filters, per-item retry and delete, retention policy, per-dictation
-  timings, and a **Context Inspector** showing exactly what was sent with any dictation.
-- **Stats** — median and p95 wait, wait per second spoken, success rate, retries, and a per-model
-  breakdown measured on your microphone and your network rather than on a vendor's benchmark.
-- **Prompt** — edit the contract in place on any platform, validated before saving, restorable to
-  the shipped default.
-- **Logs** — the last few thousand events, filterable by level and text, with the recording level
-  beside them and one button to reveal the file. Transcripts stay out of it unless you say
-  otherwise, and the panel says so when you have.
-
-## Evaluation
-
-The failure this project is about is invisible to ordinary assertions: a substituted version number
-reads as a correctly transcribed technical term. So there is a measurement layer.
-
-```bash
-swift test                                    # 170 unit tests, no network
-DNT_INTEGRATION=1 swift test                  # live API on real speech
-swift run dnt-eval suite eval/nearmiss        # near-miss suite
-swift run dnt-eval ablate                     # compare designs on fidelity and latency
-./eval/model-sweep.sh                         # compare model versions
-```
-
-Historical golden runs found `gemini-3.6-flash` strongest on the adversarial near-miss suite. A
-newer seven-clip sweep of real technical dictation found `gemini-3.5-flash` retained the current
-names and commands more consistently and returned faster, so 3.5 is now the default. Those newer
-clips do not have human references yet: this is a workload recommendation, not a claim that 3.5
-reversed the older golden result. Full status in [docs/MODELS.md](docs/MODELS.md); method in
-[docs/EVALUATION.md](docs/EVALUATION.md).
-
-## Privacy
-
-No server of ours, no telemetry, no analytics. Requests go straight from your machine to the
-provider you configured, with `store: false` set. The blocklist is evaluated before capture and
-ships non-empty.
-
-**If it reads your screen, you can read what it read.** Every dictation keeps the context it was
-sent with, and the Context Inspector renders it back through the same encoder the request used —
-so what you see is the text that went over the wire, not a summary of it. On macOS, Windows and
-Android, from the history row it belongs to. Not on iOS, which cannot read another app's screen at
-all. This is the answer to a tool that encrypts its captured context to a server key you do not
-hold.
-
-Read [SECURITY.md](SECURITY.md) for what the app can see, where keys live, and an honest threat
-model — including prompt injection, which this design has an unusually direct surface for.
-
-## What this will never do
-
-Some of what follows sounds like a missing feature. Each one is a decision, and most were reached by
-building the thing and measuring it.
-
-**Rewrite you by default, or discard what you said.** The raw transcript is produced first, stored
-first, and recoverable — under a rewrite, under a summary, on every platform. A mode that transcribed
-and polished in one request would have no verbatim output to keep, so there isn't one.
-
-**Silently turn every edit into vocabulary.** The optional learner isolates the text DoNotType just
-inserted, waits for the edit to stabilise, and accepts only changes the same regression classifier
-calls a spelling fix. Moving to another field stops it. On iOS the anchor survives a keyboard
-switch, but must be checked when the DoNotType keyboard becomes active again. Added or deleted
-words, rewording and number changes are ignored. Learned entries are visibly labelled and the
-latest batch can be undone from the tray or keyboard notice. The broader screen-derived keyterm
-feature was implemented, measured, found to regress three cases per run, and remains out of the
-settings.
-
-**Put a server in the middle.** No account, no sign-in, no subscription, no telemetry, no analytics,
-no crash reporting. Your key, your machine, the provider's API. That also means no server-side
-history, no sync, and no "recover my transcripts" — the price of the same decision.
-
-**Log your words.** Transcripts and screen contents stay out of the log file unless you switch them
-on, and the app says out loud when you have.
-
-**Ship a quality claim without a number.** Changes to `prompt/`, the context format, the budgets or
-the default backend need before/after measurements. This has already reversed three plausible
-mechanisms, and one of the reversals removed a feature.
-
-**Truncate something and say nothing.** If a list is capped or a budget drops content, the interface
-says so. A history list capped at 20 with nothing said reads as "this is all of it".
-
-**Ground on iOS.** Not a roadmap item — nothing in the sandbox lets one app read another's content,
-and unlike macOS accessibility or Android's `AccessibilityService` there is no user-grantable escape
-hatch. It is listed as ❌ above and will stay that way.
-
-## Contributing
-
-Changes to `prompt/` or the context format need **a measurement, not an argument**. Three
-plausible-sounding changes in this project's history were measured and did the opposite of what was
-predicted. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Method, per-channel numbers and falsified mitigations: [docs/EVALUATION.md](docs/EVALUATION.md).
 
 ## Documentation
 
 | | |
 |---|---|
-| [prompt/](prompt/) | the transcription contract itself, one part per file — what is sent |
+| [`prompt/`](prompt/) | the transcription contract itself — what is sent, one part per file |
 | [docs/PROMPT.md](docs/PROMPT.md) | why the contract is worded that way, and its measured changelog |
-| [docs/CONTEXT_FORMAT.md](docs/CONTEXT_FORMAT.md) | part order, delimiters, caps, truncation direction |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the pieces fit, and which decisions were measured |
-| [docs/LOCALIZATION.md](docs/LOCALIZATION.md) | translating the interface, and why the prompt is never translated |
-| [docs/MANUAL-CHECKS.md](docs/MANUAL-CHECKS.md) | the four checks a machine cannot do, run once per release |
+| [docs/CLI.md](docs/CLI.md) | `dnt`: file transcription, history, diagnostics, logging |
 | [docs/PARITY.md](docs/PARITY.md) | what each of the four clients can do, and why anything missing is missing |
-| [docs/CLI.md](docs/CLI.md) | `dnt`: file transcription, history, diagnostics — and the logging |
 | [docs/EVALUATION.md](docs/EVALUATION.md) | how quality is measured and what the numbers say |
 | [docs/MODELS.md](docs/MODELS.md) | which models and providers can actually do this job |
-| [docs/GPU-TESTING.md](docs/GPU-TESTING.md) | running open-weight models locally, and what to measure |
-| [docs/RELEASING.md](docs/RELEASING.md) | cutting a release, and which signing secrets change what |
-| [Resources/Icon/README.md](Resources/Icon/README.md) | the app icon, and the one file every platform's copy is rendered from |
-| [docs/PLAN.html](docs/PLAN.html) | the original reverse-engineering survey this design came from |
+
+Full index, including maintainer docs: [docs/README.md](docs/README.md).
+
+## Contributing
+
+Contributions are welcome, with one unusual rule: changes to `prompt/` or the context format
+need **a measurement, not an argument**. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Security
+
+DoNotType reads your screen — that is the feature, and it deserves a plain description of what
+the app can see, where keys live, and the honest threat model (including prompt injection).
+See [SECURITY.md](SECURITY.md). Please do not open a public issue for vulnerabilities.
 
 ## License
 

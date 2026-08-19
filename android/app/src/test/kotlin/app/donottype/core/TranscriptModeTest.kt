@@ -104,7 +104,7 @@ class TranscriptModeTest {
     }
 
     /**
-     * The parity table from `docs/mode-parity.md`, repeated here verbatim.
+     * The `--mode` parity table, duplicated verbatim in every language's test suite.
      *
      * Four implementations of one grammar, and the failure mode is not a crash: it is a phone and a
      * laptop disagreeing about what `summary` means, which nobody would think to look for. The

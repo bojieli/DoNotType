@@ -671,8 +671,8 @@ deliberate:
   pointing at the app's log, or two `dnt` invocations at once, lost lines silently.
 
 - **`--mode rewrite:` meant different things on different platforms** — the stage default on Apple,
-  rejected on Windows and Android. All four now agree, and [docs/mode-parity.md](docs/mode-parity.md)
-  is the table, repeated in each language's tests.
+  rejected on Windows and Android. All four now agree, and the parity table is repeated verbatim in
+  each language's tests.
 
 - **`--path` and `--probe` were the same flag.** The Windows argument parser matched a flag by its
   first letter, so every flag was aliased to its initial and asking about an empty name threw. The

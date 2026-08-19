@@ -155,8 +155,8 @@ On iOS there is no context to reuse, so the row is not applicable rather than me
 
 Ports are by hand, so this table drifts unless it is checked. Three of the mechanisms that stop it:
 
-- **Parity tests.** `docs/mode-parity.md` is repeated verbatim in each language's test suite, and so
-  are the numeric guard's cases. A shared fixture file would be read by whichever platform
+- **Parity tests.** The `--mode` grammar table is repeated verbatim in each language's test suite,
+  and so are the numeric guard's cases. A shared fixture file would be read by whichever platform
   remembered to read it.
 - **Text checked by diffing, not by reading.** For `FailureAdvice`, every case was printed through
   all three implementations and diffed. Reading code side by side finds structural differences and
