@@ -1490,13 +1490,11 @@ final class DictationModel {
         do {
             let backend = try ProviderFactory.make(
                 provider, apiKey: apiKey, endpoint: endpoint)
-            // A recognition backend rejects a text-only request by design, so probing one with the
-            // text round trip would report a working key as broken. It gets a fraction of a second
-            // of silence instead — enough to exercise auth, the URL and the response shape.
-            let parts: [InputPart] =
-                backend.grounding(forModel: model) == .multimodal
-                ? [.text("Pretend the audio said: ok. Transcribe it.")]
-                : [.audio(data: Self.silentProbeWAV, mimeType: "audio/wav")]
+            // Audio, for every backend — the same shape a dictation sends. Model backends used to
+            // get a text round trip, which a text-only relay or checkpoint answers perfectly well
+            // before dropping the first real recording. See `ProviderProbe.check`, which this
+            // mirrors.
+            let parts: [InputPart] = [.audio(data: Self.silentProbeWAV, mimeType: "audio/wav")]
 
             _ = try await backend.transcribe(
                 TranscriptionRequest(
@@ -1506,7 +1504,7 @@ final class DictationModel {
             connectionStatus = "✓ Reachable, key accepted"
         } catch ProviderError.emptyOutput {
             // Silence transcribes to nothing, which is the correct answer and proves the round
-            // trip worked. Only the recognition path can reach this.
+            // trip worked.
             connectionStatus = "✓ Reachable, key accepted"
         } catch {
             connectionStatus = "✗ \(error.localizedDescription)"

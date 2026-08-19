@@ -1070,13 +1070,11 @@ public sealed class SettingsForm : Form
         {
             var kind = (ProviderKind)_provider.SelectedIndex;
             var provider = ProviderFactory.Create(kind, key, _model.Text.Trim());
-            // A recognition backend rejects a text-only request by design, so probing one with the
-            // text round trip would report a working key as broken. It gets a fraction of a second
-            // of silence instead — enough to exercise auth, the URL and the response shape, which
-            // is all this button claims to check.
-            IReadOnlyList<InputPart> parts = provider.Grounding is GroundingSupport.MultimodalGrounding
-                ? [new InputPart.Text("Pretend the audio said: ok. Transcribe it.")]
-                : [new InputPart.Audio(SilentProbeWav(), "audio/wav")];
+            // Audio, for every backend — the same shape a dictation sends. Model backends used to
+            // get a text round trip, which a text-only relay or checkpoint answers perfectly well
+            // before dropping the first real recording. See ProviderProbe.check in the Swift core,
+            // which this mirrors.
+            IReadOnlyList<InputPart> parts = [new InputPart.Audio(SilentProbeWav(), "audio/wav")];
             try
             {
                 await provider.TranscribeAsync("You are a transcription engine.", parts)
@@ -1084,8 +1082,8 @@ public sealed class SettingsForm : Form
             }
             catch (ProviderException empty) when (empty.Message.Contains("no output", StringComparison.OrdinalIgnoreCase))
             {
-                // Silence transcribes to nothing, and on a recogniser that is the correct answer —
-                // it proves the round trip worked.
+                // Silence transcribes to nothing, which is the correct answer and proves the
+                // round trip worked.
             }
             _connection.Text = $"✓ {provider.Name} reachable, key accepted";
         }

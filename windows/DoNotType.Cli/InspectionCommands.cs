@@ -132,12 +132,9 @@ public static class DoctorCommand
             Out.Note($"probing {kind.ToString().ToLowerInvariant()}…");
             try
             {
-                // A recogniser rejects a text-only request by design, so it gets silence instead —
-                // enough to exercise auth, the URL and the response shape, which is all this claims.
-                IReadOnlyList<InputPart> parts = service.Provider.Grounding
-                    is GroundingSupport.MultimodalGrounding
-                    ? [new InputPart.Text("Pretend the audio said: ok. Transcribe it.")]
-                    : [new InputPart.Audio(SilentProbeWav(), "audio/wav")];
+                // Audio, for every backend — the same shape a dictation sends, so an endpoint that
+                // takes the request but not the recording is caught here rather than mid-dictation.
+                IReadOnlyList<InputPart> parts = [new InputPart.Audio(SilentProbeWav(), "audio/wav")];
 
                 await service.Provider
                     .TranscribeAsync("You are a transcription engine.", parts)

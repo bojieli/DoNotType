@@ -5,7 +5,6 @@ import app.donottype.core.DictationRecord
 import app.donottype.core.DictationService
 import app.donottype.core.Fidelity
 import app.donottype.core.HistoryQuery
-import app.donottype.core.GroundingSupport
 import app.donottype.core.InputPart
 import app.donottype.core.PerformanceStats
 import app.donottype.core.PersonalDictionary
@@ -835,15 +834,11 @@ class SettingsActivity : AppCompatActivity() {
         connectionLabel.text = "Checking…"
         lifecycleScope.launch {
             val client = ProviderFactory.create(Settings.provider, key, Settings.model)
-            // A recognition backend rejects a text-only request by design, so probing one with the
-            // text round trip would report a working key as broken. It gets a fraction of a second
-            // of silence instead — enough to exercise auth, the URL and the response shape, which
-            // is all this button claims to check.
-            val parts = if (client.grounding() is GroundingSupport.Multimodal) {
-                listOf(InputPart.Text("Pretend the audio said: ok. Transcribe it."))
-            } else {
-                listOf(InputPart.Audio(silentProbeWav(), "audio/wav"))
-            }
+            // Audio, for every backend — the same shape a dictation sends. Model backends used to
+            // get a text round trip, which a text-only relay or checkpoint answers perfectly well
+            // before dropping the first real recording. See ProviderProbe.check in the Swift core,
+            // which this mirrors.
+            val parts = listOf(InputPart.Audio(silentProbeWav(), "audio/wav"))
 
             val started = android.os.SystemClock.elapsedRealtimeNanos()
             val result = runCatching {
@@ -855,8 +850,8 @@ class SettingsActivity : AppCompatActivity() {
             connectionLabel.text = result.fold(
                 onSuccess = { "✓ Reachable, key accepted · $latency" },
                 onFailure = { error ->
-                    // Silence transcribes to nothing, and on a recogniser that is the correct
-                    // answer — it proves the round trip worked.
+                    // Silence transcribes to nothing, which is the correct answer and proves
+                    // the round trip worked.
                     if (error.message?.contains("no output", ignoreCase = true) == true) {
                         "✓ Reachable, key accepted · $latency"
                     } else {
