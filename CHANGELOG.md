@@ -398,7 +398,7 @@ deliberate:
 - **The prompt word-count caps (160/100/90) are removed from the Swift, .NET and Android test
   suites.** They pinned a few words of headroom over the current text rather than measuring
   anything, and had already priced an example out of the light clause. Concision stays as a
-  changelog norm; the 972→448 measurement in [PROMPT.md](PROMPT.md) is its evidence.
+  changelog norm; the 972→448 measurement in [PROMPT.md](docs/PROMPT.md) is its evidence.
 - **Light fidelity now removes vocal fillers unconditionally, measured on retained real
   dictations.** The light clause's "when they add no meaning" used to dangle at the end of the
   whole removal list, vocal fillers included; it now governs only discourse fillers, and
@@ -407,7 +407,7 @@ deliberate:
   146 of 190 hits — and on the seven worst clips the rewritten clause cut vocal-filler hits from
   182 to 75, with the near-miss suite indistinguishable between arms (36 matched in both; the
   regression-count difference is inside the suite's per-pass noise floor). The assembled
-  instruction stays at the 160-word cap. Full numbers in [PROMPT.md](PROMPT.md).
+  instruction stays at the 160-word cap. Full numbers in [PROMPT.md](docs/PROMPT.md).
 
 - **The local speech gate is Silero VAD, replacing the recording-relative heuristic that could
   delete an entire dictation.** The old detector assumed every recording contained a quiet section

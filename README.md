@@ -35,7 +35,7 @@ the system already knows. A correction-fed dictionary can make that failure self
 mistakes are learned silently and cannot be inspected or undone.
 
 DoNotType inverts both. The prompt is a directory of versioned files you can read, edit and measure
-([`prompt/`](prompt/), one part per file, argued for in [`PROMPT.md`](PROMPT.md)). Screen context is
+([`prompt/`](prompt/), one part per file, argued for in [`PROMPT.md`](docs/PROMPT.md)). Screen context is
 sent **raw** — no term extraction and no prior transcripts — and its authority is scoped to
 spelling, never content. The separate personal dictionary is local, visible and optional: entries
 can be added directly or imported from a one-column CSV, and correction learning is opt-in. Learned
@@ -382,8 +382,8 @@ predicted. See [CONTRIBUTING.md](CONTRIBUTING.md).
 | | |
 |---|---|
 | [prompt/](prompt/) | the transcription contract itself, one part per file — what is sent |
-| [PROMPT.md](PROMPT.md) | why the contract is worded that way, and its measured changelog |
-| [CONTEXT_FORMAT.md](CONTEXT_FORMAT.md) | part order, delimiters, caps, truncation direction |
+| [docs/PROMPT.md](docs/PROMPT.md) | why the contract is worded that way, and its measured changelog |
+| [docs/CONTEXT_FORMAT.md](docs/CONTEXT_FORMAT.md) | part order, delimiters, caps, truncation direction |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the pieces fit, and which decisions were measured |
 | [docs/LOCALIZATION.md](docs/LOCALIZATION.md) | translating the interface, and why the prompt is never translated |
 | [docs/MANUAL-CHECKS.md](docs/MANUAL-CHECKS.md) | the four checks a machine cannot do, run once per release |
@@ -394,7 +394,7 @@ predicted. See [CONTRIBUTING.md](CONTRIBUTING.md).
 | [docs/GPU-TESTING.md](docs/GPU-TESTING.md) | running open-weight models locally, and what to measure |
 | [docs/RELEASING.md](docs/RELEASING.md) | cutting a release, and which signing secrets change what |
 | [Resources/Icon/README.md](Resources/Icon/README.md) | the app icon, and the one file every platform's copy is rendered from |
-| [PLAN.html](PLAN.html) | the original reverse-engineering survey this design came from |
+| [docs/PLAN.html](docs/PLAN.html) | the original reverse-engineering survey this design came from |
 
 ## License
 

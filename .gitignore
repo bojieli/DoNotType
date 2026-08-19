@@ -44,6 +44,8 @@ android/.kotlin/
 # iOS — project.yml is the source of truth; run `xcodegen generate`
 ios/DoNotType.xcodeproj/
 ios/App/prompt/
+# xcodebuild's derived-data style output when built without -derivedDataPath.
+ios/build/
 
 # .NET
 windows/**/bin/
