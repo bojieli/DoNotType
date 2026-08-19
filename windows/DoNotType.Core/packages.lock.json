@@ -24,6 +24,17 @@
         "resolved": "9.0.0",
         "contentHash": "hyJB4UlpAi19Xr9AXzu2NuagKC4lPfHObNMEAA0HmqFz2rX7wKgzeYzO/jM/eBHDhnUGFFEjk5cOoJaxqg5J4A=="
       }
+    },
+    "net10.0/win-x64": {
+      "Microsoft.ML.OnnxRuntime": {
+        "type": "Direct",
+        "requested": "[1.24.2, )",
+        "resolved": "1.24.2",
+        "contentHash": "BciFVPzmPP+RNbBcCXVUhuXjrPlj0CZxVGShP3EThxrnDMmEx9QoYntAcnaOLN8uPacHb8uVyGBWMOn/MgSKLw==",
+        "dependencies": {
+          "Microsoft.ML.OnnxRuntime.Managed": "1.24.2"
+        }
+      }
     }
   }
 }

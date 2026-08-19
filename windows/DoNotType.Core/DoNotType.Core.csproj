@@ -7,6 +7,9 @@
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <!-- App and CLI publish for win-x64 and pass that RID through this project reference. Declaring
+         it here lets one committed lock file cover both portable tests and the release graph. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>

@@ -3,6 +3,8 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Keep the reviewed lock graph valid for both ordinary builds and the release publish. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <UseWindowsForms>true</UseWindowsForms>
     <!-- UI Automation for grounding lives in the WindowsDesktop WPF assemblies. -->
     <UseWPF>true</UseWPF>

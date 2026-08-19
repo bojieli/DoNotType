@@ -24,12 +24,14 @@ final class KeyboardExtensionUITests: XCTestCase {
     }
 
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
-        if element.waitForExistence(timeout: 3) { return true }
+        // A Form exposes rows below the viewport in its accessibility tree. Existence therefore
+        // does not mean a tap can focus the field; scroll until XCTest can actually hit it.
+        _ = element.waitForExistence(timeout: 3)
         for _ in 0..<6 {
+            if element.exists && element.isHittable { return true }
             app.swipeUp()
-            if element.waitForExistence(timeout: 1) { return true }
         }
-        return false
+        return element.exists && element.isHittable
     }
 
     /// iOS only offers a keyboard it can find inside the app bundle. Getting this wrong produces
