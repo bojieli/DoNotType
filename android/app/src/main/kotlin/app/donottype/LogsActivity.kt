@@ -7,17 +7,27 @@ import android.graphics.Typeface
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
-import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
-import android.widget.Switch
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import app.donottype.ui.card
+import app.donottype.ui.controlRow
+import app.donottype.ui.fieldContainer
+import app.donottype.ui.monospace
+import app.donottype.ui.primaryButton
+import app.donottype.ui.screenScaffold
+import app.donottype.ui.screenSubtitle
+import app.donottype.ui.screenTitle
+import app.donottype.ui.sectionFooter
+import app.donottype.ui.sectionTitle
+import app.donottype.ui.switchRow
+import app.donottype.ui.textButton
+import app.donottype.ui.tonalButton
+import com.google.android.material.textfield.TextInputEditText
 
 /**
  * The log, on the device.
@@ -33,8 +43,7 @@ import androidx.appcompat.app.AppCompatActivity
 class LogsActivity : AppCompatActivity() {
 
     private lateinit var output: TextView
-    private lateinit var filterField: EditText
-    private lateinit var contentSwitch: Switch
+    private lateinit var filterField: TextInputEditText
     private lateinit var contentWarning: TextView
 
     private var minimumLevel = LogLevel.TRACE
@@ -53,15 +62,10 @@ class LogsActivity : AppCompatActivity() {
         refresh()
     }
 
-    private fun buildLayout(): ScrollView {
-        val column = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(56, 64, 56, 96)
-        }
-
-        column.addView(heading("Logs", 24f))
+    private fun buildLayout(): ScrollView = screenScaffold { column ->
+        column.addView(screenTitle("Logs"))
         column.addView(
-            body(
+            screenSubtitle(
                 "Every request, retry and failure. Your transcripts and the screen text sent with " +
                     "them are left out unless you turn that on below.",
             ),
@@ -69,46 +73,28 @@ class LogsActivity : AppCompatActivity() {
 
         column.addView(sectionTitle("Record"))
         column.addView(
-            Spinner(this).apply {
-                val levels = LogLevel.entries
-                adapter = ArrayAdapter(
-                    this@LogsActivity,
-                    android.R.layout.simple_spinner_dropdown_item,
-                    levels.map { describe(it) },
-                )
-                setSelection(levels.indexOf(Settings.logLevel).coerceAtLeast(0))
-                onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                    override fun onItemSelected(
-                        parent: AdapterView<*>?,
-                        view: android.view.View?,
-                        position: Int,
-                        id: Long,
-                    ) {
-                        Settings.logLevel = levels[position]
-                        refresh()
-                    }
-
-                    override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-                }
-            },
+            card(
+                controlRow("Detail", recordLevelSpinner()),
+                switchRow(
+                    "Include transcripts",
+                    "What you said, and the screen text sent with it.",
+                    checked = Settings.logContent,
+                ) { checked ->
+                    Settings.logContent = checked
+                    refresh()
+                },
+            ),
         )
-
-        contentSwitch = Switch(this).apply {
-            text = "Include transcripts"
-            isChecked = Settings.logContent
-            setOnCheckedChangeListener { _, checked ->
-                Settings.logContent = checked
-                refresh()
-            }
+        // Bold and in the warning colour, because it is the one line on this screen that can cost
+        // the user something: sharing a log they did not know had their words in it.
+        contentWarning = sectionFooter("").apply {
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(this@LogsActivity, R.color.dnt_warning))
         }
-        column.addView(contentSwitch)
-
-        contentWarning = body("").apply { setTypeface(null, Typeface.BOLD) }
         column.addView(contentWarning)
 
         column.addView(sectionTitle("Show"))
-        filterField = EditText(this).apply {
-            hint = "Filter by message, category or field"
+        filterField = TextInputEditText(this).apply {
             addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) {
                     filter = s?.toString().orEmpty()
@@ -118,42 +104,16 @@ class LogsActivity : AppCompatActivity() {
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
             })
         }
-        column.addView(filterField)
-
         column.addView(
-            Spinner(this).apply {
-                val levels = listOf(
-                    LogLevel.TRACE to "All",
-                    LogLevel.DEBUG to "Debug and up",
-                    LogLevel.INFO to "Info and up",
-                    LogLevel.WARN to "Warnings and up",
-                    LogLevel.ERROR to "Errors only",
-                )
-                adapter = ArrayAdapter(
-                    this@LogsActivity,
-                    android.R.layout.simple_spinner_dropdown_item,
-                    levels.map { it.second },
-                )
-                onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                    override fun onItemSelected(
-                        parent: AdapterView<*>?,
-                        view: android.view.View?,
-                        position: Int,
-                        id: Long,
-                    ) {
-                        minimumLevel = levels[position].first
-                        refresh()
-                    }
-
-                    override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-                }
-            },
+            card(
+                controlRow(null, fieldContainer("Filter by message, category or field", filterField)),
+                controlRow("Minimum level", showLevelSpinner()),
+            ),
         )
 
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(button("Refresh") { refresh() })
-        actions.addView(
-            button("Share") {
+        // Share is the point of the screen -- a log nobody can send is a log nobody reads.
+        column.addView(
+            primaryButton("Share") {
                 // Already redacted by the router, so this is safe to hand to whatever the user
                 // picks -- which is the point of it being redacted at the source.
                 val intent = Intent(Intent.ACTION_SEND).apply {
@@ -164,29 +124,69 @@ class LogsActivity : AppCompatActivity() {
                 startActivity(Intent.createChooser(intent, "Share the log"))
             },
         )
-        actions.addView(
-            button("Clear") {
+        column.addView(tonalButton("Refresh") { refresh() })
+        column.addView(
+            textButton("Clear") {
                 LogRouter.clearBuffer()
                 refresh()
             },
         )
-        column.addView(actions)
 
-        output = TextView(this).apply {
-            textSize = 11f
-            setTypeface(Typeface.MONOSPACE)
-            setTextIsSelectable(true)
-            setPadding(0, 16, 0, 16)
+        column.addView(sectionTitle("Recent"))
+        output = monospace("")
+        column.addView(card(controlRow(null, output)))
+    }
+
+    /** How much the router keeps. Changing it takes effect from the next event onwards. */
+    private fun recordLevelSpinner(): Spinner = Spinner(this).apply {
+        val levels = LogLevel.entries
+        adapter = ArrayAdapter(
+            this@LogsActivity,
+            android.R.layout.simple_spinner_dropdown_item,
+            levels.map { describe(it) },
+        )
+        setSelection(levels.indexOf(Settings.logLevel).coerceAtLeast(0))
+        onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: android.view.View?,
+                position: Int,
+                id: Long,
+            ) {
+                Settings.logLevel = levels[position]
+                refresh()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
-        column.addView(output)
+    }
 
-        return ScrollView(this).apply {
-            addView(
-                column,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                ),
-            )
+    /** How much of what was kept is shown. Purely a view filter; nothing is discarded. */
+    private fun showLevelSpinner(): Spinner = Spinner(this).apply {
+        val levels = listOf(
+            LogLevel.TRACE to "All",
+            LogLevel.DEBUG to "Debug and up",
+            LogLevel.INFO to "Info and up",
+            LogLevel.WARN to "Warnings and up",
+            LogLevel.ERROR to "Errors only",
+        )
+        adapter = ArrayAdapter(
+            this@LogsActivity,
+            android.R.layout.simple_spinner_dropdown_item,
+            levels.map { it.second },
+        )
+        onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: android.view.View?,
+                position: Int,
+                id: Long,
+            ) {
+                minimumLevel = levels[position].first
+                refresh()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
     }
 
@@ -198,11 +198,9 @@ class LogsActivity : AppCompatActivity() {
         } else {
             events.joinToString("\n") { it.render() }
         }
-        contentWarning.text = if (Settings.logContent) {
+        contentWarning.text =
             "The log now contains what you said. Turn this off before sharing it."
-        } else {
-            ""
-        }
+        contentWarning.visibility = if (Settings.logContent) TextView.VISIBLE else TextView.GONE
     }
 
     private fun describe(level: LogLevel) = when (level) {
@@ -212,25 +210,5 @@ class LogsActivity : AppCompatActivity() {
         LogLevel.WARN -> "Warnings only"
         LogLevel.ERROR -> "Errors only"
         LogLevel.OFF -> "Nothing"
-    }
-
-    private fun sectionTitle(text: String) = heading(text, 18f)
-
-    private fun heading(text: String, size: Float) = TextView(this).apply {
-        this.text = text
-        textSize = size
-        setTypeface(null, Typeface.BOLD)
-        setPadding(0, 48, 0, 12)
-    }
-
-    private fun body(text: String) = TextView(this).apply {
-        this.text = text
-        textSize = 13f
-        setPadding(0, 0, 0, 16)
-    }
-
-    private fun button(title: String, onClick: () -> Unit) = Button(this).apply {
-        text = title
-        setOnClickListener { onClick() }
     }
 }
