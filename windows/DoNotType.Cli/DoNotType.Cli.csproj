@@ -30,7 +30,7 @@
       Desktop framework reference that comes with WinForms; a console tool has no business pulling
       WinForms in for one call, and this is the first-party package that provides the same type.
     -->
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
   </ItemGroup>
 
   <ItemGroup>

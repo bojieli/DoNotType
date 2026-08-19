@@ -4,17 +4,17 @@
     "net10.0": {
       "Microsoft.ML.OnnxRuntime": {
         "type": "Direct",
-        "requested": "[1.24.2, )",
-        "resolved": "1.24.2",
-        "contentHash": "BciFVPzmPP+RNbBcCXVUhuXjrPlj0CZxVGShP3EThxrnDMmEx9QoYntAcnaOLN8uPacHb8uVyGBWMOn/MgSKLw==",
+        "requested": "[1.29.0, )",
+        "resolved": "1.29.0",
+        "contentHash": "bUO3Ryc42UVkDGByBIYU9/ogRURGHeMOEq96LMWnDBVMQGZpIahBhPRCeu+Qq6+EJh/dfxzFJBKZa0/+yMmpWQ==",
         "dependencies": {
-          "Microsoft.ML.OnnxRuntime.Managed": "1.24.2"
+          "Microsoft.ML.OnnxRuntime.Managed": "1.29.0"
         }
       },
       "Microsoft.ML.OnnxRuntime.Managed": {
         "type": "Transitive",
-        "resolved": "1.24.2",
-        "contentHash": "QO+BKceFIsz+p3loUgPjjDZ/pGN/e8NnEvD9wZoIXt01ZIJ0WK83OLcbZ6HjGGY/M3hioXSnxiiEd59oDJUDkQ==",
+        "resolved": "1.29.0",
+        "contentHash": "jLy5PtzvRQCBFOczzfRY7zpuMVUyLwjO0Jsdd8MBZdmnPIqx5vW9cYDNyCqkrYpwkof8GlqBVaEUMWrMWRtvuw==",
         "dependencies": {
           "System.Numerics.Tensors": "9.0.0"
         }
@@ -28,11 +28,11 @@
     "net10.0/win-x64": {
       "Microsoft.ML.OnnxRuntime": {
         "type": "Direct",
-        "requested": "[1.24.2, )",
-        "resolved": "1.24.2",
-        "contentHash": "BciFVPzmPP+RNbBcCXVUhuXjrPlj0CZxVGShP3EThxrnDMmEx9QoYntAcnaOLN8uPacHb8uVyGBWMOn/MgSKLw==",
+        "requested": "[1.29.0, )",
+        "resolved": "1.29.0",
+        "contentHash": "bUO3Ryc42UVkDGByBIYU9/ogRURGHeMOEq96LMWnDBVMQGZpIahBhPRCeu+Qq6+EJh/dfxzFJBKZa0/+yMmpWQ==",
         "dependencies": {
-          "Microsoft.ML.OnnxRuntime.Managed": "1.24.2"
+          "Microsoft.ML.OnnxRuntime.Managed": "1.29.0"
         }
       }
     }
