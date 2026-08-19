@@ -1145,6 +1145,15 @@ Recorded because the reasoning was plausible and someone will otherwise re-deriv
   The suspicion was that "preserve wording" pulls fillers back in against the cleanup rule; on the
   four worst filler clips it netted 67 hits against the clause-only fix's 73 — inside per-clip
   noise — while editing the contract shared by all three fidelities. `system.md` unchanged.
+- **Restating rule 4 at the closing line, without any decoy-valued example.** The earlier failure
+  named the decoy; the example-free form was the remaining untried version. On the real clip with
+  gemini-3.5-flash, verbatim substitution went 13/15 baseline → 13/13 restated — no improvement.
+  Restating rule 4 stays rejected in all forms tried so far.
+- **Telling the rewriter the text came from speech** ("…unchanged, even one that looks wrong or
+  outdated" on the preservation bullet). Targeted at the measured two-pass failure where the
+  rewriter "corrects" a stale-looking version number with world knowledge. Two-formal substitution
+  on the real clip: 14/14 baseline → 11/12 with the sentence (1 correct, 3 no-version) — inside
+  noise at 15 trials, and the rewrite fixtures were unchanged. No demonstrated rescue; not shipped.
 - **Restating the fidelity rule immediately before the audio.** Substitution rose from 11/19 to
   15/18. The restatement named the decoy value as its example, which appears to prime it.
 - **Two-pass rewriting to protect number fidelity.** Twice as bad as single-pass (75% versus 38%),
