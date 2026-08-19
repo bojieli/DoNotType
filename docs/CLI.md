@@ -169,7 +169,8 @@ dnt doctor --probe    # plus one real request, to check the key end to end
 ```
 
 Exits non-zero when it finds a problem, so it works in a health check. `--probe` costs one small
-request.
+request: a quarter-second of silence, sent as audio to every backend, so an endpoint that speaks
+the API but cannot take a recording is caught here rather than on the first real dictation.
 
 ## `dnt providers`
 
