@@ -484,6 +484,7 @@ jobs:
       - name: Create or update rolling prerelease
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           if gh release view latest >/dev/null 2>&1; then
             gh release upload latest dist/* --clobber
