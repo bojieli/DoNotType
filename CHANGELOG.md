@@ -10,6 +10,18 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **The endpoint field says that a compatible API is not necessarily an audio API.** Pointing a
+  model backend at a third-party or self-hosted URL now shows a caveat in the macOS and iOS
+  settings panels, beside both the primary and the fallback endpoint: dictation sends the recording
+  itself, plenty of services that speak the same request shape serve text and images only, and the
+  connection test sends text — so it can pass against an endpoint that drops every recording and
+  answers with an invented transcript. The `local` backend carries the caveat with no override set,
+  since a `vllm serve` in front of a text-only checkpoint is the likeliest way to meet this. Speech
+  recognition backends do not, because a mirror of one that could not carry audio would not be a
+  mirror of it. This is preventive rather than a second guard: `audioSilentlyDropped` only fires
+  when a provider reports zero audio tokens, and one that reports no usage at all is given the
+  benefit of the doubt.
+
 - **Release artifacts now have enforced provenance and stricter security boundaries.** macOS
   signing failures can no longer fall back silently to an ad-hoc signature, tagged builds verify
   the resulting signature, transient signing material is removed, and every desktop archive and
