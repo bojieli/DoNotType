@@ -1,8 +1,8 @@
 # winget manifest — installer.
 #
-# Not submitted to microsoft/winget-pkgs yet: submission wants a signed installer and a release
-# history, and this project has neither. Kept here so the shape is reviewable, and so submitting is
-# a matter of filling in a version rather than authoring three files under time pressure.
+# Not submitted to microsoft/winget-pkgs yet: registry onboarding should follow an
+# Authenticode-signed release with some public history. Kept here so the shape is reviewable, and so
+# submitting is a matter of filling in a version rather than authoring three files under pressure.
 #
 # `scripts/update-packaging.sh <version>` writes the version and the SHA256 from a published
 # release. A manifest with a stale hash fails at install with a message about a tampered package,

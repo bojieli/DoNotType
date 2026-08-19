@@ -1,8 +1,8 @@
 # Homebrew cask for DoNotType.
 #
-# Not submitted to homebrew-cask yet: that requires a stable release history and a notarized
-# artifact, and this project has neither. Until then this file lives here so it can be installed
-# from a tap, and so the shape of the thing is reviewable rather than invented at submission time:
+# Not submitted to homebrew-cask yet: registry onboarding should follow a notarized release with
+# some public history. Until then this file lives here so it can be installed from a tap, and so the
+# shape of the thing is reviewable rather than invented at submission time:
 #
 #     brew install --cask bojieli/tap/donottype
 #

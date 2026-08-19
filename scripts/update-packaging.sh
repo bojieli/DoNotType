@@ -18,6 +18,10 @@ set -euo pipefail
 VERSION="${1:-}"
 [ -n "$VERSION" ] || { echo "usage: $0 <version>   # e.g. 0.2.0" >&2; exit 2; }
 VERSION="${VERSION#v}"
+if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+  echo "✗ '$VERSION' is not a canonical x.y.z version" >&2
+  exit 2
+fi
 
 REPO="${REPO:-bojieli/DoNotType}"
 BASE="https://github.com/$REPO/releases/download/v$VERSION"
@@ -28,11 +32,19 @@ BASE="https://github.com/$REPO/releases/download/v$VERSION"
 fetch_sha() {
   local name="$1"
   local line
+  local digest
+  local recorded_name
   if ! line=$(curl -fsSL "$BASE/$name.sha256"); then
     echo "✗ no $name.sha256 at $BASE — is v$VERSION published?" >&2
     exit 1
   fi
-  echo "$line" | awk '{ print $1 }'
+  digest=$(printf '%s\n' "$line" | awk 'NF == 2 { print $1 }')
+  recorded_name=$(printf '%s\n' "$line" | awk 'NF == 2 { print $2 }')
+  if ! [[ "$digest" =~ ^[0-9A-Fa-f]{64}$ ]] || [[ "$recorded_name" != "$name" ]]; then
+    echo "✗ malformed checksum for $name (recorded name: '$recorded_name')" >&2
+    exit 1
+  fi
+  printf '%s\n' "$digest"
 }
 
 echo "reading checksums for v$VERSION"
@@ -49,8 +61,12 @@ version, mac_sha, win_sha = sys.argv[1], sys.argv[2], sys.argv[3]
 # Homebrew: version and sha256 are their own lines, so this is unambiguous.
 path = "packaging/homebrew/donottype.rb"
 text = open(path).read()
-text = re.sub(r'version "[^"]*"', f'version "{version}"', text, count=1)
-text = re.sub(r'sha256 "[^"]*"', f'sha256 "{mac_sha}"', text, count=1)
+text, version_matches = re.subn(
+    r'version "[^"]*"', f'version "{version}"', text, count=1)
+text, sha_matches = re.subn(r'sha256 "[^"]*"', f'sha256 "{mac_sha}"', text, count=1)
+if version_matches != 1 or sha_matches != 1:
+    raise SystemExit(f"expected one version and checksum in {path}, found "
+                     f"{version_matches} and {sha_matches}")
 open(path, "w").write(text)
 
 # winget: three files, and the version appears in all of them.
@@ -60,9 +76,16 @@ for path in [
     "packaging/winget/DoNotType.installer.yaml",
 ]:
     text = open(path).read()
-    text = re.sub(r"PackageVersion: .*", f"PackageVersion: {version}", text)
-    text = re.sub(r"/download/v[^/]+/", f"/download/v{version}/", text)
-    text = re.sub(r"InstallerSha256: .*", f"InstallerSha256: {win_sha}", text)
+    text, version_matches = re.subn(
+        r"PackageVersion: .*", f"PackageVersion: {version}", text)
+    text, url_matches = re.subn(r"/download/v[^/]+/", f"/download/v{version}/", text)
+    text, sha_matches = re.subn(r"InstallerSha256: .*", f"InstallerSha256: {win_sha}", text)
+    expected_installer_fields = 1 if path.endswith("installer.yaml") else 0
+    if (version_matches != 1 or url_matches != expected_installer_fields
+            or sha_matches != expected_installer_fields):
+        raise SystemExit(
+            f"unexpected manifest shape in {path}: version={version_matches}, "
+            f"url={url_matches}, checksum={sha_matches}")
     open(path, "w").write(text)
 PY
 

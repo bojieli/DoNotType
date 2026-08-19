@@ -18,9 +18,10 @@ set -euo pipefail
 VERSION="${1:-}"
 [ -n "$VERSION" ] || { echo "usage: $0 <version>   # e.g. 0.2.0" >&2; exit 2; }
 
-# Rejects a tag like `v1.2` or `1.2.3-beta` early rather than after three builds: CFBundleVersion
-# and Android's versionName both want a dotted numeric string, and a malformed one fails late.
-if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+# Rejects a tag like `v1.2`, `1.2.3-beta`, or `01.2.3` early rather than after three builds:
+# CFBundleVersion and Android's versionName both want a dotted numeric string, and a malformed one
+# fails late. Leading zeroes are rejected so every version has one canonical spelling.
+if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
   echo "✗ '$VERSION' is not x.y.z" >&2
   exit 2
 fi
@@ -31,8 +32,21 @@ echo "stamping $VERSION"
 
 # ---- macOS: the app bundle's plist ------------------------------------------------------------
 # CFBundleVersion is the build number and must increase for an update to be recognised; deriving it
-# from the version keeps it monotonic without a separate counter to forget.
-BUILD=$(echo "$VERSION" | awk -F. '{ printf "%d", $1 * 10000 + $2 * 100 + $3 }')
+# from the version keeps it monotonic without a separate counter to forget. Two decimal places are
+# reserved for minor and patch, so reject components that would collide (1.2.100 and 1.3.0 used to
+# produce the same build number). Android caps versionCode at 2,100,000,000.
+BUILD=$(python3 - "$VERSION" <<'PY'
+import sys
+
+major, minor, patch = map(int, sys.argv[1].split("."))
+if minor > 99 or patch > 99:
+    raise SystemExit("✗ minor and patch versions must each be between 0 and 99")
+build = major * 10_000 + minor * 100 + patch
+if build > 2_100_000_000:
+    raise SystemExit("✗ version exceeds Android's maximum versionCode")
+print(build)
+PY
+)
 
 # Through Python rather than PlistBuddy, which exists only on macOS. Each release job stamps its
 # own checkout because they run on different runners, so the Linux and Windows ones need this too.
@@ -54,8 +68,13 @@ import re, sys
 version, build = sys.argv[1], sys.argv[2]
 path = "ios/project.yml"
 text = open(path).read()
-text = re.sub(r'MARKETING_VERSION: "[^"]*"', f'MARKETING_VERSION: "{version}"', text)
-text = re.sub(r'CURRENT_PROJECT_VERSION: "[^"]*"', f'CURRENT_PROJECT_VERSION: "{build}"', text)
+text, marketing_matches = re.subn(
+    r'MARKETING_VERSION: "[^"]*"', f'MARKETING_VERSION: "{version}"', text)
+text, build_matches = re.subn(
+    r'CURRENT_PROJECT_VERSION: "[^"]*"', f'CURRENT_PROJECT_VERSION: "{build}"', text)
+if marketing_matches != 1 or build_matches != 1:
+    raise SystemExit(f"✗ expected one version pair in {path}, found "
+                     f"{marketing_matches} marketing and {build_matches} build fields")
 open(path, "w").write(text)
 PY
 say "ios/project.yml" "$VERSION ($BUILD)"
@@ -66,8 +85,11 @@ import re, sys
 version, build = sys.argv[1], sys.argv[2]
 path = "android/app/build.gradle.kts"
 text = open(path).read()
-text = re.sub(r'versionName = "[^"]*"', f'versionName = "{version}"', text)
-text = re.sub(r'versionCode = \d+', f'versionCode = {build}', text)
+text, name_matches = re.subn(r'versionName = "[^"]*"', f'versionName = "{version}"', text)
+text, code_matches = re.subn(r'versionCode = \d+', f'versionCode = {build}', text)
+if name_matches != 1 or code_matches != 1:
+    raise SystemExit(f"✗ expected one version pair in {path}, found "
+                     f"{name_matches} name and {code_matches} code fields")
 open(path, "w").write(text)
 PY
 say "android/app/build.gradle.kts" "$VERSION ($BUILD)"
@@ -81,8 +103,8 @@ version = sys.argv[1]
 path = "windows/Directory.Build.props"
 text = open(path).read()
 updated, matches = re.subn(r"<Version>[^<]*</Version>", f"<Version>{version}</Version>", text)
-if matches == 0:
-    raise SystemExit(f"✗ nothing to stamp in {path} — the pattern moved")
+if matches != 1:
+    raise SystemExit(f"✗ expected one version in {path}, found {matches}")
 open(path, "w").write(updated)
 PY
 say "windows/Directory.Build.props" "$VERSION"
@@ -111,8 +133,8 @@ for path, pattern, replacement in [
     # there is a no-op, not a failure, and treating it as one made the release fail on the first
     # tag cut at the committed version.
     updated, matches = re.subn(pattern, replacement, text)
-    if matches == 0:
-        raise SystemExit(f"✗ nothing to stamp in {path} — the pattern moved")
+    if matches != 1:
+        raise SystemExit(f"✗ expected one version in {path}, found {matches}")
     open(path, "w").write(updated)
 PY
 say "Sources/dnt/Dnt.swift" "$VERSION"
