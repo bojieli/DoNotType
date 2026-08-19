@@ -25,13 +25,25 @@ final class KeyboardExtensionUITests: XCTestCase {
 
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
         // A Form exposes rows below the viewport in its accessibility tree. Existence therefore
-        // does not mean a tap can focus the field; scroll until XCTest can actually hit it.
+        // does not mean a tap can focus the field. `isHittable` is not sufficient either: iOS 26
+        // reports a field as hittable when only its last couple of points are inside the window,
+        // but a tap there does not give it keyboard focus. Keep the complete field clear of the
+        // navigation and home-indicator areas before interacting with it.
         _ = element.waitForExistence(timeout: 3)
         for _ in 0..<6 {
-            if element.exists && element.isHittable { return true }
+            if isSafelyHittable(element, in: app) { return true }
             app.swipeUp()
         }
-        return element.exists && element.isHittable
+        return isSafelyHittable(element, in: app)
+    }
+
+    private func isSafelyHittable(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        guard element.exists, element.isHittable else { return false }
+        let frame = element.frame
+        guard !frame.isNull, !frame.isInfinite, frame.width > 0, frame.height > 0 else {
+            return false
+        }
+        return app.frame.insetBy(dx: 1, dy: 100).contains(frame)
     }
 
     /// iOS only offers a keyboard it can find inside the app bundle. Getting this wrong produces

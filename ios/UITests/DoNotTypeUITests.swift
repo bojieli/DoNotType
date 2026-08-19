@@ -255,10 +255,20 @@ final class DoNotTypeUITests: XCTestCase {
     func testCompletedQRScanShowsImportConfirmation() {
         let app = launch(arguments: ["-ui-testing-completed-qr-scan"])
         app.buttons["open-settings"].tap()
-        XCTAssertTrue(app.buttons["scan-settings-qr"].waitForExistence(timeout: 5))
-        app.buttons["scan-settings-qr"].tap()
+        let scan = app.buttons["scan-settings-qr"]
+        XCTAssertTrue(scan.waitForExistence(timeout: 5))
+        scan.tap()
 
-        XCTAssertTrue(app.staticTexts["Settings imported"].waitForExistence(timeout: 10))
+        let imported = app.staticTexts["Settings imported"]
+        if !imported.waitForExistence(timeout: 3) {
+            // SwiftUI's navigation-bar link can occasionally receive a synthesized tap without
+            // activating. The ordinary scanner test independently proves the shortcut works on
+            // its first tap; here retry once so this test remains about the completed import flow.
+            XCTAssertTrue(scan.waitForExistence(timeout: 2))
+            scan.tap()
+        }
+
+        XCTAssertTrue(imported.waitForExistence(timeout: 10))
         XCTAssertTrue(
             app.staticTexts[
                 "Your DoNotType settings are ready. API keys were stored in Keychain."
