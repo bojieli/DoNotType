@@ -20,7 +20,7 @@ struct Transcribe: AsyncParsableCommand {
         discussion: """
             Modes:
               verbatim              word for word, at the chosen fidelity (default)
-              rewrite[:style]       verbatim, then rewritten — formal, concise, bullets
+              rewrite[:style]       verbatim, then rewritten — formal, concise, casual
               summary[:style]       verbatim, then summarised — brief, bullets, actions
 
             Rewriting and summarising need a language model. When the transcription backend is a \

@@ -205,11 +205,11 @@ final class FileTranscriberTests: XCTestCase {
     func testProgressIsReportedForEveryStage() async throws {
         nonisolated(unsafe) var seen: [FileTranscriber.Progress] = []
         _ = try await transcriber(provider: TwoStageProvider()).transcribe(
-            fileAt: recording, mode: .rewrite(.bullets),
+            fileAt: recording, mode: .rewrite(.casual),
             onProgress: { seen.append($0) })
 
         XCTAssertEqual(seen.first, .decoding(recording.lastPathComponent))
-        XCTAssertTrue(seen.contains(.deriving(.rewrite(.bullets))))
+        XCTAssertTrue(seen.contains(.deriving(.rewrite(.casual))))
     }
 
     func testMissingFileFailsBeforeAnyRequest() async {

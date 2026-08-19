@@ -20,7 +20,7 @@ struct Rewrite: AsyncParsableCommand {
     @OptionGroup var options: ProviderOptions
 
     @Option(name: .long, help: "Styles to test, comma separated.")
-    var styles: String = "formal,concise,bullets"
+    var styles: String = "formal,concise,casual"
 
     @Option(name: .long, help: "Runs per case per style.")
     var trials: Int = 3

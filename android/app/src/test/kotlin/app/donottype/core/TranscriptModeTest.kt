@@ -21,7 +21,7 @@ class TranscriptModeTest {
     @Test
     fun `bare stage names take their default`() {
         assertEquals(TranscriptMode.Summary(SummaryStyle.BRIEF), TranscriptMode.from("summary"))
-        assertEquals(TranscriptMode.Rewrite(RewriteStyle.FORMAL), TranscriptMode.from("rewrite"))
+        assertEquals(TranscriptMode.Rewrite(RewriteStyle.CASUAL), TranscriptMode.from("rewrite"))
         assertEquals(TranscriptMode.Summary(SummaryStyle.BRIEF), TranscriptMode.from("summarize"))
     }
 
@@ -118,11 +118,11 @@ class TranscriptModeTest {
             "raw" to "verbatim",
             "transcribe" to "verbatim",
             "none" to "verbatim",
-            "rewrite" to "rewrite:formal",
+            "rewrite" to "rewrite:casual",
             "rewrite:formal" to "rewrite:formal",
             "rewrite:concise" to "rewrite:concise",
-            "rewrite:bullets" to "rewrite:bullets",
-            "rewrite:" to "rewrite:formal",
+            "rewrite:casual" to "rewrite:casual",
+            "rewrite:" to "rewrite:casual",
             "rewrite:verbatim" to null,
             "summary" to "summary:brief",
             "summary:" to "summary:brief",
@@ -158,7 +158,7 @@ class TranscriptModeTest {
             "verbatim" to "Finishing…",
             "rewrite:formal" to "Rewriting…",
             "rewrite:concise" to "Tightening…",
-            "rewrite:bullets" to "Making bullets…",
+            "rewrite:casual" to "Loosening…",
             "summary:brief" to "Summarising…",
             "summary:bullets" to "Summarising into bullets…",
             "summary:actions" to "Picking out the actions…",

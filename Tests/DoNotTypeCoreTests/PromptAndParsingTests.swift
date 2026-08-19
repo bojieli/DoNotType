@@ -27,27 +27,6 @@ final class PromptBuilderTests: XCTestCase {
         }
     }
 
-    func testShippedInstructionsStayConcise() throws {
-        let builder = try shipped()
-        let words: (String) -> Int = { text in
-            text.split(whereSeparator: { $0.isWhitespace }).count
-        }
-
-        for fidelity in Fidelity.allCases {
-            let instruction = try builder.systemInstruction(fidelity: fidelity)
-            XCTAssertLessThanOrEqual(
-                words(instruction), 160, "\(fidelity) transcription prompt grew")
-        }
-        for style in RewriteStyle.allCases where style.isRewrite {
-            let instruction = try builder.rewriteInstruction(style: style)
-            XCTAssertLessThanOrEqual(words(instruction), 100, "\(style) rewrite prompt grew")
-        }
-        for style in SummaryStyle.allCases {
-            let instruction = try builder.summaryInstruction(style: style)
-            XCTAssertLessThanOrEqual(words(instruction), 90, "\(style) summary prompt grew")
-        }
-    }
-
     func testDefaultTranscriptionRemovesDisfluencies() throws {
         let instruction = try shipped().systemInstruction(fidelity: .light)
         for phrase in [

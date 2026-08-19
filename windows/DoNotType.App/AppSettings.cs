@@ -39,7 +39,7 @@ public sealed class AppSettings
     public HotkeyMonitor.Trigger? SecondaryTrigger { get; set; }
 
     /// <summary>What the second key produces. Never verbatim: that is what the first key is for.</summary>
-    public RewriteStyle SecondaryStyle { get; set; } = RewriteStyle.Formal;
+    public RewriteStyle SecondaryStyle { get; set; } = RewriteStyle.Casual;
     public bool GroundingEnabled { get; set; } = true;
     public RetentionPolicy Retention { get; set; } = RetentionPolicy.Forever;
     public bool KeepAudio { get; set; }

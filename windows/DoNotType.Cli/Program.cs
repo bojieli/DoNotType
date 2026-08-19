@@ -72,7 +72,7 @@ public static class Program
 
             TRANSCRIBE
               --mode <mode>           verbatim (default), rewrite[:style], summary[:style]
-                                      styles: formal, concise, bullets / brief, bullets, actions
+                                      styles: formal, concise, casual / brief, bullets, actions
               --provider <name>       gemini, openrouter, deepgram, mistral, xai
               --model <id>            Model override
               --fidelity <level>      raw, light, tidy

@@ -63,7 +63,7 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
             self = .verbatim
         case "rewrite":
             guard let tail else {
-                self = .rewrite(.formal)
+                self = .rewrite(.casual)
                 return
             }
             guard let style = RewriteStyle(rawValue: tail), style.isRewrite else { return nil }
@@ -90,8 +90,8 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
 
     /// What to show while the second request is in flight.
     ///
-    /// The mode's own word rather than "Working…". Somebody who chose Bullets is waiting for
-    /// bullets, and a label that says so is the difference between a wait that makes sense and one
+    /// The mode's own word rather than "Working…". Somebody who chose a summary is waiting for a
+    /// summary, and a label that says so is the difference between a wait that makes sense and one
     /// that looks like the app has stalled after already getting the words — which is what it looks
     /// like, because the transcript exists by then and nothing on screen is moving.
     ///
@@ -106,7 +106,7 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
             case .verbatim: "Finishing…"
             case .formal: "Rewriting…"
             case .concise: "Tightening…"
-            case .bullets: "Making bullets…"
+            case .casual: "Loosening…"
             }
         case .summary(let style):
             switch style {

@@ -211,7 +211,7 @@ internal sealed class TrayApplication : ApplicationContext
                         string.Empty, _controller.WillSubmit ? "Will send" : string.Empty);
                     break;
                 case DictationController.State.Deriving:
-                    // The style's own word — "Tightening…", "Making bullets…" — because somebody
+                    // The style's own word — "Tightening…", "Loosening…" — because somebody
                     // who held the second key is waiting for that specific thing.
                     _levelTimer.Stop();
                     SetOverlayPhase(

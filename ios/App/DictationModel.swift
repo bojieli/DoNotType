@@ -335,7 +335,7 @@ final class DictationModel {
         if let storedRewriteStyle, storedRewriteStyle.isRewrite {
             preferredRewriteStyle = storedRewriteStyle
         } else {
-            preferredRewriteStyle = storedLiveStyle.isRewrite ? storedLiveStyle : .formal
+            preferredRewriteStyle = storedLiveStyle.isRewrite ? storedLiveStyle : .casual
         }
         retention = RetentionPolicy(rawValue: defaults.string(forKey: "retention") ?? "")
             ?? .forever
@@ -466,7 +466,10 @@ final class DictationModel {
             return kind
         }
         let importedStyle: RewriteStyle? = try document.iOS.map { values in
-            guard let style = RewriteStyle(rawValue: values.liveStyle) else {
+            // "bullets" predates the rename to casual; see SettingsModel for the same alias.
+            guard let style = RewriteStyle(rawValue: values.liveStyle)
+                ?? (values.liveStyle == "bullets" ? .casual : nil)
+            else {
                 throw SettingsTransferApplyError.unsupportedValue(
                     field: "iOS.liveStyle", value: values.liveStyle)
             }

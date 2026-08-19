@@ -219,7 +219,7 @@ final class FileTranscriptionModel {
         switch progress {
         case .decoding: phase = .decoding
         case .transcribing(let done, let total): phase = .transcribing(done: done, of: total)
-        // The mode's own word — "Summarising…", "Making bullets…" — rather than its settings label.
+        // The mode's own word — "Summarising…", "Loosening…" — rather than its settings label.
         case .deriving(let mode): phase = .deriving(mode.progressLabel)
         }
     }

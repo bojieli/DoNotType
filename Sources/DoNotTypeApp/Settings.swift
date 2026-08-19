@@ -73,7 +73,7 @@ final class Settings {
             Key.cancelShortcut: CancelShortcut.escape.rawValue,
             // Finishing a message can send it to another person, so it must be a deliberate opt-in.
             Key.finishAndSendAction: FinishAndSendAction.disabled.rawValue,
-            Key.secondaryStyle: RewriteStyle.formal.rawValue,
+            Key.secondaryStyle: RewriteStyle.casual.rawValue,
             // Audible boundaries make it clear when capture has begun and ended, even when the
             // recording overlay is behind another window. Users can still turn them off below.
             Key.interactionSounds: true,
@@ -178,7 +178,7 @@ final class Settings {
 
     var secondaryStyle: RewriteStyle {
         get {
-            RewriteStyle(rawValue: defaults.string(forKey: Key.secondaryStyle) ?? "") ?? .formal
+            RewriteStyle(rawValue: defaults.string(forKey: Key.secondaryStyle) ?? "") ?? .casual
         }
         set { defaults.set(newValue.rawValue, forKey: Key.secondaryStyle) }
     }

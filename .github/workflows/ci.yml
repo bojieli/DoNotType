@@ -251,7 +251,7 @@ jobs:
           unzip -p "$APK" assets/LICENSE.txt | grep -qx "MIT License"
           for PART in system rewrite summary \
             fidelity/raw fidelity/light fidelity/tidy \
-            style/formal style/concise style/bullets \
+            style/formal style/concise style/casual \
             summary-style/brief summary-style/bullets summary-style/actions; do
             unzip -p "$APK" "assets/prompt/$PART.md" | grep -q . \
               || { echo "assets/prompt/$PART.md is missing or empty"; exit 1; }

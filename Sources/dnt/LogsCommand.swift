@@ -172,7 +172,7 @@ struct PromptCommand: ParsableCommand {
         var section = "system"
 
         @Option(name: .long, help: "Rewrite style, for --section rewrite.")
-        var style = RewriteStyle.formal.rawValue
+        var style = RewriteStyle.casual.rawValue
 
         @Option(name: .long, help: "Summary style, for --section summary.")
         var summary = SummaryStyle.default.rawValue

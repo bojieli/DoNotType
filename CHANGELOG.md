@@ -386,6 +386,19 @@ deliberate:
 
 ### Changed
 
+- **Casual replaces Bullets as a rewrite style, and is the default rewrite everywhere.** The
+  bullet formatter left the rewrite picker on the owner's call: it overlapped the summary styles
+  in appearance without their purpose. The new `casual` style rewrites as relaxed, typed prose
+  while keeping every fact — its clause leads with "as if typed, not spoken" because the
+  voice-first draft measurably kept spoken openers (2/48 fixture samples) and the flipped one
+  kept none. Bare `rewrite` on the CLI and a fresh install's rewrite setting both mean casual now,
+  the in-flight label is "Loosening…", and a stored or transferred `bullets` selection degrades
+  to the default instead of failing. `summary:bullets` is untouched. Fixture gate: 0 content lost
+  and 0 fillers retained for all three styles; near-miss 37/11/2, noise-identical to baseline.
+- **The prompt word-count caps (160/100/90) are removed from the Swift, .NET and Android test
+  suites.** They pinned a few words of headroom over the current text rather than measuring
+  anything, and had already priced an example out of the light clause. Concision stays as a
+  changelog norm; the 972→448 measurement in [PROMPT.md](PROMPT.md) is its evidence.
 - **Light fidelity now removes vocal fillers unconditionally, measured on retained real
   dictations.** The light clause's "when they add no meaning" used to dangle at the end of the
   whole removal list, vocal fillers included; it now governs only discourse fillers, and

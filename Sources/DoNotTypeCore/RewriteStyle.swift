@@ -9,7 +9,7 @@ public enum RewriteStyle: String, CaseIterable, Sendable, Codable {
     case verbatim
     case formal
     case concise
-    case bullets
+    case casual
 
     public static let `default`: RewriteStyle = .verbatim
 
@@ -20,7 +20,7 @@ public enum RewriteStyle: String, CaseIterable, Sendable, Codable {
         case .verbatim: "Verbatim — exactly what you said"
         case .formal: "Formal — professional prose"
         case .concise: "Concise — same voice, fewer words"
-        case .bullets: "Bullets — one idea per line"
+        case .casual: "Casual — relaxed, as if typed"
         }
     }
 

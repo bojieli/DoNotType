@@ -425,7 +425,7 @@ public static class SettingsTransfer
         "verbatim" => RewriteStyle.Verbatim,
         "formal" => RewriteStyle.Formal,
         "concise" => RewriteStyle.Concise,
-        "bullets" => RewriteStyle.Bullets,
+        "casual" => RewriteStyle.Casual,
         _ => null,
     };
 

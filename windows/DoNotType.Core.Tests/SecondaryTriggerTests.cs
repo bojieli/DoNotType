@@ -21,7 +21,7 @@ public sealed class SecondaryTriggerTests
     /// same thing is a setting with no effect.
     /// </summary>
     private static readonly RewriteStyle[] Offered =
-        [RewriteStyle.Formal, RewriteStyle.Concise, RewriteStyle.Bullets];
+        [RewriteStyle.Formal, RewriteStyle.Concise, RewriteStyle.Casual];
 
     [Fact]
     public void TheListOffersEveryRewriteAndNothingElse()
@@ -33,12 +33,12 @@ public sealed class SecondaryTriggerTests
 
     /// <summary>
     /// The settings form stores `(RewriteStyle)(index + 1)` and reads back `(int)style - 1`. If
-    /// those ever disagree, somebody's Concise silently becomes Bullets.
+    /// those ever disagree, somebody's Concise silently becomes Casual.
     /// </summary>
     [Theory]
     [InlineData(RewriteStyle.Formal, 0)]
     [InlineData(RewriteStyle.Concise, 1)]
-    [InlineData(RewriteStyle.Bullets, 2)]
+    [InlineData(RewriteStyle.Casual, 2)]
     public void TheIndexAndTheStyleAgreeInBothDirections(RewriteStyle style, int index)
     {
         Assert.Equal(style, (RewriteStyle)(index + 1));
@@ -50,7 +50,7 @@ public sealed class SecondaryTriggerTests
     [Theory]
     [InlineData(RewriteStyle.Formal)]
     [InlineData(RewriteStyle.Concise)]
-    [InlineData(RewriteStyle.Bullets)]
+    [InlineData(RewriteStyle.Casual)]
     public void EveryOfferedStyleHasAnInstruction(RewriteStyle style)
     {
         var instruction = new PromptBuilder(
@@ -72,6 +72,6 @@ public sealed class SecondaryTriggerTests
     [Fact]
     public void TheDefaultStyleActuallyRewrites()
     {
-        Assert.True(RewriteStyle.Formal.IsRewrite());
+        Assert.True(RewriteStyle.Casual.IsRewrite());
     }
 }

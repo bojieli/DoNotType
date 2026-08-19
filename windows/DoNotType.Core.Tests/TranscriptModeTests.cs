@@ -26,7 +26,7 @@ public sealed class TranscriptModeTests
     public void BareStageNamesTakeTheirDefault()
     {
         Assert.Equal("summary:brief", TranscriptMode.Parse("summary")!.Id);
-        Assert.Equal("rewrite:formal", TranscriptMode.Parse("rewrite")!.Id);
+        Assert.Equal("rewrite:casual", TranscriptMode.Parse("rewrite")!.Id);
         Assert.Equal("summary:brief", TranscriptMode.Parse("summarize")!.Id);
     }
 
@@ -564,11 +564,11 @@ public sealed class TranscriptModeParityTests
     [InlineData("raw", "verbatim")]
     [InlineData("transcribe", "verbatim")]
     [InlineData("none", "verbatim")]
-    [InlineData("rewrite", "rewrite:formal")]
+    [InlineData("rewrite", "rewrite:casual")]
     [InlineData("rewrite:formal", "rewrite:formal")]
     [InlineData("rewrite:concise", "rewrite:concise")]
-    [InlineData("rewrite:bullets", "rewrite:bullets")]
-    [InlineData("rewrite:", "rewrite:formal")]
+    [InlineData("rewrite:casual", "rewrite:casual")]
+    [InlineData("rewrite:", "rewrite:casual")]
     [InlineData("rewrite:verbatim", null)]
     [InlineData("summary", "summary:brief")]
     [InlineData("summary:", "summary:brief")]
@@ -597,7 +597,7 @@ public sealed class TranscriptModeParityTests
     [InlineData("verbatim", "Finishing…")]
     [InlineData("rewrite:formal", "Rewriting…")]
     [InlineData("rewrite:concise", "Tightening…")]
-    [InlineData("rewrite:bullets", "Making bullets…")]
+    [InlineData("rewrite:casual", "Loosening…")]
     [InlineData("summary:brief", "Summarising…")]
     [InlineData("summary:bullets", "Summarising into bullets…")]
     [InlineData("summary:actions", "Picking out the actions…")]

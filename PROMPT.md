@@ -20,7 +20,7 @@ whole files now. There is no annotation to skip and nothing to mis-match.
 | Rewrite stage | [`prompt/rewrite.md`](prompt/rewrite.md) | `{{STYLE_RULE}}` |
 | Summary stage | [`prompt/summary.md`](prompt/summary.md) | `{{SUMMARY_RULE}}` |
 | Fidelity clauses | [`prompt/fidelity/`](prompt/fidelity/) — `raw`, `light`, `tidy` | — |
-| Rewrite styles | [`prompt/style/`](prompt/style/) — `formal`, `concise`, `bullets` | — |
+| Rewrite styles | [`prompt/style/`](prompt/style/) — `formal`, `concise`, `casual` | — |
 | Summary styles | [`prompt/summary-style/`](prompt/summary-style/) — `brief`, `bullets`, `actions` | — |
 
 Two rules govern the whole directory:
@@ -120,12 +120,40 @@ screen context broke it. That is the failure this contract exists to prevent, an
 
 | Date | Change | Provider / model | runs | matched | improved | regressed |
 |------|--------|------------------|------|---------|----------|-----------|
+| 2026-08-19 | Casual rewrite style replaces bullets; default rewrite style | **gemini** · gemini-3.5-flash | 48 | 37 | 11 | **2** |
 | 2026-08-19 | Light vocal fillers made unconditional | **gemini** · gemini-3.5-flash | 48 | 36 | 10 | **2** |
 | 2026-08-17 | Light self-correction cleanup | **gemini** · gemini-3.5-flash | 48 | 35 | 7 | **2** |
 | 2026-08-17 | Concise contracts and filler cleanup | **gemini** · gemini-3.5-flash | 48 | 38 | 12 | **2** |
 | 2026-08-17 | Pre-change 972-word control | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
 | 2026-08-09 | Initial contract | **gemini** · gemini-3.6-flash | 15 | 15 | 0 | **0** |
 | 2026-08-09 | Initial contract | openrouter · google/gemini-3.6-flash | 15 | 12 | 0 | 1 |
+
+### 2026-08-19 — casual rewrite style replaces bullets; the word-count caps are gone
+
+Two changes, one measured, one decided.
+
+**Casual replaces bullets.** `prompt/style/bullets.md` is retired and `prompt/style/casual.md`
+added, on the owner's call that a bullet formatter is not a rewrite style worth a picker slot
+pre-release. The distinction that dies with it is worth recording: `rewrite:bullets` kept every
+fact and only changed shape; `summary:bullets` (untouched) is the one allowed to drop content. A
+bare `rewrite` now means `rewrite:casual` on every platform, and the retired `bullets` spelling
+degrades to the default in settings transfer instead of failing the import. The clause that
+passed the fixtures is the constraint-first form ("Use relaxed, natural prose as if typed, not
+spoken. Keep the speaker's voice and vocabulary; …"): the voice-first draft retained the spoken
+opener "right so" in 2/48 samples, the flipped one retained nothing in 48. Final fixture run:
+formal 0/24, concise 0/24, casual 0/24 lost, 0 retained.
+
+**The 160/100/90 word-count tests are removed** from the Swift, .NET and Android suites, on the
+owner's call. They were never a measurement — each number was a few words of headroom over the
+then-current text — and in practice they priced examples out of the contract: "I mean" left the
+light clause's example list this week for exactly 3 words of budget. The brevity evidence stands
+(the 972-word control measured no better than 448, below), so concision stays as a changelog
+norm, not as a hardcoded number.
+
+The required near-miss run: 37 matched / 11 improved / 2 regressed. Style clauses never reach the
+transcription request, so any movement from the 2026-08-19 baseline (36/9/1) and variant (36/10/2)
+is the suite's noise floor by construction; the gate is satisfied and the zero-regression goal
+remains failed as before.
 
 ### 2026-08-19 — light fidelity: vocal fillers split out of the dangling conditional
 

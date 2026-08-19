@@ -9,11 +9,11 @@ would think to look for.
 |---|---|---|
 | `verbatim` | verbatim | |
 | `raw`, `transcribe`, `none` | verbatim | the spellings people reach for |
-| `rewrite` | rewrite, formal | a bare stage takes that stage's default |
+| `rewrite` | rewrite, casual | a bare stage takes that stage's default |
 | `rewrite:formal` | rewrite, formal | |
 | `rewrite:concise` | rewrite, concise | |
-| `rewrite:bullets` | rewrite, bullets | |
-| `rewrite:` | rewrite, formal | an unfinished colon is not a style |
+| `rewrite:casual` | rewrite, casual | |
+| `rewrite:` | rewrite, casual | an unfinished colon is not a style |
 | `rewrite:verbatim` | rejected | verbatim is not a rewrite; `--mode verbatim` says it |
 | `summary` | summary, brief | |
 | `summary:brief` | summary, brief | |

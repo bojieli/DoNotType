@@ -20,7 +20,7 @@ final class TranscriptModeTests: XCTestCase {
 
     func testBareStageNamesTakeTheirDefault() {
         XCTAssertEqual(TranscriptMode(rawValue: "summary"), .summary(.brief))
-        XCTAssertEqual(TranscriptMode(rawValue: "rewrite"), .rewrite(.formal))
+        XCTAssertEqual(TranscriptMode(rawValue: "rewrite"), .rewrite(.casual))
         XCTAssertEqual(TranscriptMode(rawValue: "summarize"), .summary(.brief))
     }
 
@@ -193,11 +193,11 @@ final class TranscriptModeTests: XCTestCase {
         ("raw", "verbatim"),
         ("transcribe", "verbatim"),
         ("none", "verbatim"),
-        ("rewrite", "rewrite:formal"),
+        ("rewrite", "rewrite:casual"),
         ("rewrite:formal", "rewrite:formal"),
         ("rewrite:concise", "rewrite:concise"),
-        ("rewrite:bullets", "rewrite:bullets"),
-        ("rewrite:", "rewrite:formal"),
+        ("rewrite:casual", "rewrite:casual"),
+        ("rewrite:", "rewrite:casual"),
         ("rewrite:verbatim", nil),
         ("summary", "summary:brief"),
         ("summary:", "summary:brief"),
@@ -228,7 +228,7 @@ final class TranscriptModeTests: XCTestCase {
             ("verbatim", "Finishing…"),
             ("rewrite:formal", "Rewriting…"),
             ("rewrite:concise", "Tightening…"),
-            ("rewrite:bullets", "Making bullets…"),
+            ("rewrite:casual", "Loosening…"),
             ("summary:brief", "Summarising…"),
             ("summary:bullets", "Summarising into bullets…"),
             ("summary:actions", "Picking out the actions…"),

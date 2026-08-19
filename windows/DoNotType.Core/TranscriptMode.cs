@@ -14,7 +14,7 @@ public enum RewriteStyle
     Verbatim,
     Formal,
     Concise,
-    Bullets,
+    Casual,
 }
 
 /// <summary>
@@ -40,7 +40,7 @@ public static class StyleExtensions
     {
         RewriteStyle.Formal => "formal",
         RewriteStyle.Concise => "concise",
-        RewriteStyle.Bullets => "bullets",
+        RewriteStyle.Casual => "casual",
         _ => "verbatim",
     };
 
@@ -50,7 +50,7 @@ public static class StyleExtensions
     {
         RewriteStyle.Formal => "Formal — professional prose",
         RewriteStyle.Concise => "Concise — same voice, fewer words",
-        RewriteStyle.Bullets => "Bullets — one idea per line",
+        RewriteStyle.Casual => "Casual — relaxed, as if typed",
         _ => "Verbatim — exactly what you said",
     };
 
@@ -112,10 +112,10 @@ public abstract record TranscriptMode
 
     /// <summary>What to show while the second request is in flight.</summary>
     /// <remarks>
-    /// The mode's own word rather than "Writing the result…". Somebody who chose Bullets is waiting
-    /// for bullets, and a label that says so is the difference between a wait that makes sense and
-    /// one that looks like the app has stalled after already getting the words — which is what it
-    /// looks like, because the transcript exists by then and nothing on screen is moving.
+    /// The mode's own word rather than "Writing the result…". Somebody who chose a summary is
+    /// waiting for a summary, and a label that says so is the difference between a wait that makes
+    /// sense and one that looks like the app has stalled after already getting the words — which is
+    /// what it looks like, because the transcript exists by then and nothing on screen is moving.
     ///
     /// Here rather than in each interface because there are five of them, and a summary called one
     /// thing on a phone and another on a laptop is drift nobody notices until they see both.
@@ -126,7 +126,7 @@ public abstract record TranscriptMode
         {
             RewriteStyle.Formal => "Rewriting…",
             RewriteStyle.Concise => "Tightening…",
-            RewriteStyle.Bullets => "Making bullets…",
+            RewriteStyle.Casual => "Loosening…",
             _ => "Finishing…",
         },
         SummaryMode summary => summary.Style switch
@@ -159,7 +159,7 @@ public abstract record TranscriptMode
         Verbatim,
         Rewrite(RewriteStyle.Formal),
         Rewrite(RewriteStyle.Concise),
-        Rewrite(RewriteStyle.Bullets),
+        Rewrite(RewriteStyle.Casual),
         Summary(SummaryStyle.Brief),
         Summary(SummaryStyle.Bullets),
         Summary(SummaryStyle.Actions),
@@ -183,12 +183,12 @@ public abstract record TranscriptMode
             case "verbatim" or "raw" or "transcribe" or "none":
                 return Verbatim;
             case "rewrite":
-                if (tail is null) return Rewrite(RewriteStyle.Formal);
+                if (tail is null) return Rewrite(RewriteStyle.Casual);
                 return tail switch
                 {
                     "formal" => Rewrite(RewriteStyle.Formal),
                     "concise" => Rewrite(RewriteStyle.Concise),
-                    "bullets" => Rewrite(RewriteStyle.Bullets),
+                    "casual" => Rewrite(RewriteStyle.Casual),
                     _ => null,
                 };
             case "summary" or "summarise" or "summarize":

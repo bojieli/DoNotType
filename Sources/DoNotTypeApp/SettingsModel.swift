@@ -688,7 +688,11 @@ final class SettingsModel {
                 }
                 return value
             }
-            guard let secondaryStyle = RewriteStyle(rawValue: desktop.secondaryStyle) else {
+            // "bullets" predates the rename to casual; a transfer document crosses versions,
+            // so the retired spelling degrades to the default instead of failing the import.
+            guard let secondaryStyle = RewriteStyle(rawValue: desktop.secondaryStyle)
+                ?? (desktop.secondaryStyle == "bullets" ? .casual : nil)
+            else {
                 throw SettingsTransferApplyError.unsupportedValue(
                     field: "desktop.secondaryStyle", value: desktop.secondaryStyle)
             }

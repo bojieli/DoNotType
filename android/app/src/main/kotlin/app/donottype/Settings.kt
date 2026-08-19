@@ -196,10 +196,10 @@ object Settings {
     /** The configured style behind Rewrite, kept when the keyboard switches back to Dictate. */
     var preferredRewriteStyle: RewriteStyle
         get() {
-            if (!ready) return RewriteStyle.FORMAL
+            if (!ready) return RewriteStyle.CASUAL
             val stored = RewriteStyle.from(prefs.getString(KEY_REWRITE_STYLE, null))
             if (stored?.isRewrite == true) return stored
-            return liveStyle.takeIf { it.isRewrite } ?: RewriteStyle.FORMAL
+            return liveStyle.takeIf { it.isRewrite } ?: RewriteStyle.CASUAL
         }
         set(value) {
             if (!ready || !value.isRewrite) return

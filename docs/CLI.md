@@ -75,10 +75,10 @@ dnt transcribe call.mp3 --json | jq -r .[0].verbatim
 | `--mode` | what it does | requests |
 |---|---|---|
 | `verbatim` (default) | word for word, at the chosen fidelity | 1 |
-| `rewrite:formal` \| `concise` \| `bullets` | verbatim, then rewritten — never loses a fact | 2 |
+| `rewrite:formal` \| `concise` \| `casual` | verbatim, then rewritten — never loses a fact | 2 |
 | `summary:brief` \| `bullets` \| `actions` | verbatim, then summarised — this one is allowed to | 2 |
 
-`rewrite` and `summary` alone mean `rewrite:formal` and `summary:brief`.
+`rewrite` and `summary` alone mean `rewrite:casual` and `summary:brief`.
 
 **The verbatim transcript is always produced.** `--json` carries both; `--output` writes the derived
 text to `name.txt` and the transcript to `name.verbatim.txt` beside it. A summary you cannot check

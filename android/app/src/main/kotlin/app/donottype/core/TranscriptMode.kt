@@ -12,7 +12,7 @@ enum class RewriteStyle(val id: String, val label: String) {
     VERBATIM("verbatim", "Verbatim — exactly what you said"),
     FORMAL("formal", "Formal — professional prose"),
     CONCISE("concise", "Concise — same voice, fewer words"),
-    BULLETS("bullets", "Bullets — one idea per line"),
+    CASUAL("casual", "Casual — relaxed, as if typed"),
     ;
 
     val isRewrite: Boolean get() = this != VERBATIM
@@ -81,10 +81,10 @@ sealed class TranscriptMode {
     /**
      * What to show while the second request is in flight.
      *
-     * The mode's own word rather than "Writing the result…". Somebody who chose Bullets is waiting
-     * for bullets, and a label that says so is the difference between a wait that makes sense and
-     * one that looks like the app has stalled after already getting the words — which is what it
-     * looks like, because the transcript exists by then and nothing on screen is moving.
+     * The mode's own word rather than "Writing the result…". Somebody who chose a summary is
+     * waiting for a summary, and a label that says so is the difference between a wait that makes
+     * sense and one that looks like the app has stalled after already getting the words — which is
+     * what it looks like, because the transcript exists by then and nothing on screen is moving.
      *
      * Here rather than in each interface because there are five of them, and a summary called one
      * thing on a phone and another on a laptop is drift nobody notices until they see both.
@@ -95,7 +95,7 @@ sealed class TranscriptMode {
             is Rewrite -> when (style) {
                 RewriteStyle.FORMAL -> "Rewriting…"
                 RewriteStyle.CONCISE -> "Tightening…"
-                RewriteStyle.BULLETS -> "Making bullets…"
+                RewriteStyle.CASUAL -> "Loosening…"
                 RewriteStyle.VERBATIM -> "Finishing…"
             }
             is Summary -> when (style) {
@@ -143,7 +143,7 @@ sealed class TranscriptMode {
             return when (head) {
                 "verbatim", "raw", "transcribe", "none" -> Verbatim
                 "rewrite" -> {
-                    if (tail == null) return Rewrite(RewriteStyle.FORMAL)
+                    if (tail == null) return Rewrite(RewriteStyle.CASUAL)
                     RewriteStyle.from(tail)?.takeIf { it.isRewrite }?.let { Rewrite(it) }
                 }
                 "summary", "summarise", "summarize" -> {

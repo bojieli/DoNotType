@@ -67,7 +67,7 @@ PROMPT_DIR="$APP/Contents/Resources/prompt"
 [ -d "$PROMPT_DIR" ] || fail "the prompt/ directory is not in the bundle"
 for PART in system.md rewrite.md summary.md \
   fidelity/raw.md fidelity/light.md fidelity/tidy.md \
-  style/formal.md style/concise.md style/bullets.md \
+  style/formal.md style/concise.md style/casual.md \
   summary-style/brief.md summary-style/bullets.md summary-style/actions.md; do
   [ -s "$PROMPT_DIR/$PART" ] || fail "prompt/$PART is missing from the bundle or empty"
 done
