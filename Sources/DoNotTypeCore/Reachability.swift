@@ -102,6 +102,11 @@ public enum FailureAdvice {
                     message: "No API key. Add one in Settings, or set \(envVar).",
                     isQueued: false, isRetryable: false, needsUserAction: true)
 
+            case .invalidEndpoint(let detail):
+                return Guidance(
+                    message: "Invalid provider endpoint: \(detail)",
+                    isQueued: false, isRetryable: false, needsUserAction: true)
+
             case .audioSilentlyDropped:
                 return Guidance(
                     message: "This provider accepted the audio but never processed it. Switch "

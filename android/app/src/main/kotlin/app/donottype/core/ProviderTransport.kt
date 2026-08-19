@@ -105,6 +105,10 @@ object ProviderTransport {
     fun HttpURLConnection.applyPolicy(endpoint: String) {
         connectTimeout = CONNECT_TIMEOUT_MS
         readTimeout = REQUEST_TIMEOUT_MS
+        // Provider keys live in both Authorization and provider-specific headers. Do not let the
+        // platform decide which of those survive an automatic redirect to a different recipient;
+        // surface the 3xx response and require the configured endpoint itself to be final.
+        instanceFollowRedirects = false
 
         val host = runCatching { URL(endpoint).host }.getOrNull() ?: return
         if (isStale(host)) {

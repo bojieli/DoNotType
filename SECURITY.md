@@ -39,6 +39,11 @@ switch rather than storing the surrounding document.
   provider, with the user's key. There is no DoNotType backend, no telemetry, no analytics, no
   crash reporting.
 - **No third-party recipients.** The only outbound host is the provider's API.
+- **No cross-origin provider redirects.** A provider response cannot automatically forward the
+  recording, screen context, or API-key headers to a different scheme, host, or port.
+- **Remote endpoint overrides require HTTPS.** A malformed override fails rather than falling back
+  to a different recipient, and embedded URL credentials are rejected. The local-model provider
+  may use HTTP because its normal serving surface is a credential-free loopback or LAN endpoint.
 - **`store: false`** is set on every Gemini request, so the provider is asked not to retain it.
 
 ## Secret storage

@@ -406,8 +406,8 @@ public enum ProviderFactory {
     ///   somebody else runs — a proxy, a regional mirror, a gateway that fronts several models —
     ///   is the case this exists for, and it was previously reachable only for `.local` and only
     ///   through an environment variable an app opened from Finder never sees. An empty or
-    ///   unparseable value falls back to the built-in URL rather than failing the dictation: a
-    ///   half-typed setting must not be able to cost somebody their words.
+    ///   non-empty invalid value fails explicitly. Silently falling back would send a recording to
+    ///   a different recipient than the endpoint the user believed they configured.
     public static func make(
         _ kind: ProviderKind,
         endpoint: String? = nil,
@@ -415,13 +415,7 @@ public enum ProviderFactory {
         appURL: String = "https://github.com/donottype/donottype",
         appTitle: String = "DoNotType"
     ) throws -> any TranscriptionProvider {
-        // Scheme and host both required. `URL(string:)` accepts "not a url at all" as a relative
-        // reference and hands back something with no host, which would post the audio nowhere and
-        // fail for a reason nobody could read off the setting that caused it. A field somebody is
-        // halfway through typing must fall back to the built-in URL, not break the dictation.
-        let override = endpoint?.trimmed.nilIfEmpty
-            .flatMap { URL(string: $0) }
-            .flatMap { $0.scheme != nil && $0.host != nil ? $0 : nil }
+        let override = try validatedEndpoint(endpoint, for: kind)
         // Every spelling is tried before giving up, so a shell that already has the key under a
         // different name does not look like a missing key.
         var key = ""
@@ -458,9 +452,13 @@ public enum ProviderFactory {
         case .local:
             let base = environment["DNT_LOCAL_BASE_URL"]
                 ?? "http://localhost:8000/v1/chat/completions"
-            guard let url = override ?? URL(string: base) else {
-                throw ProviderError.malformedResponse(
-                    "DNT_LOCAL_BASE_URL is not a valid URL: \(base)")
+            let url: URL
+            if let override {
+                url = override
+            } else if let validated = try validatedEndpoint(base, for: .local) {
+                url = validated
+            } else {
+                throw ProviderError.invalidEndpoint("the local provider endpoint is empty")
             }
             return OpenAICompatibleProvider(
                 name: "local",
@@ -492,6 +490,22 @@ public enum ProviderFactory {
                     ?? URL(string: "https://api.mistral.ai/v1/audio/transcriptions")!,
                 language: environment["DNT_MISTRAL_LANGUAGE"]?.trimmed.nilIfEmpty)
         }
+    }
+
+    /// A remote override receives an API key, audio, and possibly screen context, so it must use
+    /// TLS. The local-model provider is the exception: its normal serving surface is HTTP on a
+    /// loopback or LAN address and its placeholder key is not a credential.
+    private static func validatedEndpoint(_ raw: String?, for kind: ProviderKind) throws -> URL? {
+        guard let value = raw?.trimmed.nilIfEmpty else { return nil }
+        guard let url = URL(string: value), let scheme = url.scheme?.lowercased(),
+            let host = url.host, !host.isEmpty, url.user == nil, url.password == nil,
+            scheme == "https" || (kind == .local && scheme == "http")
+        else {
+            let requirement = kind == .local ? "use an HTTP or HTTPS URL" : "use an HTTPS URL"
+            throw ProviderError.invalidEndpoint(
+                "\(requirement) with a host and no embedded credentials")
+        }
+        return url
     }
 }
 

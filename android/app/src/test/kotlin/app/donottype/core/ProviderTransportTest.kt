@@ -7,6 +7,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * The rules that decide how long a connection is trusted.
@@ -79,6 +81,18 @@ class ProviderTransportTest {
     fun `the read timeout is not two minutes`() {
         assertEquals(25_000, ProviderTransport.REQUEST_TIMEOUT_MS)
         assertTrue(ProviderTransport.WARM_UP_TIMEOUT_MS < ProviderTransport.REQUEST_TIMEOUT_MS)
+    }
+
+    /** A provider response cannot redirect API-key headers to an unconfigured recipient. */
+    @Test
+    fun `provider connections do not automatically follow redirects`() {
+        val endpoint = "https://api.example.com/v1/transcribe"
+        val connection = URL(endpoint).openConnection() as HttpURLConnection
+
+        with(ProviderTransport) { connection.applyPolicy(endpoint) }
+
+        assertFalse(connection.instanceFollowRedirects)
+        connection.disconnect()
     }
 
     /**

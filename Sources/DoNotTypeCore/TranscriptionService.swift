@@ -46,7 +46,7 @@ public struct TranscriptionService: Sendable {
             switch providerError {
             case .http(let status, _):
                 return status == 408 || status == 429 || (500...599).contains(status)
-            case .missingAPIKey, .audioSilentlyDropped, .audioRequired:
+            case .missingAPIKey, .invalidEndpoint, .audioSilentlyDropped, .audioRequired:
                 return false
             case .malformedResponse, .emptyOutput:
                 return true

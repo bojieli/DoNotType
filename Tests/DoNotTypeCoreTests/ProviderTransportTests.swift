@@ -87,6 +87,27 @@ final class ProviderTransportTests: XCTestCase {
         XCTAssertTrue(chosen === injected)
     }
 
+    // MARK: - Redirect boundaries
+
+    /// Provider headers carry the user's key. A redirect may change the API path, but it must not
+    /// turn one configured recipient into another recipient or downgrade TLS under that key.
+    func testRedirectsStayInsideTheConfiguredOrigin() {
+        let original = URL(string: "https://api.example.com/v1/transcribe")!
+
+        XCTAssertTrue(
+            TransportMetrics.isSameOrigin(
+                original, URL(string: "https://API.example.com:443/v2/transcribe")!))
+        XCTAssertFalse(
+            TransportMetrics.isSameOrigin(
+                original, URL(string: "https://uploads.example.com/v2/transcribe")!))
+        XCTAssertFalse(
+            TransportMetrics.isSameOrigin(
+                original, URL(string: "http://api.example.com/v2/transcribe")!))
+        XCTAssertFalse(
+            TransportMetrics.isSameOrigin(
+                original, URL(string: "https://api.example.com:8443/v2/transcribe")!))
+    }
+
     // MARK: - Warm-up targets
 
     /// Warm-up opens a connection to the host and must not call the API path: any answer from the

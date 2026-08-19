@@ -216,9 +216,21 @@ public static class ProviderTransport
         _ = Task.Delay(RequestTimeout + TimeSpan.FromSeconds(5))
             .ContinueWith(_ => client.Dispose(), TaskScheduler.Default);
 
-    private static HttpClient NewClient() =>
-        new(new SocketsHttpHandler
+    private static HttpClient NewClient() => new(NewHandler())
+    {
+        Timeout = RequestTimeout,
+    };
+
+    /// <summary>The handler policy shared by every provider connection.</summary>
+    /// <remarks>
+    /// API keys are carried in both standard and provider-specific headers. Automatic redirects
+    /// have header-preservation rules that vary by header and runtime; refusing them prevents a
+    /// provider or endpoint override from forwarding a key to an origin the user did not choose.
+    /// </remarks>
+    internal static SocketsHttpHandler NewHandler() =>
+        new()
         {
+            AllowAutoRedirect = false,
             // Belt and braces with the bookkeeping above: even inside one client, a connection this
             // old is not one to hand a dictation.
             PooledConnectionIdleTimeout = MaxIdle,
@@ -226,8 +238,5 @@ public static class ProviderTransport
             // is what lets DNS changes and failovers be noticed at all.
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
             ConnectTimeout = TimeSpan.FromSeconds(10),
-        })
-        {
-            Timeout = RequestTimeout,
         };
 }

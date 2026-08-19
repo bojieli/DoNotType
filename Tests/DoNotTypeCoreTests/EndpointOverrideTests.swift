@@ -48,13 +48,47 @@ final class EndpointOverrideTests: XCTestCase {
         }
     }
 
-    /// A half-typed setting must not be able to cost somebody their words: the dictation goes to
-    /// the built-in endpoint rather than failing.
-    func testAnUnparseableOverrideFallsBackRatherThanThrowing() throws {
-        let provider = try ProviderFactory.make(
-            .google, endpoint: "not a url at all", environment: key)
-        XCTAssertEqual(
-            provider.endpointOrigin?.absoluteString, "https://generativelanguage.googleapis.com/")
+    /// Falling back would send the recording to a different recipient than the user configured.
+    /// Refuse it before reading or sending the audio instead.
+    func testAnUnparseableOverrideFailsExplicitly() {
+        XCTAssertThrowsError(
+            try ProviderFactory.make(.google, endpoint: "not a url at all", environment: key)
+        ) { error in
+            guard case ProviderError.invalidEndpoint = error else {
+                return XCTFail("unexpected error: \(error)")
+            }
+            XCTAssertFalse(TranscriptionService.isTransient(error))
+            let guidance = FailureAdvice.describe(error)
+            XCTAssertTrue(guidance.needsUserAction)
+            XCTAssertFalse(guidance.isQueued)
+        }
+    }
+
+    /// Credential-bearing remote providers must not send keys or recordings in cleartext. A local
+    /// model keeps HTTP because localhost and LAN serving surfaces commonly have no TLS at all.
+    func testOnlyTheLocalProviderAcceptsPlainHTTP() throws {
+        XCTAssertThrowsError(
+            try ProviderFactory.make(
+                .google, endpoint: "http://mirror.example.com/v1", environment: key))
+
+        let local = try ProviderFactory.make(
+            .local, endpoint: "http://127.0.0.1:8000/v1/chat/completions", environment: key)
+        XCTAssertEqual(local.endpointOrigin?.absoluteString, "http://127.0.0.1:8000/")
+    }
+
+    func testEndpointCredentialsAreRejected() {
+        XCTAssertThrowsError(
+            try ProviderFactory.make(
+                .google, endpoint: "https://user:secret@mirror.example.com/v1", environment: key))
+    }
+
+    func testAnEmptyLocalEnvironmentEndpointFailsWithoutCrashing() {
+        XCTAssertThrowsError(
+            try ProviderFactory.make(.local, environment: ["DNT_LOCAL_BASE_URL": ""])) { error in
+                guard case ProviderError.invalidEndpoint = error else {
+                    return XCTFail("unexpected error: \(error)")
+                }
+        }
     }
 
     /// The placeholder the settings field shows has to be the URL that is actually used, or it

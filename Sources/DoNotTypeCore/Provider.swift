@@ -121,6 +121,8 @@ public struct TranscriptionResult: Sendable {
 public enum ProviderError: Error, LocalizedError, Sendable {
     case http(status: Int, body: String)
     case malformedResponse(String)
+    /// A non-empty endpoint override could not be used safely and exactly as configured.
+    case invalidEndpoint(String)
     case emptyOutput
     /// Audio was sent, the call succeeded, and the provider billed zero audio tokens.
     case audioSilentlyDropped(provider: String, model: String)
@@ -141,6 +143,8 @@ public enum ProviderError: Error, LocalizedError, Sendable {
             return "HTTP \(status): \(body)"
         case .malformedResponse(let detail):
             return "Malformed response: \(detail)"
+        case .invalidEndpoint(let detail):
+            return "Invalid provider endpoint: \(detail)"
         case .emptyOutput:
             return "Model returned no output"
         case .audioSilentlyDropped(let provider, let model):

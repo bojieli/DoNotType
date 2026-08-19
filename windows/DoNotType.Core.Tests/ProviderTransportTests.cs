@@ -95,6 +95,17 @@ public class ProviderTransportTests
     }
 
     /// <summary>
+    /// A provider request carries the user's key. A 3xx response must be surfaced rather than
+    /// forwarding provider-specific headers to a destination the user never configured.
+    /// </summary>
+    [Fact]
+    public void ProviderConnectionsDoNotAutomaticallyFollowRedirects()
+    {
+        using var handler = ProviderTransport.NewHandler();
+        Assert.False(handler.AllowAutoRedirect);
+    }
+
+    /// <summary>
     /// Warm-up opens a connection to the host and must not call the API path: any answer from the
     /// host proves the connection, while a GET to the endpoint would be a real request with a real
     /// bill attached.

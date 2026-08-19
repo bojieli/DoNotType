@@ -29,6 +29,42 @@ final class TransportMetrics: NSObject, URLSessionTaskDelegate, @unchecked Senda
         lock.unlock()
     }
 
+    /// Provider requests carry API keys in headers that URLSession does not promise to remove from
+    /// an automatically redirected request. Follow only within the exact original origin; a
+    /// provider changing path is harmless, while a host, port, or scheme change must surface as
+    /// the original 3xx response instead of forwarding credentials somewhere the user did not
+    /// configure.
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        guard let original = task.originalRequest?.url, let destination = request.url,
+            Self.isSameOrigin(original, destination)
+        else {
+            completionHandler(nil)
+            return
+        }
+        completionHandler(request)
+    }
+
+    static func isSameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
+        func effectivePort(_ url: URL) -> Int? {
+            if let port = url.port { return port }
+            switch url.scheme?.lowercased() {
+            case "http": return 80
+            case "https": return 443
+            default: return nil
+            }
+        }
+        guard let leftScheme = lhs.scheme?.lowercased(), let rightScheme = rhs.scheme?.lowercased(),
+            ["http", "https"].contains(leftScheme), leftScheme == rightScheme,
+            let leftHost = lhs.host?.lowercased(), let rightHost = rhs.host?.lowercased(),
+            let leftPort = effectivePort(lhs), let rightPort = effectivePort(rhs)
+        else { return false }
+        return leftHost == rightHost && leftPort == rightPort
+    }
+
     /// `connect=… ttfb=… reused=…`, or nothing when the system reported no metrics.
     ///
     /// The three numbers that separate the three ways a request can be slow: a handshake that took
