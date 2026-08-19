@@ -39,6 +39,9 @@ targets:
       # The installed app carries the same canonical MIT grant as the source checkout.
       - path: ../LICENSE
         buildPhase: resources
+      # The About screen reads this from the bundle, so it credits exactly what the build ships.
+      - path: ../THIRD-PARTY-NOTICES.txt
+        buildPhase: resources
       # Translations, if any exist. SwiftUI looks a literal up by its English text, so adding a
       # .lproj here is the whole mechanism — see docs/LOCALIZATION.md.
       - path: ../Resources/Localizations
@@ -58,6 +61,18 @@ targets:
         embed: true
       - package: DoNotTypeCore
         product: DoNotTypeCore
+    postBuildScripts:
+      # Stamps provenance into the built Info.plist so the About screen (and a bug report) can
+      # name the exact build, not just the marketing version. Runs on the freshly-built plist
+      # each time, so the keys never pre-exist; `|| true` keeps an unsigned/untracked checkout
+      # from failing the build anyway.
+      - name: "Stamp build commit and timestamp"
+        script: |
+          PLIST="${BUILT_PRODUCTS_DIR}/${INFOPLIST_PATH}"
+          COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo dev)
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo dev)
+          /usr/libexec/PlistBuddy -c "Add :DNTBuildCommit string ${COMMIT}" "${PLIST}" || true
+          /usr/libexec/PlistBuddy -c "Add :DNTBuildTimestamp string ${TIMESTAMP}" "${PLIST}" || true
 
   # The app/keyboard bridge. A keyboard extension runs in its own process and does not appear in
   # the host app's accessibility tree, so a UI test cannot reach inside it; the persisted command,

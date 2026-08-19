@@ -72,16 +72,39 @@ open(path, "w").write(text)
 PY
 say "android/app/build.gradle.kts" "$VERSION ($BUILD)"
 
-# ---- The two CLIs report it too ----------------------------------------------------------------
-# `dnt --version` is the first thing anyone pastes into a bug report, and a hardcoded string there
-# is a version number that is wrong by definition after the first release.
+# ---- Windows: a version for dev builds ----------------------------------------------------------
+# Release passes -p:Version to dotnet publish; this committed value is what a plain `dotnet build`
+# reports, so the About tab is never blank outside CI.
 python3 - "$VERSION" <<'PY'
 import re, sys
 version = sys.argv[1]
+path = "windows/Directory.Build.props"
+text = open(path).read()
+updated, matches = re.subn(r"<Version>[^<]*</Version>", f"<Version>{version}</Version>", text)
+if matches == 0:
+    raise SystemExit(f"✗ nothing to stamp in {path} — the pattern moved")
+open(path, "w").write(updated)
+PY
+say "windows/Directory.Build.props" "$VERSION"
+
+# ---- The two CLIs report it too ----------------------------------------------------------------
+# `dnt --version` is the first thing anyone pastes into a bug report, and a hardcoded string there
+# is a version number that is wrong by definition after the first release. The commit and build
+# date ride along so a pasted version line identifies the exact build.
+COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE=$(date -u +%Y-%m-%d)
+python3 - "$VERSION" "$COMMIT" "$BUILD_DATE" <<'PY'
+import re, sys
+version, commit, build_date = sys.argv[1], sys.argv[2], sys.argv[3]
+suffix = f" ({commit}, {build_date})"
 for path, pattern, replacement in [
-    ("Sources/dnt/Dnt.swift", r'version: "[^"]*"', f'version: "{version}"'),
-    ("windows/DoNotType.Cli/Program.cs", r'dnt \d+\.\d+\.\d+', f"dnt {version}"),
-    ("windows/DoNotType.Cli/InspectionCommands.cs", r'dnt \d+\.\d+\.\d+', f"dnt {version}"),
+    ("Sources/dnt/Dnt.swift", r'version: "[^"]*"', f'version: "{version}{suffix}"'),
+    # The suffix pattern keeps re-stamping idempotent: a previously stamped " (abc1234, …)"
+    # is replaced rather than accumulating.
+    ("windows/DoNotType.Cli/Program.cs",
+     r'dnt \d+\.\d+\.\d+( \([0-9a-z]+, \d{4}-\d{2}-\d{2}\))?', f"dnt {version}{suffix}"),
+    ("windows/DoNotType.Cli/InspectionCommands.cs",
+     r'dnt \d+\.\d+\.\d+( \([0-9a-z]+, \d{4}-\d{2}-\d{2}\))?', f"dnt {version}{suffix}"),
 ]:
     text = open(path).read()
     # Counts matches rather than comparing before and after: stamping the version that is already

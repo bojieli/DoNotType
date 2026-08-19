@@ -306,7 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         window.title = "DoNotType Settings"
-        window.contentMinSize = NSSize(width: 780, height: 500)
+        window.contentMinSize = NSSize(width: 820, height: 500)
         window.contentView = NSHostingView(rootView: SettingsView(model: settingsModel))
         window.center()
         window.isReleasedWhenClosed = false

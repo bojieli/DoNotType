@@ -55,6 +55,11 @@ app: build
 	@# prompt/ one directory up in Resources without needing a checkout.
 	@cp "$(BUILD_DIR)/dnt" "$(CONTENTS)/MacOS/dnt"
 	@cp Resources/Info.plist "$(CONTENTS)/Info.plist"
+	@# Build metadata is stamped into the bundled plist only, never the repo copy: the checkout
+	@# stays diff-stable, and a build that skips this step (e.g. `swift run`) reports "dev"
+	@# instead of a commit it may no longer match.
+	@/usr/libexec/PlistBuddy -c "Add :DNTBuildCommit string $$(git rev-parse --short HEAD 2>/dev/null || echo dev)" "$(CONTENTS)/Info.plist"
+	@/usr/libexec/PlistBuddy -c "Add :DNTBuildTimestamp string $$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(CONTENTS)/Info.plist"
 	@# SwiftPM keeps target resources in a sibling bundle. Bundle.module looks for that bundle in
 	@# Contents/Resources once the executable is wrapped as an app, so it must cross that boundary
 	@# with the binary. This carries the local Silero model and its licence notice.
@@ -65,6 +70,9 @@ app: build
 	@# Binary distributions carry the same MIT grant as the source checkout. Keep the repository's
 	@# canonical file as the source so the bundle cannot grow a stale second license text.
 	@cp LICENSE "$(CONTENTS)/Resources/LICENSE.txt"
+	@# The third-party credits the licence refers to, shipped from the same canonical file so the
+	@# bundle cannot grow a stale second copy. The About tab reads both out of the bundle.
+	@cp THIRD-PARTY-NOTICES.txt "$(CONTENTS)/Resources/THIRD-PARTY-NOTICES.txt"
 	@# Both rendered from Resources/Icon/DoNotType.svg; see Resources/Icon/make-icons.sh.
 	@cp Resources/AppIcon.icns "$(CONTENTS)/Resources/AppIcon.icns"
 	@cp Resources/MenuBar/*.png "$(CONTENTS)/Resources/"

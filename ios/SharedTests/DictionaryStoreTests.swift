@@ -54,4 +54,11 @@ final class DictionaryStoreTests: XCTestCase {
         XCTAssertTrue(license.hasPrefix("MIT License\n"))
         XCTAssertTrue(license.contains("Copyright (c) 2026 Bojie Li"))
     }
+
+    func testThirdPartyNoticesShipInApplicationBundle() throws {
+        let url = try XCTUnwrap(Bundle.main.url(forResource: "THIRD-PARTY-NOTICES", withExtension: "txt"))
+        let notices = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(notices.hasPrefix("DoNotType — Third-Party Notices\n"))
+        XCTAssertTrue(notices.contains("Silero VAD"))
+    }
 }

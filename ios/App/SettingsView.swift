@@ -356,6 +356,13 @@ struct SettingsView: View {
 
     private var aboutSection: some View {
         Section("About") {
+            NavigationLink {
+                AboutView()
+            } label: {
+                Label("Version, build, and licenses", systemImage: "info.circle")
+            }
+            .accessibilityIdentifier("open-about")
+
             Text(
                 "Screen grounding is macOS and Android only. Nothing in the iOS sandbox lets one "
                     + "app read another app's content."

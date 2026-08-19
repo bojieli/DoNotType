@@ -1,0 +1,64 @@
+DoNotType — Third-Party Notices
+================================
+
+DoNotType itself is distributed under the MIT License (see the bundled LICENSE file).
+This file credits the open-source software DoNotType ships or builds upon.
+
+Silero VAD
+----------
+Voice activity detection model by Silero Team.
+License: MIT
+https://github.com/snakers4/silero-vad
+(The full notice ships alongside the model as SILERO-VAD-NOTICE.txt.)
+
+ONNX Runtime
+------------
+https://github.com/microsoft/onnxruntime
+License: MIT
+Used on all platforms (onnxruntime Swift package, onnxruntime-android,
+Microsoft.ML.OnnxRuntime).
+
+Swift Argument Parser
+---------------------
+https://github.com/apple/swift-argument-parser
+License: Apache-2.0
+Used by the macOS command-line tools (dnt, dnt-eval).
+
+ZXing / ZXing.Net / zxing-android-embedded
+------------------------------------------
+https://github.com/zxing/zxing
+https://github.com/micjahn/ZXing.Net
+https://github.com/journeyapps/zxing-android-embedded
+License: Apache-2.0
+QR codes for transferring settings between devices (Android, Windows).
+
+Opus (libopus)
+--------------
+https://github.com/xiph/opus
+License: BSD-3-Clause
+Audio decoding on Windows.
+
+AndroidX (core-ktx, appcompat)
+------------------------------
+https://developer.android.com/jetpack/androidx
+License: Apache-2.0
+
+Kotlinx Coroutines
+------------------
+https://github.com/Kotlin/kotlinx.coroutines
+License: Apache-2.0
+
+JSON-Java (org.json)
+--------------------
+https://github.com/stleary/JSON-java
+License: JSON.org license (MIT-like; see http://www.json.org/license.html)
+
+System.Security.Cryptography.ProtectedData
+------------------------------------------
+https://dot.net
+License: MIT
+
+.NET Runtime / Swift / Kotlin
+-----------------------------
+https://dot.net (MIT) / https://swift.org (Apache-2.0) /
+https://kotlinlang.org (Apache-2.0)

@@ -20,6 +20,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings as AndroidSettings
 import android.text.InputType
@@ -39,6 +40,7 @@ import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
@@ -542,6 +544,29 @@ class SettingsActivity : AppCompatActivity() {
             }
         )
 
+        // ---- About ----
+        // Commit and build time come from BuildConfig (stamped per build in build.gradle.kts),
+        // because "which build is this" is the first question a bug report has to answer.
+        column.addView(sectionTitle("About"))
+        // versionCode-as-int is deprecated, but longVersionCode would need an API 28 guard; not
+        // worth one for a single display line.
+        @Suppress("DEPRECATION")
+        val versionLine = packageManager.getPackageInfo(packageName, 0).let {
+            "DoNotType ${it.versionName} (${it.versionCode}) · " +
+                "${BuildConfig.BUILD_COMMIT} · ${BuildConfig.BUILD_TIMESTAMP}"
+        }
+        column.addView(body(versionLine))
+        column.addView(
+            button("GitHub") {
+                startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/bojieli/DoNotType"))
+                )
+            }
+        )
+        column.addView(
+            button("Open source licenses") { showLicenseNotices() }
+        )
+
         return ScrollView(this).apply {
             addView(column)
             // Android 15 draws every app edge to edge whether it asked to or not, and a layout
@@ -1012,6 +1037,40 @@ class SettingsActivity : AppCompatActivity() {
         statusLabel.text = checks.joinToString("\n") { (label, ok) ->
             "${if (ok) "✓" else "○"}  $label"
         }
+    }
+
+    /**
+     * The app's own license plus the notices for what it ships, read from the assets the Gradle
+     * `syncContract` task copies out of the repo root.
+     *
+     * A missing asset is skipped rather than failing the dialog: a notice that did not get
+     * packaged must not hide the ones that did.
+     */
+    private fun showLicenseNotices() {
+        fun asset(path: String): String? = runCatching {
+            assets.open(path).bufferedReader().use { it.readText() }.trim()
+        }.getOrNull()
+
+        val text = listOf(
+            "DoNotType license" to "LICENSE.txt",
+            "Silero VAD" to "third-party/SILERO-VAD-NOTICE.txt",
+            "Third-party notices" to "THIRD-PARTY-NOTICES.txt",
+        ).mapNotNull { (header, path) ->
+            asset(path)?.let { "$header\n${"-".repeat(header.length)}\n\n$it" }
+        }.joinToString("\n\n\n")
+
+        val message = TextView(this).apply {
+            this.text = text
+            textSize = 13f
+            setPadding(HORIZONTAL_PADDING, 24, HORIZONTAL_PADDING, 24)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Open source licenses")
+            // A view rather than setMessage: the notices are long, and a message that long is
+            // cramped without an explicit scroll container.
+            .setView(ScrollView(this).apply { addView(message) })
+            .setPositiveButton("Done", null)
+            .show()
     }
 
     // MARK: - Tiny view helpers

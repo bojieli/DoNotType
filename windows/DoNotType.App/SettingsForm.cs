@@ -7,8 +7,8 @@ namespace DoNotType.App;
 /// Providers and keys, the hotkey, grounding, and history with retry — the four things this
 /// category of app is expected to expose.
 ///
-/// Built in code rather than a designer file: a .Designer.cs is generated, unreviewable in a
-/// diff, and this is a two-tab form.
+/// Built in code rather than a designer file: a .Designer.cs is generated and unreviewable in a
+/// diff.
 /// </summary>
 public sealed class SettingsForm : Form
 {
@@ -117,6 +117,7 @@ public sealed class SettingsForm : Form
         tabs.TabPages.Add(new LogsTab(_settings).Build());
         tabs.TabPages.Add(new SettingsTransferTab(
             _settings, _controller, RefreshAfterSettingsTransfer).Build());
+        tabs.TabPages.Add(new AboutTab().Build());
         Controls.Add(tabs);
 
         LoadValues();

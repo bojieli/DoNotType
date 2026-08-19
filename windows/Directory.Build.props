@@ -4,5 +4,39 @@
     <Copyright>Copyright © 2026 Bojie Li</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/bojieli/DoNotType</RepositoryUrl>
+    <!-- The dev-build version; scripts/stamp-version.sh keeps it current and release builds
+         override it with -p:Version. -->
+    <Version>0.1.0</Version>
   </PropertyGroup>
+
+  <!-- A bug report that cannot name the build it came from is a guess. Version alone is not
+       enough outside a release — every dev build says the same thing — so each assembly carries
+       the commit it was built from and when. -->
+  <Target Name="GenerateBuildIdentity" BeforeTargets="CoreCompile">
+    <!-- Only when the caller has not supplied one; release builds may stamp it themselves. -->
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true"
+          ContinueOnError="true" Condition="'$(BuildCommit)' == ''">
+      <Output TaskParameter="ConsoleOutput" PropertyName="BuildCommit" />
+    </Exec>
+    <PropertyGroup>
+      <!-- Outside a git checkout (a source archive, say) git fails; build anyway, say less. -->
+      <BuildCommit Condition="'$(BuildCommit)' == ''">dev</BuildCommit>
+      <BuildTimestamp>$([System.DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))</BuildTimestamp>
+    </PropertyGroup>
+    <ItemGroup>
+      <BuildIdentityAttribute Include="AssemblyMetadata">
+        <_Parameter1>BuildCommit</_Parameter1>
+        <_Parameter2>$(BuildCommit)</_Parameter2>
+      </BuildIdentityAttribute>
+      <BuildIdentityAttribute Include="AssemblyMetadata">
+        <_Parameter1>BuildTimestamp</_Parameter1>
+        <_Parameter2>$(BuildTimestamp)</_Parameter2>
+      </BuildIdentityAttribute>
+    </ItemGroup>
+    <WriteCodeFragment Language="C#" AssemblyAttributes="@(BuildIdentityAttribute)"
+                       OutputFile="$(IntermediateOutputPath)BuildIdentity.g.cs" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)BuildIdentity.g.cs" />
+    </ItemGroup>
+  </Target>
 </Project>

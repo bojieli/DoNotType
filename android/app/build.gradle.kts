@@ -1,7 +1,27 @@
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+// Stamped per build so the About section can say exactly which commit and when, which is what a
+// bug report needs. "dev" rather than a build failure when git is unavailable (e.g. a source
+// archive without .git).
+val buildCommit: String = runCatching {
+    ProcessBuilder("git", "rev-parse", "--short", "HEAD")
+        .directory(rootProject.file(".."))
+        .redirectErrorStream(true)
+        .start()
+        .inputStream.bufferedReader().use { it.readText() }.trim()
+}.getOrNull()?.ifBlank { null } ?: "dev"
+
+val buildTimestamp: String =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
+        .withZone(ZoneOffset.UTC)
+        .format(Instant.now())
 
 android {
     namespace = "app.donottype"
@@ -15,6 +35,9 @@ android {
         targetSdk = 35
         versionCode = 100
         versionName = "0.1.0"
+        // The value is a Java literal, so the quotes are part of it.
+        buildConfigField("String", "BUILD_COMMIT", "\"$buildCommit\"")
+        buildConfigField("String", "BUILD_TIMESTAMP", "\"$buildTimestamp\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -55,6 +78,8 @@ android {
 
     buildFeatures {
         viewBinding = false
+        // For BUILD_COMMIT / BUILD_TIMESTAMP above; nothing else generates BuildConfig fields.
+        buildConfig = true
     }
 
     sourceSets["main"].java.srcDir("src/main/kotlin")
@@ -85,6 +110,9 @@ val syncContract by tasks.registering(Sync::class) {
     // Ship the application's own grant as well as dependency notices. Reading directly from the
     // repository root keeps LICENSE authoritative instead of maintaining a second copy here.
     from(rootProject.file("../LICENSE")) { rename { "LICENSE.txt" } }
+    // Credits for everything else the app ships or builds upon, shown next to LICENSE.txt in the
+    // About section.
+    from(rootProject.file("../THIRD-PARTY-NOTICES.txt"))
     into(layout.buildDirectory.dir("generated/assets"))
 }
 

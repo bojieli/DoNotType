@@ -28,10 +28,12 @@ struct SettingsView: View {
                 .tabItem { Label("Logs", systemImage: "list.bullet.rectangle") }
             SettingsTransferView(model: model)
                 .tabItem { Label("Transfer", systemImage: "arrow.left.arrow.right") }
+            AboutView()
+                .tabItem { Label("About", systemImage: "info.circle") }
         }
         // A minimum rather than a fixed size: pinning the content to an exact width left the
         // window unable to grow past the point where the tab bar fits, which is what hid it.
-        .frame(minWidth: 780, minHeight: 500)
+        .frame(minWidth: 820, minHeight: 500)
         .task {
             await model.refresh()
             // Only when the launch check never ran — the window opens before the permissions
