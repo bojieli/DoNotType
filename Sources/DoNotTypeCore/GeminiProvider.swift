@@ -27,7 +27,7 @@ public struct GeminiProvider: TranscriptionProvider {
     /// Deliberately a prefix match on the family rather than an allowlist of exact IDs: a new
     /// point release should inherit its family's floor rather than fall back to a level that
     /// costs the user thinking tokens on every dictation.
-    static func cheapestThinkingLevel(forModel model: String) -> String {
+    public static func cheapestThinkingLevel(forModel model: String) -> String {
         model.hasPrefix("gemini-3.7") || model.hasPrefix("gemini-4") ? "low" : "minimal"
     }
 

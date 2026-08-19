@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DoNotType · Hotkey transcription benchmark</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0c10;
+      --panel: #11151c;
+      --panel-2: #171c25;
+      --line: #293241;
+      --muted: #8e9aae;
+      --text: #edf1f7;
+      --cyan: #66d9ef;
+      --green: #8be9a8;
+      --amber: #ffd479;
+      --red: #ff7b86;
+      --violet: #bd9cff;
+      --radius: 13px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 15% -10%, #17283b 0, transparent 32rem),
+        radial-gradient(circle at 95% 0, #211936 0, transparent 27rem), var(--bg);
+      color: var(--text);
+      font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, input, select { font: inherit; }
+    button, .file-label, select, input {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #151b24;
+      color: var(--text);
+    }
+    button, .file-label { cursor: pointer; padding: 8px 12px; }
+    button:hover, .file-label:hover { border-color: #526077; background: #1a2230; }
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid var(--cyan); outline-offset: 2px;
+    }
+    code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg) 80%, transparent);
+      backdrop-filter: blur(18px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    h1 { font-size: 18px; letter-spacing: -.01em; margin: 0; }
+    h1 span { color: var(--cyan); }
+    .header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .file-label input { display: none; }
+    main { max-width: 1680px; margin: auto; padding: 20px 24px 40px; }
+    #empty {
+      max-width: 720px;
+      margin: 12vh auto;
+      padding: 46px;
+      text-align: center;
+      border: 1px dashed #465269;
+      border-radius: 18px;
+      background: color-mix(in srgb, var(--panel) 85%, transparent);
+    }
+    #empty.drag { border-color: var(--cyan); background: #11222d; }
+    #empty h2 { margin-top: 0; font-size: 25px; }
+    #empty p { color: var(--muted); margin: 8px auto 22px; max-width: 570px; }
+    #dashboard[hidden], #empty[hidden] { display: none; }
+    .notice {
+      border: 1px solid #514623;
+      background: #211d12;
+      color: #ffe5a2;
+      border-radius: 10px;
+      padding: 10px 13px;
+      margin-bottom: 14px;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(130px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .metric, .panel {
+      background: color-mix(in srgb, var(--panel) 94%, transparent);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+    .metric { padding: 13px 15px; }
+    .metric .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    .metric .value { font-size: 22px; font-weight: 680; margin-top: 3px; }
+    .metric .sub { color: var(--muted); font-size: 12px; }
+    .panel { padding: 16px; margin-bottom: 14px; overflow: hidden; }
+    .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+    .panel h2 { font-size: 15px; margin: 0; }
+    .hint { color: var(--muted); font-size: 12px; }
+    .stats-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+    th, td { padding: 9px 10px; text-align: right; border-bottom: 1px solid #202835; font-variant-numeric: tabular-nums; }
+    th { color: var(--muted); font-weight: 550; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+    th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--panel); }
+    tr:last-child td { border-bottom: 0; }
+    .model-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+    #latencyChart { display: block; width: 100%; min-width: 720px; height: 230px; }
+    .workspace { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 14px; align-items: start; }
+    .sidebar { position: sticky; top: 82px; max-height: calc(100vh - 102px); display: flex; flex-direction: column; padding: 0; }
+    .filters { padding: 13px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+    .filters input, .filters select { width: 100%; padding: 8px 10px; }
+    .filter-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .check { display: flex; gap: 7px; align-items: center; color: var(--muted); font-size: 12px; }
+    .check input { accent-color: var(--cyan); }
+    #caseCount { padding: 8px 13px 0; color: var(--muted); font-size: 12px; }
+    #caseList { overflow: auto; padding: 8px; }
+    .case-row {
+      width: 100%; text-align: left; padding: 10px; margin-bottom: 5px; display: block;
+      background: transparent; border-color: transparent;
+    }
+    .case-row:hover { background: #151c27; }
+    .case-row.active { background: #182533; border-color: #3c6175; }
+    .case-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 620; }
+    .case-meta { color: var(--muted); font-size: 11px; margin-top: 3px; }
+    .case-preview { color: #c3cad5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 5px; }
+    .badge { border: 1px solid var(--line); border-radius: 999px; padding: 1px 6px; color: var(--muted); font-size: 10px; }
+    .badge.bad { color: var(--red); border-color: #6a3540; }
+    .case-detail { min-width: 0; }
+    .case-header { display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+    .case-header h2 { font-size: 17px; }
+    .case-header .meta { color: var(--muted); margin-top: 4px; }
+    .transcript-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(260px, 1fr));
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 3px;
+    }
+    .transcript-card { border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2); min-height: 170px; overflow: hidden; }
+    .transcript-card.original { border-color: #50456a; }
+    .transcript-head { display: flex; justify-content: space-between; gap: 10px; padding: 10px 11px; border-bottom: 1px solid var(--line); }
+    .transcript-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .transcript-time { color: var(--cyan); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .transcript-body { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; margin: 0; max-height: 390px; overflow: auto; }
+    .transcript-body.empty { color: var(--red); }
+    .transcript-foot { color: var(--muted); font-size: 11px; padding: 0 12px 10px; }
+    details { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
+    summary { cursor: pointer; color: #cbd4e2; }
+    details pre, dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 55vh; overflow: auto; background: #090c11; border: 1px solid var(--line); padding: 13px; border-radius: 9px; }
+    dialog { color: var(--text); background: var(--panel); border: 1px solid #46536a; border-radius: 14px; width: min(940px, 92vw); box-shadow: 0 24px 90px #000b; }
+    dialog::backdrop { background: #03060bc9; backdrop-filter: blur(4px); }
+    .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .dialog-head h2 { margin: 0; font-size: 17px; }
+    .error { color: var(--red); }
+    @media (max-width: 1050px) {
+      .summary-grid { grid-template-columns: repeat(3, 1fr); }
+      .workspace { grid-template-columns: 280px minmax(0, 1fr); }
+      .transcript-grid { grid-template-columns: repeat(2, minmax(260px, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      header { position: static; padding: 14px; }
+      main { padding: 14px; }
+      .summary-grid { grid-template-columns: repeat(2, 1fr); }
+      .workspace { display: block; }
+      .sidebar { position: static; max-height: 420px; margin-bottom: 14px; }
+      .transcript-grid { display: block; }
+      .transcript-card { margin-bottom: 9px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><span>DoNotType</span> · hotkey model benchmark</h1>
+    <div class="header-actions">
+      <button id="promptButton" hidden>Exact request</button>
+      <label class="file-label">Load benchmark JSON<input id="fileInput" type="file" accept="application/json,.json"></label>
+    </div>
+  </header>
+
+  <main>
+    <section id="empty">
+      <h2>Compare every transcript, without inventing a ground truth.</h2>
+      <p>Drop the final benchmark JSON here or choose it above. This viewer is entirely local: it has no external scripts, fonts, analytics, or network destinations.</p>
+      <label class="file-label">Choose JSON<input id="emptyFileInput" type="file" accept="application/json,.json"></label>
+      <p class="mono">Expected: eval/results/hotkey-model-benchmark-2026-08-18.json</p>
+      <div id="loadError" class="error"></div>
+    </section>
+
+    <section id="dashboard" hidden>
+      <div id="partialNotice" class="notice" hidden></div>
+      <div id="summary" class="summary-grid"></div>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Latency distribution</h2>
+          <span class="hint">Dot = median · bar = p5–p95 · successful complete transcriptions</span>
+        </div>
+        <svg id="latencyChart" role="img" aria-label="Latency comparison chart"></svg>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Standard timing statistics</h2>
+          <span class="hint">Seconds; population standard deviation</span>
+        </div>
+        <div class="stats-wrap"><table id="statsTable"></table></div>
+      </section>
+
+      <div class="workspace">
+        <aside class="panel sidebar">
+          <div class="filters">
+            <input id="search" type="search" placeholder="Search transcript or case ID">
+            <div class="filter-row">
+              <select id="sort">
+                <option value="newest">Newest first</option>
+                <option value="slowest">Slowest first</option>
+                <option value="longest">Longest audio first</option>
+              </select>
+              <select id="modelFilter"><option value="">All models</option></select>
+            </div>
+            <div class="filter-row">
+              <label class="check"><input id="disagreement" type="checkbox"> Disagreements</label>
+              <label class="check"><input id="failures" type="checkbox"> Failures</label>
+            </div>
+          </div>
+          <div id="caseCount"></div>
+          <div id="caseList"></div>
+        </aside>
+
+        <section id="caseDetail" class="panel case-detail"></section>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="promptDialog">
+    <div class="dialog-head"><h2>Exact benchmark request</h2><button id="closePrompt">Close</button></div>
+    <div id="requestMeta" class="hint"></div>
+    <pre id="promptText"></pre>
+  </dialog>
+
+  <script>
+    "use strict";
+
+    const COLORS = ["#66d9ef", "#8be9a8", "#ffd479", "#bd9cff", "#ff8ca1", "#7fb5ff"];
+    const state = { data: null, selected: null, visible: [], byCase: new Map(), caseMap: new Map() };
+    const $ = id => document.getElementById(id);
+
+    function fmtSeconds(value, digits = 2) {
+      return Number.isFinite(value) ? `${value.toFixed(digits)} s` : "—";
+    }
+    function fmtPercent(value) {
+      return Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "—";
+    }
+    function fmtDuration(seconds) {
+      if (!Number.isFinite(seconds)) return "—";
+      if (seconds < 60) return `${seconds.toFixed(1)}s`;
+      const minutes = Math.floor(seconds / 60);
+      return `${minutes}m ${Math.round(seconds % 60)}s`;
+    }
+    function escapeHTML(value) {
+      return String(value ?? "").replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[c]);
+    }
+    function quantile(values, fraction) {
+      if (!values.length) return null;
+      const sorted = [...values].sort((a, b) => a - b);
+      const rank = Math.ceil(fraction * sorted.length);
+      return sorted[Math.min(Math.max(rank - 1, 0), sorted.length - 1)];
+    }
+    function normalize(text) {
+      return (text || "").normalize("NFKC").toLocaleLowerCase()
+        .replace(/[\p{P}\p{S}\s]+/gu, " ").trim();
+    }
+    function resultFor(caseId, modelId) {
+      return (state.byCase.get(caseId) || []).find(row => row.modelID === modelId);
+    }
+    function modelColor(modelId) {
+      const index = state.data.models.findIndex(model => model.id === modelId);
+      return COLORS[(index < 0 ? 0 : index) % COLORS.length];
+    }
+    function isDisagreement(benchmarkCase) {
+      const values = (state.byCase.get(benchmarkCase.id) || [])
+        .filter(row => row.status === "success").map(row => normalize(row.text)).filter(Boolean);
+      return new Set(values).size > 1;
+    }
+    function hasFailure(benchmarkCase, modelId = "") {
+      const rows = state.byCase.get(benchmarkCase.id) || [];
+      return rows.some(row => (!modelId || row.modelID === modelId) && row.status !== "success");
+    }
+    function slowest(benchmarkCase) {
+      const values = (state.byCase.get(benchmarkCase.id) || []).map(row => row.latencySeconds);
+      return values.length ? Math.max(...values) : -1;
+    }
+
+    async function loadFile(file) {
+      try { loadData(JSON.parse(await file.text()), file.name); }
+      catch (error) { showError(`Could not load ${file.name}: ${error.message}`); }
+    }
+    async function loadURL(url) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+        loadData(await response.json(), url);
+      } catch (error) {
+        showError(`Could not fetch ${url}. Choose the JSON file manually. ${error.message}`);
+      }
+    }
+    function showError(message) { $("loadError").textContent = message; }
+
+    function loadData(data, name) {
+      if (!data || !Array.isArray(data.cases) || !Array.isArray(data.models) || !Array.isArray(data.results)) {
+        throw new Error("This is not a history-benchmark JSON document.");
+      }
+      state.data = data;
+      state.caseMap = new Map(data.cases.map(row => [row.id, row]));
+      state.byCase = new Map(data.cases.map(row => [row.id, []]));
+      data.results.forEach(row => {
+        if (!state.byCase.has(row.caseID)) state.byCase.set(row.caseID, []);
+        state.byCase.get(row.caseID).push(row);
+      });
+      state.selected = data.cases[0]?.id || null;
+      document.title = `DoNotType benchmark · ${data.cases.length} recordings`;
+      $("empty").hidden = true;
+      $("dashboard").hidden = false;
+      $("promptButton").hidden = false;
+      $("loadError").textContent = "";
+      render(name);
+    }
+
+    function computeStats(model) {
+      const rows = state.data.results.filter(row => row.modelID === model.id);
+      const success = rows.filter(row => row.status === "success");
+      const values = success.map(row => row.latencySeconds).filter(Number.isFinite);
+      const mean = values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
+      const variance = values.length ? values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length : null;
+      const audio = success.reduce((sum, row) => sum + (state.caseMap.get(row.caseID)?.audioSeconds || 0), 0);
+      const total = values.reduce((a, b) => a + b, 0);
+      const rtfs = success.map(row => {
+        const seconds = state.caseMap.get(row.caseID)?.audioSeconds;
+        return seconds > 0 ? row.latencySeconds / seconds : null;
+      }).filter(Number.isFinite);
+      return {
+        model, attempted: rows.length, succeeded: success.length, failed: rows.length - success.length,
+        successRate: rows.length ? success.length / rows.length : null,
+        min: values.length ? Math.min(...values) : null,
+        p5: quantile(values, .05), median: quantile(values, .5), p90: quantile(values, .9),
+        p95: quantile(values, .95), p99: quantile(values, .99), max: values.length ? Math.max(...values) : null,
+        mean, sd: variance == null ? null : Math.sqrt(variance), total,
+        aggregateRTF: audio ? total / audio : null, medianRTF: quantile(rtfs, .5)
+      };
+    }
+
+    function render(sourceName) {
+      const stats = state.data.models.map(computeStats);
+      const totalExpected = state.data.cases.length * state.data.models.length;
+      const complete = state.data.results.length;
+      const totalAudio = state.data.cases.reduce((sum, row) => sum + row.audioSeconds, 0);
+      const successes = state.data.results.filter(row => row.status === "success").length;
+      const summary = [
+        ["Recordings", state.data.cases.length.toLocaleString(), `${fmtDuration(totalAudio)} total audio`],
+        ["Models", state.data.models.length, state.data.models.map(m => m.model).join(" · ")],
+        ["Results", `${complete.toLocaleString()} / ${totalExpected.toLocaleString()}`, `${successes} succeeded`],
+        ["Concurrency", state.data.concurrency, "global · one request/model"],
+        ["Prompt digest", state.data.request.promptDigest, state.data.request.fidelity + " fidelity"],
+      ];
+      $("summary").innerHTML = summary.map(([label, value, sub]) =>
+        `<div class="metric"><div class="label">${escapeHTML(label)}</div><div class="value">${escapeHTML(value)}</div><div class="sub" title="${escapeHTML(sub)}">${escapeHTML(sub)}</div></div>`
+      ).join("");
+
+      const partial = complete < totalExpected;
+      $("partialNotice").hidden = !partial;
+      $("partialNotice").textContent = partial
+        ? `Partial/resumable run: ${complete} of ${totalExpected} model × recording results are present. Statistics use completed successes only.` : "";
+
+      renderStats(stats);
+      renderChart(stats);
+      populateModelFilter();
+      applyFilters();
+
+      $("requestMeta").textContent = [
+        `Loaded ${sourceName}`,
+        `${state.data.request.fidelity} fidelity`,
+        `digest ${state.data.request.promptDigest}`,
+        `keyterm biasing ${state.data.request.keytermBiasing ? "on" : "off"}`,
+        `attempts/chunk ${state.data.request.attemptsPerChunk}`,
+        `hedging ${state.data.request.stallHedging ? "on" : "off"}`
+      ].join(" · ");
+      $("promptText").textContent = state.data.request.systemInstruction || "";
+    }
+
+    function renderStats(stats) {
+      $("statsTable").innerHTML = `
+        <thead><tr><th>Model</th><th>Success</th><th>Min</th><th>Mean</th><th>Median</th><th>p90</th><th>p95</th><th>p99</th><th>Max</th><th>Std dev</th><th>Median RTF</th></tr></thead>
+        <tbody>${stats.map(row => `<tr>
+          <td><span class="model-dot" style="background:${modelColor(row.model.id)}"></span>${escapeHTML(row.model.model)} <span class="hint">via ${escapeHTML(row.model.provider)}</span></td>
+          <td>${row.succeeded}/${row.attempted} · ${fmtPercent(row.successRate)}</td>
+          <td>${fmtSeconds(row.min)}</td><td>${fmtSeconds(row.mean)}</td><td>${fmtSeconds(row.median)}</td>
+          <td>${fmtSeconds(row.p90)}</td><td>${fmtSeconds(row.p95)}</td><td>${fmtSeconds(row.p99)}</td>
+          <td>${fmtSeconds(row.max)}</td><td>${fmtSeconds(row.sd)}</td>
+          <td>${Number.isFinite(row.medianRTF) ? row.medianRTF.toFixed(3) + "×" : "—"}</td>
+        </tr>`).join("")}</tbody>`;
+    }
+
+    function renderChart(stats) {
+      const svg = $("latencyChart");
+      const width = Math.max(svg.clientWidth || 900, 720), height = 230;
+      const margin = { left: 220, right: 34, top: 18, bottom: 32 };
+      // Leave label space beyond the longest p95. With the maximum itself as the axis bound the
+      // last model's label lands outside the SVG and disappears.
+      const maximum = Math.max(...stats.map(row => row.p95 || 0), 1) * 1.14;
+      const scale = value => margin.left + Math.min(value || 0, maximum) / maximum * (width - margin.left - margin.right);
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.replaceChildren();
+      const add = (name, attrs, text) => {
+        const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+        Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+        if (text != null) node.textContent = text;
+        svg.appendChild(node); return node;
+      };
+      for (let tick = 0; tick <= 4; tick++) {
+        const value = maximum * tick / 4, x = scale(value);
+        add("line", { x1: x, y1: margin.top, x2: x, y2: height - margin.bottom, stroke: "#25303e", "stroke-width": 1 });
+        add("text", { x, y: height - 10, fill: "#8e9aae", "font-size": 11, "text-anchor": "middle" }, `${value.toFixed(1)}s`);
+      }
+      stats.forEach((row, index) => {
+        const y = margin.top + 22 + index * 34, color = modelColor(row.model.id);
+        add("text", { x: margin.left - 12, y: y + 4, fill: "#dce3ed", "font-size": 12, "text-anchor": "end" }, row.model.model);
+        if (!Number.isFinite(row.median)) return;
+        add("line", { x1: scale(row.p5), y1: y, x2: scale(row.p95), y2: y, stroke: color, "stroke-width": 7, "stroke-linecap": "round", opacity: .55 });
+        add("circle", { cx: scale(row.median), cy: y, r: 6, fill: color, stroke: "#071018", "stroke-width": 2 });
+        add("text", { x: scale(row.p95) + 10, y: y + 4, fill: "#8e9aae", "font-size": 11 }, `p95 ${row.p95.toFixed(2)}s`);
+      });
+    }
+
+    function populateModelFilter() {
+      const select = $("modelFilter");
+      const current = select.value;
+      select.innerHTML = `<option value="">All models</option>` + state.data.models.map(model =>
+        `<option value="${escapeHTML(model.id)}">${escapeHTML(model.model)}</option>`).join("");
+      select.value = current;
+    }
+
+    function applyFilters() {
+      const query = $("search").value.trim().toLocaleLowerCase();
+      const onlyDisagreement = $("disagreement").checked;
+      const onlyFailures = $("failures").checked;
+      const model = $("modelFilter").value;
+      let rows = state.data.cases.filter(benchmarkCase => {
+        const results = state.byCase.get(benchmarkCase.id) || [];
+        const haystack = [benchmarkCase.id, benchmarkCase.audioFileName, benchmarkCase.original?.text,
+          ...results.map(row => row.text), ...results.map(row => row.error)].join("\n").toLocaleLowerCase();
+        if (query && !haystack.includes(query)) return false;
+        if (onlyDisagreement && !isDisagreement(benchmarkCase)) return false;
+        if (onlyFailures && !hasFailure(benchmarkCase, model)) return false;
+        if (model && !results.some(row => row.modelID === model)) return false;
+        return true;
+      });
+      const sort = $("sort").value;
+      if (sort === "slowest") rows.sort((a, b) => slowest(b) - slowest(a));
+      else if (sort === "longest") rows.sort((a, b) => b.audioSeconds - a.audioSeconds);
+      else rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+      state.visible = rows;
+      if (!rows.some(row => row.id === state.selected)) state.selected = rows[0]?.id || null;
+      renderCaseList();
+      renderCaseDetail();
+    }
+
+    function renderCaseList() {
+      $("caseCount").textContent = `${state.visible.length.toLocaleString()} of ${state.data.cases.length.toLocaleString()} recordings`;
+      const list = $("caseList");
+      list.replaceChildren();
+      state.visible.forEach(benchmarkCase => {
+        const button = document.createElement("button");
+        button.className = `case-row${benchmarkCase.id === state.selected ? " active" : ""}`;
+        const rows = state.byCase.get(benchmarkCase.id) || [];
+        const failures = rows.filter(row => row.status !== "success").length;
+        const disagreement = isDisagreement(benchmarkCase);
+        button.innerHTML = `<div class="case-title"><span class="mono">${escapeHTML(benchmarkCase.id.slice(0, 8))}</span><span class="badge${failures ? " bad" : ""}">${failures ? failures + " failed" : rows.length + "/" + state.data.models.length}</span></div>
+          <div class="case-meta">${escapeHTML(fmtDuration(benchmarkCase.audioSeconds))} audio · ${escapeHTML(new Date(benchmarkCase.createdAt).toLocaleString())}${disagreement ? " · differs" : ""}</div>
+          <div class="case-preview">${escapeHTML(benchmarkCase.original?.text || "No historical transcript")}</div>`;
+        button.addEventListener("click", () => {
+          state.selected = benchmarkCase.id;
+          renderCaseList(); renderCaseDetail();
+        });
+        list.appendChild(button);
+      });
+    }
+
+    function renderCaseDetail() {
+      const host = $("caseDetail");
+      const benchmarkCase = state.caseMap.get(state.selected);
+      if (!benchmarkCase) { host.innerHTML = `<p class="hint">No recording matches these filters.</p>`; return; }
+      const rows = state.byCase.get(benchmarkCase.id) || [];
+      host.innerHTML = `<div class="panel-head case-header"><div><h2>Recording <span class="mono">${escapeHTML(benchmarkCase.id.slice(0, 8))}</span></h2>
+        <div class="meta">${escapeHTML(new Date(benchmarkCase.createdAt).toLocaleString())} · ${escapeHTML(fmtDuration(benchmarkCase.audioSeconds))} · ${(benchmarkCase.audioBytes / 1024).toFixed(0)} KiB · ${escapeHTML(benchmarkCase.audioFileName)}</div></div>
+        <span class="badge">${isDisagreement(benchmarkCase) ? "models disagree" : "matching normalized outputs"}</span></div>
+        <p class="notice"><strong>No golden result.</strong> The historical output and every benchmark output are presented verbatim. Agreement is descriptive, not an accuracy score.</p>
+        <div id="transcriptGrid" class="transcript-grid"></div>
+        <details><summary>Exact encoded screen context used for Gemini</summary><pre id="contextText"></pre></details>`;
+
+      const grid = $("transcriptGrid");
+      grid.appendChild(transcriptCard({
+        title: "Historical output (not truth)", text: benchmarkCase.original?.text || "",
+        time: benchmarkCase.original?.requestSeconds, foot: `${benchmarkCase.original?.model || "unknown"} via ${benchmarkCase.original?.provider || "unknown"}`,
+        original: true
+      }));
+      state.data.models.forEach(model => {
+        const row = rows.find(result => result.modelID === model.id);
+        const foot = [model.contextHandling, row?.language ? `language ${row.language}` : "", row?.chunks ? `${row.chunks} chunk${row.chunks === 1 ? "" : "s"}` : "", row?.suppression || ""]
+          .filter(Boolean).join(" · ");
+        grid.appendChild(transcriptCard({
+          title: model.model, color: modelColor(model.id), time: row?.latencySeconds,
+          text: row?.status === "success" ? row.text : "",
+          error: row ? row.error : "Not completed yet", foot
+        }));
+      });
+      $("contextText").textContent = (benchmarkCase.encodedContext || []).map((part, index) => {
+        if (part.type === "text") return `[part ${index + 1} · text]\n${part.text || ""}`;
+        const bytes = part.data ? Math.floor(part.data.length * .75) : 0;
+        return `[part ${index + 1} · ${part.type} · ${part.mimeType || "unknown"} · ~${bytes} bytes]`;
+      }).join("\n\n");
+    }
+
+    function transcriptCard({ title, text, time, foot, color, error, original }) {
+      const card = document.createElement("article");
+      card.className = `transcript-card${original ? " original" : ""}`;
+      if (color) card.style.borderTopColor = color;
+      const head = document.createElement("div");
+      head.className = "transcript-head";
+      const strong = document.createElement("strong"); strong.textContent = title;
+      const timing = document.createElement("span"); timing.className = "transcript-time"; timing.textContent = fmtSeconds(time);
+      head.append(strong, timing);
+      const body = document.createElement("pre");
+      body.className = `transcript-body${error ? " empty" : ""}`;
+      body.textContent = error || text || "[empty transcript]";
+      const footer = document.createElement("div"); footer.className = "transcript-foot"; footer.textContent = foot || "";
+      card.append(head, body, footer);
+      return card;
+    }
+
+    [$("fileInput"), $("emptyFileInput")].forEach(input => input.addEventListener("change", event => {
+      if (event.target.files[0]) loadFile(event.target.files[0]);
+    }));
+    ["search", "sort", "modelFilter", "disagreement", "failures"].forEach(id => {
+      $(id).addEventListener(id === "search" ? "input" : "change", applyFilters);
+    });
+    $("promptButton").addEventListener("click", () => $("promptDialog").showModal());
+    $("closePrompt").addEventListener("click", () => $("promptDialog").close());
+    document.addEventListener("dragover", event => { event.preventDefault(); $("empty").classList.add("drag"); });
+    document.addEventListener("dragleave", () => $("empty").classList.remove("drag"));
+    document.addEventListener("drop", event => {
+      event.preventDefault(); $("empty").classList.remove("drag");
+      if (event.dataTransfer.files[0]) loadFile(event.dataTransfer.files[0]);
+    });
+    window.addEventListener("resize", () => { if (state.data) renderChart(state.data.models.map(computeStats)); });
+
+    const queryFile = new URLSearchParams(location.search).get("data");
+    if (queryFile) loadURL(queryFile);
+    else if (location.protocol === "http:" || location.protocol === "https:") {
+      loadURL("results/hotkey-model-benchmark-2026-08-18.json");
+    }
+  </script>
+</body>
+</html>
