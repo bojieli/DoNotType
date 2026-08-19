@@ -262,7 +262,7 @@ class HistoryActivity : AppCompatActivity() {
                             if (record.status == DictationRecord.Status.COMPLETED) {
                                 themeColor(com.google.android.material.R.attr.colorOnSurface)
                             } else {
-                                themeColor(com.google.android.material.R.attr.colorError)
+                                themeColor(android.R.attr.colorError)
                             },
                         )
                     },

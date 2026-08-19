@@ -129,7 +129,7 @@ fun Context.screenSubtitle(text: String): TextView = TextView(this).apply {
 fun Context.sectionTitle(text: String): TextView = TextView(this).apply {
     this.text = text
     appearance(com.google.android.material.R.attr.textAppearanceTitleSmall)
-    setTextColor(themeColor(com.google.android.material.R.attr.colorPrimary))
+    setTextColor(themeColor(android.R.attr.colorPrimary))
     layoutParams = columnParams(
         top = dimen(R.dimen.section_spacing),
         bottom = dimen(R.dimen.space_s),
@@ -418,7 +418,7 @@ fun Context.textButton(title: String, onClick: () -> Unit): MaterialButton =
     MaterialButton(
         this,
         null,
-        com.google.android.material.R.attr.borderlessButtonStyle,
+        android.R.attr.borderlessButtonStyle,
     ).apply {
         text = title
         setOnClickListener { onClick() }
@@ -463,7 +463,7 @@ fun Context.monospace(text: String): TextView = TextView(this).apply {
 fun Context.statusText(text: String, isError: Boolean): TextView = monospace(text).apply {
     setTextColor(
         if (isError) {
-            themeColor(com.google.android.material.R.attr.colorError)
+            themeColor(android.R.attr.colorError)
         } else {
             androidx.core.content.ContextCompat.getColor(context, R.color.dnt_success)
         },

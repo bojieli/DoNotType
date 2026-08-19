@@ -4,7 +4,6 @@ import java.time.format.DateTimeFormatter
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 // Stamped per build so the About section can say exactly which commit and when, which is what a
@@ -72,10 +71,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         viewBinding = false
         // For BUILD_COMMIT / BUILD_TIMESTAMP above; nothing else generates BuildConfig fields.
@@ -86,7 +81,9 @@ android {
     sourceSets["androidTest"].java.srcDir("src/androidTest/kotlin")
     // The contract is shared, not duplicated: prompt/ is copied out of the repo root at build
     // time so Android cannot drift from macOS or from what the eval harness measures.
-    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/assets"))
+    sourceSets["main"].assets.srcDir(
+        layout.buildDirectory.get().dir("generated/assets").asFile,
+    )
     // The same four recordings the other three platforms decode, so "it works on Android" means
     // the same thing it means everywhere else. See eval/audio/formats/README.md.
     sourceSets["androidTest"].assets.srcDir(rootProject.file("../eval/audio/formats"))
@@ -119,7 +116,9 @@ val syncContract by tasks.registering(Sync::class) {
 tasks.named("preBuild") { dependsOn(syncContract) }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.19.0")
+    // 1.19 requires compileSdk 37. Keep the newest line compatible with the app's API 35 build;
+    // compileSdk can move independently later without opting users into a new target SDK.
+    implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("com.google.android.material:material:1.14.0")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.29.0")
