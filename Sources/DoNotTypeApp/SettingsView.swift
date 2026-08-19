@@ -5,34 +5,65 @@ import UniformTypeIdentifiers
 
 /// The settings window: providers and keys, the hotkey, grounding, and the history with retry.
 struct SettingsView: View {
+    /// The nine panels, in the three groups the sidebar draws them in.
+    private enum Pane: Hashable {
+        case general, grounding, dictionary, prompt
+        case history, stats, logs
+        case transfer, about
+    }
+
     @Bindable var model: SettingsModel
     /// Owned by the window rather than the app: polling the log buffer is only worth doing while
     /// someone is looking at it.
     @State private var logs = LogViewerModel()
 
+    /// Named rather than left to whichever panel happens to be listed first. All three callers of
+    /// `openSettings` want the provider and key controls, and one of them is the menu item whose
+    /// whole purpose is to say the key is wrong.
+    ///
+    /// The window is cached rather than released on close, so this outlives closing it: the
+    /// sidebar comes back where it was left.
+    @State private var pane: Pane = .general
+
     var body: some View {
-        TabView {
-            GeneralTab(model: model)
-                .tabItem { Label("General", systemImage: "gearshape") }
-            GroundingTab(model: model)
-                .tabItem { Label("Grounding", systemImage: "text.viewfinder") }
-            DictionaryTab(model: model)
-                .tabItem { Label("Dictionary", systemImage: "character.book.closed") }
-            HistoryTab(model: model)
-                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
-            StatsView(records: model.allRecords)
-                .tabItem { Label("Stats", systemImage: "chart.bar") }
-            PromptTab(model: model)
-                .tabItem { Label("Prompt", systemImage: "text.quote") }
-            LogsTab(model: logs)
-                .tabItem { Label("Logs", systemImage: "list.bullet.rectangle") }
-            SettingsTransferView(model: model)
-                .tabItem { Label("Transfer", systemImage: "arrow.left.arrow.right") }
-            AboutView()
-                .tabItem { Label("About", systemImage: "info.circle") }
+        // A sidebar rather than a tab bar, because a macOS tab bar is a *single* toolbar item: it
+        // lays out whole or collapses whole, taking all nine panels with it into one unlabelled
+        // chevron. That is a width ceiling, and it has now been walked into twice — d01a9d8
+        // raised the window's minimum to fit six tabs and said in as many words that widening
+        // alone would only move the cliff, and three tabs later it did. A list scrolls, so its
+        // capacity is bounded by window height instead, and a tenth section can never hide the
+        // other nine.
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            List(selection: selection) {
+                Section("Dictation") {
+                    Label("General", systemImage: "gearshape").tag(Pane.general)
+                    Label("Grounding", systemImage: "text.viewfinder").tag(Pane.grounding)
+                    Label("Dictionary", systemImage: "character.book.closed")
+                        .tag(Pane.dictionary)
+                    Label("Prompt", systemImage: "text.quote").tag(Pane.prompt)
+                }
+                Section("Activity") {
+                    Label("History", systemImage: "clock.arrow.circlepath").tag(Pane.history)
+                    Label("Stats", systemImage: "chart.bar").tag(Pane.stats)
+                    Label("Logs", systemImage: "list.bullet.rectangle").tag(Pane.logs)
+                }
+                Section("App") {
+                    Label("Transfer", systemImage: "arrow.left.arrow.right").tag(Pane.transfer)
+                    Label("About", systemImage: "info.circle").tag(Pane.about)
+                }
+            }
+            .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
+            // Pinned open, and with no toggle to close it. A sidebar that can be hidden is the
+            // same defect by another route: the navigation disappears and the panels become
+            // unreachable without knowing what to click.
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
+            detail
         }
-        // A minimum rather than a fixed size: pinning the content to an exact width left the
-        // window unable to grow past the point where the tab bar fits, which is what hid it.
+        .navigationSplitViewStyle(.balanced)
+        // A minimum rather than a fixed size. It is a content measurement now, not a
+        // navigation one — the sidebar cannot run out of room, so what the number has to buy
+        // is the widest panel's own layout.
         .frame(minWidth: 820, minHeight: 500)
         .task {
             await model.refresh()
@@ -40,6 +71,30 @@ struct SettingsView: View {
             // walkthrough is finished, and a blank key panel there is exactly the confusion this
             // whole check exists to remove.
             if model.keyStatus == .unchecked { await model.checkConnection() }
+        }
+    }
+
+    /// Nudged back rather than passed straight through. `List` reports nil when a click lands on
+    /// empty sidebar space, and a settings window that blanks its right half because you missed a
+    /// row by a few points is worse than one that keeps showing what it was showing.
+    private var selection: Binding<Pane?> {
+        Binding(get: { pane }, set: { if let new = $0 { pane = new } })
+    }
+
+    /// Unlike a `TabView`, this is rebuilt on every selection change — anything a panel must not
+    /// lose across that lives on `SettingsModel`, not in the panel.
+    @ViewBuilder
+    private var detail: some View {
+        switch pane {
+        case .general: GeneralTab(model: model)
+        case .grounding: GroundingTab(model: model)
+        case .dictionary: DictionaryTab(model: model)
+        case .prompt: PromptTab(model: model)
+        case .history: HistoryTab(model: model)
+        case .stats: StatsView(records: model.allRecords)
+        case .logs: LogsTab(model: logs)
+        case .transfer: SettingsTransferView(model: model)
+        case .about: AboutView()
         }
     }
 }
