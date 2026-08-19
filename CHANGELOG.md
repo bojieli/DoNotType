@@ -10,6 +10,25 @@ release yet, so everything below is unreleased.
 
 ### Added
 
+- **Release artifacts now have enforced provenance and stricter security boundaries.** macOS
+  signing failures can no longer fall back silently to an ad-hoc signature, tagged builds verify
+  the resulting signature, transient signing material is removed, and every desktop archive and
+  Android APK receives a GitHub build-provenance attestation. The tag workflow now runs the iOS UI
+  suite and Android lint instead of accepting compile-only evidence, while CI checks shell scripts
+  and workflow definitions and dependency updates cover Swift and NuGet as well as Gradle and
+  Actions. It stamps and checks every bundled version, optionally Authenticode-signs and verifies
+  Windows binaries, validates APK and notarization signatures, verifies every checksum and archive,
+  and publishes only the six intended release assets rather than flattening iOS test-result
+  internals beside them. Provider requests also refuse cross-origin redirects so API-key headers,
+  audio, and screen context cannot be forwarded to an endpoint the user did not configure; remote
+  overrides require HTTPS, reject embedded credentials, and now fail explicitly instead of
+  silently sending a recording to the built-in provider when the override is malformed.
+
+- **Cold iOS keyboard handoff survives app activation.** Keyboard ownership is recorded before the
+  asynchronous microphone start, so the brief inactive scene phase during a cold launch cannot
+  erase the return instructions. The overlay exposes stable accessibility identifiers on current
+  iOS runtimes, and its direction cue now stops after three pulses instead of animating forever.
+
 - **Project documentation is organized as a public reference.** The README now states the
   project's motivation and operating principles, including its differences from built-in and
   commercial AI dictation. Long-form documents live behind an indexed `docs/` entry point and
