@@ -13,23 +13,14 @@ macOS · Windows · Android · iOS. Your own API key, no server in the middle.
 
 ## Why DoNotType
 
-Voice input comes in two kinds today, and both fail technical work.
+Most voice tools make you choose between keeping your words and spelling uncommon terms correctly.
 
-**Built-in dictation uses small models with no context.** The voice input shipped with macOS,
-iOS, Android and Windows transcribes with relatively small, general-purpose models. They cannot
-see what you are working on, so technical terms, project names and jargon come out wrong —
-the exact words you dictated most carefully.
-
-**Commercial AI dictation rewrites you.** Tools like Typeless add a large language model and
-context grounding, which fixes the spelling — but the product is the rewrite, not the
-transcription. Casual speech comes back formal and reads as AI-written rather than naturally
-spoken. What you actually said is not kept: the stored field is the refined text. And the
-software is closed-source and commercial, with your audio and screen context flowing through
-servers you do not control.
-
-DoNotType is the third option: a fully open-source, configurable voice input method that uses
-large language models **while keeping your original utterances**. Verbatim first, grounded in
-your screen, with every part inspectable.
+- **Built-in dictation:** keeps your phrasing, but without screen context it often misses project
+  names, jargon, and other technical terms.
+- **Commercial AI dictation:** uses larger models and context, but returns a polished rewrite
+  instead of the exact words you said.
+- **DoNotType:** keeps a recoverable verbatim transcript, grounds spelling in your screen, and is
+  open source with your choice of provider.
 
 <img src="Resources/Demo/hero.svg" alt="Illustrative example: a paper page shows ByteDance Research and UI-TARS. Audio-only dictation writes 'Best Dong's UI task'; DoNotType combines the audio with screen context and writes 'ByteDance's UI-TARS'." width="880">
 

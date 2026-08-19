@@ -15,10 +15,10 @@ release yet, so everything below is unreleased.
   commercial AI dictation. Long-form documents live behind an indexed `docs/` entry point and
   use a consistent, neutral structure. The rewrite preserves the commands, measured results,
   falsified predictions, dated experiment history, platform caveats, and security boundaries
-  that support the project's claims. Its motivating diagram now uses the ByteDance UI-TARS paper
-  to show how visible text can resolve an uncommon name, and its contribution guide identifies
-  context construction, prompt work, provider integrations, and reproducible benchmarks as open
-  research areas.
+  that support the project's claims. A scan-friendly three-bullet introduction and motivating
+  diagram now use the ByteDance UI-TARS paper to show how visible text can resolve an uncommon
+  name, and the contribution guide identifies context construction, prompt work, provider
+  integrations, and reproducible benchmarks as open research areas.
 
 - **Mobile dictation and rewriting are separate choices.** iOS and Android now use a compact
   Dictate/Rewrite switch instead of presenting Verbatim beside Formal, Concise, and Bullets as if
