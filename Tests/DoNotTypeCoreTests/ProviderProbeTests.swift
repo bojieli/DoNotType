@@ -79,22 +79,49 @@ final class ProviderProbeTests: XCTestCase {
         }
     }
 
-    /// Probing a recogniser with text would fail by design and report a working key as broken.
-    func testRecognitionBackendsAreProbedWithAudio() async {
-        let provider = ScriptedProvider(grounding: .keyterms(maxTerms: 100, maxCharsPerTerm: 50))
-        _ = await ProviderProbe.check(provider, model: "m")
+    /// Every backend, not just the recognisers that always got this. A model backend probed with
+    /// text answers from a code path a dictation never uses, so the one thing that could be wrong
+    /// with a third-party endpoint — that it takes the request shape but not the recording — was
+    /// the one thing the check could not see.
+    func testEveryBackendIsProbedWithAudioAndNothingElse() async {
+        let groundings: [GroundingSupport] = [
+            .multimodal, .keyterms(maxTerms: 100, maxCharsPerTerm: 50), .none,
+        ]
+        for grounding in groundings {
+            let provider = ScriptedProvider(grounding: grounding)
+            _ = await ProviderProbe.check(provider, model: "m")
 
-        let parts = provider.lastRequest?.parts ?? []
-        XCTAssertTrue(
-            parts.contains { if case .audio = $0 { true } else { false } },
-            "a recognition endpoint only accepts audio")
+            let parts = provider.lastRequest?.parts ?? []
+            XCTAssertTrue(
+                parts.contains { if case .audio = $0 { true } else { false } },
+                "\(grounding) was probed without a recording")
+            XCTAssertFalse(
+                parts.contains { if case .text = $0 { true } else { false } },
+                "\(grounding) was probed with text a dictation would never send")
+        }
     }
 
-    func testModelBackendsAreProbedWithText() async {
-        let provider = ScriptedProvider(grounding: .multimodal)
-        _ = await ProviderProbe.check(provider, model: "m")
+    /// The point of probing with audio. A provider that takes the recording, drops it and bills
+    /// nothing for it throws this from inside `transcribe`, and the probe has to report it as
+    /// something the user must fix — not as a flaky network to be retried.
+    func testAnEndpointThatDropsTheRecordingIsRejected() async {
+        let provider = ScriptedProvider(
+            throws: ProviderError.audioSilentlyDropped(provider: "relay", model: "m"))
+        guard case .rejected(let message) = await ProviderProbe.check(provider, model: "m") else {
+            return XCTFail("an endpoint that drops audio must be reported, not accepted")
+        }
+        XCTAssertTrue(message.contains("audio"), "the message has to name what went wrong")
+        XCTAssertFalse(TranscriptionService.isTransient(
+            ProviderError.audioSilentlyDropped(provider: "relay", model: "m")))
+    }
 
-        let parts = provider.lastRequest?.parts ?? []
-        XCTAssertTrue(parts.contains { if case .text = $0 { true } else { false } })
+    /// A text-only endpoint that refuses the recording outright is the good case, and it has to
+    /// land in the same bucket as the one that drops it quietly.
+    func testAnEndpointThatRefusesAudioIsRejected() async {
+        let provider = ScriptedProvider(
+            throws: ProviderError.http(status: 400, body: "input_audio is not supported"))
+        guard case .rejected = await ProviderProbe.check(provider, model: "m") else {
+            return XCTFail("a refused recording must be reported as something to fix")
+        }
     }
 }

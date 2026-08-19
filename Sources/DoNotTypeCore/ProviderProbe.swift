@@ -10,6 +10,12 @@ import Foundation
 /// The probe deliberately distinguishes *rejected* from *no answer*. A 401 means the user has to do
 /// something; a timeout on a train means nothing at all, and reporting the second as the first
 /// would train people to ignore both.
+///
+/// It answers a second question as well: whether the audio arrives. Every probe is a recording, so
+/// an endpoint that cannot take one — a text-only relay, a `vllm serve` in front of a text-only
+/// checkpoint — is rejected here rather than discovered mid-dictation. The limit worth knowing is
+/// that a provider reporting no usage at all still passes: `assertAudioWasProcessed` can only call
+/// a *reported* zero a dropped recording, and silence about it stays unprovable either way.
 public enum ProviderProbe {
     public enum Outcome: Sendable, Equatable {
         /// The provider answered and the key worked.
@@ -25,14 +31,19 @@ public enum ProviderProbe {
     public static func check(
         _ provider: any TranscriptionProvider, model: String
     ) async -> Outcome {
-        // A recognition backend rejects a text-only request by design, so probing one with the
-        // text round trip would report a working key as broken. It gets a fraction of a second of
-        // silence instead — enough to exercise auth, the URL and the response shape, which is all
-        // this check claims to cover.
-        let parts: [InputPart] =
-            provider.grounding(forModel: model) == .multimodal
-            ? [.text("Pretend the audio said: ok. Transcribe it.")]
-            : [.audio(data: silentProbeWAV, mimeType: "audio/wav")]
+        // Audio, for every backend. Recognition endpoints always got silence, because they reject
+        // a text-only request by design; model backends got text, and that turned out to be the
+        // one thing this check could not afford to skip. "OpenAI-compatible" is a claim about the
+        // request shape, so a relay or a text-only checkpoint answers the text probe perfectly and
+        // then has nowhere to put a recording — which the user found out mid-dictation, from a
+        // transcript the model invented. Probing with the same shape a dictation uses moves that
+        // discovery to the settings window, where it costs nothing.
+        //
+        // A quarter second is deliberate rather than merely cheap: it is
+        // `SpeechActivity.minimumSpeechMilliseconds`, the shortest audio this app will ever send
+        // for real. Anything a provider does to this clip — including billing zero audio tokens
+        // for it, which is how a dropped recording is detected — it would do to a real dictation.
+        let parts: [InputPart] = [.audio(data: silentProbeWAV, mimeType: "audio/wav")]
 
         do {
             _ = try await provider.transcribe(
@@ -43,15 +54,24 @@ public enum ProviderProbe {
             return .accepted
         } catch ProviderError.emptyOutput {
             // Silence transcribes to nothing, which is the correct answer and proves the round
-            // trip worked. Only the recognition path can reach this, since the text probe always
-            // produces output.
+            // trip worked.
             return .accepted
         } catch {
             // The same triage the dictation path uses, so a key check and a failed dictation never
             // disagree about whether the user has to act. `isOnline: true` because being offline
             // is exactly the case this must report as inconclusive rather than as a bad key.
             let advice = FailureAdvice.describe(error, isOnline: true)
-            return advice.needsUserAction
+
+            // `needsUserAction` alone is not the whole question here. A plain 4xx is deliberately
+            // *not* the user's to act on during a dictation — nothing in Settings fixes a request
+            // this app built wrong — so it is triaged as "worth reporting". The probe builds a
+            // fixed, minimal request, and that reasoning inverts: if this one is refused, what is
+            // wrong is the configuration it was sent with, and the endpoint field is where it gets
+            // fixed. A text-only relay answering "input_audio is not supported" arrives exactly
+            // this way, and reporting it as "could not ask" would hide the one answer the check
+            // exists to give. Retryability is the honest discriminator — advice that says retrying
+            // will not help is advice about a setting, not about the network.
+            return advice.needsUserAction || !advice.isRetryable
                 ? .rejected(advice.message)
                 : .inconclusive(error.localizedDescription)
         }
