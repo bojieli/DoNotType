@@ -119,17 +119,17 @@ val syncContract by tasks.registering(Sync::class) {
 tasks.named("preBuild") { dependsOn(syncContract) }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.24.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("org.json:json:20240303")
+    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.appcompat:appcompat:1.8.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.29.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    implementation("org.json:json:20260814")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     testImplementation("junit:junit:4.13.2")
     // Local JVM tests need the desktop native library; production still packages the Android AAR.
-    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.24.2")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test:runner:1.6.2")
-    androidTestImplementation("androidx.test:rules:1.6.1")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.29.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test:rules:1.7.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
 }
