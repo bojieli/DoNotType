@@ -9,20 +9,27 @@ import android.graphics.BitmapFactory
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
-import android.view.ViewGroup
-import android.widget.Button
-import android.widget.EditText
+import android.view.View
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
+import app.donottype.ui.body
+import app.donottype.ui.card
+import app.donottype.ui.controlRow
+import app.donottype.ui.fieldContainer
+import app.donottype.ui.primaryButton
+import app.donottype.ui.screenScaffold
+import app.donottype.ui.screenSubtitle
+import app.donottype.ui.screenTitle
+import app.donottype.ui.sectionFooter
+import app.donottype.ui.sectionTitle
+import app.donottype.ui.settingRow
+import app.donottype.ui.themeColor
+import com.google.android.material.textfield.TextInputEditText
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
@@ -37,7 +44,7 @@ import java.io.ByteArrayOutputStream
 
 /** File, paste and QR settings transfer. Imported material is always staged in the editor first. */
 class SettingsTransferActivity : AppCompatActivity() {
-    private lateinit var editor: EditText
+    private lateinit var editor: TextInputEditText
     private lateinit var status: TextView
 
     private val createDocument = registerForActivityResult(
@@ -148,24 +155,29 @@ class SettingsTransferActivity : AppCompatActivity() {
         if (intent.getBooleanExtra(EXTRA_START_SCANNER, false)) launchScanner()
     }
 
-    private fun buildLayout(): ScrollView {
-        val column = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 24, 32, 48)
-        }
-        column.addView(TextView(this).apply {
-            text = "Settings transfer"
-            textSize = 24f
-            setTypeface(typeface, Typeface.BOLD)
-        })
-        column.addView(TextView(this).apply {
-            text = "⚠ Exports include API keys in plaintext. Treat the JSON and QR code like a " +
-                "password. Check the provider and endpoint before importing."
-            textSize = 15f
-            setPadding(0, 12, 0, 16)
-        })
+    private fun buildLayout(): ScrollView = screenScaffold { column ->
+        column.addView(screenTitle("Settings transfer"))
+        // Above everything, in the warning colour: every action on this screen moves API keys
+        // about in clear text, and that is the part to know before reading how any of it works.
+        column.addView(
+            body("Exports include API keys in plaintext").apply {
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(
+                    ContextCompat.getColor(this@SettingsTransferActivity, R.color.dnt_warning),
+                )
+            },
+        )
+        column.addView(
+            screenSubtitle(
+                "Treat the JSON and QR code like a password. Check the provider and endpoint " +
+                    "before importing.",
+            ),
+        )
 
-        editor = EditText(this).apply {
+        column.addView(sectionTitle("JSON"))
+        // Monospace and tall: this is a document to be read and edited, not a value to be typed,
+        // and JSON that reflows is JSON nobody can check the shape of.
+        editor = TextInputEditText(this).apply {
             minLines = 14
             maxLines = 24
             gravity = Gravity.TOP or Gravity.START
@@ -173,51 +185,76 @@ class SettingsTransferActivity : AppCompatActivity() {
             textSize = 11f
             contentDescription = "settings-json"
         }
-        column.addView(editor)
+        column.addView(card(controlRow(null, fieldContainer("Settings JSON", editor))))
 
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        column.addView(row(
-            button("Paste") {
-                clipboard.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()?.let {
-                    editor.setText(it)
-                    showStatus("Pasted JSON. Review it before importing.")
-                }
-            },
-            button("Copy") {
-                clipboard.setPrimaryClip(ClipData.newPlainText("DoNotType settings", editor.text))
-                showStatus("Settings JSON copied.")
-            },
-        ))
-        column.addView(row(
-            button("Load current") { loadCurrent() },
-            button("Save JSON…") { createDocument.launch("donottype-settings.json") },
-            button("Show QR") { showQr() },
-        ))
-        column.addView(row(
-            button("Open JSON…") { openDocument.launch(arrayOf("application/json", "text/plain")) },
-            button("Import QR image…") { openQRImage.launch(arrayOf("image/*")) },
-            button("Scan QR…", ::launchScanner),
-        ))
-        column.addView(button("Import settings") { importSettings() }.also {
-            it.contentDescription = "import-settings"
-        })
-        column.addView(TextView(this).apply {
-            text = "Opening or scanning only loads the JSON. Import is separate because a " +
-                "document can replace credentials and network settings."
-            textSize = 13f
-            setPadding(0, 8, 0, 8)
-        })
-        status = TextView(this).apply { setPadding(0, 8, 0, 8) }
-        column.addView(status)
+        column.addView(
+            card(
+                settingRow("Paste", "Replace the editor with the clipboard.") {
+                    clipboard.primaryClip?.getItemAt(0)
+                        ?.coerceToText(this@SettingsTransferActivity)?.toString()?.let {
+                            editor.setText(it)
+                            showStatus("Pasted JSON. Review it before importing.")
+                        }
+                },
+                settingRow("Copy", "Put the editor's JSON on the clipboard.") {
+                    clipboard.setPrimaryClip(
+                        ClipData.newPlainText("DoNotType settings", editor.text),
+                    )
+                    showStatus("Settings JSON copied.")
+                },
+            ),
+        )
 
-        return ScrollView(this).apply {
-            addView(column)
-            ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
-                val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-                view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-                insets
-            }
-        }
+        column.addView(sectionTitle("Export"))
+        column.addView(
+            card(
+                settingRow(
+                    "Load current settings",
+                    "Fill the editor with what this device is using now.",
+                ) { loadCurrent() },
+                settingRow(
+                    "Save JSON file…",
+                    "Write the editor out to a file you choose.",
+                ) { createDocument.launch("donottype-settings.json") },
+                settingRow(
+                    "Show QR code",
+                    "Put the editor on screen for another device's camera.",
+                ) { showQr() },
+            ),
+        )
+
+        column.addView(sectionTitle("Import"))
+        column.addView(
+            card(
+                settingRow(
+                    "Open JSON file…",
+                    "Load a file into the editor for review.",
+                ) { openDocument.launch(arrayOf("application/json", "text/plain")) },
+                settingRow(
+                    "Import QR image…",
+                    "Read a code out of a screenshot or a photo.",
+                ) { openQRImage.launch(arrayOf("image/*")) },
+                settingRow(
+                    "Scan QR code…",
+                    "Point the camera at a code on another device.",
+                ) { launchScanner() },
+            ),
+        )
+        column.addView(
+            primaryButton("Import settings") { importSettings() }.also {
+                it.contentDescription = "import-settings"
+            },
+        )
+        column.addView(
+            sectionFooter(
+                "Opening or scanning only loads the JSON. Import is separate because a " +
+                    "document can replace credentials and network settings.",
+            ),
+        )
+
+        status = body("").apply { visibility = View.GONE }
+        column.addView(status)
     }
 
     private fun loadCurrent() {
@@ -287,30 +324,19 @@ class SettingsTransferActivity : AppCompatActivity() {
         )
     }
 
+    /** The one place the status line is written, so its colour never lags behind its text. */
     private fun showStatus(message: String, error: Boolean = false) {
         status.text = message
-        status.setTextColor(if (error) 0xffb00020.toInt() else currentTextColor())
-    }
-
-    private fun currentTextColor(): Int =
-        android.util.TypedValue().let { value ->
-            theme.resolveAttribute(android.R.attr.textColorPrimary, value, true)
-            if (value.resourceId != 0) getColor(value.resourceId) else value.data
-        }
-
-    private fun button(label: String, action: () -> Unit) = Button(this).apply {
-        text = label
-        setOnClickListener { action() }
-    }
-
-    private fun row(vararg views: Button) = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        views.forEach { view ->
-            addView(
-                view,
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-            )
-        }
+        status.setTextColor(
+            themeColor(
+                if (error) {
+                    com.google.android.material.R.attr.colorError
+                } else {
+                    com.google.android.material.R.attr.colorOnSurfaceVariant
+                },
+            ),
+        )
+        status.visibility = if (message.isEmpty()) View.GONE else View.VISIBLE
     }
 
     companion object {
