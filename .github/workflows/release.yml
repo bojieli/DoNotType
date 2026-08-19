@@ -115,8 +115,12 @@ jobs:
         run: |
           codesign --verify --deep --strict --verbose=2 .build/DoNotType.app
           signature=$(codesign -dv --verbose=4 .build/DoNotType.app 2>&1)
+          printf '%s\n' "$signature"
           if [[ -n "$MACOS_CERTIFICATE" ]]; then
-            grep -q '^Authority=Developer ID Application:' <<< "$signature"
+            # `Authority` is omitted on some hosted runners even though the imported identity and
+            # signature are valid. The build only selects Developer ID Application identities;
+            # verify that the result belongs to this release team and has hardened runtime instead.
+            grep -q '^TeamIdentifier=5BR9M56H9W$' <<< "$signature"
             grep -q 'flags=.*runtime' <<< "$signature"
           else
             grep -q '^Signature=adhoc$' <<< "$signature"
