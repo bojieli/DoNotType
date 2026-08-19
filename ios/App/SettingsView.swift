@@ -122,6 +122,16 @@ struct SettingsView: View {
             .keyboardType(.URL)
             .accessibilityIdentifier("endpoint")
 
+            // Directly under the field it is about, because this Section has no separate block of
+            // explanations the way the macOS panel does. Shown only once the field points at a
+            // server nobody here has measured — see `thirdPartyAudioNote`.
+            if let audioNote = model.endpointAudioNote {
+                Label(audioNote, systemImage: "waveform.badge.exclamationmark")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("endpoint-audio-note")
+            }
+
             LabeledContent("Key") { Text(model.keySource).foregroundStyle(.secondary) }
 
             Picker("Fallback", selection: $model.fallbackProvider) {
@@ -141,6 +151,12 @@ struct SettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
+
+                if let audioNote = model.fallbackEndpointAudioNote {
+                    Label(audioNote, systemImage: "waveform.badge.exclamationmark")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
 
                 SecureField("Fallback API key", text: $model.fallbackAPIKey)
                     .textInputAutocapitalization(.never)

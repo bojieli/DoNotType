@@ -202,6 +202,20 @@ final class SettingsModel {
             + "choose another service or set DNT_DEEPGRAM_LANGUAGE=zh."
     }
 
+    /// The audio-input caveat for the endpoint the primary backend is pointed at.
+    ///
+    /// Both this and `fallbackEndpointAudioNote` read the same string out of `ProviderKind`, and
+    /// so does iOS. The wording is an argument about what a compatible third party is and is not
+    /// obliged to accept, and an argument stated in four places is one that gets updated in one.
+    var endpointAudioNote: String? {
+        provider.thirdPartyAudioNote(endpointOverride: endpoint)
+    }
+
+    /// The same caveat for the second backend, which has its own endpoint and its own key.
+    var fallbackEndpointAudioNote: String? {
+        fallbackProvider?.thirdPartyAudioNote(endpointOverride: fallbackEndpoint)
+    }
+
     // MARK: - Hotkey
 
     var trigger: HotkeyMonitor.Trigger {

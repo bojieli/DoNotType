@@ -305,6 +305,17 @@ private struct GeneralTab: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                // Shown only once the endpoint field points somewhere unmeasured, because that is
+                // the only configuration it is about — and it sits with the other notes rather
+                // than under the field itself, so the section keeps fields above and explanations
+                // below. Orange for the same reason as the warning above it: what it predicts is
+                // a lost dictation, not a trade-off.
+                if let audioNote = model.endpointAudioNote {
+                    Label(audioNote, systemImage: "waveform.badge.exclamationmark")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 LabeledContent("In use") {
                     Text(model.configurationSummary).foregroundStyle(.secondary)
@@ -355,6 +366,17 @@ private struct GeneralTab: View {
 
                     SecureField("Second provider API key", text: $model.fallbackAPIKey)
                         .textContentType(.password)
+
+                    // The second backend has its own endpoint field and its own test button, so
+                    // it can be pointed at a text-only relay entirely independently of the first.
+                    // A fallback only ever runs when the primary is already slow, which is the
+                    // worst moment to discover the audio went nowhere.
+                    if let audioNote = model.fallbackEndpointAudioNote {
+                        Label(audioNote, systemImage: "waveform.badge.exclamationmark")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     LabeledContent("Start it after") {
                         HStack {

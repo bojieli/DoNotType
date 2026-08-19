@@ -159,6 +159,20 @@ final class DictationModel {
         }
     }
 
+    /// The audio-input caveat for the endpoint the primary backend is pointed at.
+    ///
+    /// The string itself lives in `ProviderKind` because macOS shows the same one. Unlike the
+    /// recommendation above it, this claim needs no ungrounded variant: it is about whether the
+    /// recording arrives at all, which is the same question on a phone as on a desktop.
+    var endpointAudioNote: String? {
+        provider.thirdPartyAudioNote(endpointOverride: endpoint)
+    }
+
+    /// The same caveat for the second backend, which has its own endpoint field.
+    var fallbackEndpointAudioNote: String? {
+        fallbackProvider?.thirdPartyAudioNote(endpointOverride: fallbackEndpoint)
+    }
+
     /// Backend started alongside the primary when it has not answered in time. Nil disables it.
     ///
     /// The same trade as on macOS, and it matters more here: a phone keyboard waiting sixty
