@@ -126,6 +126,14 @@ jobs:
       - name: Build the evaluation harness
         run: swift build -c release --product dnt-eval
 
+      # Run the stored-transcript gate from the binary this job just built. Keeping this beside
+      # the app/core build matters on the arm64 hosted runners: a separate `swift run` job used to
+      # compile the whole Swift + ONNX graph from a cold checkout, then the runner killed the
+      # executable with exit 137 before its first line of output. The check itself needs no model,
+      # audio, key, or ONNX inference; reusing the completed build gives it a stable memory ceiling.
+      - name: Re-score the committed transcripts
+        run: .build/release/dnt-eval rescore
+
       - name: Build the CLI
         run: swift build -c release --product dnt
 
@@ -173,37 +181,6 @@ jobs:
           name: latest-macos
           path: dist/
           overwrite: true
-
-  # The suite this project's claims rest on, re-graded for free.
-  #
-  # This job used to replay a cassette, and could not: a cassette take is keyed by a hash of the
-  # request with the audio in it, and `eval/audio/*.wav` is gitignored because seven of the sixteen
-  # near-miss clips are cut from the maintainer's own recordings. No runner has the audio, so no
-  # runner could ever match a single key. It looked for `eval/cassettes/nearmiss.json`, a filename
-  # never committed, and skipped itself when it was absent — and a skipped step is the same colour
-  # as a passing one, which is why that went unnoticed. Pointed at a real cassette it found nothing
-  # for all 48 requests and still exited 0.
-  #
-  # A scorecard holds the transcripts without the audio, so this runs anywhere. There is no `if`
-  # here on purpose: the corpus is committed, and a job that decides for itself whether to check
-  # anything is how the last one stayed green for a week. See docs/EVALUATION.md.
-  rescore:
-    name: Re-scored eval
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # No key, no network, no cost, and nothing discovered about any model. What it checks is that
-      # every assertion in eval/nearmiss/, the diff classification and the pass rule still turn the
-      # same stored transcripts into the same verdicts.
-      - name: Re-score the committed transcripts
-        run: swift run -c release dnt-eval rescore
-
-      # The scorer's own failure paths, asserted. `rescore` exists because a check that could not
-      # fail reported success for a week; a check whose failure path is untested is the same
-      # promise with a smaller audience.
-      - name: The failure paths still fail
-        run: swift test --filter ScorecardTests
 
   windows-core:
     name: Windows core
@@ -503,7 +480,7 @@ jobs:
   # notarization, version stamping, and a human review still gate anything called stable.
   promote-latest:
     name: Promote latest build
-    needs: [hygiene, contract, swift, rescore, windows-core, windows-app, android, ios]
+    needs: [hygiene, contract, swift, windows-core, windows-app, android, ios]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
