@@ -43,9 +43,8 @@
 
 ## Dictation that stays yours
 
-You decide how the transcript should read. `verbatim` is the default, while `rewrite` and `summary`
-are available when they are useful. Whichever mode you choose, the original transcript remains
-available.
+Live dictation has two modes. **Dictate** keeps your wording and is the default. **Rewrite** can make
+the result formal, concise, or casual. The original transcript remains available in either mode.
 
 DoNotType uses the text on your screen to resolve spelling. It can pick up a project name, an
 acronym, or a version number that a model would otherwise guess at. The screen helps with spelling;
@@ -103,7 +102,9 @@ extra keystroke is sent only when the original field is still focused. If you cl
 while the request is in flight, DoNotType inserts the text and skips the submission. Escape cancels
 an active dictation.
 
-Existing recordings use the same pipeline, whether you start from the app or the CLI:
+Existing recordings use the same pipeline, whether you start from the app or the CLI. File
+transcription also has summary outputs for briefs, bullet points, and action items. These apply only
+to saved recordings; Summary is not a live dictation mode.
 
 ```bash
 dnt transcribe interview.m4a                          # verbatim, to stdout
@@ -123,13 +124,12 @@ DoNotType captures screen context within a 500 ms budget while you are still spe
 not add another wait. It prefers accessibility text and uses a screenshot where the platform
 supports one. If the screen and the recording disagree, the recording wins.
 
-### Three modes
+### Two dictation modes
 
 | Mode | Best for | Behavior |
 |---|---|---|
-| `verbatim` | Everyday dictation; the default | One request returns the words you said. |
-| `rewrite` | Formal, concise, or casual variants | One request returns both the polished text and the original transcript. |
-| `summary` | Briefs, bullet points, or action items | A separate request produces a shorter version. The full transcript is kept. |
+| **Dictate** | Everyday dictation; the default | Returns the words you said, with screen context used to resolve spelling. |
+| **Rewrite** | Formal, concise, or casual text | Returns both the rewritten text and the original transcript. |
 
 Changed your mind after the fact? `⌘⌥Z` on macOS or `Ctrl+Alt+Z` on Windows puts your own wording
 back.
