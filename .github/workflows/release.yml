@@ -526,9 +526,30 @@ jobs:
           build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d \
             | sort -V | tail -1)
           test -n "$build_tools"
-          "$build_tools/apksigner" verify --verbose --print-certs "$APK"
+          certs=$("$build_tools/apksigner" verify --verbose --print-certs "$APK" 2>&1)
+          printf '%s\n' "$certs"
+
+          fail() { echo "✗ $1" >&2; exit 1; }
+
+          # `apksigner verify` exits 0 for any valid signature, the Android debug key included, so
+          # its exit code alone cannot tell a release build from a debug one. Assert the signer
+          # identity too: without this the step prints a debug certificate and still passes, which
+          # is how a debug-signed APK reaches a release that looks verified.
+          if [[ -n "$ANDROID_KEYSTORE" ]]; then
+            # apksigner labels the line by scheme, e.g. "V2 Signer: certificate DN: ...", so match
+            # the shared suffix rather than a scheme-specific prefix that changes with minSdk.
+            grep -qE 'Signer: certificate DN:' <<< "$certs" ||
+              fail "no signer certificate was reported for the APK."
+            if grep -qi 'CN=Android Debug' <<< "$certs"; then
+              fail "the APK is signed with the Android debug certificate despite a configured
+          release keystore. A debug-signed APK can never be updated in place by a differently
+          signed build, so every later release would force an uninstall and lose user data."
+            fi
+          fi
+
           badging=$("$build_tools/aapt" dump badging "$APK")
-          grep -Fq "versionName='$VERSION'" <<< "$badging"
+          grep -Fq "versionName='$VERSION'" <<< "$badging" ||
+            fail "the APK reports a versionName other than $VERSION."
 
       # Every part, not just the entry point: a part missing from the APK is invisible until
       # somebody picks that fidelity or style, and then it fails mid-dictation.
