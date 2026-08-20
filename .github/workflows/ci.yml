@@ -48,6 +48,19 @@ jobs:
             echo "a colliding version unexpectedly passed validation" >&2
             exit 1
           fi
+          # The release workflow greps the built CLI's output for `dnt <version> (`, on both
+          # platforms. Stamping a literal that cannot produce that line is invisible until a tag
+          # is cut and the signed macOS build fails verification, so assert the stamped spelling
+          # here where it costs nothing. A renamed literal fails on this line, not on release day.
+          for source in Sources/dnt/Dnt.swift \
+                        windows/DoNotType.Cli/Program.cs \
+                        windows/DoNotType.Cli/InspectionCommands.cs; do
+            if ! grep -qE 'dnt 9\.8\.7 \([0-9a-z]+, [0-9]{4}-[0-9]{2}-[0-9]{2}\)' "$source"; then
+              echo "✗ $source was not stamped as 'dnt <version> (<commit>, <date>)':" >&2
+              grep -nE 'dnt [0-9]+\.[0-9]+\.[0-9]+|version: "' "$source" >&2 || true
+              exit 1
+            fi
+          done
 
   # The contract files are copied into every bundle at build time so the platforms cannot drift.
   # This checks the invariant that makes that safe: the shipped prompt must actually build.
@@ -107,6 +120,25 @@ jobs:
           .build/release/dnt prompt validate
           .build/release/dnt providers --no-keychain
           test -n "$(.build/release/dnt prompt show --section summary)"
+          # `dnt --version` is one line, spelled identically here and on Windows: the version a
+          # user pastes into a bug report should not depend on which client they run. It went
+          # unchecked once and the two CLIs drifted — Swift printed a bare number because
+          # ArgumentParser echoes `configuration.version` verbatim — which only surfaced when a
+          # tag reached the release workflow's grep. doctor's header is the same line with a
+          # prefix, so it catches a version literal that grew a second `dnt `.
+          version_line=$(.build/release/dnt --version)
+          if ! grep -qE '^dnt [0-9]+\.[0-9]+\.[0-9]+( \([0-9a-z]+, [0-9]{4}-[0-9]{2}-[0-9]{2}\))?$' \
+               <<< "$version_line"; then
+            echo "✗ dnt --version printed '$version_line'," >&2
+            echo "  expected 'dnt <x.y.z>' with an optional ' (<commit>, <date>)'" >&2
+            exit 1
+          fi
+          doctor_header=$(.build/release/dnt doctor | head -1)
+          if [[ "$doctor_header" != "DoNotType — $version_line" ]]; then
+            echo "✗ dnt doctor opened with '$doctor_header'," >&2
+            echo "  expected 'DoNotType — $version_line'" >&2
+            exit 1
+          fi
 
       # The rolling prerelease is made from the same bundle this job launched and checked. It is
       # deliberately separate from a versioned release, which may also be Developer ID signed and
@@ -183,6 +215,21 @@ jobs:
         run: |
           dotnet run --project windows/DoNotType.Cli -- prompt validate
           dotnet run --project windows/DoNotType.Cli -- providers --no-stored-key
+          # The same one-line contract the macOS job asserts, checked here so a drift in either
+          # direction fails on the platform that caused it.
+          version_line=$(dotnet run --project windows/DoNotType.Cli -- --version | tail -1)
+          if ! grep -qE '^dnt [0-9]+\.[0-9]+\.[0-9]+( \([0-9a-z]+, [0-9]{4}-[0-9]{2}-[0-9]{2}\))?$' \
+               <<< "$version_line"; then
+            echo "✗ dnt --version printed '$version_line'," >&2
+            echo "  expected 'dnt <x.y.z>' with an optional ' (<commit>, <date>)'" >&2
+            exit 1
+          fi
+          doctor_header=$(dotnet run --project windows/DoNotType.Cli -- doctor | grep -m1 '^DoNotType')
+          if [[ "$doctor_header" != "DoNotType — $version_line" ]]; then
+            echo "✗ dnt doctor opened with '$doctor_header'," >&2
+            echo "  expected 'DoNotType — $version_line'" >&2
+            exit 1
+          fi
 
   windows-app:
     name: Windows app
