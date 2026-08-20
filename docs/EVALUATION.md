@@ -241,30 +241,49 @@ is covered under *Method → Case design*.
 
 ### Fixture availability and reproducibility
 
-The authoritative real-speech WAV payloads are not present in this checkout. That includes
-`real-talk-gemini15.wav`, `real-mandarin.wav`, `real-codeswitch.wav`, `real-acronym.wav`, and the
-later acronym/jargon/brand fixtures. The ignored file at `real-talk-gemini15.wav` has the known
-synthetic TTS hash and is rejected by the benchmark guard. Therefore there is currently **no valid
-full-suite count, Gemini 1.5-versus-2.5 substitution rate, code-switch number result, or claim that
-only numeric values regress** that can be reproduced from this repository.
+The real-speech WAVs are **present and hash-verified on the measuring machine, and absent from
+every fresh clone.** Both halves matter, so neither is left implicit.
 
-Earlier revisions of this document listed results for those recordings, but the payloads were
-never actually committed despite a commit message saying they were. Those figures are not retained
-as current evidence: without the exact audio, neither the ground truth nor the trial population can
-be audited. The synthetic `say`/`espeak` clips remain useful for transport plumbing only and must not
-be used to fill the missing cells.
+`eval/audio/*.wav` is in `.gitignore` — the case definitions are committed, the audio is not,
+because these clips are extracts of recordings that are not the project's to redistribute. So every
+`real-*` number in this document was measured against a file a reader cannot download. What a
+reader can check is that the file the numbers came from is the file `MANIFEST.md` describes:
+
+```bash
+cd eval/audio && shasum -a 256 real-talk-gemini15.wav   # f3f7675222c6…
+```
+
+All fifteen clips in `MANIFEST.md` currently match their recorded prefix, including
+`real-talk-gemini15.wav` (`f3f7675222c6…`, 22.000 s, 16 kHz mono PCM). Be precise about what that
+buys: the manifest hashes were themselves recorded from these same local files, so a match proves
+the audio has not drifted since — not that it is the recording the earliest results used. It is
+enough to make a re-run on this machine comparable with the last one, and not enough to make a
+number independently auditable by somebody else.
+
+An earlier revision of this section claimed the payloads "were never actually committed despite a
+commit message saying they were" and that the file on disk carried "the known synthetic TTS hash".
+The second claim was wrong: the hash matches the manifest, not the `say`-synthesised stand-in. The
+first was a confusion between *not in git* and *not on disk* — the audio is deliberately not in git,
+which is a redistribution decision, and was never evidence that the measurements had no input.
+
+What still cannot be done from a fresh clone is reproduce any `real-*` figure. Supplying a legally
+shareable recording of a speaker saying a version number the screen contradicts remains **the single
+most valuable outstanding contribution to this project**: it would turn every number in this section
+from an observation on one machine into evidence anybody can re-derive. The case format is in
+`eval/nearmiss/`, and a cassette recorded from it (`dnt-eval suite --record`) lets anyone re-score
+the result for free afterwards even without the audio.
 
 Current local-GPU evidence uses downloaded, revision-pinned model checkpoints and separately
 labeled public real recordings. It is recorded in [MODELS.md](MODELS.md) and
 [`eval/results/local-real-audio-2026-08-10.json`](../eval/results/local-real-audio-2026-08-10.json).
 Those Obama, Barcelona, AISHELL, and SEAME observations (including the acronym-chain and
 decimal-number controls) exercise audio transport, language fidelity, and hostile-context behavior,
-but none substitutes for a named DoNotType fixture.
+but none substitutes for a named DoNotType fixture. The synthetic `say`/`espeak` clips remain useful
+for transport plumbing only and must not be used to fill a real-speech cell.
 
-When the exact WAVs are restored, real-speech cases should continue to assert **fragments** rather
-than an exact transcript (`mustContain`, `mustNotContain`). A stochastic 22-second transcription
-varies on wording unrelated to the near-miss under test, so the scorer should name the few tokens a
-case turns on and ignore the rest.
+Real-speech cases assert **fragments** rather than an exact transcript (`mustContain`,
+`mustNotContain`). A stochastic 22-second transcription varies on wording unrelated to the near-miss
+under test, so the scorer names the few tokens a case turns on and ignores the rest.
 
 ### Latency
 
@@ -334,20 +353,18 @@ Note the `35.42` outlier in that run's no-schema column, against a 10 s median �
 single latency measurements on a live API are worth very little, a lesson this document records
 twice.
 
-### Historical ablation
+### Rewrite: one request against two
 
-`swift run dnt-eval ablate`, 15 trials per condition:
+`swift run dnt-eval ablate`. All of these are live runs on this machine against
+`eval/audio/real-talk-gemini15.wav` — see *Fixture availability* above for what that does and does
+not let a reader check.
 
-The table below is retained as historical handoff context only. It cannot be reproduced or cited as
-a current benchmark until the exact `real-talk-gemini15.wav` recording is restored and verified.
-The README used to quote its 36%/21% row as the project's headline figure; it no longer does, and
-neither should anything else.
+**The decision is one request, and latency is the only column that supports it.** The design
+rationale, the three paths that still run two, and the falsified mechanism argument are in
+[PROMPT.md](PROMPT.md); the numbers are here.
 
-**This is the single most valuable outstanding contribution to the project.** Restoring a real
-recording of a speaker saying a version number that contradicts the screen — and committing it —
-turns every number in this section from an anecdote back into evidence. The case format is in
-`eval/nearmiss/`, and a cassette recorded from it (`dnt-eval suite --record`) would let anyone
-re-score it afterwards for free.
+First on `gemini-3.6-flash`, 15 trials per condition. This is the run the older revisions of this
+document quoted, and it is no longer the shipping model:
 
 | condition | substituted | rate | mean latency |
 |---|---|---|---|
@@ -356,15 +373,58 @@ re-score it afterwards for free.
 | single request, transcribe + formalise | 5/13 | 38% | 15.7 s |
 | two requests, transcribe then formalise | 9/12 | 75% | 7.5 s |
 
-Two predictions were falsified here. Both are recorded in [PROMPT.md](PROMPT.md)'s changelog
-because the reasoning was plausible and could otherwise be repeated.
+Then on `gemini-3.5-flash`, which is the default `ProviderKind.defaultForNewInstalls` model, 15
+trials per condition:
+
+| condition | substituted | rate | mean latency |
+|---|---|---|---|
+| no context at all | 11/13 | 85% | 5.57 s |
+| verbatim + context | 12/12 | 100% | 2.79 s |
+| single request, transcribe + formalise | 13/13 | 100% | **4.91 s** |
+| two requests, transcribe then formalise | 13/13 | 100% | **5.55 s** |
+
+The two rewrite conditions alone, 20 trials each, run twice — the second time with the conditions in
+the opposite order, because a latency gap measured in a fixed order is also consistent with the API
+warming up:
+
+| order | condition | substituted | rate | mean latency |
+|---|---|---|---|---|
+| single first | single request | 20/20 | 100% | **1.82 s** |
+| single first | two requests | 17/20 | 85% | **3.19 s** |
+| two first | two requests | 18/19 | 95% | **3.13 s** |
+| two first | single request | 18/18 | 100% | **1.84 s** |
+
+Reversing the order moved each condition by 0.02–0.06 s. The gap is the conditions, not the clock.
+
+Finally the shipped path — `single-styled`, which calls the app's own `transcribeStyled` and scores
+the styled text the user is actually given, against two requests, 20 trials:
+
+| condition | substituted | rate | mean latency |
+|---|---|---|---|
+| `single-styled` (what the app runs) | 18/18 | 100% | **2.54 s** |
+| two requests | 18/19 | 95% | **3.11 s** |
+
+Two things a reader should take from this and one they should not:
+
+- **Latency: one request wins, by 0.6–1.4 s across four runs and both orders.** A rewrite now costs
+  about what a plain verbatim dictation costs — 2.54 s for the shipped styled path against 2.79 s
+  for verbatim in the 15-trial run — instead of a whole second round trip on top of it.
+- **The 3.6 result that made the single request look 8 s slower does not transfer.** It was real on
+  that model; the ordering reverses on this one. A model bump re-opens this question, exactly like
+  the sweep below.
+- **Substitution decides nothing here, and the 100% cells are not a finding.** The no-context
+  baseline on this clip and model is already 85%, so every condition sits at the ceiling and the
+  metric cannot separate them. `gemini-3.5-flash` mishears "one point five" on this recording with
+  nothing on screen to copy — the same limitation recorded under *Remaining model limitation* above.
+  So this clip no longer discriminates on this model, and **no fidelity claim about one request
+  versus two is made from these tables.** A clip that discriminates is the prerequisite for one.
 
 ### Historical model sweep
 
 `./eval/model-sweep.sh`. Same clip, same hostile context.
 
-This sweep is also historical and currently unverifiable because that clip is missing. Re-run it
-from the downloaded/hosted models only after the exact reference WAV has been restored; do not infer
+This sweep is historical: the clip is on the measuring machine and hash-verified, but the model IDs
+have moved on since and one of them is retired. Re-run it rather than citing it, and do not infer
 these cells from synthetic audio or the public smoke-test clips.
 
 | model | version transcribed with **no** context | verdict |
@@ -393,8 +453,9 @@ conclusions that later entries corrected.
 ### Grounding failures and mitigations — 2026-08-10
 
 Two results from 2026-08-10, measured on this machine against `gemini-3.6-flash`. **They are not
-reproducible from this checkout** — see *Fixture availability and reproducibility* under *Current
-results* — so they are recorded as observations, not as the project's published figures.
+reproducible from a fresh clone**, because the audio is deliberately not committed — see *Fixture
+availability and reproducibility* under *Current results* — so they are recorded as observations,
+not as figures anybody else can re-derive.
 
 **The failure is numeric, not phonetic.** Across the 12-case near-miss suite (36 runs), every
 word-level case passed: names, an acronym chain (VAD/ASR against TTS/NLU on screen), Scrum against

@@ -179,9 +179,11 @@ because an easy case measures nothing.
 
 `gemini-3.6-flash`, native API.
 
-These are historical handoff targets. The exact reference WAV is now supplied and verified; the
-uploaded-fixture campaign is the current local evidence. Never compare these historical rates with
-the synthetic stand-in or the public real-audio smoke clips.
+These are historical handoff targets on a model the app no longer defaults to. The current
+one-request-versus-two numbers, measured on `gemini-3.5-flash`, are in
+[EVALUATION.md](EVALUATION.md#rewrite-one-request-against-two) — the latency ordering reverses
+there, and the app ships the single request. The reference WAV is supplied and hash-verified; never
+compare these rates with the synthetic stand-in or the public real-audio smoke clips.
 
 | Condition | Substitution | Mean latency |
 |---|---|---|

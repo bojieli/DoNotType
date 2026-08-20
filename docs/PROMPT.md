@@ -47,12 +47,15 @@ always stored, so whatever the rewrite does, what was actually said is recoverab
 the cited counterexample: the failure is not that rewriting exists, but that it is mandatory and
 discards the original.
 
-**The one-request and two-request strategies remain an open choice.**
+**One request, not two.** A rewrite is asked for in the same request that transcribes; the
+response carries the verbatim transcript and the styled text side by side. There is no setting for
+this, because there is no version of it a user would want to switch off. A speech recogniser cannot
+answer the wider schema, so those backends — and only those — still run the second pass.
 
 The prediction for two passes was that a model asked to polish prose normalises unfamiliar tokens
 toward familiar ones, so combining "transcribe" with "make it formal" puts the objectives in
-competition. Measurement falsified that prediction
-(`swift run dnt-eval ablate`, 15 trials per condition, gemini-3.6-flash):
+competition. Measurement falsified that prediction, first on `gemini-3.6-flash`
+(`swift run dnt-eval ablate`, 15 trials per condition):
 
 | condition | substituted | rate | mean latency |
 |---|---|---|---|
@@ -67,12 +70,63 @@ number it believes is stale. It never sees the screen context, so nothing tells 
 from audio and is not its to fix — which is why the preservation rule in
 [`prompt/rewrite.md`](../prompt/rewrite.md) exists, and why it is insufficient on its own.
 
-Latency also went the other way. The single request was *slower* (15.7 s), because one call doing
-both jobs emits far more output than two specialised ones.
+That run left latency as the open question, because the single request was *slower* there (15.7 s).
+It is not the shipping model. Re-measured on `gemini-3.5-flash`, which is the default, the latency
+ordering reverses (15 trials per condition):
 
-Neither option is recommended yet. Both are implemented and both are measured; the numbers are
-recorded here so the choice is made on evidence rather than the predicted mechanism, which was
-falsified twice.
+| condition | substituted | rate | mean latency |
+|---|---|---|---|
+| no context at all | 11/13 | 85% | 5.57 s |
+| verbatim + context | 12/12 | 100% | 2.79 s |
+| single request, transcribe + formalise | 13/13 | 100% | **4.91 s** |
+| two requests, transcribe then formalise | 13/13 | 100% | **5.55 s** |
+
+Then the two rewrite conditions alone, 20 trials each, twice — the second run with the conditions
+in the opposite order, to rule out drift across the session rather than assume it away:
+
+| run | condition | substituted | rate | mean latency |
+|---|---|---|---|---|
+| single first | single request | 20/20 | 100% | **1.82 s** |
+| single first | two requests | 17/20 | 85% | **3.19 s** |
+| two first | two requests | 18/19 | 95% | **3.13 s** |
+| two first | single request | 18/18 | 100% | **1.84 s** |
+
+And finally the path the app actually takes — `transcribeStyled`, dual-field schema, 20 trials:
+
+| condition | substituted | rate | mean latency |
+|---|---|---|---|
+| `single-styled` (shipped) | 18/18 | 100% | **2.54 s** |
+| two requests | 18/19 | 95% | **3.11 s** |
+
+**The substitution column decides nothing here, and saying so is the point.** On this clip and this
+model the no-context baseline already substitutes 85%, so every condition is pinned near the
+ceiling and the metric has no room left to separate them. It has not shown the single request to be
+safer; it has shown that `real-talk-gemini15.wav` no longer discriminates on `gemini-3.5-flash`. A
+clip that does is the prerequisite for any fidelity claim about this choice, and none is made until
+there is one.
+
+What the numbers do support is latency, which moved by more than the spread across four separate
+runs and in both condition orders: **one request is roughly 0.6–1.4 s faster**, and the styled field
+costs about 0.7 s over a bare verbatim request rather than a whole second round trip. That is the
+whole argument. The mechanism argument for two passes was already falsified once; it is not
+resurrected by being slower.
+
+Three paths keep the second pass, for reasons that are structural rather than measured:
+
+- **Speech recognisers.** `deepgram`, `xai` and `mistral` transcribe audio and cannot be handed a
+  JSON schema or a style rule. `transcribeStyled` sees `grounding` is not `.multimodal`, sends the
+  plain request, and rewrites the text afterwards.
+- **Split recordings.** A long recording is chunked into concurrent requests. Folding a style into
+  each one yields five openings, five closings, and prose that reads as if five people wrote it. A
+  style belongs to the whole utterance, so `transcribeLong` folds nothing when it splits.
+- **The live pipeline.** It stitches segments transcribed while the user is still speaking, and the
+  same objection applies per segment.
+
+A model that accepts the schema and then answers without the `styled` field is also handled: the
+field is required in `Transcript.styledJSONSchema` precisely because a model given the choice
+returns only the one it finds more interesting, and if it is missing anyway the second pass runs.
+The verbatim transcript is stored before the styled text is delivered in every one of these paths,
+so `⌘⌥Z` behaves identically whichever ran.
 
 ## The summary stage
 

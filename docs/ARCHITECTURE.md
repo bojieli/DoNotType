@@ -111,14 +111,35 @@ The guard lives on the provider protocol, not in an allowlist, because any backe
 | `PerformanceStats` | what the app actually cost | Median and p95, never a mean; absence stays absent, because 0/0 is not a 0% success rate. |
 | `AudioDecoder` | any recording → 16 kHz mono WAV | The live path never needed it; a file does. Without it the chunker cannot split a compressed recording, the duration reads as zero, and the upload is not compressed. |
 | `FileTranscriber` | decode → transcribe → second stage | Shared by the GUI window and `dnt transcribe`, so the two cannot drift on what a mode means or on which backend runs the second stage. |
-| `TranscriptMode` | verbatim, rewrite, summary | Ordering is the point: transcription first, always, and the second stage operates on text that has already been stored. |
+| `TranscriptMode` | verbatim, rewrite, summary | Ordering is the point: the verbatim transcript is stored before any styled text is delivered, whether the style came back in the same request or from a second one. |
 | `LogRouter` / `Log` | levels, sinks, redaction | A lock rather than an actor, because logging has to be callable from an audio callback without an `await` — a logger you cannot call from the hot path is one nobody calls. |
 
-## Two-stage transcription
+## Rewrite and summary
 
-`rewrite` and `summary` both take a finished transcript and return different text, and they are
-deliberately not the same mechanism. The rewrite instruction's first rule is *never remove a
-fact*; a summary is defined by removing facts. Sharing a block would leave one style in that list
+Both produce text beside the transcript rather than instead of it, but only one of them still costs
+a second request. This section used to be called *Two-stage transcription*, and the rename is the
+change: a rewrite is no longer a second stage.
+
+**A rewrite is asked for in the request that transcribes.** `Transcript` carries an optional
+`styled` field, `Transcript.styledJSONSchema` requires it, and `TranscriptionService.transcribeStyled`
+folds the style clause into the system instruction so one round trip returns both the verbatim words
+and the polished version. It is not configurable, because there is no version of "spend an extra
+request" a user would choose: measured on `gemini-3.5-flash`, one request is 0.6–1.4 s faster, and
+the fidelity argument for two passes was falsified before that (see [PROMPT.md](PROMPT.md)).
+
+Three paths cannot fold it and fall back to the second request. `transcribeStyled` checks
+`provider.grounding(forModel:)` and leaves a speech recogniser — `deepgram`, `xai`, `mistral` —
+alone, because it can be handed neither a JSON schema nor a style rule. `transcribeLong` folds
+nothing once it splits a recording, since a style applied per chunk yields five openings and five
+closings for one utterance. The live pipeline declines for the same reason per segment. And a model
+that accepts the schema then answers without the field gets the second pass anyway.
+
+A summary always costs the second request: it is text-to-text by definition, and folding "remove
+facts" into the request that is supposed to preserve them is the one combination this project will
+not make.
+
+They are also deliberately not the same mechanism at the prompt level. The rewrite instruction's
+first rule is *never remove a fact*; a summary is defined by removing facts. Sharing a block would leave one style in that list
 exempt from the block's first rule, and the exemption would be invisible at the call site.
 
 The contract therefore carries two separate parts — `prompt/rewrite.md` and `prompt/summary.md`,
@@ -129,8 +150,10 @@ a `RewriteStyle`, which is why `mode` exists beside it: a history row must not c
 a rewrite, because that column drives "revert to what you said" and the two mean different things.
 
 The invariant underneath both stages is the same one the app has always had: **the verbatim
-transcript is produced first and stored first.** A second stage is a derived artifact sitting next
-to the words that produced it, never instead of them.
+transcript is produced first and stored first.** Folding the rewrite into one request does not
+weaken it — `DictationController` writes `record.text` from the `transcript` field before it assigns
+`record.styledText`, so `⌘⌥Z` behaves identically whether one request ran or two. What the styled
+field removes is a round trip, not a copy of what was said.
 
 ## Long dictations
 
