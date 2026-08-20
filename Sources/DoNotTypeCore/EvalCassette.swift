@@ -121,6 +121,7 @@ public actor CassetteStore {
         case missing(URL)
         case noTakeFor(key: String, caseHint: String)
         case unreadable(URL, String)
+        case stale(URL, recorded: Cassette.Provenance, current: Cassette.Provenance, [String])
 
         public var errorDescription: String? {
             switch self {
@@ -143,6 +144,31 @@ public actor CassetteStore {
                 """
             case .unreadable(let url, let detail):
                 "Could not read the cassette at \(url.path): \(detail)"
+            case .stale(let url, let recorded, let current, let differences):
+                // Said once, before any case runs, because the alternative is what this project
+                // shipped: every request misses the key, each one reports "Nothing recorded", and
+                // 48 identical errors describe a single fact — the prompt moved. One case failing
+                // to find a take is a puzzle; the whole file failing is a stale cassette, and only
+                // this check can tell those two apart.
+                """
+                The cassette at \(url.path) does not match this run, so nothing in it would be \
+                found: \(differences.joined(separator: ", ")).
+
+                    recorded  \(recorded.model) · \(recorded.fidelity) · prompt \
+                \(recorded.promptDigest) · recorded \
+                \(ISO8601DateFormatter().string(from: recorded.recordedAt))
+                    this run  \(current.model) · \(current.fidelity) · prompt \
+                \(current.promptDigest)
+
+                The model, the fidelity and the prompt are all part of every request key, so a \
+                replay across a change to any of them cannot answer one single request. Replayed \
+                numbers must never be attributed to a prompt that did not produce them.
+
+                Re-record it, which costs one paid run:
+
+                    swift run dnt-eval suite --record \(url.path) --provider \
+                \(current.provider) --model \(current.model) --fidelity \(current.fidelity)
+                """
             }
         }
     }
@@ -178,6 +204,13 @@ public actor CassetteStore {
                 throw CassetteError.missing(url)
             }
             cassette = try load(url)
+            if let recordedProvenance = cassette?.provenance {
+                let differences = Self.differences(between: recordedProvenance, and: provenance)
+                if !differences.isEmpty {
+                    throw CassetteError.stale(
+                        url, recorded: recordedProvenance, current: provenance, differences)
+                }
+            }
             let recorded = cassette?.takes.values.reduce(0) { $0 + $1.count } ?? 0
             log.info(
                 "replaying",
@@ -188,6 +221,28 @@ public actor CassetteStore {
                     "recorded": cassette.map { ISO8601DateFormatter().string(from: $0.provenance.recordedAt) } ?? "?",
                 ])
         }
+    }
+
+    /// Which parts of a replay disagree with what was recorded.
+    ///
+    /// Only fields hashed into the request key are compared, because only those can make a lookup
+    /// miss. The provider is deliberately not one of them: a cassette recorded from one backend
+    /// replays against another by design, since a replay re-checks this project's scoring rather
+    /// than the backend's transcription.
+    static func differences(
+        between recorded: Cassette.Provenance, and current: Cassette.Provenance
+    ) -> [String] {
+        var differences: [String] = []
+        if recorded.model != current.model {
+            differences.append("model \(recorded.model) → \(current.model)")
+        }
+        if recorded.fidelity != current.fidelity {
+            differences.append("fidelity \(recorded.fidelity) → \(current.fidelity)")
+        }
+        if recorded.promptDigest != current.promptDigest {
+            differences.append("prompt \(recorded.promptDigest) → \(current.promptDigest)")
+        }
+        return differences
     }
 
     /// The next recorded answer for a request, in the order they were recorded.

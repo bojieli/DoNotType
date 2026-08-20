@@ -123,7 +123,12 @@ final class CassetteTests: XCTestCase {
 
     /// The failure mode that would make this actively misleading: replaying a recording made with a
     /// different prompt, and reporting the numbers as though they described the new one.
-    func testAChangedPromptMissesTheCassetteRatherThanAnsweringWrongly() async throws {
+    ///
+    /// Caught at `open`, before any case runs, rather than per request. Both are refusals, but the
+    /// difference decides whether anyone can act on it: an edited prompt misses *every* key, so the
+    /// per-request version reported 48 identical "nothing recorded" errors for one fact. It also
+    /// exited 0 while doing so, which is how a stale cassette held a CI job green for a week.
+    func testAChangedPromptIsRefusedBeforeAnyCaseRuns() async throws {
         let file = directory.appendingPathComponent("cassette.json")
         let recording = runner(CountingProvider(), mode: .recording(file), instruction: "original")
         try await recording.cassette?.open(provenance: provenance("original"))
@@ -131,17 +136,66 @@ final class CassetteTests: XCTestCase {
         try await recording.cassette?.close()
 
         let edited = runner(CountingProvider(), mode: .replaying(file), instruction: "edited")
-        try await edited.cassette?.open(provenance: provenance("edited"))
-
         do {
-            _ = try await edited.transcribe(audio: audio, context: nil)
+            try await edited.cassette?.open(provenance: provenance("edited"))
             XCTFail("an edited prompt must not be answered from an old recording")
         } catch let error as CassetteStore.CassetteError {
             let message = error.errorDescription ?? ""
             XCTAssertTrue(
-                message.contains("prompt/"),
+                message.contains("prompt"),
                 "the error should explain why a prompt change misses, got: \(message)")
+            XCTAssertTrue(
+                message.contains("--record"),
+                "the error should say how to fix it, got: \(message)")
         }
+    }
+
+    /// A model or fidelity change is the same failure wearing different clothes: both are hashed
+    /// into every key, so both miss everything.
+    func testAChangedModelIsRefusedTooAndNamesWhatMoved() async throws {
+        let file = directory.appendingPathComponent("cassette.json")
+        let recording = runner(CountingProvider(), mode: .recording(file))
+        try await recording.cassette?.open(provenance: provenance())
+        _ = try await recording.transcribe(audio: audio, context: nil)
+        try await recording.cassette?.close()
+
+        var moved = provenance()
+        moved.model = "some-other-model"
+        let store = CassetteStore(mode: .replaying(file))
+        do {
+            try await store.open(provenance: moved)
+            XCTFail("a cassette recorded from another model must not be replayed")
+        } catch let error as CassetteStore.CassetteError {
+            let message = error.errorDescription ?? ""
+            XCTAssertTrue(
+                message.contains("m → some-other-model"),
+                "the error must name what moved, got: \(message)")
+        }
+    }
+
+    /// The provider deliberately does not invalidate a cassette: replay re-checks this project's
+    /// scoring, not a backend's transcription, so a recording from one provider is legitimately
+    /// re-scoreable under another name. Asserted because it looks like an oversight otherwise.
+    func testADifferentProviderStillReplays() async throws {
+        let file = directory.appendingPathComponent("cassette.json")
+        let recording = runner(CountingProvider(), mode: .recording(file))
+        try await recording.cassette?.open(provenance: provenance())
+        _ = try await recording.transcribe(audio: audio, context: nil)
+        try await recording.cassette?.close()
+
+        var renamed = provenance()
+        renamed.provider = "somebody-else"
+        let store = CassetteStore(mode: .replaying(file))
+        try await store.open(provenance: renamed)
+        let replayed = try await store.take(for: onlyKey(in: file), hint: "no context")
+        XCTAssertEqual(replayed.transcript.transcript, "take 1")
+    }
+
+    private func onlyKey(in file: URL) throws -> String {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let cassette = try decoder.decode(Cassette.self, from: try Data(contentsOf: file))
+        return try XCTUnwrap(cassette.takes.keys.first)
     }
 
     /// The two arms of every case are different requests and must not share a recording.
