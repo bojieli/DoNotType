@@ -3,11 +3,10 @@ package app.donottype
 import app.donottype.accessibility.ScreenReaderService
 import app.donottype.core.DictationService
 import app.donottype.core.Fidelity
-import app.donottype.core.InputPart
 import app.donottype.core.PerformanceStats
 import app.donottype.core.PersonalDictionary
-import app.donottype.core.ProviderFactory
 import app.donottype.core.ProviderKind
+import app.donottype.core.ProviderProbe
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.RewriteAvailability
 import app.donottype.core.RewriteStyle
@@ -63,7 +62,6 @@ import app.donottype.ui.switchRow
 import app.donottype.ui.textButton
 import app.donottype.ui.tonalButton
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 /**
  * Setup, settings and history.
@@ -824,6 +822,12 @@ class SettingsActivity : AppCompatActivity() {
 
     // MARK: - Actions
 
+    /**
+     * Asks the provider whether this key works, in the shared probe's words.
+     *
+     * The onboarding screen runs the same check, so the sentence a user reads here and the one
+     * they read on their first launch are the same sentence from the same code.
+     */
     private fun testConnection() {
         val key = Settings.apiKey
         if (key.isNullOrBlank()) {
@@ -832,62 +836,9 @@ class SettingsActivity : AppCompatActivity() {
         }
         connectionLabel.text = "Checking…"
         lifecycleScope.launch {
-            val client = ProviderFactory.create(Settings.provider, key, Settings.model)
-            // Audio, for every backend — the same shape a dictation sends. Model backends used to
-            // get a text round trip, which a text-only relay or checkpoint answers perfectly well
-            // before dropping the first real recording. See ProviderProbe.check in the Swift core,
-            // which this mirrors.
-            val parts = listOf(InputPart.Audio(silentProbeWav(), "audio/wav"))
-
-            val started = android.os.SystemClock.elapsedRealtimeNanos()
-            val result = runCatching {
-                client.transcribe("You are a transcription engine.", parts)
-            }
-            val latency = connectionLatencyLabel(
-                android.os.SystemClock.elapsedRealtimeNanos() - started,
-            )
-            connectionLabel.text = result.fold(
-                onSuccess = { "✓ Reachable, key accepted · $latency" },
-                onFailure = { error ->
-                    // Silence transcribes to nothing, which is the correct answer and proves
-                    // the round trip worked.
-                    if (error.message?.contains("no output", ignoreCase = true) == true) {
-                        "✓ Reachable, key accepted · $latency"
-                    } else {
-                        "✗ ${error.message} · $latency"
-                    }
-                },
-            )
+            connectionLabel.text =
+                ProviderProbe.check(Settings.provider, key, Settings.model).message
         }
-    }
-
-    private fun connectionLatencyLabel(nanoseconds: Long): String {
-        val milliseconds = nanoseconds.coerceAtLeast(0) / 1_000_000.0
-        return if (milliseconds < 1_000) {
-            "${milliseconds.roundToInt()} ms"
-        } else {
-            String.format(java.util.Locale.ROOT, "%.2f s", milliseconds / 1_000)
-        }
-    }
-
-    /**
-     * A quarter-second of 16 kHz mono silence, built rather than shipped as an asset so the APK
-     * does not carry a resource used by one button.
-     */
-    private fun silentProbeWav(): ByteArray {
-        val sampleRate = 16_000
-        val dataBytes = sampleRate / 4 * 2
-        val out = java.io.ByteArrayOutputStream()
-        fun ascii(value: String) = out.write(value.toByteArray(Charsets.US_ASCII))
-        fun u32(value: Int) =
-            out.write(byteArrayOf(value.toByte(), (value shr 8).toByte(), (value shr 16).toByte(), (value shr 24).toByte()))
-        fun u16(value: Int) = out.write(byteArrayOf(value.toByte(), (value shr 8).toByte()))
-
-        ascii("RIFF"); u32(36 + dataBytes); ascii("WAVEfmt ")
-        u32(16); u16(1); u16(1); u32(sampleRate); u32(sampleRate * 2); u16(2); u16(16)
-        ascii("data"); u32(dataBytes)
-        out.write(ByteArray(dataBytes))
-        return out.toByteArray()
     }
 
     /**
