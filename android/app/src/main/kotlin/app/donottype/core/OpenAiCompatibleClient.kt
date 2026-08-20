@@ -47,6 +47,7 @@ class OpenAiCompatibleClient(
         fidelity: Fidelity,
         keyterms: List<String>,
         maxOutputTokens: Int,
+        wantsStyledOutput: Boolean,
     ): TranscriptionResult = withContext(Dispatchers.IO) {
         val content = JSONArray()
         for (part in parts) {
@@ -84,6 +85,22 @@ class OpenAiCompatibleClient(
                     .put(JSONObject().put("role", "user").put("content", content)),
             )
             .put("max_tokens", maxOutputTokens)
+            .put(
+                "response_format",
+                JSONObject()
+                    .put("type", "json_schema")
+                    .put(
+                        "json_schema",
+                        JSONObject()
+                            .put("name", "transcript")
+                            .put("strict", true)
+                            .put(
+                                "schema",
+                                if (wantsStyledOutput) Transcript.styledSchema()
+                                else Transcript.schema(),
+                            ),
+                    ),
+            )
 
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"

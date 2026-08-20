@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 
 namespace DoNotType.Core;
 
-public sealed record Transcript(string Text, string Language = "")
+public sealed record Transcript(string Text, string Language = "", string? Styled = null)
 {
     public static JsonObject Schema() => new()
     {
@@ -16,6 +16,19 @@ public sealed record Transcript(string Text, string Language = "")
             ["language"] = new JsonObject { ["type"] = "string" },
         },
         ["required"] = new JsonArray("transcript", "language"),
+    };
+
+    public static JsonObject StyledSchema() => new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject
+        {
+            ["transcript"] = new JsonObject { ["type"] = "string" },
+            ["styled"] = new JsonObject { ["type"] = "string" },
+            ["language"] = new JsonObject { ["type"] = "string" },
+        },
+        ["required"] = new JsonArray("transcript", "styled", "language"),
+        ["additionalProperties"] = false,
     };
 
     /// <summary>
@@ -35,7 +48,8 @@ public sealed record Transcript(string Text, string Language = "")
             {
                 return new Transcript(
                     node["transcript"]?.GetValue<string>() ?? string.Empty,
-                    node["language"]?.GetValue<string>() ?? string.Empty);
+                    node["language"]?.GetValue<string>() ?? string.Empty,
+                    node["styled"]?.GetValue<string>());
             }
         }
         catch (JsonException)
@@ -106,7 +120,7 @@ public sealed class GeminiProvider(
     string apiKey,
     string model = "gemini-3.5-flash",
     string? thinkingLevel = null,
-    HttpClient? httpClient = null) : ITranscriptionProvider
+    HttpClient? httpClient = null) : ITranscriptionProvider, IStyledTranscriptionProvider
 {
     private const string Endpoint = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
@@ -144,14 +158,27 @@ public sealed class GeminiProvider(
     /// oversight: fidelity already reached this backend inside <paramref name="systemInstruction"/>,
     /// and keyterms exist only for endpoints with no instruction to put them in.
     /// </remarks>
-    public async Task<TranscriptionResult> TranscribeAsync(
+    public Task<TranscriptionResult> TranscribeAsync(
         string systemInstruction,
         IReadOnlyList<InputPart> parts,
         int maxOutputTokens = 2048,
         CancellationToken cancellationToken = default,
         Fidelity fidelity = Fidelity.Light,
         IReadOnlyList<string>? keyterms = null,
-        ConnectionPreference connection = ConnectionPreference.Pooled)
+        ConnectionPreference connection = ConnectionPreference.Pooled) =>
+        TranscribeStyledAsync(
+            systemInstruction, parts, maxOutputTokens, cancellationToken, fidelity, keyterms,
+            connection, wantsStyledOutput: false);
+
+    public async Task<TranscriptionResult> TranscribeStyledAsync(
+        string systemInstruction,
+        IReadOnlyList<InputPart> parts,
+        int maxOutputTokens = 2048,
+        CancellationToken cancellationToken = default,
+        Fidelity fidelity = Fidelity.Light,
+        IReadOnlyList<string>? keyterms = null,
+        ConnectionPreference connection = ConnectionPreference.Pooled,
+        bool wantsStyledOutput = false)
     {
         var body = new JsonObject
         {
@@ -164,7 +191,7 @@ public sealed class GeminiProvider(
             {
                 ["type"] = "text",
                 ["mime_type"] = "application/json",
-                ["schema"] = Transcript.Schema(),
+                ["schema"] = wantsStyledOutput ? Transcript.StyledSchema() : Transcript.Schema(),
             },
             ["generation_config"] = new JsonObject
             {

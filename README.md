@@ -139,6 +139,12 @@ supports it. If the recording and the screen disagree, the recording is supposed
 Changed your mind after the fact? `⌘⌥Z` on macOS or `Ctrl+Alt+Z` on Windows puts your own wording
 back.
 
+The same contract is used by every client: on the short, non-segmented model-backed path the
+transcription request returns both `transcript` and `styled`, so choosing a rewrite does not add a
+round trip on macOS, Windows, Android, or iOS. Live segmented capture and recordings long enough
+to split are assembled verbatim first and then styled once, and speech-recognition providers still
+use the compatible second stage when they cannot return styled text themselves.
+
 ## Highlights
 
 | Capability | What you get |

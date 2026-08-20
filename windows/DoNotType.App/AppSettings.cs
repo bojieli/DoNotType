@@ -32,9 +32,10 @@ public sealed class AppSettings
     /// A second key that dictates and then rewrites, or null for one key and verbatim only.
     /// </summary>
     /// <remarks>
-    /// Off by default. A rewrite costs a second request and changes the words, so it is opt-in —
-    /// but when it is on, the choice is made by which key you hold, before speaking, rather than by
-    /// a setting somebody has to remember they changed.
+    /// Off by default. A rewrite changes the delivered wording, so it is opt-in — but when it is
+    /// on, the choice is made by which key you hold, before speaking, rather than by a setting
+    /// somebody has to remember they changed. Model-backed short dictations return both versions
+    /// in one request; split or recognition paths retain the compatibility second stage.
     /// </remarks>
     public HotkeyMonitor.Trigger? SecondaryTrigger { get; set; }
 

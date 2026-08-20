@@ -31,7 +31,7 @@ application:
 |---|---|
 | macOS | hold Right ⌘, say a sentence, release |
 | Windows | hold Right Ctrl, say a sentence, release |
-| Android | switch to the DoNotType keyboard, hold the mic key, speak, release |
+| Android | switch to the DoNotType keyboard, hold the talk button, speak, release |
 | iOS | switch to DoNotType keyboard, tap the outlined mic, swipe back, speak, then tap to stop |
 
 Say something with a number and a proper noun in it — *"tell Kaelith the 3.5 release ships Friday"* —
@@ -39,6 +39,17 @@ because that is the sentence shape this project exists to get right.
 
 **Passes if** the words appear where the cursor was, they are the words you said, and the number is
 the number you said.
+
+On Android, dictate a second sentence from the app itself: open DoNotType, which now opens on its
+dictation screen, and tap its record button. The words go to the clipboard and to Latest rather than
+into another app's field, because an app in the foreground has no field to type into. Both surfaces
+run the same recorder and the same transcription, so this is checking the screen rather than the
+pipeline: the meter appears, the button turns red, and the transcript arrives under "Latest".
+
+Then, still on the keyboard, use the other two keys. Return in a search box should search rather
+than insert a blank line, and its label should say which — "Go" in Chrome's omnibox, "Search" in a
+search field, the arrow glyph in a message box that wants a newline. Tap backspace once for one
+deletion; hold it and the deletions should run on, stopping the moment you lift.
 
 On iOS, immediately dictate a second sentence while the keyboard mic is filled. It must start and
 stop without opening the app again. Also hold the filled mic, speak, and release; release must stop
@@ -127,9 +138,9 @@ on the others. The pickers and the drop handlers are the parts no test reaches.
 ## 6. Level meter
 
 Thirty seconds per client, and all four draw one: the pill on macOS and Windows, the strip above the
-keyboard on Android, the row under the record button on iOS. The scale itself is asserted against
-the fixtures in `AudioLevelMeter`, in Swift, C# and Kotlin; what no runner can check is whether the
-bars on screen are *yours*.
+keyboard *and* the row under the app's record button on Android, the row under the record button on
+iOS. The scale itself is asserted against the fixtures in `AudioLevelMeter`, in Swift, C# and
+Kotlin; what no runner can check is whether the bars on screen are *yours*.
 
 Hold the key — or the button — and watch the meter rather than the screen:
 
@@ -146,6 +157,14 @@ Hold the key — or the button — and watch the meter rather than the screen:
 **Passes if** all three do what they say, and the meter tracks your voice closely enough that the
 bar for a word is drawn while you are still saying the next one.
 
+On Android, run the three above twice — once on the keyboard bar and once on the app's dictation
+screen. They draw from one implementation now, so what is being checked is that both are still
+wired to a live microphone rather than that they agree on the scale. Two surfaces drawing different
+bars for the same voice would be two verdicts on whether the microphone is working, which is the
+one thing this meter exists to answer. The app's screen adds one claim of its own: the ring around
+the record button should pulse with the newest bar, so a glance at the button is enough without
+reading the meter.
+
 **Watch for** a meter that advances in blocks rather than one bar at a time (capture buffers too
 long — this is what half-second buffers looked like on Windows), and amber at a normal speaking
 voice, which is a real finding rather than a bug: the input gain is set high enough to be damaging
@@ -157,12 +176,13 @@ Paste this into the release notes, filled in:
 
 ```
 Manual checks for vX.Y.Z
-  round trip      macOS ✓   Windows ✓   Android ✓   iOS ✓
+  round trip      macOS ✓   Windows ✓   Android ✓ (keyboard + app)   iOS ✓
+  keyboard keys   Android ✓ (return labelled, backspace repeats)   iOS ✓
   permissions     macOS ✓   Android ✓   iOS ✓
   failure modes   macOS ✓
   silence         gemini ✓   deepgram ✓
   file transcription  macOS ✓   Windows ✓
-  level meter     macOS ✓   Windows ✓   Android ✓   iOS ✓
+  level meter     macOS ✓   Windows ✓   Android ✓ (both surfaces)   iOS ✓
   not checked     Android permissions — no device this cycle
 ```
 

@@ -1253,6 +1253,12 @@ final class DictationModel {
         return try? prompts.builder(bundled: promptURL).rewriteInstruction(style: style)
     }
 
+    /// The style rule alone, for folding a rewrite into the request that carries the audio.
+    private func rewriteStyleClause(for style: RewriteStyle) -> String? {
+        guard let promptURL = Self.bundledPromptURL else { return nil }
+        return try? prompts.builder(bundled: promptURL).styleClause(style)
+    }
+
     private func requestMicrophone() async -> Bool {
         await withCheckedContinuation { continuation in
             AVAudioApplication.requestRecordPermission { continuation.resume(returning: $0) }
@@ -1293,12 +1299,16 @@ final class DictationModel {
         do {
             let audio = try AudioFile(contentsOf: url)
             let requestStart = Date()
+            // Live segmentation is intentionally verbatim: a style belongs to the whole
+            // utterance, not to each segment. The ordinary request can return both fields at once.
+            let styleClause = livePipeline == nil && style.isRewrite
+                ? rewriteStyleClause(for: style) : nil
             // Hedged when a fallback is configured; a transparent pass-through otherwise.
             let outcome = if let livePipeline {
                 try await livePipeline.finish()
             } else {
                 try await makeTranscriber(primary: coordinator.service)
-                    .transcribe(audio: audio, context: nil)
+                    .transcribe(audio: audio, context: nil, styleClause: styleClause)
             }
             try Task.checkCancellation()
             let result = outcome.result
@@ -1335,10 +1345,20 @@ final class DictationModel {
             record.status = .completed
             record.text = text
 
-            // A rewrite is a second pass over a transcript that already exists, so the verbatim
-            // version is stored either way and "what did I actually say" stays answerable.
+            // A model response may carry the rewrite beside the verbatim transcript. Recognition
+            // backends and older responses fall through to the existing text-only stage.
             var delivered = text
-            if style.isRewrite {
+            if style.isRewrite, let styled = result.transcript.styled?.trimmed, !styled.isEmpty {
+                record.styledText = styled
+                record.style = style
+                delivered = styled
+                log.info(
+                    "styled in one request",
+                    [
+                        "dictation": Self.short(pendingID), "style": style.rawValue,
+                        "chars": "\(styled.count)", "from": "\(text.count)",
+                    ])
+            } else if style.isRewrite {
                 let rewriteStart = Date()
                 log.info(
                     "second stage",

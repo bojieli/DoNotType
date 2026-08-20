@@ -79,7 +79,7 @@ sealed class TranscriptMode {
         }
 
     /**
-     * What to show while the second request is in flight.
+     * What to show while a compatibility second request is in flight.
      *
      * The mode's own word rather than "Writing the result…". Somebody who chose a summary is
      * waiting for a summary, and a label that says so is the difference between a wait that makes

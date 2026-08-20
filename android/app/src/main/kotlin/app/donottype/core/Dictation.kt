@@ -121,8 +121,13 @@ class DictationService(private val context: Context) {
 
         return try {
             val requestStart = System.currentTimeMillis()
+            // Live segmentation is deliberately verbatim: a style belongs to the whole
+            // utterance, not to each pause-finalised chunk. The ordinary path can ask the model
+            // for both fields in the same request.
+            val styleClause = style.takeIf { it.isRewrite && liveSession == null }
+                ?.let { PromptAssets.styleClause(context, it) }
             val outcome = liveSession?.finish(screenContext)
-                ?: transcribeFinished(wav, screenContext, id)
+                ?: transcribeFinished(wav, screenContext, id, styleClause)
 
             record.requestMillis = System.currentTimeMillis() - requestStart
             record.audioTokens = outcome.result.usage.audioTokens
@@ -177,10 +182,24 @@ class DictationService(private val context: Context) {
             record.status = DictationRecord.Status.COMPLETED
             record.text = text
 
-            // A rewrite is a second pass over a transcript that already exists, so the verbatim
-            // version is stored either way and "what did I actually say" stays answerable.
+            // A model response may carry the rewrite beside the verbatim transcript. Recognition
+            // backends and older responses fall through to the existing text-only stage.
             var delivered = text
-            if (style.isRewrite && text.isNotBlank()) {
+            val styledInResponse = outcome.result.transcript.styled?.trim()
+            if (style.isRewrite && !styledInResponse.isNullOrBlank()) {
+                val mode = TranscriptMode.Rewrite(style)
+                record.styledText = styledInResponse
+                record.mode = mode.id
+                delivered = styledInResponse
+                log.info(
+                    mapOf(
+                        "dictation" to id,
+                        "style" to style.id,
+                        "chars" to styledInResponse.length.toString(),
+                        "from" to text.length.toString(),
+                    ),
+                ) { "styled in one request" }
+            } else if (style.isRewrite && text.isNotBlank()) {
                 val rewriteStart = System.currentTimeMillis()
                 val mode = TranscriptMode.Rewrite(style)
                 val instruction = PromptAssets.secondStageInstruction(context, mode)
@@ -292,11 +311,16 @@ class DictationService(private val context: Context) {
         wav: ByteArray,
         screenContext: ScreenContext?,
         id: String,
+        styleClause: String? = null,
     ): FallbackTranscriber.Outcome = coroutineScope {
         val chunks = AudioChunker.split(wav)
+        // Split recordings are stitched verbatim and styled once by the caller.
+        val chunkStyle = styleClause.takeIf { chunks.size == 1 }
         val gate = Semaphore(3)
         val outcomes = chunks.map { chunk ->
-            async { gate.withPermit { transcribePart(chunk.data, screenContext, id) } }
+            async {
+                gate.withPermit { transcribePart(chunk.data, screenContext, id, chunkStyle) }
+            }
         }.awaitAll()
         combine(outcomes)
     }
@@ -305,6 +329,7 @@ class DictationService(private val context: Context) {
         wav: ByteArray,
         screenContext: ScreenContext?,
         id: String,
+        styleClause: String? = null,
     ): FallbackTranscriber.Outcome {
         val key = Settings.apiKey?.takeIf { it.isNotBlank() }
             ?: throw ProviderException("No API key. Open DoNotType to add one.")
@@ -347,6 +372,11 @@ class DictationService(private val context: Context) {
         suspend fun run(backend: TranscriptionProvider): TranscriptionResult {
             val (parts, hints) = requestInputs(backend)
             val payload = parts + audioPart()
+            val foldsInStyle = styleClause != null
+                && backend.grounding() is GroundingSupport.Multimodal
+            val requestInstruction = if (foldsInStyle) {
+                instruction + styledInstructionSuffix(styleClause!!)
+            } else instruction
             val deadline = StallHedge.deadlineMillis(WavRecorder.durationSeconds(wav))
             return StallHedge.race(
                 deadlineMillis = deadline,
@@ -355,7 +385,12 @@ class DictationService(private val context: Context) {
                         mapOf("dictation" to id, "provider" to backend.name),
                     ) { "request stalled; sending a second one" }
                 },
-            ) { backend.transcribe(instruction, payload, Settings.fidelity, hints) }
+            ) {
+                backend.transcribe(
+                    requestInstruction, payload, Settings.fidelity, hints,
+                    wantsStyledOutput = foldsInStyle,
+                )
+            }
         }
 
         val fallbackClient = Settings.fallbackProvider
@@ -374,6 +409,16 @@ class DictationService(private val context: Context) {
             fallbackClient?.name.orEmpty(), fallbackClient?.model.orEmpty(),
         )
     }
+
+    private fun styledInstructionSuffix(styleClause: String): String = """
+
+
+        Return `transcript` as the exact verbatim transcription, unchanged, and `styled` as that
+        same transcript rewritten in the style below. The rewrite may not alter any number, name,
+        identifier or fact that appears in `transcript`.
+
+        $styleClause
+    """
 
     private fun combine(
         outcomes: List<FallbackTranscriber.Outcome>,

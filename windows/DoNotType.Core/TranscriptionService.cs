@@ -22,12 +22,12 @@ public sealed class TranscriptionService(
     public ITranscriptionProvider Provider { get; } = provider;
 
     /// <summary>
-    /// Rewrites or summarises a finished transcript. Text in, text out -- no audio, no screen.
+    /// Rewrites or summarises a finished transcript when a compatible second stage is needed.
+    /// Text in, text out -- no audio, no screen.
     /// </summary>
     /// <remarks>
-    /// Deliberately a separate call rather than an instruction folded into transcription. The two
-    /// are different jobs with different failure modes, and keeping them apart is what makes the
-    /// verbatim transcript exist before anything is done to it.
+    /// The live and short model-backed paths fold rewrites into the audio request. This method stays
+    /// as the compatibility path for recognizers, split recordings, and older responses.
     /// </remarks>
     public async Task<string> RewriteAsync(
         string transcript, string instruction, CancellationToken cancellationToken = default)
@@ -93,7 +93,8 @@ public sealed class TranscriptionService(
         byte[] wav,
         ScreenContext? context,
         CancellationToken cancellationToken = default,
-        ConnectionPreference connection = ConnectionPreference.Pooled)
+        ConnectionPreference connection = ConnectionPreference.Pooled,
+        string? styleClause = null)
     {
         var parts = new List<InputPart>();
         IReadOnlyList<string> keyterms = [];
@@ -133,8 +134,23 @@ public sealed class TranscriptionService(
         // compression optimisation must never be able to cost someone their words.
         parts.Add(CompressedPart(wav));
 
-        var result = await Provider.TranscribeAsync(
-                systemInstruction, parts, cancellationToken: cancellationToken,
+        // A rewrite can be folded into the audio request for multimodal model providers. The
+        // response carries both fields, so the verbatim wording remains available without a
+        // second round trip. Recognition backends keep the ordinary request and the caller falls
+        // back to its existing text stage.
+        var foldsInStyle = styleClause is not null
+            && Provider.Grounding is GroundingSupport.MultimodalGrounding;
+        var instruction = foldsInStyle
+            ? systemInstruction + StyledInstructionSuffix(styleClause!)
+            : systemInstruction;
+
+        var result = foldsInStyle && Provider is IStyledTranscriptionProvider styledProvider
+            ? await styledProvider.TranscribeStyledAsync(
+                instruction, parts, cancellationToken: cancellationToken,
+                fidelity: Fidelity, keyterms: keyterms, connection: connection,
+                wantsStyledOutput: true)
+            : await Provider.TranscribeAsync(
+                instruction, parts, cancellationToken: cancellationToken,
                 fidelity: Fidelity, keyterms: keyterms, connection: connection)
             .ConfigureAwait(false);
 
@@ -161,6 +177,42 @@ public sealed class TranscriptionService(
         return result with { Transcript = checkedTranscript };
     }
 
+    private static string StyledInstructionSuffix(string styleClause) => """
+
+
+        Return `transcript` as the exact verbatim transcription, unchanged, and `styled` as that same
+        transcript rewritten in the style below. The rewrite may not alter any number, name,
+        identifier or fact that appears in `transcript`.
+
+        """ + styleClause;
+
+    /// <summary>
+    /// Transcribes and rewrites in one request where the backend supports the wider schema, with a
+    /// second text-only pass as a compatibility fallback. The returned pair is stable either way.
+    /// </summary>
+    public async Task<(TranscriptionResult Result, string Styled, bool WasSinglePass)> TranscribeStyledAsync(
+        byte[] wav,
+        ScreenContext? context,
+        string styleClause,
+        string rewriteInstruction,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await TranscribeLongAsync(
+                wav, context, styleClause: styleClause, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        var verbatim = result.Transcript.Text;
+        var styled = result.Transcript.Styled?.Trim();
+        if (!string.IsNullOrWhiteSpace(styled))
+        {
+            return (result, styled, true);
+        }
+
+        if (string.IsNullOrWhiteSpace(verbatim)) return (result, verbatim, false);
+        var derived = await RewriteAsync(verbatim, rewriteInstruction, cancellationToken)
+            .ConfigureAwait(false);
+        return (result, derived, false);
+    }
+
     /// <summary>
     /// One request, joined by a second identical one if it stalls. See <see cref="StallHedge"/>.
     /// </summary>
@@ -176,11 +228,12 @@ public sealed class TranscriptionService(
     /// </remarks>
     private async Task<TranscriptionResult> HedgedAttemptAsync(
         byte[] wav, ScreenContext? context, CancellationToken cancellationToken,
-        ConnectionPreference connection = ConnectionPreference.Pooled)
+        ConnectionPreference connection = ConnectionPreference.Pooled,
+        string? styleClause = null)
     {
         if (!HedgeStalledRequests)
         {
-            return await TranscribeAsync(wav, context, cancellationToken, connection)
+            return await TranscribeAsync(wav, context, cancellationToken, connection, styleClause)
                 .ConfigureAwait(false);
         }
 
@@ -192,7 +245,7 @@ public sealed class TranscriptionService(
                 // See ProviderTransport.
                 (isHedge, token) => TranscribeAsync(
                     wav, context, token,
-                    isHedge ? ConnectionPreference.Fresh : connection),
+                    isHedge ? ConnectionPreference.Fresh : connection, styleClause),
                 // Info, not debug: this is the app spending a second request on the user's behalf.
                 // A hedge that fires on every dictation is a backend having a bad day rather than a
                 // working feature, and that should be visible without turning anything on.
@@ -213,7 +266,8 @@ public sealed class TranscriptionService(
         byte[] wav,
         ScreenContext? context,
         int attempts = 3,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? styleClause = null)
     {
         var delay = TimeSpan.FromMilliseconds(600);
         Exception last = new ProviderException("No attempt was made.");
@@ -228,7 +282,8 @@ public sealed class TranscriptionService(
                 // request went out on a new connection.
                 return await HedgedAttemptAsync(
                         wav, context, cancellationToken,
-                        attempt == 1 ? ConnectionPreference.Pooled : ConnectionPreference.Fresh)
+                        attempt == 1 ? ConnectionPreference.Pooled : ConnectionPreference.Fresh,
+                        styleClause)
                     .ConfigureAwait(false);
             }
             catch (Exception error) when (error is ProviderException or HttpRequestException or TaskCanceledException)
@@ -260,7 +315,8 @@ public sealed class TranscriptionService(
         int attempts = 3,
         int maxConcurrent = 3,
         Action<int, int>? onProgress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? styleClause = null)
     {
         var chunks = AudioChunker.Split(wav);
 
@@ -271,9 +327,13 @@ public sealed class TranscriptionService(
 
         if (chunks.Count <= 1)
         {
-            return await TranscribeWithRetryAsync(wav, context, attempts, cancellationToken)
+            return await TranscribeWithRetryAsync(
+                    wav, context, attempts, cancellationToken, styleClause)
                 .ConfigureAwait(false);
         }
+
+        // A split recording is stitched from independent requests, so style it once after the
+        // verbatim chunks are joined rather than producing separately rewritten fragments.
 
         // Bounded concurrency: a ten-minute dictation is ten simultaneous requests otherwise, which
         // is the fastest way to hit a rate limit and turn a slow dictation into a failed one.

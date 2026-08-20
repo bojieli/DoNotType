@@ -762,14 +762,18 @@ jobs:
             GitHub also records signed build provenance for every downloadable app; with the
             GitHub CLI, verify it with `gh attestation verify <file> --repo bojieli/DoNotType`.
 
-            ## Note on signing
+            ## Signing
 
-            If this build was produced without signing secrets configured, macOS will refuse to
-            open it normally, Windows will show an unknown publisher and may trigger SmartScreen,
-            and Android will have signed it with a debug key. See `docs/RELEASING.md` for what to
-            set. Official releases should configure all three platform signing groups.
+            Every artifact here is signed. The release job refuses to build a publishable tag
+            without a Developer ID certificate and notarization credentials for macOS, an
+            Authenticode identity for Windows, and an upload keystore for Android — so a versioned
+            release cannot be produced unsigned, and there is no "this one might not be" case for
+            you to check.
 
-            For an unsigned macOS build: right-click the app and choose Open, once. Gatekeeper
-            asks rather than refuses on that path. Note that an ad-hoc signature also means macOS
-            forgets the Accessibility grant on every update, because TCC keys permissions to the
-            signature — so it is fine for trying out and poor for living with.
+            That gate is why the earlier v0.1.x tags were withdrawn rather than fixed: they were
+            built before it existed, and an ad-hoc macOS bundle also loses its Accessibility grant
+            on every update, because TCC keys permissions to the code signature.
+
+            The unsigned builds that still exist are the rolling
+            [`latest`](https://github.com/bojieli/DoNotType/releases/tag/latest) prerelease, which
+            says so on its own page.

@@ -149,10 +149,14 @@ public sealed class FileTranscriber(
         }
 
         var transcribeStart = DateTimeOffset.Now;
+        var foldedStyleClause = mode is TranscriptMode.RewriteMode rewrite
+            && service.Provider.Grounding is GroundingSupport.MultimodalGrounding
+            ? prompt.StyleClause(rewrite.Style)
+            : null;
         var result = await service.TranscribeLongAsync(
                 wav, context, attempts, maxConcurrent,
                 (done, of) => onProgress?.Invoke(new Progress.Transcribing(done, of)),
-                cancellationToken)
+                cancellationToken, foldedStyleClause)
             .ConfigureAwait(false);
         var transcriptionSeconds = (DateTimeOffset.Now - transcribeStart).TotalSeconds;
 
@@ -182,6 +186,17 @@ public sealed class FileTranscriber(
             Provider = service.Provider.Name,
             Model = service.Provider.Model,
         };
+
+        if (mode is TranscriptMode.RewriteMode && result.Transcript.Styled is { } styled
+            && !string.IsNullOrWhiteSpace(styled))
+        {
+            return outcome with
+            {
+                Delivered = styled.Trim(),
+                SecondStageProvider = null,
+                SecondStageSeconds = null,
+            };
+        }
 
         // An empty transcript means silence, and there is nothing to rewrite or summarise. Running
         // the second stage anyway would ask a model to write prose from nothing, which is the one

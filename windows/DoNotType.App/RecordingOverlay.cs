@@ -19,9 +19,10 @@ public sealed class RecordingOverlay : Form
         Recording,
         Transcribing,
         /// <summary>
-        /// The second request. Distinct from <see cref="Transcribing"/> because it is a different
-        /// thing to be waiting on and usually the slower of the two — and because the transcript
-        /// exists by then, so nothing on screen is moving and a stale label reads as a hang.
+        /// A compatibility second request. Distinct from <see cref="Transcribing"/> because it is
+        /// a different thing to be waiting on and usually the slower of the two — and because the
+        /// transcript exists by then, so nothing on screen is moving and a stale label reads as a
+        /// hang. Short model-backed rewrites skip this phase.
         /// </summary>
         Deriving,
         /// <summary>

@@ -18,7 +18,7 @@ public sealed class OpenAiCompatibleProvider(
     string model,
     IReadOnlyDictionary<string, string>? extraHeaders = null,
     string? reasoningEffort = "minimal",
-    HttpClient? httpClient = null) : ITranscriptionProvider
+    HttpClient? httpClient = null) : ITranscriptionProvider, IStyledTranscriptionProvider
 {
     /// <summary>The connection this request goes out on. See <see cref="ProviderTransport"/>.</summary>
     /// <remarks>An injected client wins, so a test still talks to its own stub.</remarks>
@@ -32,14 +32,27 @@ public sealed class OpenAiCompatibleProvider(
     public string Model => model;
 
     /// <remarks>See <see cref="GeminiProvider"/>: fidelity travels in the system instruction here.</remarks>
-    public async Task<TranscriptionResult> TranscribeAsync(
+    public Task<TranscriptionResult> TranscribeAsync(
         string systemInstruction,
         IReadOnlyList<InputPart> parts,
         int maxOutputTokens = 2048,
         CancellationToken cancellationToken = default,
         Fidelity fidelity = Fidelity.Light,
         IReadOnlyList<string>? keyterms = null,
-        ConnectionPreference connection = ConnectionPreference.Pooled)
+        ConnectionPreference connection = ConnectionPreference.Pooled) =>
+        TranscribeStyledAsync(
+            systemInstruction, parts, maxOutputTokens, cancellationToken, fidelity, keyterms,
+            connection, wantsStyledOutput: false);
+
+    public async Task<TranscriptionResult> TranscribeStyledAsync(
+        string systemInstruction,
+        IReadOnlyList<InputPart> parts,
+        int maxOutputTokens = 2048,
+        CancellationToken cancellationToken = default,
+        Fidelity fidelity = Fidelity.Light,
+        IReadOnlyList<string>? keyterms = null,
+        ConnectionPreference connection = ConnectionPreference.Pooled,
+        bool wantsStyledOutput = false)
     {
         var content = new JsonArray();
         foreach (var part in parts)
@@ -87,7 +100,7 @@ public sealed class OpenAiCompatibleProvider(
                 {
                     ["name"] = "transcript",
                     ["strict"] = true,
-                    ["schema"] = Transcript.Schema(),
+                    ["schema"] = wantsStyledOutput ? Transcript.StyledSchema() : Transcript.Schema(),
                 },
             },
         };

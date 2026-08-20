@@ -105,6 +105,7 @@ class DeepgramClient(
         fidelity: Fidelity,
         keyterms: List<String>,
         maxOutputTokens: Int,
+        wantsStyledOutput: Boolean,
     ): TranscriptionResult = withContext(Dispatchers.IO) {
         val audio = audioPartOrThrow(parts, name)
 
@@ -226,6 +227,7 @@ class MistralClient(
         fidelity: Fidelity,
         keyterms: List<String>,
         maxOutputTokens: Int,
+        wantsStyledOutput: Boolean,
     ): TranscriptionResult = withContext(Dispatchers.IO) {
         val audio = audioPartOrThrow(parts, name)
 
@@ -340,6 +342,7 @@ class XAISpeechClient(
         fidelity: Fidelity,
         keyterms: List<String>,
         maxOutputTokens: Int,
+        wantsStyledOutput: Boolean,
     ): TranscriptionResult = withContext(Dispatchers.IO) {
         val audio = audioPartOrThrow(parts, name)
 

@@ -130,7 +130,11 @@ class FileTranscriber(
             val client = ProviderFactory.create(Settings.provider, key, Settings.model)
 
             val transcribeStart = System.currentTimeMillis()
-            val (result, chunkCount) = transcribeChunks(client, instruction, wav, onProgress)
+            val styleClause = (mode as? TranscriptMode.Rewrite)?.style
+                ?.let { PromptAssets.styleClause(context, it) }
+            val (result, chunkCount) = transcribeChunks(
+                client, instruction, wav, onProgress, styleClause,
+            )
             val transcriptionMillis = System.currentTimeMillis() - transcribeStart
             val verbatim = result.transcript.transcript.trim()
 
@@ -147,10 +151,14 @@ class FileTranscriber(
             var secondStageMillis: Long? = null
             var secondStageProvider: String? = null
 
+            if (mode is TranscriptMode.Rewrite && !result.transcript.styled.isNullOrBlank()) {
+                delivered = result.transcript.styled.trim()
+            }
+
             // An empty transcript means silence, and there is nothing to rewrite or summarise.
             // Running the second stage anyway would ask a model to write prose from nothing, which
             // is the one way this pipeline could invent words outright.
-            if (mode.needsSecondPass && verbatim.isNotEmpty()) {
+            if (mode.needsSecondPass && verbatim.isNotEmpty() && delivered == verbatim) {
                 val kind = secondStageBackend()
                 val stageKey = kind?.let { Settings.keyFor(it) }
                 val stageInstruction = PromptAssets.secondStageInstruction(context, mode)
@@ -211,6 +219,7 @@ class FileTranscriber(
         instruction: String,
         wav: ByteArray,
         onProgress: (Progress) -> Unit,
+        styleClause: String? = null,
     ): Transcribed {
         val chunks = AudioChunker.split(wav)
         onProgress(Progress.Transcribing(0, chunks.size))
@@ -233,7 +242,12 @@ class FileTranscriber(
 
         if (chunks.size == 1) {
             val single = client.transcribe(
-                instruction, referenceParts + audioPart(wav), Settings.fidelity, keyterms,
+                if (styleClause != null && client.grounding() is GroundingSupport.Multimodal) {
+                    instruction + styledInstructionSuffix(styleClause)
+                } else instruction,
+                referenceParts + audioPart(wav), Settings.fidelity, keyterms,
+                wantsStyledOutput = styleClause != null
+                    && client.grounding() is GroundingSupport.Multimodal,
             )
             onProgress(Progress.Transcribing(1, 1))
             return Transcribed(single, 1)
@@ -274,6 +288,16 @@ class FileTranscriber(
             chunks.size,
         )
     }
+
+    private fun styledInstructionSuffix(styleClause: String): String = """
+
+
+        Return `transcript` as the exact verbatim transcription, unchanged, and `styled` as that
+        same transcript rewritten in the style below. The rewrite may not alter any number, name,
+        identifier or fact that appears in `transcript`.
+
+        $styleClause
+    """
 
     /**
      * What came back, and how many requests it took.

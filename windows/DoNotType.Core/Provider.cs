@@ -48,6 +48,20 @@ public interface ITranscriptionProvider
         ConnectionPreference connection = ConnectionPreference.Pooled);
 }
 
+/// <summary>Optional provider capability for a transcription response with a styled field.</summary>
+public interface IStyledTranscriptionProvider
+{
+    Task<TranscriptionResult> TranscribeStyledAsync(
+        string systemInstruction,
+        IReadOnlyList<InputPart> parts,
+        int maxOutputTokens = 2048,
+        CancellationToken cancellationToken = default,
+        Fidelity fidelity = Fidelity.Light,
+        IReadOnlyList<string>? keyterms = null,
+        ConnectionPreference connection = ConnectionPreference.Pooled,
+        bool wantsStyledOutput = false);
+}
+
 /// <summary>
 /// What a backend can do with what is on screen.
 ///

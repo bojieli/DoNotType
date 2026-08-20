@@ -57,6 +57,7 @@ interface TranscriptionProvider {
         fidelity: Fidelity = Fidelity.DEFAULT,
         keyterms: List<String> = emptyList(),
         maxOutputTokens: Int = 2048,
+        wantsStyledOutput: Boolean = false,
     ): TranscriptionResult
 }
 

@@ -14,9 +14,10 @@ public sealed class DictationController : IDisposable
         Recording,
         Transcribing,
         /// <summary>
-        /// The second request. A different thing to be waiting on, and usually the slower of the
-        /// two — the transcript already exists by then, so an overlay that still says
-        /// "Transcribing…" is describing something that has finished.
+        /// A compatibility second request. A different thing to be waiting on, and usually the
+        /// slower of the two — the transcript already exists by then, so an overlay that still says
+        /// "Transcribing…" is describing something that has finished. Short model-backed rewrites
+        /// return both fields during transcription and never enter this state.
         /// </summary>
         Deriving,
         Failed,
@@ -633,7 +634,7 @@ public sealed class DictationController : IDisposable
     /// </summary>
     private FallbackTranscriber BuildTranscriber(
         TranscriptionService primary, byte[] wav, ScreenContext? context,
-        bool reportProgress = true)
+        bool reportProgress = true, string? styleClause = null)
     {
         Task<TranscriptionResult> RunPrimary(CancellationToken token) =>
             primary.TranscribeLongAsync(
@@ -641,7 +642,7 @@ public sealed class DictationController : IDisposable
                 onProgress: reportProgress
                     ? (done, total) => ChunkProgress?.Invoke(done, total)
                     : null,
-                cancellationToken: token);
+                cancellationToken: token, styleClause: styleClause);
 
         var kind = _settings.ResolvedFallbackProvider();
         var key = kind is null
@@ -669,7 +670,8 @@ public sealed class DictationController : IDisposable
         };
 
         Task<TranscriptionResult> RunSecondary(CancellationToken token) =>
-            secondary.TranscribeLongAsync(wav, context, cancellationToken: token);
+            secondary.TranscribeLongAsync(
+                wav, context, cancellationToken: token, styleClause: styleClause);
 
         return new FallbackTranscriber(
             RunPrimary, primary.Provider.Name, primary.Provider.Model,
@@ -779,12 +781,13 @@ public sealed class DictationController : IDisposable
         try
         {
             var requestStart = Stopwatch.GetTimestamp();
+            var styleClause = style.IsRewrite() ? Prompt(promptPath).StyleClause(style) : null;
             // Long recordings split across concurrent requests; short ones -- every ordinary
             // dictation -- take the single-request path unchanged.
             // Hedged when a fallback backend is configured: the primary gets the whole delay to
             // itself, and only a stalled one is ever raced. See FallbackTranscriber.
             var outcome = liveSession is null
-                ? await BuildTranscriber(service, wav, context)
+                ? await BuildTranscriber(service, wav, context, styleClause: styleClause)
                     .TranscribeAsync(cancellationToken).ConfigureAwait(false)
                 : await liveSession.FinishAsync(context).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
@@ -824,15 +827,30 @@ public sealed class DictationController : IDisposable
             record.Status = DictationStatus.Completed;
             record.Text = text;
 
-            // A rewrite is a second pass over a transcript that already exists, so the verbatim
-            // version is stored either way and "what did I actually say" stays answerable.
+            // Model providers can return the rewrite beside the verbatim transcript in the same
+            // request. Recognition providers and older responses fall back to the existing text
+            // stage, so the user-facing pair is identical whichever backend answered.
             var delivered = text;
             var rewriteFailed = false;
             if (style.IsRewrite())
             {
                 var mode = TranscriptMode.Rewrite(style);
                 var instruction = Prompt(promptPath).SecondStageInstruction(mode);
-                if (instruction is not null)
+                var styledInResponse = result.Transcript.Styled?.Trim();
+                if (!string.IsNullOrWhiteSpace(styledInResponse))
+                {
+                    record.StyledText = styledInResponse;
+                    record.Mode = mode.Id;
+                    delivered = styledInResponse;
+                    DictationLog.Info(() => "styled in one request", new Dictionary<string, string>
+                    {
+                        ["dictation"] = Short(dictationId),
+                        ["style"] = style.Id(),
+                        ["chars"] = styledInResponse.Length.ToString(),
+                        ["from"] = text.Length.ToString(),
+                    });
+                }
+                else if (instruction is not null)
                 {
                     SetState(State.Deriving);
                     var rewriteStart = Stopwatch.GetTimestamp();

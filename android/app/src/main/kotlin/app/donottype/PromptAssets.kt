@@ -210,6 +210,10 @@ object PromptAssets {
     fun systemInstruction(context: Context, fidelity: Fidelity): String =
         assemble(context, PromptPart.SYSTEM, PromptPart.of(fidelity))
 
+    /** The style rule alone, for folding a rewrite into the request that carries the audio. */
+    fun styleClause(context: Context, style: RewriteStyle): String =
+        text(context, PromptPart.of(style))
+
     /**
      * The instruction for whichever second stage a mode asks for, or null when it asks for none.
      *

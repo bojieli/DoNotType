@@ -365,6 +365,10 @@ public sealed class PromptBuilder(PromptSource source)
     public string SystemInstruction(Fidelity fidelity) =>
         Assemble(PromptPart.System, PromptPart.Of(fidelity));
 
+    /// <summary>The style rule alone, for a rewrite folded into the audio request.</summary>
+    public string StyleClause(RewriteStyle style) =>
+        Source.TextFor(PromptPart.Of(style));
+
     /// <summary>
     /// The instruction for whichever second stage a mode asks for, or null when it asks for none.
     /// </summary>

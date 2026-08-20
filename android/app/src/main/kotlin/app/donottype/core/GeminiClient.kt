@@ -10,7 +10,11 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
-data class Transcript(val transcript: String, val language: String = "") {
+data class Transcript(
+    val transcript: String,
+    val language: String = "",
+    val styled: String? = null,
+) {
     companion object {
         fun schema(): JSONObject = JSONObject()
             .put("type", "object")
@@ -21,6 +25,18 @@ data class Transcript(val transcript: String, val language: String = "") {
                     .put("language", JSONObject().put("type", "string")),
             )
             .put("required", JSONArray(listOf("transcript", "language")))
+
+        fun styledSchema(): JSONObject = JSONObject()
+            .put("type", "object")
+            .put(
+                "properties",
+                JSONObject()
+                    .put("transcript", JSONObject().put("type", "string"))
+                    .put("styled", JSONObject().put("type", "string"))
+                    .put("language", JSONObject().put("type", "string")),
+            )
+            .put("required", JSONArray(listOf("transcript", "styled", "language")))
+            .put("additionalProperties", false)
 
         /**
          * Parses a response that should be JSON but may not quite be.
@@ -33,7 +49,10 @@ data class Transcript(val transcript: String, val language: String = "") {
             val candidate = stripFence(raw).trim()
             return try {
                 val json = JSONObject(candidate)
-                Transcript(json.optString("transcript"), json.optString("language"))
+                Transcript(
+                    json.optString("transcript"), json.optString("language"),
+                    json.optString("styled").takeIf { json.has("styled") },
+                )
             } catch (_: Exception) {
                 Transcript(candidate)
             }
@@ -136,6 +155,7 @@ class GeminiClient(
         fidelity: Fidelity,
         keyterms: List<String>,
         maxOutputTokens: Int,
+        wantsStyledOutput: Boolean,
     ): TranscriptionResult = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("model", model)
@@ -148,7 +168,10 @@ class GeminiClient(
                 JSONObject()
                     .put("type", "text")
                     .put("mime_type", "application/json")
-                    .put("schema", Transcript.schema()),
+                    .put(
+                        "schema",
+                        if (wantsStyledOutput) Transcript.styledSchema() else Transcript.schema(),
+                    ),
             )
             .put(
                 "generation_config",

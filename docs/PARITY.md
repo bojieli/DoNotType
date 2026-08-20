@@ -15,6 +15,8 @@ is reachable by a user of that client, not merely present in its core library.
 |---|---|---|---|---|
 | Hold a key and speak | ✅ Right ⌘ | ✅ Right Ctrl | ✅ keyboard button | ✅ keyboard button ¹⁶ |
 | Tap to toggle, hold to talk | ✅ | ✅ | ✅ | ✅ |
+| Dictate from the app itself | n/a ¹⁷ | n/a ¹⁷ | ✅ record button | ✅ record button |
+| Return and backspace on the keyboard | n/a ¹⁸ | n/a ¹⁸ | ✅ | ✅ |
 | Cancel recording or transcription | ✅ Escape / None | ✅ Escape / None | ✅ drag off the button ¹⁴ | ✅ ¹⁴ |
 | Finish recording, insert, and submit | ✅ Return / ⌘Return / Off ¹⁵ | ✅ Enter / Ctrl+Enter / Off ¹⁵ | — ¹⁵ | — ¹⁵ |
 | Push-to-talk / hands-free as a *setting* | ✅ | ✅ | — ¹ | — ¹ |
@@ -69,6 +71,34 @@ capture there, and asks the user to swipe back; while its five-minute audio sess
 tap/hold dictations stay in the keyboard. The app still owns the same recorder and transcription
 pipeline used by its main button.
 
+Rewrite delivery is synchronized across the four clients. A short, non-segmented request sent to a
+model backend returns the verbatim and styled fields together; live segmented capture and split
+recordings are stitched verbatim before one rewrite, and a speech-recognition backend falls back
+to the configured text-capable provider when it cannot return a styled field. In every case the
+history row stores the verbatim text before the styled text, so reverting never depends on which
+path ran.
+
+¹⁷ **Not applicable.** The desktops have no foreground dictation surface because they do not need
+one: the hotkey works from whatever application is already focused, and a window you had to bring
+forward first would be slower than the thing it replaced. On a phone the keyboard is only reachable
+from inside another app's text field, so without an in-app button the headline feature is not
+reachable from the app that owns it — which is why Android opened on Settings until recently, and
+why both phones now open on a dictation screen. The transcript goes to the clipboard and to Latest
+rather than into a field, because an app in the foreground has no field to type into.
+
+¹⁸ **Not applicable.** A desktop hotkey does not replace the keyboard; Return and Backspace are
+still the ones under the user's fingers. A phone keyboard *does* replace it, so whatever it does not
+offer cannot be done without switching keyboards first — and speaking a message and then swapping
+keyboards to send it is most of the cost of using this one.
+
+Android's Return differs from iOS's on purpose. iOS inserts a newline; Android fields declare what
+their Enter key is for — Search, Send, Go, Next, Done — so the declared action wins where there is
+one and the key is labelled with it, and a newline is what is left when the field wants no action.
+A keyboard that ignored that would turn every search box into one that grows a blank line instead of
+searching. Backspace sends `KEYCODE_DEL` rather than deleting a character count, because only the
+editor knows whether the character before the cursor is one `char` or two, or whether there is a
+selection to remove instead.
+
 ## Screen grounding
 
 | | macOS | Windows | Android | iOS |
@@ -118,6 +148,7 @@ dictate into, so the fallback has not been needed; it is a gap rather than an im
 | Personal dictionary (manual + CSV) | ✅ | ✅ | ✅ | ✅ |
 | Opt-in learning from spelling corrections | ✅ | ✅ | ✅ | ✅ ¹³ |
 | Guided permissions | ✅ | ✅ ⁹ | ✅ | ✅ |
+| First-launch setup flow | — ¹⁹ | — ¹⁹ | ✅ | ✅ |
 | Command line | ✅ `dnt` | ✅ `dnt.exe` | — ¹⁰ | — ¹⁰ |
 | Stop trusting an idle connection | ✅ | ✅ | ✅ | ✅ |
 | Open the connection while recording | ✅ | ✅ | ✅ | ✅ |
@@ -145,6 +176,16 @@ anchor and checks the same document when its keyboard returns; if the user never
 iOS provides no process that can observe the edit. Windows uses UI Automation and Android uses the
 active `InputConnection`, so both can watch the exact insertion target continuously.
 
+¹⁹ The desktops put the same steps in their settings window and open it on first launch, which is
+the same screen a returning user gets. Both phones instead show a flow once: transfer an existing
+profile, then provider/key/model with a live connection test, then the permission steps. It is
+skippable and skipping it is remembered, because the back gesture belongs to the user and a screen
+that swallows it is a screen people force-quit. Whether to show it is one question asked two ways —
+no key *and* not yet completed — and both halves matter: the flag alone would show the flow forever
+to someone whose key arrived by QR import, and the key alone would show it again to anyone who
+cleared their key to switch providers. Android writes iOS's own key, `didCompleteInitialSetupV1`, so
+the two platforms answer it identically.
+
 The four connection rows exist because the tail they fix was worth 24% of dictations taking
 between 20 and 69 seconds while the model was answering in 2.1. Measured on macOS and described in
 `ProviderTransport`; ported by hand, so this table records whether the port
@@ -159,6 +200,14 @@ model. On iOS there is no context to reuse, so the row is not applicable rather 
 
 The settings the clients expose, with platform differences noted where they exist. The measured
 comparisons cited here are described with their method in [EVALUATION.md](EVALUATION.md).
+
+Where these live differs by platform, and the difference is not cosmetic. On the desktops settings
+*are* the app: the hotkey works from anywhere, so a window is only ever opened to change something,
+and opening it on the settings screen is opening it on the thing it is for. Both phones have a
+dictation screen in front of theirs, reached from a toolbar rather than met on launch — on a phone
+the app is also the only place a permission can be granted or a key can be held, so a settings-first
+launch put a form in front of every feature the app has. Everything below is reachable on all four,
+one screen further in on two of them.
 
 - **Providers and keys.** The provider is who serves the request and the model is what runs it,
   so they are two fields and the window states the pair: *gemini-3.5-flash via Google*. Google,
