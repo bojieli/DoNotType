@@ -26,41 +26,18 @@ struct SettingsView: View {
     @State private var pane: Pane = .general
 
     var body: some View {
-        // A sidebar rather than a tab bar, because a macOS tab bar is a *single* toolbar item: it
-        // lays out whole or collapses whole, taking all nine panels with it into one unlabelled
-        // chevron. That is a width ceiling, and it has now been walked into twice — d01a9d8
-        // raised the window's minimum to fit six tabs and said in as many words that widening
-        // alone would only move the cliff, and three tabs later it did. A list scrolls, so its
-        // capacity is bounded by window height instead, and a tenth section can never hide the
-        // other nine.
-        NavigationSplitView(columnVisibility: .constant(.all)) {
-            List(selection: selection) {
-                Section("Dictation") {
-                    Label("General", systemImage: "gearshape").tag(Pane.general)
-                    Label("Grounding", systemImage: "text.viewfinder").tag(Pane.grounding)
-                    Label("Dictionary", systemImage: "character.book.closed")
-                        .tag(Pane.dictionary)
-                    Label("Prompt", systemImage: "text.quote").tag(Pane.prompt)
-                }
-                Section("Activity") {
-                    Label("History", systemImage: "clock.arrow.circlepath").tag(Pane.history)
-                    Label("Stats", systemImage: "chart.bar").tag(Pane.stats)
-                    Label("Logs", systemImage: "list.bullet.rectangle").tag(Pane.logs)
-                }
-                Section("App") {
-                    Label("Transfer", systemImage: "arrow.left.arrow.right").tag(Pane.transfer)
-                    Label("About", systemImage: "info.circle").tag(Pane.about)
-                }
-            }
-            .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
-            // Pinned open, and with no toggle to close it. A sidebar that can be hidden is the
-            // same defect by another route: the navigation disappears and the panels become
-            // unreachable without knowing what to click.
-            .toolbar(removing: .sidebarToggle)
-        } detail: {
+        // This deliberately is not a NavigationSplitView. macOS may adapt a split view into a
+        // single-column presentation even when its visibility binding says `.all`; Dictionary's
+        // list was enough to trigger that path and leave the detail occupying the whole window.
+        // Keeping the navigation in our own HStack makes its 180pt column a real part of the
+        // layout rather than a system presentation preference that can be overridden.
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 180)
+            Divider()
             detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationSplitViewStyle(.balanced)
         // A minimum rather than a fixed size, and it has to agree with the window's
         // `contentMinSize` in AppDelegate — the reasoning behind the number is there.
         .frame(minWidth: 880, minHeight: 520)
@@ -71,6 +48,28 @@ struct SettingsView: View {
             // whole check exists to remove.
             if model.keyStatus == .unchecked { await model.checkConnection() }
         }
+    }
+
+    private var sidebar: some View {
+        List(selection: selection) {
+            Section("Dictation") {
+                Label("General", systemImage: "gearshape").tag(Pane.general)
+                Label("Grounding", systemImage: "text.viewfinder").tag(Pane.grounding)
+                Label("Dictionary", systemImage: "character.book.closed")
+                    .tag(Pane.dictionary)
+                Label("Prompt", systemImage: "text.quote").tag(Pane.prompt)
+            }
+            Section("Activity") {
+                Label("History", systemImage: "clock.arrow.circlepath").tag(Pane.history)
+                Label("Stats", systemImage: "chart.bar").tag(Pane.stats)
+                Label("Logs", systemImage: "list.bullet.rectangle").tag(Pane.logs)
+            }
+            Section("App") {
+                Label("Transfer", systemImage: "arrow.left.arrow.right").tag(Pane.transfer)
+                Label("About", systemImage: "info.circle").tag(Pane.about)
+            }
+        }
+        .listStyle(.sidebar)
     }
 
     /// Nudged back rather than passed straight through. `List` reports nil when a click lands on
