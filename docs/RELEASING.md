@@ -56,8 +56,9 @@ any platform builds, so a mistyped input costs one runner instead of failing all
 ### Dry runs
 
 To exercise the packaging without cutting a release, run the workflow manually from the Actions tab
-with **publish** unchecked. This builds and uploads everything as workflow artifacts and creates no
-release.
+with **publish** unchecked. Leave the version field blank to use the canonical [`VERSION`](../VERSION)
+file, or enter a temporary `x.y.z` value to exercise a different stamp. This builds and uploads
+everything as workflow artifacts and creates no release.
 
 Checking **publish** on a manual run is intentionally a release action: after the signed macOS and
 Android jobs pass, it creates `v<version>` at the exact tested commit and opens the same draft release

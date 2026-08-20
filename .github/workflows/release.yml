@@ -9,10 +9,10 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to stamp, as x.y.z (no leading v, no -rc suffix)'
+        description: 'Version to stamp, or leave blank to use VERSION (x.y.z; no leading v or -rc suffix)'
         type: string
-        required: true
-        default: '0.1.0'
+        required: false
+        default: ''
       publish:
         description: 'Create a v<version> tag and draft GitHub release from this run'
         type: boolean
@@ -46,7 +46,10 @@ jobs:
           MANUAL_VERSION: ${{ inputs.version }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then version="$MANUAL_VERSION"; fi
+          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
+            version="$MANUAL_VERSION"
+            if [[ -z "$version" ]]; then version=$(tr -d '[:space:]' < VERSION); fi
+          fi
           # Validated by running the real stamper on a throwaway checkout rather than by repeating
           # its rule here, because two copies of a rule is how a rule drifts. Nothing is committed,
           # and each platform job stamps its own checkout again for real.
