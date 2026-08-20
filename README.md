@@ -86,18 +86,25 @@ make app && make install        # builds, signs, and installs to /Applications
 Then **tap Right ⌘, speak, and tap it again**. Your words appear where the cursor was. On first
 launch, the app guides you through Accessibility and Microphone permissions.
 
-Both gestures work on the same key, and you do not choose between them in advance:
+Tapping and holding are the same key and the same default mode, so you are not choosing
+between them in advance:
 
 | Gesture | What happens | Best for |
 |---|---|---|
 | **Tap, speak, tap** | The first tap starts recording, the second ends it. Nothing to hold. | Most dictation, and anything longer than a sentence. |
 | **Hold, speak, release** | Holding past half a second records only while held. | Short utterances, when holding is less thought than counting taps. |
-| **Tap, speak, Return** | Return ends the recording and inserts, in one key. | A chat box or prompt you were going to submit anyway. |
+| **Tap, speak, Return** | Return ends the recording, inserts, and can send the text on its way. | A prompt or chat box you were going to submit anyway. |
 
-Return stops and inserts; whether it also *submits* is a separate choice, off by default because
-Return means something while you are composing. Turn it on in Settings › Dictation › **Finish
-with Return** (`Insert + Return` or `Insert + ⌘ Return`). Escape cancels while a dictation is
-active.
+That third gesture is the reason for **Settings › Dictation › Finish with Return**. Set it to
+`Insert + Return` and DoNotType inserts the transcript and then presses Return for you — so
+speaking into a CLI like Claude Code or Codex ends with the prompt submitted, no keyboard at all.
+Apps where Return means "new line" and ⌘/Ctrl Return means "send" want `Insert + ⌘ Return`
+instead.
+
+It ships as `Insert only`, because Return is a meaningful key while somebody is composing and
+opting into a synthetic one should be deliberate. Either way the keystroke is sent only if the
+field you dictated into is still focused; if you clicked elsewhere while the request was in
+flight, the text is inserted and nothing is submitted. Escape cancels while a dictation is active.
 
 Existing recordings use the same pipeline from the app or the CLI:
 
