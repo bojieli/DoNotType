@@ -6,7 +6,7 @@
   <p><strong>Your voice says it. Your screen spells it.</strong></p>
 
   <p>
-    Open-source voice dictation that preserves what you said,<br>
+    Open-source voice dictation that keeps your own wording by default,<br>
     while using on-screen context to spell names, jargon, and technical terms correctly.
   </p>
 
@@ -43,23 +43,25 @@
 
 ## Dictation that stays yours
 
-Most voice tools make you choose between keeping your natural phrasing and spelling uncommon
-terms correctly. DoNotType does both: **transcribe what you said, ground the spelling in visible
-context, and keep that transcript recoverable whatever you do with it next.**
+**How your transcript should read is your call, not the tool's.** Some people want polished prose
+out of a dictation. Others — the reason this project exists — find that AI polish reads like AI
+wrote it, and would rather keep their own wording. Both are legitimate preferences, so DoNotType
+makes it a setting instead of a verdict.
 
-Whether a transcript reads as spoken or gets polished into prose is a preference, not a
-correctness question, so it is a setting. `verbatim` is the default; `rewrite` and `summary` are
-there when you want them, and the original is stored before either one runs.
+`verbatim` ships as the default, and it is a default rather than a principle: `rewrite` and
+`summary` are one setting away, and your own words stay available whichever you pick. What is not
+configurable is the spelling — DoNotType reads your screen to get names, jargon, and version
+numbers right, in every mode.
 
 | | What happens |
 |---|---|
 | **Built-in dictation** | Keeps your phrasing, but without screen context it often misses project names, jargon, and other technical terms. |
 | **AI dictation that rewrites** | Larger models and more context produce fluent text, but the polished version is usually the only version you get back. |
-| **DoNotType** | Stores the verbatim transcript first, uses your screen only to ground spelling, and treats rewriting as an optional second pass you can undo. |
+| **DoNotType** | You choose whether the transcript is polished, uses your screen only to ground spelling, and keeps your own words retrievable either way. |
 
-| Verbatim by default | Context grounded | Direct and inspectable |
+| Your choice of style | Context grounded | Direct and inspectable |
 |:---:|:---:|:---:|
-| Verbatim unless you ask otherwise, and your original is stored before any rewrite or summary. | Visible text helps resolve names, acronyms, brands, and code-switched terms. | Requests go to the provider you choose, and the prompt and sent context remain visible. |
+| Verbatim by default, polished on request, and your own wording stays recoverable in both. | Visible text helps resolve names, acronyms, brands, and code-switched terms. | Requests go to the provider you choose, and the prompt and sent context remain visible. |
 
 ## Quick start
 
@@ -120,21 +122,22 @@ See the [full CLI reference](docs/CLI.md) for history, diagnostics, logging, and
 
 | 1. Record | 2. Gather context | 3. Transcribe | 4. Insert |
 |:---:|:---:|:---:|:---:|
-| Tap the platform shortcut and speak naturally, or hold it if you prefer. | While you are speaking, DoNotType captures bounded context around the focused app. | Audio and context go directly to your configured provider under a spelling-only contract. | The verbatim result is stored and inserted at your cursor; optional transformations remain separate. |
+| Tap the platform shortcut and speak naturally, or hold it if you prefer. | While you are speaking, DoNotType captures bounded context around the focused app. | Audio and context go directly to your configured provider under a spelling-only contract. | The text lands at your cursor in the style you chose, with your own words kept beside it. |
 
 Screen context is captured with a 500 ms budget while you are still speaking, so it does not add
 a separate wait. Accessibility text is preferred, with a screenshot fallback where the platform
 supports it. If the recording and the screen disagree, the recording is supposed to win.
 
-### Three modes, one recoverable original
+### Three modes, and your words are never the thing you lose
 
 | Mode | Best for | Behavior |
 |---|---|---|
-| `verbatim` | Everyday dictation | One transcription request; preserves the speaker's words. |
-| `rewrite` | Formal, concise, or casual variants | Runs as a second stage beside the stored verbatim transcript. |
-| `summary` | Briefs, bullet points, or action items | May discard content by design, but never replaces the stored original. |
+| `verbatim` | Everyday dictation, and the default | One request; you get what you said. |
+| `rewrite` | Formal, concise, or casual variants | The same request returns both the polished text and what you said, so choosing a style costs no extra wait. |
+| `summary` | Briefs, bullet points, or action items | Discards content by design — which is why it is a separate request, and why your transcript is kept. |
 
-Undo a transformation and return to the original with `⌘⌥Z` on macOS or `Ctrl+Alt+Z` on Windows.
+Changed your mind after the fact? `⌘⌥Z` on macOS or `Ctrl+Alt+Z` on Windows puts your own wording
+back.
 
 ## Highlights
 
@@ -163,8 +166,9 @@ gap.
 
 ## Principles
 
-1. **Dictation, not authorship.** The verbatim transcript is produced first, stored first, and
-   recoverable. Rewrites and summaries sit beside it rather than replacing it.
+1. **Dictation, not authorship.** Polishing a transcript is a preference the app offers; deciding
+   for you what you meant to say is not. Whatever style you pick, your own words are stored and
+   recoverable, so a rewrite sits beside them rather than replacing them.
 2. **Grounding spells; it never decides.** Screen context is sent raw—without term extraction or
    prior transcripts—and its authority is limited to spelling. The audio remains authoritative.
 3. **No DoNotType server in the middle.** There is no DoNotType account, sign-in, subscription,
@@ -183,8 +187,8 @@ gap.
 - Hide the transcription contract or the context sent to your chosen provider.
 - Present an intuition as an accuracy claim without measuring it.
 
-These boundaries are product constraints, not roadmap gaps. Optional rewriting can improve the
-presentation of a transcript, but it will not become the only transcript.
+These boundaries are product constraints, not roadmap gaps. Rewriting is a feature here and a good
+one — it just will not become the only version you are given back.
 
 ## Documentation
 
