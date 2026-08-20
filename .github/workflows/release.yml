@@ -773,10 +773,3 @@ jobs:
             asks rather than refuses on that path. Note that an ad-hoc signature also means macOS
             forgets the Accessibility grant on every update, because TCC keys permissions to the
             signature — so it is fine for trying out and poor for living with.
-
-            ## What it does not do yet
-
-            Read **Status, honestly** in the README before relying on this. The short version:
-            screen grounding currently makes substitution *worse* on hard audio — about 36% of runs
-            against a 21% baseline — and accuracy on ordinary dictation has not been measured
-            against ground truth at all.
