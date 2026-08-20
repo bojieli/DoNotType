@@ -38,8 +38,10 @@ struct Ablate: AsyncParsableCommand {
     @Option(name: .long, help: "Runs per condition. Below ~15 the intervals are too wide to act on.")
     var trials: Int = 15
 
-    @Option(name: .long, help: "Conditions: verbatim, no-context, single-formal, two-formal.")
-    var conditions: String = "verbatim,single-formal,two-formal"
+    @Option(
+        name: .long,
+        help: "Conditions: verbatim, no-context, single-formal, single-styled, two-formal.")
+    var conditions: String = "verbatim,single-styled,two-formal"
 
     struct Outcome {
         var correct = 0
@@ -139,6 +141,18 @@ struct Ablate: AsyncParsableCommand {
                 provider: runner.provider, model: runner.model, systemInstruction: combined)
             return try await service.transcribe(audio: audio, context: context)
                 .transcript.transcript
+
+        case "single-styled":
+            // What the app ships: one request whose schema carries both the verbatim transcript
+            // and the styled text, so a rewrite costs no second round trip and the original
+            // survives it. Scored on the styled text, which is what the user is given.
+            let service = TranscriptionService(
+                provider: runner.provider, model: runner.model,
+                systemInstruction: try builder.systemInstruction(fidelity: .light))
+            return try await service.transcribeStyled(
+                audio: audio, context: context,
+                styleClause: try builder.styleClause(.formal),
+                rewriteInstruction: try builder.rewriteInstruction(style: .formal)).styled
 
         case "two-formal":
             // Transcribe verbatim, then rewrite the text with no audio and no screen context.

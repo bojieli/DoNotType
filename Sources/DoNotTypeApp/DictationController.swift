@@ -488,6 +488,19 @@ final class DictationController {
                 "app": record.appName ?? "?",
             ])
 
+        // A rewrite is asked for in the same request that transcribes, not in a second one.
+        // Measured on gemini-3.5-flash: 2.54 s against 3.11 s for two passes, over 20 trials each.
+        // Latency is the whole of the case — substitution is saturated on the reference clip at
+        // this model, so it separates nothing either way. The verbatim transcript is still returned
+        // alongside the styled text, so it is stored first and stays recoverable. A recogniser
+        // cannot answer the wider schema and falls back to the second pass inside
+        // `transcribeStyled`.
+        //
+        // Only the live-pipeline path opts out: it stitches segments transcribed as the user
+        // speaks, and a style belongs to the whole utterance rather than to each segment.
+        let foldedStyleClause = style.isRewrite && livePipeline == nil
+            ? styleClause(for: style) : nil
+
         do {
             let requestStart = Date()
             // Long recordings are split across concurrent requests; short ones — every ordinary
@@ -499,7 +512,7 @@ final class DictationController {
                 outcome = try await livePipeline.finish()
             } else {
                 outcome = try await makeTranscriber(primary: coordinator.service).transcribe(
-                    audio: audio, context: context
+                    audio: audio, context: context, styleClause: foldedStyleClause
                 ) { [weak self] done, total in
                     Task { @MainActor in
                         self?.overlay.update(phase: .transcribingChunk(done: done, of: total))
@@ -551,7 +564,21 @@ final class DictationController {
             // version is stored either way and "what did I actually say" stays answerable.
             var delivered = text
             var rewriteFailed = false
-            if style.isRewrite, let instruction = rewriteInstruction(for: style) {
+            if let styled = result.transcript.styled?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !styled.isEmpty
+            {
+                // The rewrite came back in the transcription response, so there is no second stage
+                // to run and nothing extra to wait for.
+                record.styledText = styled
+                record.style = style
+                delivered = styled
+                log.info(
+                    "styled in one request",
+                    [
+                        "dictation": Self.short(dictationID), "style": style.rawValue,
+                        "chars": "\(styled.count)", "from": "\(text.count)",
+                    ])
+            } else if style.isRewrite, let instruction = rewriteInstruction(for: style) {
                 overlay.update(phase: .deriving(style))
                 let rewriteStart = Date()
                 log.info(
@@ -782,6 +809,14 @@ final class DictationController {
         return try? PromptStore(directory: HistoryStore.defaultDirectory())
             .builder(bundled: promptURL)
             .rewriteInstruction(style: style)
+    }
+
+    /// The style rule alone, for folding into the transcription request.
+    private func styleClause(for style: RewriteStyle) -> String? {
+        guard let promptURL = SettingsModel.bundledPromptURL() else { return nil }
+        return try? PromptStore(directory: HistoryStore.defaultDirectory())
+            .builder(bundled: promptURL)
+            .styleClause(style)
     }
 
     /// Wraps the configured primary with a fallback, when one is set.
