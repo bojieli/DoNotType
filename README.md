@@ -162,25 +162,6 @@ gap.
 These boundaries are product constraints, not roadmap gaps. Optional rewriting can improve the
 presentation of a transcript, but it will not become the only transcript.
 
-## Status, honestly
-
-DoNotType is working and tested, with one central unsolved problem. A tool that reads your screen
-must earn trust, so the limitations are part of the front-page documentation.
-
-- **Digit substitution is mitigated, not solved.** When text beside the caret contained a number
-  that contradicted the recording, the model took the screen's value 75% of the time. The shipped
-  mitigation—a second, screen-blind transcription that supplies the digits—brings that to 20%,
-  on by default, at the cost of a second request and about 1.5 seconds. Word-level grounding
-  (names, acronyms, brands, and code-switching) passes the full adversarial suite.
-- **Accuracy on ordinary dictation is unmeasured.** The published results cover deliberately
-  adversarial cases; a verified corpus for everyday speech is still in progress.
-- **iOS cannot read the screen.** The sandbox provides no user-grantable way to do so. This is a
-  platform restriction, not a roadmap item.
-- **Microphone capture and text injection are not covered by CI.** They require hardware and are
-  checked manually once per release.
-
-Read the [evaluation method, per-channel results, and falsified mitigations](docs/EVALUATION.md).
-
 ## Documentation
 
 | Start here | What it covers |
