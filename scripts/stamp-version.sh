@@ -119,14 +119,16 @@ python3 - "$VERSION" "$COMMIT" "$BUILD_DATE" <<'PY'
 import re, sys
 version, commit, build_date = sys.argv[1], sys.argv[2], sys.argv[3]
 suffix = f" ({commit}, {build_date})"
-for path, pattern, replacement in [
-    ("Sources/dnt/Dnt.swift", r'version: "[^"]*"', f'version: "{version}{suffix}"'),
-    # The suffix pattern keeps re-stamping idempotent: a previously stamped " (abc1234, …)"
-    # is replaced rather than accumulating.
-    ("windows/DoNotType.Cli/Program.cs",
-     r'dnt \d+\.\d+\.\d+( \([0-9a-z]+, \d{4}-\d{2}-\d{2}\))?', f"dnt {version}{suffix}"),
-    ("windows/DoNotType.Cli/InspectionCommands.cs",
-     r'dnt \d+\.\d+\.\d+( \([0-9a-z]+, \d{4}-\d{2}-\d{2}\))?', f"dnt {version}{suffix}"),
+# Every literal is spelled `dnt <version>` because `dnt --version` prints the same line on macOS
+# and Windows, so one pattern stamps them all and a platform cannot be given its own spelling by
+# accident. The optional suffix group keeps re-stamping idempotent: a previously stamped
+# " (abc1234, …)" is replaced rather than accumulating.
+pattern = r'dnt \d+\.\d+\.\d+( \([0-9a-z]+, \d{4}-\d{2}-\d{2}\))?'
+replacement = f"dnt {version}{suffix}"
+for path in [
+    "Sources/dnt/Dnt.swift",
+    "windows/DoNotType.Cli/Program.cs",
+    "windows/DoNotType.Cli/InspectionCommands.cs",
 ]:
     text = open(path).read()
     # Counts matches rather than comparing before and after: stamping the version that is already

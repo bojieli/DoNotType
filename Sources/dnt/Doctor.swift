@@ -106,7 +106,7 @@ struct Doctor: AsyncParsableCommand {
             problems.append("\(name): \(value)")
         }
 
-        Out.stdout("DoNotType — dnt \(Dnt.configuration.version)")
+        Out.stdout("DoNotType — \(Dnt.configuration.version)")
 
         section("Environment")
         row("macOS", ProcessInfo.processInfo.operatingSystemVersionString)
