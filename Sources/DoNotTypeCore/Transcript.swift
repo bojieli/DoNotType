@@ -1,16 +1,23 @@
 import Foundation
 
-/// The model's entire output. Two fields, deliberately.
+/// The model's entire output. Three fields, and the third is optional.
 ///
 /// Every additional field is somewhere the model can decide it has something to add. `language`
-/// earns its place because it is cheap and enables per-language routing later; nothing else has.
+/// earns its place because it is cheap and enables per-language routing later. `styled` earns its
+/// place because it is what makes a single-request rewrite possible without giving up the verbatim
+/// transcript: the model returns both, so "what did I actually say" survives a rewrite that cost
+/// no extra round trip. It is nil on every request that did not ask for a style, which is most of
+/// them.
 public struct Transcript: Sendable, Codable, Equatable {
     public var transcript: String
     public var language: String
+    /// The rewritten transcript, when a style was requested in the same request. Nil otherwise.
+    public var styled: String?
 
-    public init(transcript: String, language: String = "") {
+    public init(transcript: String, language: String = "", styled: String? = nil) {
         self.transcript = transcript
         self.language = language
+        self.styled = styled
     }
 
     /// JSON Schema sent as the structured-output contract.
@@ -25,6 +32,24 @@ public struct Transcript: Sendable, Codable, Equatable {
                 "language": ["type": "string"],
             ],
             "required": ["transcript", "language"],
+            "additionalProperties": false,
+        ]
+    }
+
+    /// The schema for a request that transcribes and rewrites in one call.
+    ///
+    /// `styled` is required rather than optional here: a model given the choice sometimes returns
+    /// only the field it finds more interesting, and a rewrite request that silently comes back
+    /// unrewritten is worse than one that fails loudly enough to fall back.
+    public static var styledJSONSchema: [String: Any] {
+        [
+            "type": "object",
+            "properties": [
+                "transcript": ["type": "string"],
+                "styled": ["type": "string"],
+                "language": ["type": "string"],
+            ],
+            "required": ["transcript", "styled", "language"],
             "additionalProperties": false,
         ]
     }

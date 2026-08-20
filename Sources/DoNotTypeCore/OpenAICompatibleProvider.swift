@@ -170,7 +170,8 @@ public struct OpenAICompatibleProvider: TranscriptionProvider {
                 "json_schema": [
                     "name": "transcript",
                     "strict": true,
-                    "schema": Transcript.jsonSchema,
+                    "schema": request.wantsStyledOutput
+                        ? Transcript.styledJSONSchema : Transcript.jsonSchema,
                 ],
             ]
         }

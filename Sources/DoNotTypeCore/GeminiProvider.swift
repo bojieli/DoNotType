@@ -160,7 +160,8 @@ public struct GeminiProvider: TranscriptionProvider {
             body["response_format"] = [
                 "type": "text",
                 "mime_type": "application/json",
-                "schema": Transcript.jsonSchema,
+                "schema": request.wantsStyledOutput
+                    ? Transcript.styledJSONSchema : Transcript.jsonSchema,
             ]
         }
         return body

@@ -21,6 +21,13 @@ public struct TranscriptionRequest: Sendable {
     /// Populated by `TranscriptionService`, never by a provider — deriving these requires the
     /// `ScreenContext`, which providers deliberately never see.
     public var keyterms: [String]
+    /// Whether the response should also carry a rewritten transcript.
+    ///
+    /// Set when a rewrite is folded into the transcription request instead of run as a second
+    /// pass. Providers use it to widen the structured-output schema; it changes nothing for a
+    /// speech recogniser, which has no schema and cannot rewrite in the first place.
+    public var wantsStyledOutput: Bool
+
     /// Whether this attempt may reuse the pooled connection.
     ///
     /// Set to `.fresh` by the two callers that already know it is suspect — the stall hedge and
@@ -35,6 +42,7 @@ public struct TranscriptionRequest: Sendable {
         maxOutputTokens: Int = 2048,
         fidelity: Fidelity = .default,
         keyterms: [String] = [],
+        wantsStyledOutput: Bool = false,
         connection: ConnectionPreference = .pooled
     ) {
         self.model = model
@@ -43,6 +51,7 @@ public struct TranscriptionRequest: Sendable {
         self.maxOutputTokens = maxOutputTokens
         self.fidelity = fidelity
         self.keyterms = keyterms
+        self.wantsStyledOutput = wantsStyledOutput
         self.connection = connection
     }
 
