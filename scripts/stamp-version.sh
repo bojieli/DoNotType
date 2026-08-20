@@ -152,6 +152,22 @@ open(path, "w").write(updated)
 PY
 say "windows/Directory.Build.props" "$VERSION"
 
+# The Windows desktop executable carries a four-part assembly identity in its manifest. It is not
+# the package version used by dotnet, but leaving it behind makes Explorer and diagnostics report a
+# different release from the CLI built beside it.
+python3 - "$VERSION" <<'PY'
+import re, sys
+version = sys.argv[1]
+path = "windows/DoNotType.App/app.manifest"
+text = open(path).read()
+updated, matches = re.subn(
+    r'(<assemblyIdentity\s+version=")[^"]*(")', rf'\g<1>{version}.0\g<2>', text)
+if matches != 1:
+    raise SystemExit(f"✗ expected one assembly identity version in {path}, found {matches}")
+open(path, "w").write(updated)
+PY
+say "windows/DoNotType.App/app.manifest" "$VERSION.0"
+
 # ---- The two CLIs report it too ----------------------------------------------------------------
 # `dnt --version` is the first thing anyone pastes into a bug report, and a hardcoded string there
 # is a version number that is wrong by definition after the first release. The commit and build

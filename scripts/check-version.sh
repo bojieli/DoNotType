@@ -43,6 +43,7 @@ if plist.get("CFBundleShortVersionString") != version:
 if str(plist.get("CFBundleVersion")) != build:
     fail("Resources/Info.plist", "CFBundleVersion is not derived from VERSION")
 
+build_suffix = r'(?: \([0-9a-z]+, \d{4}-\d{2}-\d{2}\))?'
 checks = [
     ("android/app/build.gradle.kts", rf'versionCode = {re.escape(build)}'),
     ("android/app/build.gradle.kts", rf'versionName = "{re.escape(version)}"'),
@@ -50,9 +51,18 @@ checks = [
     ("ios/project.yml", rf'CURRENT_PROJECT_VERSION: "{re.escape(build)}"'),
     ("windows/Directory.Build.props", rf'<Version>{re.escape(version)}</Version>'),
     ("windows/DoNotType.App/app.manifest", rf'version="{re.escape(version)}\.0"'),
-    ("Sources/dnt/Dnt.swift", rf'version: "dnt {re.escape(version)}"'),
-    ("windows/DoNotType.Cli/Program.cs", rf'Out\.Line\("dnt {re.escape(version)}"\)'),
-    ("windows/DoNotType.Cli/InspectionCommands.cs", rf'Out\.Line\("DoNotType — dnt {re.escape(version)}"\)'),
+    (
+        "Sources/dnt/Dnt.swift",
+        rf'version: "dnt {re.escape(version)}{build_suffix}"',
+    ),
+    (
+        "windows/DoNotType.Cli/Program.cs",
+        rf'Out\.Line\("dnt {re.escape(version)}{build_suffix}"\)',
+    ),
+    (
+        "windows/DoNotType.Cli/InspectionCommands.cs",
+        rf'Out\.Line\("DoNotType — dnt {re.escape(version)}{build_suffix}"\)',
+    ),
 ]
 for filename, pattern in checks:
     text = Path(filename).read_text()
