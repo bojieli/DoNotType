@@ -8,10 +8,12 @@ repository's local calendar date.
 
 ## Unreleased
 
-## 0.2.0 - 2026-08-19
+## 0.2.0 - 2026-08-20
 
-Release preparation repaired the Android build after the AGP 9 migration and refreshed the
-Windows app's locked transitive dependency graph after the ONNX Runtime update.
+Release preparation repaired the Android build after the AGP 9 migration, refreshed the Windows
+app's locked transitive dependency graph after the ONNX Runtime update, and fixed the release
+pipeline itself: build provenance is skipped where GitHub cannot issue it, and the two CLIs report
+one version format.
 
 ### Added
 
@@ -674,6 +676,16 @@ deliberate:
   chord on two platforms and a row in the parity table on all four.
 
 ### Fixed
+
+- **`dnt --version` printed a different line on each desktop.** macOS answered `0.1.0` and Windows
+  answered `dnt 0.1.0`, because Swift ArgumentParser prints `configuration.version` verbatim while
+  the C# CLI writes its own line. The version string is the first thing pasted into a bug report,
+  and which client produced it should not change how it reads. Both now print `dnt <version>` with
+  the build's commit and date, and `doctor` opens with that same line rather than assembling its
+  own. The release workflow had asserted the shared format all along — its macOS signature check
+  greps for `^dnt $VERSION (`, which no macOS build could ever satisfy, so cutting a tag failed
+  after the app had been built, signed and notarized. CI now checks the stamped literals and both
+  CLIs' actual output, on the two jobs that already run those binaries.
 
 - **The recording pill was being cut off by its own window.** The overlay panel was created 220
   points wide and never resized; the pill inside it is as wide as whatever it is currently saying,
