@@ -10,9 +10,12 @@ Every fully green push to `main` updates the rolling `latest` prerelease with th
 and Android packages produced by that same CI run. The release links the exact commit and workflow
 run, verifies each archive before promotion, and publishes a matching `.sha256` beside every app.
 
-This is a development download surface, not a versioned release. The macOS bundle is ad-hoc signed,
-the Windows binaries are unsigned, and the Android APK uses a debug key. The moving `latest` tag is
-updated only after every CI job succeeds; stable `v*` tags are never moved or overwritten.
+This is a development download surface, not a versioned release. On the upstream repository the
+macOS bundle is Developer ID signed and notarized so it can be used as an everyday install; the
+Windows binaries remain unsigned and the Android APK uses a debug key. Forks without Apple secrets
+still exercise the same bundle and launch checks with an ad-hoc signature, but cannot publish the
+upstream `latest` release. The moving `latest` tag is updated only after every CI job succeeds;
+stable `v*` tags are never moved or overwritten.
 
 ## Tag-driven releases
 

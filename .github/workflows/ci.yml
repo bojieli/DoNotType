@@ -107,14 +107,97 @@ jobs:
       - name: Build the menu-bar app
         run: swift build -c release --product DoNotTypeMac
 
+      # The rolling public download should be usable as an everyday install, not merely prove the
+      # source compiles. Only the upstream main push can publish it, so require the same Developer
+      # ID and notary groups as a versioned macOS release there. Forks, pull requests and manual CI
+      # runs still exercise the app with an ad-hoc signature and never receive these secrets.
+      - name: Validate latest macOS signing configuration
+        if: >-
+          github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          github.repository == 'bojieli/DoNotType'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+        run: |
+          missing=()
+          for name in MACOS_CERTIFICATE MACOS_CERTIFICATE_PASSWORD \
+                      NOTARY_KEY_ID NOTARY_ISSUER_ID NOTARY_KEY; do
+            if [[ -z "${!name}" ]]; then missing+=("$name"); fi
+          done
+          if [[ "${#missing[@]}" -ne 0 ]]; then
+            printf 'the public latest macOS build requires %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Import signing certificate for latest macOS build
+        if: >-
+          github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          github.repository == 'bojieli/DoNotType'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          certificate_path="$RUNNER_TEMP/donottype-latest-cert.p12"
+          keychain_path="$RUNNER_TEMP/donottype-latest.keychain-db"
+          trap 'rm -f "$certificate_path"' EXIT
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p runner "$keychain_path"
+          security default-keychain -s "$keychain_path"
+          security unlock-keychain -p runner "$keychain_path"
+          security import "$certificate_path" -k "$keychain_path" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k runner "$keychain_path"
+
+      - name: Build the app bundle
+        run: make app
+
+      - name: Verify the app signature
+        env:
+          OFFICIAL_LATEST: ${{
+            github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+            github.repository == 'bojieli/DoNotType' }}
+        run: |
+          codesign --verify --deep --strict --verbose=2 .build/DoNotType.app
+          signature=$(codesign -dv --verbose=4 .build/DoNotType.app 2>&1)
+          printf '%s\n' "$signature"
+          if [[ "$OFFICIAL_LATEST" == "true" ]]; then
+            grep -q '^Authority=Developer ID Application:' <<< "$signature"
+            grep -q 'flags=.*runtime' <<< "$signature"
+          else
+            grep -q '^Signature=adhoc$' <<< "$signature"
+          fi
+
+      - name: Notarize latest macOS build
+        if: >-
+          github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          github.repository == 'bojieli/DoNotType'
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+        run: |
+          notary_key_path="$RUNNER_TEMP/donottype-latest-notary.p8"
+          notary_archive="$RUNNER_TEMP/donottype-latest-notarize.zip"
+          trap 'rm -f "$notary_key_path" "$notary_archive"' EXIT
+          echo "$NOTARY_KEY" > "$notary_key_path"
+          ditto -c -k --keepParent .build/DoNotType.app "$notary_archive"
+          xcrun notarytool submit "$notary_archive" \
+            --key "$notary_key_path" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+            --wait
+          xcrun stapler staple .build/DoNotType.app
+          xcrun stapler validate .build/DoNotType.app
+          spctl --assess --type execute --verbose=4 .build/DoNotType.app
+
       # Building it proves nothing about whether it starts — the same reasoning as the Windows job
       # below, which caught an app that had compiled for months and never run. A menu-bar agent
       # cannot be driven by XCUITest, so this checks the bundle, launches the real thing, and reads
       # back the line it logs about itself. See scripts/macos-launch-check.sh.
       - name: Launch the app and check it stays up
-        run: |
-          make app
-          ./scripts/macos-launch-check.sh
+        run: ./scripts/macos-launch-check.sh
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
@@ -165,9 +248,9 @@ jobs:
             exit 1
           fi
 
-      # The rolling prerelease is made from the same bundle this job launched and checked. It is
-      # deliberately separate from a versioned release, which may also be Developer ID signed and
-      # notarized; this is the newest green main build, not a claim that a release was cut.
+      # The rolling prerelease is made from the exact notarized bundle this job launched and
+      # checked. It is still separate from a versioned release: this is the newest green main
+      # build, not a claim that a release was cut or reviewed as a stable version.
       - name: Package latest macOS build
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
@@ -517,9 +600,9 @@ jobs:
           - CI run: [$GITHUB_RUN_ID](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)
           - Platforms: macOS, Windows x64, Android
 
-          These are development artifacts from CI: macOS is ad-hoc signed, Windows is unsigned,
-          and Android uses a debug key. Use a versioned release for stable, reviewed artifacts.
-          Verify every download with its adjacent SHA-256 file.
+          These are development artifacts from CI. The macOS app is Developer ID signed and
+          notarized; Windows is unsigned, and Android uses a debug key. Use a versioned release for
+          stable, reviewed artifacts. Verify every download with its adjacent SHA-256 file.
           EOF
 
       # Replace assets first and move the rolling tag last. A failed upload therefore cannot make

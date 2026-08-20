@@ -68,9 +68,8 @@ file. The iOS client currently needs to be built from source.
 
 There is no versioned release yet. The available package is
 [the rolling build from the latest green `main`](https://github.com/bojieli/DoNotType/releases/tag/latest).
-It is development software: the macOS app is ad-hoc signed and needs to be allowed in System
-Settings › Privacy & Security, Windows is unsigned, and Android uses a debug key. Building from
-source gives you a locally signed macOS app.
+It is development software: the macOS app is Developer ID signed and notarized, while Windows is
+unsigned and Android uses a debug key. Building from source gives you a locally signed macOS app.
 
 To build and install the macOS app:
 
