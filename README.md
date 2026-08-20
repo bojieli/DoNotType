@@ -63,6 +63,13 @@ Download a prebuilt **macOS**, **Windows**, or **Android** package from
 [Releases](https://github.com/bojieli/DoNotType/releases). Every artifact has a matching
 `.sha256` file. The iOS client can currently be built from source.
 
+No versioned release has been published yet, so what is there now is
+[the rolling build from the newest green `main`](https://github.com/bojieli/DoNotType/releases/tag/latest).
+It is development output and says so: the macOS app is ad-hoc signed, so Gatekeeper will refuse it
+until you allow it in System Settings › Privacy & Security; Windows is unsigned; Android is signed
+with a debug key. Building from source below gives you a locally signed macOS app instead, which is
+the smoother path today.
+
 To build and install the macOS app:
 
 ```bash
