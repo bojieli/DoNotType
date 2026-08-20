@@ -134,16 +134,35 @@ jobs:
         run: |
           codesign --verify --deep --strict --verbose=2 .build/DoNotType.app
           signature=$(codesign -dv --verbose=4 .build/DoNotType.app 2>&1)
+          # Printed before anything is asserted against it. A bare `grep -q` under `set -e` fails
+          # this step with no output at all, which is how a wrong version assertion here read as a
+          # signing problem for three runs: the log showed a valid signature, then exit 1.
+          printf '%s\n' "$signature"
+
+          fail() { echo "✗ $1" >&2; exit 1; }
+
           if [[ -n "$MACOS_CERTIFICATE" ]]; then
-            grep -q '^Authority=Developer ID Application:' <<< "$signature"
-            grep -q 'flags=.*runtime' <<< "$signature"
+            grep -q '^Authority=Developer ID Application:' <<< "$signature" ||
+              fail "signed, but not by a Developer ID Application identity. A release must not
+          silently fall back to ad-hoc: Gatekeeper refuses it, and TCC keys permissions to the
+          signature, so the app loses its Accessibility grant on every update."
+            grep -q 'flags=.*runtime' <<< "$signature" ||
+              fail "the hardened runtime flag is absent; notarization requires it."
           else
-            grep -q '^Signature=adhoc$' <<< "$signature"
+            grep -q '^Signature=adhoc$' <<< "$signature" ||
+              fail "no signing certificate was configured, so this bundle should be ad-hoc."
           fi
+
           bundled_version=$(/usr/libexec/PlistBuddy \
             -c 'Print :CFBundleShortVersionString' .build/DoNotType.app/Contents/Info.plist)
-          test "$bundled_version" = "$VERSION"
-          .build/DoNotType.app/Contents/MacOS/dnt --version | grep -q "^dnt $VERSION ("
+          [[ "$bundled_version" == "$VERSION" ]] ||
+            fail "the bundle's CFBundleShortVersionString is '$bundled_version', expected $VERSION."
+
+          # Same one-line format the Windows job asserts; CI checks it on every push so a tag
+          # should never be the first place this is discovered.
+          reported_version=$(.build/DoNotType.app/Contents/MacOS/dnt --version)
+          [[ "$reported_version" == "dnt $VERSION ("* ]] ||
+            fail "the bundled CLI reports '$reported_version', expected 'dnt $VERSION (<commit>, <date>)'."
 
       - name: Notarize
         if: env.NOTARY_KEY_ID != ''
