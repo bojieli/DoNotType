@@ -26,8 +26,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # What this release is called is decided once, before any platform starts building. The four
-  # platform jobs used to each derive the version and each discover a bad one on their own runner:
+  # What this release is called is decided once, before any platform starts building. The platform
+  # jobs used to each derive the version and each discover a bad one on their own runner:
   # a mistyped manual `0.2.0-rc1` failed macOS, Windows, iOS and Android within a minute of each
   # other, and four red platforms above a skipped publish is the same shape as absent signing
   # secrets, so it gets read as one. Rejecting the input here costs one Ubuntu runner, names the
@@ -376,10 +376,11 @@ jobs:
 
   # iOS is built but deliberately not released. Distributing it needs a provisioning profile and
   # App Store Connect, which is an account decision rather than a packaging one — and an unsigned
-  # .app nobody can install is not a release artifact. This job exists so a tag cannot be cut on a
-  # commit where iOS is broken.
+  # .app nobody can install is not a release artifact. Keep this diagnostic UI job independent of
+  # `publish`: it still runs and uploads its result bundle, but it does not hold signed desktop and
+  # Android artifacts behind an 11-minute simulator suite.
   ios:
-    name: iOS tests
+    name: iOS tests (async)
     needs: version
     runs-on: macos-15
     steps:
@@ -397,7 +398,9 @@ jobs:
           brew install xcodegen
           cd ios && xcodegen generate
       # A compile-only job missed a cold keyboard handoff that disappeared during scene startup.
-      # Install and drive the app just as CI does so a tag cannot package while iOS behavior is red.
+      # Install and drive the app just as CI does. This is deliberately asynchronous with respect
+      # to publication because iOS is not a release artifact; main CI remains the normal regression
+      # gate, while this run provides version-stamped release diagnostics.
       - name: Pick a simulator
         id: simulator
         run: |
@@ -431,7 +434,9 @@ jobs:
 
   publish:
     name: Publish release
-    needs: [version, macos, android, ios]
+    # iOS tests are intentionally omitted: the job above runs asynchronously and is not shipped.
+    # Signed macOS and Android artifacts are the release gate.
+    needs: [version, macos, android]
     if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
     runs-on: ubuntu-latest
     permissions:

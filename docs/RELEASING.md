@@ -28,8 +28,10 @@ git push origin v0.2.0
 ```
 
 Pushing a tag runs [`.github/workflows/release.yml`](../.github/workflows/release.yml), which builds
-macOS and Android release artifacts, runs their tests plus the iOS UI suite, and opens a **draft**
-GitHub release with the artifacts attached. Read the generated notes, then publish.
+macOS and Android release artifacts, and opens a **draft** GitHub release with the artifacts
+attached. The iOS UI suite still runs asynchronously for version-stamped diagnostics, but iOS is
+not shipped and therefore does not hold publication behind the simulator test. Read the generated
+notes, then publish.
 
 ### Version stamping
 
@@ -55,9 +57,11 @@ To exercise the packaging without cutting a release, run the workflow manually f
 with **publish** unchecked. This builds and uploads everything as workflow artifacts and creates no
 release.
 
-Checking **publish** on a manual run is intentionally a release action: after every platform passes,
-it creates `v<version>` at the exact tested commit and opens the same draft release a pushed tag
-would. Leave it unchecked for an ordinary packaging rehearsal.
+Checking **publish** on a manual run is intentionally a release action: after the signed macOS and
+Android jobs pass, it creates `v<version>` at the exact tested commit and opens the same draft release
+a pushed tag would. The asynchronous iOS test may still be running when that draft appears; its
+result remains visible in the workflow and does not produce a release asset. Leave publish unchecked
+for an ordinary packaging rehearsal.
 
 ## Release artifacts
 
@@ -82,8 +86,9 @@ attestation additionally proves which repository workflow produced that digest.
 
 iOS is **built but not shipped**. Distributing it requires a provisioning profile and App Store
 Connect, which is an account decision rather than a packaging one, and an unsigned `.app` that
-nobody can install is not a release artifact. The job exists so that a tag cannot be cut on a
-commit where iOS is broken.
+nobody can install is not a release artifact. The release workflow runs the UI suite asynchronously
+for diagnostics and version coverage; the signed macOS and Android jobs are the publication gate.
+Normal main-branch CI still runs the full iOS suite as regression coverage.
 
 ## Package managers
 
