@@ -41,6 +41,7 @@ object Settings {
     private const val KEY_DICTIONARY = "personalDictionary"
     private const val KEY_LEARNED_DICTIONARY = "learnedPersonalDictionary"
     private const val KEY_LEARN_FROM_EDITS = "learnDictionaryFromEdits"
+    private const val KEY_COMPLETED_SETUP = "didCompleteInitialSetupV1"
 
     /**
      * Shipped non-empty. A blocklist that starts empty is one nobody ever fills in, and this app
@@ -317,6 +318,23 @@ object Settings {
     var keepAudio: Boolean
         get() = ready && prefs.getBoolean(KEY_KEEP_AUDIO, false)
         set(value) { if (ready) prefs.edit().putBoolean(KEY_KEEP_AUDIO, value).apply() }
+
+    /**
+     * Whether the onboarding flow has been finished once.
+     *
+     * The same key iOS writes -- `didCompleteInitialSetupV1` -- so the two platforms answer "has
+     * this person been set up before" with the same question, and a future shared profile could
+     * carry the answer. Deliberately not derived from "is there a key": someone who arrives
+     * without a key and taps past the flow anyway must not be shown it again on every launch, and
+     * someone who clears their key later is not a new user.
+     *
+     * Not part of [SettingsTransfer]: it is a fact about this install, not a setting, and an
+     * imported profile that suppressed a new phone's onboarding would hide the permission steps
+     * that a scan cannot grant.
+     */
+    var didCompleteInitialSetup: Boolean
+        get() = ready && prefs.getBoolean(KEY_COMPLETED_SETUP, false)
+        set(value) { if (ready) prefs.edit().putBoolean(KEY_COMPLETED_SETUP, value).apply() }
 
     /**
      * How much the app and the keyboard write to the log file.

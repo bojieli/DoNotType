@@ -34,6 +34,16 @@
         </activity>
 
         <!--
+          The first launch. Not exported and not a launcher entry: it is reached only from
+          DictationActivity, which decides whether it is needed, so there is one place that
+          question is answered rather than two that could disagree.
+        -->
+        <activity
+            android:name=".OnboardingActivity"
+            android:exported="false"
+            android:label="Set up DoNotType" />
+
+        <!--
           Exported, because the keyboard reaches it: an IME cannot hold an API key or grant itself
           the microphone, so every dead end it has is "go to the app", and it starts this activity
           from its own process with no task of its own.

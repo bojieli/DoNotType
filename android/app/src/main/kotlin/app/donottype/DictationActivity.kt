@@ -116,6 +116,11 @@ class DictationActivity : AppCompatActivity() {
         render()
     }
 
+    /** Set while the setup flow is up, so returning from it re-reads what it configured. */
+    private val onboarding = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { render() }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Settings.initialise(this)
@@ -123,6 +128,14 @@ class DictationActivity : AppCompatActivity() {
         setContentView(buildLayout())
         wireDictation()
         render()
+
+        // Built first, then covered: a first launch still lands on this screen underneath, so
+        // closing the flow leaves the user where the app actually lives rather than at a blank
+        // task. Gated here rather than in the manifest because the answer depends on stored
+        // state, and a launcher alias would have to guess it before Settings is initialised.
+        if (savedInstanceState == null && OnboardingActivity.isNeeded()) {
+            onboarding.launch(Intent(this, OnboardingActivity::class.java))
+        }
     }
 
     override fun onResume() {
