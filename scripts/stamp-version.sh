@@ -4,19 +4,38 @@
 #
 # Four platforms means four version fields, and a release that stamps some of them produces an
 # Android build reporting 0.1.0 next to a macOS build reporting 0.4.0 — which turns every bug report
-# into a question about which build it came from. The tag is the single source; this puts it
+# into a question about which build it came from. VERSION is the committed local/default source;
+# a release workflow may pass its tag-derived value explicitly. This puts the chosen value
 # everywhere before anything is built or signed.
 #
 # Run from the repository root:
-#     ./scripts/stamp-version.sh 0.2.0
+#     ./scripts/stamp-version.sh       # use VERSION
+#     ./scripts/stamp-version.sh 0.2.0 # explicit release/tag value
 #
 # It is idempotent and safe to run on a dirty tree; CI runs it on a fresh checkout and never commits
 # the result, so the committed files keep whatever the last release set.
 
 set -euo pipefail
 
-VERSION="${1:-}"
-[ -n "$VERSION" ] || { echo "usage: $0 <version>   # e.g. 0.2.0" >&2; exit 2; }
+VERSION_FILE="${VERSION_FILE:-VERSION}"
+if [[ "$#" -gt 1 ]]; then
+  echo "usage: $0 [version]   # e.g. 0.2.0" >&2
+  exit 2
+fi
+if [[ "$#" -eq 1 ]]; then
+  VERSION="$1"
+else
+  [[ -f "$VERSION_FILE" ]] || {
+    echo "✗ no version supplied and $VERSION_FILE is missing" >&2
+    echo "  Add a canonical x.y.z version to $VERSION_FILE or pass one explicitly." >&2
+    exit 2
+  }
+  VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
+  [[ -n "$VERSION" ]] || {
+    echo "✗ $VERSION_FILE is empty" >&2
+    exit 2
+  }
+fi
 
 # Rejects a tag like `v1.2`, `1.2.3-beta`, or `01.2.3` early rather than after three builds:
 # CFBundleVersion and Android's versionName both want a dotted numeric string, and a malformed one

@@ -82,6 +82,10 @@ export GEMINI_API_KEY=...       # or add it later in Settings
 make app && make install        # builds, signs, and installs to /Applications
 ```
 
+The current app version is kept in [`VERSION`](VERSION). Release builds stamp that value into the
+macOS, Android, iOS, and Windows metadata automatically; each platform's About screen displays the
+stamped version alongside its commit and build time.
+
 Then **tap Right ⌘, speak, and tap it again**. The transcript appears at the cursor. On first
 launch, DoNotType guides you through the Accessibility and Microphone permissions.
 

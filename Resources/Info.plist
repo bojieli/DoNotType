@@ -15,9 +15,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>0.2.0</string>
 	<key>CFBundleVersion</key>
-	<string>100</string>
+	<string>200</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Bojie Li. Licensed under MIT.</string>
 	<key>LSMinimumSystemVersion</key>

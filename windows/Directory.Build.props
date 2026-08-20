@@ -10,7 +10,7 @@
     <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
     <!-- The dev-build version; scripts/stamp-version.sh keeps it current and release builds
          override it with -p:Version. -->
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
   </PropertyGroup>
 
   <!-- A bug report that cannot name the build it came from is a guess. Version alone is not

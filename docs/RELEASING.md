@@ -36,9 +36,11 @@ notes, then publish.
 ### Version stamping
 
 Each job stamps the version into its own checkout first, with
-[`scripts/stamp-version.sh`](../scripts/stamp-version.sh). Four platforms keep four version fields,
-and a release that stamps only some of them turns every bug report into a question about which
-build it came from. The tag is the only source; nothing is committed back.
+[`scripts/stamp-version.sh`](../scripts/stamp-version.sh). The repository's [`VERSION`](../VERSION)
+file is the canonical version for local/default builds; a tag or manual release input is passed
+explicitly to the same stamper in CI. Four platforms keep four version fields, and a release that
+stamps only some of them turns every bug report into a question about which build it came from.
+Nothing is committed back by the workflow.
 
 Versions use canonical `x.y.z` numbers. Minor and patch are limited to `0`–`99` because the Apple
 build number and Android version code reserve two decimal places for each; the stamping script

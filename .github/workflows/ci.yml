@@ -23,6 +23,9 @@ jobs:
       - name: Shell scripts
         run: shellcheck -x scripts/*.sh eval/*.sh
 
+      - name: Canonical version defaults
+        run: ./scripts/check-version.sh
+
       # actionlint has no first-party action. Download the fixed release archive and verify it
       # before execution so workflow validation does not introduce an unreviewed executable.
       - name: GitHub Actions workflows
