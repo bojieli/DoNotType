@@ -475,9 +475,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: v${{ needs.version.outputs.version }}
         run: |
-          existing=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
-            --jq '.object.sha' 2>/dev/null || true)
-          if [[ -n "$existing" ]]; then
+          # Keep the API command in the condition: on a 404 `gh api` prints the JSON error body
+          # to stdout as well as returning non-zero. Appending `|| true` inside a command
+          # substitution therefore makes that error body look like an existing tag SHA.
+          if existing=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
+            --jq '.object.sha' 2>/dev/null); then
             if [[ "$existing" != "$GITHUB_SHA" ]]; then
               echo "$RELEASE_TAG already exists and does not point to tested commit $GITHUB_SHA" >&2
               exit 1
