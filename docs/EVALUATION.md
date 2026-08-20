@@ -1170,7 +1170,7 @@ recorded so the numbers can be re-checked without a key or a bill.
 
 ```bash
 swift run dnt-eval suite eval/nearmiss --provider xai --model grok-stt \
-  --replay eval/cassettes/xai-grok-stt.json
+  --fidelity light --replay eval/cassettes/xai-grok-stt.json
 ```
 
 Both replay offline with the API key unset and reproduce the counts above. That is the standard
@@ -1180,11 +1180,21 @@ sessions, not two passes of one run.
 **What the cassette is and is not.** A take is keyed by a hash of the request — audio included —
 so replay needs the clips, and `eval/audio/*.wav` is gitignored because the `real-*` cases are cut
 from the maintainer's own recordings. Someone who clones this repository cannot re-run these files.
-What they get is every answer the provider gave, in readable form, next to the score derived from
-it: enough to check the arithmetic and audit the grading, but not enough to reproduce the
-request. For anyone holding the audio the cassette is a full offline re-run, and it pins the
-scoring against silent drift — a change in how a pass is counted now shows up without re-billing
-48 requests.
+For anyone holding the audio the cassette is a full offline re-run.
+
+**What everyone else gets is a scorecard.** The claim above — that a contributor can check these
+numbers without a key or a bill — was not true when it was written, and the CI job that was supposed
+to demonstrate it had never run: it looked for a cassette filename that was never committed and
+skipped itself, and a skipped step is the same colour as a passing one. Pointed at a real cassette
+it matched nothing and still exited 0. So the same paid run now also writes
+[`eval/scorecards/`](../eval/scorecards/README.md): every transcript, without the request, which
+`dnt-eval rescore` grades again anywhere in seconds. It pins the scoring against silent drift — a
+change in how a pass is counted shows up as a named count without re-billing 48 requests — and it
+is what CI actually runs.
+
+```bash
+swift run dnt-eval rescore
+```
 
 Gemini's two regressions are the same pair the suite already flags as non-deterministic across
 passes — `real-version-number` and `real-acronym`, both long-form real speech where the model
@@ -1209,6 +1219,45 @@ corpus for latency and Chinese coverage, not on this suite.
 one had been sitting in the front page of the repository.** Retracting a figure inside an
 evaluation write-up is cheap; the summary that quotes it is where the cost lands, and nothing in
 the process was checking that the two still agreed. The release checklist now does.
+
+### Fourth-session replication, and the check that had never run — 2026-08-20
+
+Both shipping configurations were re-run from scratch a fourth time, because the two committed
+cassettes turned out to be unreplayable and had been since 2026-08-16.
+
+They were recorded on 08-14 against `PROMPT.md`; the file was
+[split into `prompt/`](PROMPT.md) two days later. The system instruction is hashed into every
+request key, so both cassettes missed every take from that commit onward. Nothing said so. Each
+miss raised its own error, 48 of them for the single fact that the prompt had moved, and the suite
+printed five of those — truncated to 120 characters — and exited 0.
+
+| configuration | this session | previously | verdict |
+|---|---|---|---|
+| **xai · grok-stt** | **15 / 48**, 0 regressed | 15 / 48 ×2 | replicates exactly, third time |
+| **google · native · 3.6-flash · grounded** | **39 / 48**, 3 regressed | 43 / 48, 2 regressed | outside the noise floor — see below |
+
+```bash
+swift run dnt-eval rescore
+```
+
+**Gemini is down four and this session cannot say why.** The suite's own per-pass spread on this
+run is 9–11 for neutral-correct, so a four-point move in the pass count is at the edge of what one
+session can distinguish from noise, and three prompt commits landed between the two measurements.
+Both readings are single sessions; the honest statement is that the previous figure is no longer
+replicated, not that something regressed. The two regressed cases are `person-name` and
+`real-version-number`, and `person-name` is a new arrival — `the draft` became `a draft`, an article
+substitution in a case whose point is a name, which is the class of change this suite was built to
+catch. It is recorded rather than explained.
+
+**The gate this fails.** [RELEASING.md](RELEASING.md) requires zero regressed runs. This run has
+three, and it is the current measurement of the default configuration.
+
+The failures that let a stale cassette look fine are fixed — the provenance is compared when the
+file opens, so the mismatch is one message before any case runs; a suite that could not complete
+every run now exits non-zero; and so does one that scored nothing. But replay needs the clips
+either way, and CI has never had them, which is why that job was checking a filename instead. The
+same paid run now also writes [`eval/scorecards/`](../eval/scorecards/README.md), which holds the
+transcripts without the audio and re-grades anywhere for free.
 
 ### Technical-dictation sweep changes the default — 2026-08-17
 
