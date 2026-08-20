@@ -24,6 +24,7 @@ import android.graphics.drawable.RippleDrawable
 import android.inputmethodservice.InputMethodService
 import android.util.Log
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -32,6 +33,8 @@ import android.view.inputmethod.EditorInfo
 import android.text.InputType
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
@@ -77,6 +80,8 @@ class DoNotTypeIME : InputMethodService() {
     private lateinit var statusLabel: TextView
     private lateinit var modeButton: Button
     private lateinit var talkButton: Button
+    private lateinit var returnButton: Button
+    private lateinit var backspaceButton: ImageButton
     private lateinit var indicator: DictationIndicatorView
 
     /**
@@ -98,6 +103,7 @@ class DoNotTypeIME : InputMethodService() {
     /** Which field was focused when the key went down: its app, and the editor's id within it. */
     private var pendingTarget: Pair<String?, Int>? = null
     private var correctionWatch: Job? = null
+    private var backspaceRepeat: Job? = null
     private var pendingLifecycleNotice: String? = null
     private var lastLearnedTerms: List<String> = emptyList()
 
@@ -177,6 +183,8 @@ class DoNotTypeIME : InputMethodService() {
         // The provider may have changed in the app since this keyboard was last shown, and with it
         // whether a rewrite is possible at all.
         refreshModeButton()
+        // The field being typed into has just changed, and with it what its Enter key is for.
+        refreshReturnKey()
         render()
         pendingLifecycleNotice?.let { message ->
             pendingLifecycleNotice = null
@@ -185,6 +193,9 @@ class DoNotTypeIME : InputMethodService() {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        // Before anything else: a held backspace outlives the view it was pressed on, and would
+        // keep deleting from whatever field the next keyboard opened on.
+        stopBackspaceRepeat()
         dictation.cancelPress()
 
         if (state == State.RECORDING) {
@@ -244,6 +255,8 @@ class DoNotTypeIME : InputMethodService() {
         indicator = DictationIndicatorView(ui)
 
         talkButton = buildTalkButton()
+        returnButton = buildReturnButton()
+        backspaceButton = buildBackspaceButton()
 
         root.addView(
             statusLabel,
@@ -254,27 +267,52 @@ class DoNotTypeIME : InputMethodService() {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(METER_DP)),
         )
 
-        val primaryRow = FrameLayout(ui).apply {
-            addView(
-                talkButton,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(TALK_H_DP), Gravity.CENTER,
-                ),
-            )
-            addView(
-                modeButton,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(MODE_H_DP),
-                    Gravity.START or Gravity.CENTER_VERTICAL,
-                ),
-            )
-        }
         root.addView(
-            primaryRow,
+            FrameLayout(ui).apply {
+                addView(
+                    talkButton,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, dp(TALK_H_DP), Gravity.CENTER,
+                    ),
+                )
+            },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(TALK_H_DP)),
         )
+
+        // The utility row, in iOS's order: mode on the left, return under the thumb in the middle,
+        // backspace on the right where every other keyboard on the phone puts it. The mode chip
+        // shares this row rather than overlapping the talk button, which is what it did while it
+        // was the only thing beside it.
+        root.addView(
+            FrameLayout(ui).apply {
+                addView(
+                    modeButton,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        dp(MODE_H_DP),
+                        Gravity.START or Gravity.CENTER_VERTICAL,
+                    ),
+                )
+                addView(
+                    returnButton,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, dp(KEY_H_DP), Gravity.CENTER,
+                    ),
+                )
+                addView(
+                    backspaceButton,
+                    FrameLayout.LayoutParams(
+                        dp(BACKSPACE_W_DP), dp(KEY_H_DP), Gravity.END or Gravity.CENTER_VERTICAL,
+                    ),
+                )
+            },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(KEY_H_DP)).apply {
+                topMargin = dp(ROW_GAP_DP)
+            },
+        )
+
         refreshModeButton()
+        refreshReturnKey()
         render()
         return root
     }
@@ -360,7 +398,173 @@ class DoNotTypeIME : InputMethodService() {
         }
     }
 
+    /**
+     * Return, and the reason this keyboard needs one at all.
+     *
+     * A dictation keyboard replaces the system keyboard while it is up, so whatever it does not
+     * offer, the user cannot do without switching keyboards first. Speaking a message and then
+     * having to swap keyboards to send it is most of the cost of using this one, and the same goes
+     * for fixing the last word. Two keys buy back both.
+     *
+     * Its width is a minimum, like the talk button's: "Previous" is half again as wide as "Go".
+     */
+    private fun buildReturnButton(): Button = Button(ui).apply {
+        textSize = 14f
+        isAllCaps = false
+        stateListAnimator = null
+        minWidth = dp(RETURN_W_DP)
+        minimumWidth = dp(RETURN_W_DP)
+        minHeight = 0
+        minimumHeight = 0
+        gravity = Gravity.CENTER
+        compoundDrawablePadding = 0
+        setOnClickListener { insertReturn() }
+    }
+
+    private fun buildBackspaceButton(): ImageButton = ImageButton(ui).apply {
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        val inset = (dp(KEY_H_DP) - dp(BACKSPACE_ICON_DP)) / 2
+        setPadding(inset, inset, inset, inset)
+        contentDescription = "Delete"
+        setImageDrawable(
+            AppCompatResources.getDrawable(ui, R.drawable.ic_backspace)?.mutate()?.apply {
+                setTint(ui.themeColor(com.google.android.material.R.attr.colorOnSurface))
+            },
+        )
+        background = keyBackground(dp(KEY_CORNER_DP).toFloat())
+        // Press and hold to run on, at iOS's timings: 0.38 s before the first repeat so a single
+        // tap is never two deletions, then one every 65 ms, which clears a mis-heard word about as
+        // fast as reading it.
+        setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startBackspaceRepeat()
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    stopBackspaceRepeat()
+                    true
+                }
+                else -> false
+            }
+        }
+        // Reached only by an accessibility activation: the touch handling above consumes real
+        // presses without letting the framework detect a click, so a screen reader's tap is one
+        // deletion rather than a press of some accidental length.
+        setOnClickListener { if (backspaceRepeat == null) deleteBackward() }
+    }
+
+    // MARK: - Keys
+
+    /**
+     * What Return means here is the field's business, not the keyboard's.
+     *
+     * iOS's keyboard inserts a newline and stops there. On Android the field says what its Enter
+     * key is for -- Search, Send, Go, Next, Done -- and a keyboard that ignores that turns every
+     * search box into one that grows a blank line instead of searching. So the declared action wins
+     * when there is one, and a newline is what is left when there is not.
+     */
+    private fun insertReturn() {
+        val connection = currentInputConnection ?: return
+        val action = declaredEditorAction()
+        if (action != EditorInfo.IME_ACTION_NONE) {
+            connection.performEditorAction(action)
+        } else {
+            connection.commitText("\n", 1)
+        }
+    }
+
+    /** The field's own Enter action, or [EditorInfo.IME_ACTION_NONE] when it wants a newline. */
+    private fun declaredEditorAction(): Int {
+        val options = currentInputEditorInfo?.imeOptions ?: return EditorInfo.IME_ACTION_NONE
+        if (options and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0) return EditorInfo.IME_ACTION_NONE
+        return when (val action = options and EditorInfo.IME_MASK_ACTION) {
+            EditorInfo.IME_ACTION_UNSPECIFIED, EditorInfo.IME_ACTION_NONE ->
+                EditorInfo.IME_ACTION_NONE
+            else -> action
+        }
+    }
+
+    /** Names the key after what it will actually do, so it is readable before it is pressed. */
+    private fun refreshReturnKey() {
+        if (!::returnButton.isInitialized) return
+        val label = when (declaredEditorAction()) {
+            EditorInfo.IME_ACTION_GO -> "Go"
+            EditorInfo.IME_ACTION_SEARCH -> "Search"
+            EditorInfo.IME_ACTION_SEND -> "Send"
+            EditorInfo.IME_ACTION_NEXT -> "Next"
+            EditorInfo.IME_ACTION_PREVIOUS -> "Previous"
+            EditorInfo.IME_ACTION_DONE -> "Done"
+            else -> null
+        }
+        val onSurface = ui.themeColor(com.google.android.material.R.attr.colorOnSurface)
+        val glyph = if (label == null) tinted(R.drawable.ic_return, onSurface, RETURN_ICON_DP) else null
+        returnButton.text = label ?: ""
+        returnButton.setTextColor(onSurface)
+        // The glyph goes in the *top* slot rather than the start slot. A TextView draws a start
+        // drawable hard against its left padding and then centres only the text in what is left,
+        // which put the return arrow against the key's left edge; a top drawable it centres
+        // horizontally for us. Vertical centring is then the padding's job, and with no text
+        // beside the glyph that is simply half the key's spare height.
+        returnButton.setCompoundDrawablesRelative(null, glyph, null, null)
+        if (glyph == null) {
+            returnButton.setPadding(dp(KEY_PAD_DP), 0, dp(KEY_PAD_DP), 0)
+        } else {
+            val inset = (dp(KEY_H_DP) - dp(RETURN_ICON_DP)) / 2
+            returnButton.setPadding(0, inset, 0, inset)
+        }
+        returnButton.contentDescription = label ?: "Return"
+        returnButton.background = keyBackground(dp(KEY_CORNER_DP).toFloat())
+    }
+
+    /**
+     * One deletion, as a key event rather than `deleteSurroundingText`.
+     *
+     * The editor on the other side is the only thing that knows whether the character before the
+     * cursor is one `char` or two, or whether there is a selection to remove instead -- and it
+     * already handles DEL correctly for both. Counting characters here would eat half an emoji.
+     */
+    private fun deleteBackward() {
+        val connection = currentInputConnection ?: return
+        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
+        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL))
+    }
+
+    private fun startBackspaceRepeat() {
+        stopBackspaceRepeat()
+        deleteBackward()
+        backspaceRepeat = scope.launch {
+            delay(BACKSPACE_FIRST_REPEAT_MS)
+            while (true) {
+                deleteBackward()
+                delay(BACKSPACE_REPEAT_MS)
+            }
+        }
+    }
+
+    private fun stopBackspaceRepeat() {
+        backspaceRepeat?.cancel()
+        backspaceRepeat = null
+    }
+
     // MARK: - Bar styling
+
+    /**
+     * The flat keys' background: a rounded fill that lightens under a finger.
+     *
+     * A [RippleDrawable] rather than a state list of colours, because a key with no press feedback
+     * reads as unresponsive on a surface where nothing else moves -- and on a keyboard the press is
+     * the only confirmation there is until the text appears.
+     */
+    private fun keyBackground(radius: Float): Drawable {
+        val fill = GradientDrawable().apply {
+            cornerRadius = radius
+            setColor(
+                ui.themeColor(com.google.android.material.R.attr.colorSurfaceContainerHighest),
+            )
+        }
+        return RippleDrawable(ColorStateList.valueOf(rippleColor()), fill, null)
+    }
 
     /** A filled capsule or key in [color], pressable. Used for the talk button and the mode chip. */
     private fun filled(color: Int, radius: Float): Drawable {
@@ -781,6 +985,20 @@ class DoNotTypeIME : InputMethodService() {
 
         const val MODE_W_DP = 68
         const val MODE_H_DP = 28
+
+        /** The flat keys, at iOS's 38dp height and 10pt corner. */
+        const val ROW_GAP_DP = 6
+        const val KEY_H_DP = 38
+        const val KEY_CORNER_DP = 10
+        const val KEY_PAD_DP = 10
+        const val RETURN_W_DP = 84
+        const val RETURN_ICON_DP = 20
+        const val BACKSPACE_W_DP = 52
+        const val BACKSPACE_ICON_DP = 22
+
+        /** iOS's key-repeat timings, so a held backspace runs on at the same speed on both. */
+        const val BACKSPACE_FIRST_REPEAT_MS = 380L
+        const val BACKSPACE_REPEAT_MS = 65L
 
         /** Visible against both a light and a dark fill without becoming a second fill. */
         const val RIPPLE_ALPHA = 40
