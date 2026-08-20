@@ -29,6 +29,7 @@ import app.donottype.ui.sectionFooter
 import app.donottype.ui.sectionTitle
 import app.donottype.ui.settingRow
 import app.donottype.ui.themeColor
+import app.donottype.ui.tonalButton
 import com.google.android.material.textfield.TextInputEditText
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
@@ -120,11 +121,8 @@ class SettingsTransferActivity : AppCompatActivity() {
             showStatus("Scanning cancelled. No settings were changed.")
             return@registerForActivityResult
         }
-        runCatching { SettingsTransfer.parse(SettingsTransfer.decodeQR(value)).root.toString(2) }
-            .onSuccess {
-                editor.setText(it)
-                showStatus("QR code scanned. Review it, then tap Import settings.")
-            }
+        runCatching { SettingsTransfer.parse(SettingsTransfer.decodeQR(value)) }
+            .onSuccess { showScannedConfirmation(it) }
             .onFailure { showStatus(it.message ?: "That QR code is not settings JSON.", true) }
     }
 
@@ -274,6 +272,82 @@ class SettingsTransferActivity : AppCompatActivity() {
                 showStatus("Settings imported. API keys were stored with Android Keystore.")
             }
             .onFailure { showStatus(it.message ?: "Could not import settings.", true) }
+    }
+
+    /**
+     * Replaces the transfer workbench after a camera scan with the decision the user now has.
+     *
+     * The document has already been decoded and fully validated at this point. Keeping its JSON
+     * editor, export tools, file pickers and a second Scan row on screen made the actual Import
+     * action the last item on a very long page. It also made a successful scan look unfinished.
+     * This confirmation deliberately contains no editor and does not print credentials: enough
+     * identity to catch a scan of the wrong profile, followed by exactly Import or Cancel.
+     */
+    private fun showScannedConfirmation(parsed: SettingsTransfer.Parsed) {
+        title = "Import scanned settings"
+        setContentView(
+            screenScaffold { column ->
+                column.addView(screenTitle("Import scanned settings?"))
+                column.addView(
+                    screenSubtitle(
+                        "A DoNotType settings profile was found. Import it to use these settings " +
+                            "on this device.",
+                    ),
+                )
+
+                val providers = parsed.root.getJSONObject("providers")
+                val selected = providers.optJSONObject(parsed.selected.id)
+                    ?: providers.optJSONObject(
+                        if (parsed.selected == app.donottype.core.ProviderKind.GEMINI) {
+                            "google"
+                        } else {
+                            parsed.selected.id
+                        },
+                    )
+                val model = selected?.optString("model")?.trim()
+                    ?.ifEmpty { parsed.selected.defaultModel }
+                    ?: parsed.selected.defaultModel
+                val fallback = parsed.fallback?.let { "\nFallback: ${it.plainName}" }.orEmpty()
+                column.addView(
+                    card(
+                        settingRow(
+                            parsed.selected.plainName,
+                            "Model: $model$fallback\nAPI key: included",
+                        ),
+                    ),
+                )
+
+                column.addView(
+                    primaryButton("Import") {
+                        runCatching { SettingsTransfer.apply(parsed) }
+                            .onSuccess {
+                                setResult(RESULT_OK)
+                                finish()
+                            }
+                            .onFailure {
+                                // Applying a validated document should not fail, but if storage or
+                                // another platform service does, preserve the complete message.
+                                showImportFailure(it.message ?: "Could not import settings.")
+                            }
+                    }.also { it.contentDescription = "confirm-scanned-settings" },
+                )
+                column.addView(
+                    tonalButton("Cancel") {
+                        setResult(RESULT_CANCELED)
+                        finish()
+                    }.also { it.contentDescription = "cancel-scanned-settings" },
+                )
+            },
+        )
+    }
+
+    /** A failure is shown in full on the compact confirmation screen. */
+    private fun showImportFailure(message: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Settings were not imported")
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun showQr() {
