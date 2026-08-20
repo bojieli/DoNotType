@@ -15,17 +15,17 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.2.0</string>
+	<string>0.2.1</string>
 	<key>CFBundleVersion</key>
-	<string>200</string>
-	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2026 Bojie Li. Licensed under MIT.</string>
+	<string>201</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>DoNotType reads the focused text field so it can spell names and terminology the way they appear on your screen.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Bojie Li. Licensed under MIT.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>DoNotType records your voice only while you hold the dictation key, and sends it to the model you configured using your own API key.</string>
 	<key>NSScreenCaptureUsageDescription</key>
