@@ -37,6 +37,9 @@ jobs:
     # same step's `if:` — the condition is evaluated first, so `if: env.X != ''` against a
     # step-level env is always false and the signing step silently never runs.
     env:
+      # A tag push or an explicit publish run produces artifacts that reach users, so signing stops
+      # being optional there. Dry runs keep building unsigned so a fork can exercise packaging.
+      PUBLISHABLE: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish }}
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
       NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
@@ -68,6 +71,22 @@ jobs:
           if [[ "$notary_values" -ne 0 && "$certificate_values" -eq 0 ]]; then
             echo "notarization requires a Developer ID signing certificate" >&2
             exit 1
+          fi
+
+          if [[ "$PUBLISHABLE" == "true" ]]; then
+            if [[ "$certificate_values" -eq 0 ]]; then
+              echo "a publishable release requires MACOS_CERTIFICATE and MACOS_CERTIFICATE_PASSWORD." >&2
+              echo "An ad-hoc bundle is refused by Gatekeeper and loses its Accessibility grant on" >&2
+              echo "every update, because TCC keys permissions to the code signature." >&2
+              echo "See docs/RELEASING.md for the signing configuration." >&2
+              exit 1
+            fi
+            if [[ "$notary_values" -eq 0 ]]; then
+              echo "a publishable release requires NOTARY_KEY_ID, NOTARY_ISSUER_ID, and NOTARY_KEY." >&2
+              echo "Without a stapled notarization ticket macOS refuses to open the app normally," >&2
+              echo "however it is signed. See docs/RELEASING.md for the signing configuration." >&2
+              exit 1
+            fi
           fi
 
       # Before the build, never after: `make app` signs the bundle as its last step, and editing a
@@ -172,8 +191,19 @@ jobs:
       id-token: write
       attestations: write
     env:
-      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      PUBLISHABLE: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish }}
+      # Authenticode signing runs through Azure Artifact Signing rather than a certificate file.
+      # Since CA/Browser Forum ballot CSC-13 took effect on 2023-06-01, every code-signing private
+      # key — OV and EV alike — must be generated inside a FIPS 140-2 Level 2 hardware module and
+      # is non-exportable, so there is no .pfx to hand a runner. Authentication is OIDC: the run
+      # exchanges its own identity token for a short-lived Azure credential, which means no signing
+      # secret is stored in this repository at all.
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+      SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+      SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -184,13 +214,25 @@ jobs:
         shell: bash
         run: |
           signing_values=0
-          for value in "$WINDOWS_CERTIFICATE" "$WINDOWS_CERTIFICATE_PASSWORD"; do
+          for value in "$AZURE_CLIENT_ID" "$AZURE_TENANT_ID" "$AZURE_SUBSCRIPTION_ID" \
+                       "$SIGNING_ENDPOINT" "$SIGNING_ACCOUNT" "$SIGNING_PROFILE"; do
             if [[ -n "$value" ]]; then signing_values=$((signing_values + 1)); fi
           done
-          if [[ "$signing_values" -ne 0 && "$signing_values" -ne 2 ]]; then
-            echo "WINDOWS_CERTIFICATE and WINDOWS_CERTIFICATE_PASSWORD must be set together" >&2
+          if [[ "$signing_values" -ne 0 && "$signing_values" -ne 6 ]]; then
+            echo "Windows signing needs all of AZURE_CLIENT_ID, AZURE_TENANT_ID," >&2
+            echo "AZURE_SUBSCRIPTION_ID, AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT, and" >&2
+            echo "AZURE_SIGNING_PROFILE, or none of them. Partial configuration would produce an" >&2
+            echo "unsigned release that looks configured. See docs/RELEASING.md." >&2
             exit 1
           fi
+          if [[ "$PUBLISHABLE" == "true" && "$signing_values" -eq 0 ]]; then
+            echo "a publishable release requires Windows Authenticode signing." >&2
+            echo "Unsigned binaries identify no publisher, so SmartScreen may warn or block on" >&2
+            echo "first launch. See docs/RELEASING.md for the signing configuration." >&2
+            exit 1
+          fi
+          echo "SIGNING_CONFIGURED=$([[ "$signing_values" -eq 6 ]] && echo true || echo false)" \
+            >> "$GITHUB_ENV"
 
       - name: Stamp the version
         shell: bash
@@ -278,41 +320,75 @@ jobs:
             Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
           }
 
-      - name: Sign Windows binaries
-        if: env.WINDOWS_CERTIFICATE != ''
+      # Enumerated before signing so a renamed or missing binary fails here, naming the file,
+      # rather than shipping a half-signed archive that only a user discovers.
+      - name: Check the binaries to sign are all present
+        if: env.SIGNING_CONFIGURED == 'true'
         shell: pwsh
         run: |
-          $certificatePath = "$env:RUNNER_TEMP\donottype-signing.pfx"
-          try {
-            [System.IO.File]::WriteAllBytes(
-              $certificatePath,
-              [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
-
-            $signTool = Get-ChildItem `
-              "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" `
-              -ErrorAction SilentlyContinue |
-              Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
-            if (!$signTool) { throw "signtool.exe was not found on the Windows runner" }
-
-            $binaries = @(
-              "publish\DoNotType.exe",
-              "publish\dnt.exe",
-              "publish\DoNotType.App.dll",
-              "publish\DoNotType.Cli.dll",
-              "publish\DoNotType.Core.dll",
-              "publish\opus.dll"
-            )
-            foreach ($binary in $binaries) {
-              if (!(Test-Path $binary)) { throw "release binary is missing: $binary" }
-              & $signTool sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com `
-                /f $certificatePath /p $env:WINDOWS_CERTIFICATE_PASSWORD $binary
-              if ($LASTEXITCODE -ne 0) { throw "signing failed for $binary" }
-              & $signTool verify /pa /all $binary
-              if ($LASTEXITCODE -ne 0) { throw "signature verification failed for $binary" }
-            }
+          $binaries = @(
+            "publish\DoNotType.exe",
+            "publish\dnt.exe",
+            "publish\DoNotType.App.dll",
+            "publish\DoNotType.Cli.dll",
+            "publish\DoNotType.Core.dll",
+            "publish\opus.dll"
+          )
+          foreach ($binary in $binaries) {
+            if (!(Test-Path $binary)) { throw "release binary is missing: $binary" }
           }
-          finally {
-            Remove-Item $certificatePath -Force -ErrorAction SilentlyContinue
+
+      # OIDC: the workflow's own identity token is exchanged for a short-lived Azure credential,
+      # so no Azure secret is stored. `id-token: write` above is what makes that possible.
+      - name: Authenticate to Azure
+        if: env.SIGNING_CONFIGURED == 'true'
+        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Timestamping is not optional here: Artifact Signing issues certificates valid for roughly
+      # three days, so an untimestamped signature stops verifying almost immediately. The
+      # countersignature is what keeps it valid long after the certificate itself expires.
+      - name: Sign Windows binaries
+        if: env.SIGNING_CONFIGURED == 'true'
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\publish
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      # Verified independently of the signing action rather than trusting its exit code, and with
+      # the same signtool check the previous certificate-file path used.
+      - name: Verify Windows signatures
+        if: env.SIGNING_CONFIGURED == 'true'
+        shell: pwsh
+        run: |
+          $signTool = Get-ChildItem `
+            "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" `
+            -ErrorAction SilentlyContinue |
+            Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
+          if (!$signTool) { throw "signtool.exe was not found on the Windows runner" }
+
+          $binaries = @(
+            "publish\DoNotType.exe",
+            "publish\dnt.exe",
+            "publish\DoNotType.App.dll",
+            "publish\DoNotType.Cli.dll",
+            "publish\DoNotType.Core.dll",
+            "publish\opus.dll"
+          )
+          foreach ($binary in $binaries) {
+            & $signTool verify /pa /all /tw $binary
+            if ($LASTEXITCODE -ne 0) {
+              throw "signature verification failed for $binary"
+            }
           }
 
       - name: Package
@@ -350,6 +426,7 @@ jobs:
       id-token: write
       attestations: write
     env:
+      PUBLISHABLE: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish }}
       ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -374,6 +451,14 @@ jobs:
           fi
           if [[ -n "$ANDROID_KEY_PASSWORD" && "$signing_values" -ne 3 ]]; then
             echo "ANDROID_KEY_PASSWORD cannot be set without the other Android signing secrets" >&2
+            exit 1
+          fi
+
+          if [[ "$PUBLISHABLE" == "true" && "$signing_values" -eq 0 ]]; then
+            echo "a publishable release requires ANDROID_KEYSTORE, ANDROID_KEYSTORE_PASSWORD," >&2
+            echo "and ANDROID_KEY_ALIAS. A debug-signed APK can never be updated in place by a" >&2
+            echo "differently-signed build, so every later release would force an uninstall and" >&2
+            echo "lose the user's data. See docs/RELEASING.md for the signing configuration." >&2
             exit 1
           fi
 

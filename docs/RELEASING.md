@@ -104,10 +104,10 @@ repository:
 
 ## Signing
 
-The workflow runs without any secrets and still produces working artifacts. This is deliberate: a
-fork should be able to exercise the complete packaging path. Those artifacts are ad-hoc signed,
-unsigned, or development-signed depending on the platform, and are suitable for testing rather than
-an official public release:
+A dry run — `workflow_dispatch` with `publish=false` — needs no secrets and still produces working
+artifacts. This is deliberate: a fork should be able to exercise the complete packaging path. Those
+artifacts are ad-hoc signed, unsigned, or development-signed depending on the platform, and are
+suitable for testing rather than an official public release:
 
 - **macOS** refuses to open an ad-hoc-signed app normally, and because TCC keys permissions to the
   code signature, every update makes the system forget the Accessibility grant, forcing it to be
@@ -119,36 +119,69 @@ an official public release:
   never be updated in place by a differently-signed one; each update requires an uninstall and
   loses the history each time.
 
-Configuring the following repository secrets enables release signing. Each platform group is
-optional for a dry run, but values within a group must be set together; the workflow fails early on
-a partial configuration rather than silently producing the wrong signature. An official public
-release should configure all three platform groups.
+Configuring the following repository secrets enables release signing. Values within a group must
+be set together; the workflow fails early on a partial configuration rather than silently producing
+the wrong signature.
+
+Signing is **required**, not merely recommended, for any run that can reach users: a `v*` tag push,
+or a manual run with `publish=true`. Those runs fail in their first step when a platform's signing
+configuration is absent. A manual run with `publish=false` still builds unsigned on every platform,
+so a fork can exercise the complete packaging path without holding any credential.
 
 | secret | what it is |
 |---|---|
 | `MACOS_CERTIFICATE` | Developer ID Application `.p12`, base64-encoded |
 | `MACOS_CERTIFICATE_PASSWORD` | its export password |
-| `NOTARY_KEY_ID` | App Store Connect API key ID |
+| `NOTARY_KEY_ID` | App Store Connect **Team** key ID |
 | `NOTARY_ISSUER_ID` | App Store Connect issuer ID |
-| `NOTARY_KEY` | the `.p8` private key, verbatim |
-| `WINDOWS_CERTIFICATE` | Authenticode code-signing `.pfx`, base64-encoded |
-| `WINDOWS_CERTIFICATE_PASSWORD` | its export password |
+| `NOTARY_KEY` | the `.p8` private key, verbatim — not base64 |
+| `AZURE_CLIENT_ID` | app registration client ID for Artifact Signing |
+| `AZURE_TENANT_ID` | its directory (tenant) ID |
+| `AZURE_SUBSCRIPTION_ID` | the subscription holding the signing account |
 | `ANDROID_KEYSTORE` | upload keystore, base64-encoded |
 | `ANDROID_KEYSTORE_PASSWORD` | its password |
 | `ANDROID_KEY_ALIAS` | key alias inside the keystore |
 | `ANDROID_KEY_PASSWORD` | optional separate key password; defaults to the keystore password |
 
-Base64-encode the three binary file secrets with:
+Windows signing also needs three repository **variables**, which are configuration rather than
+credentials and are readable in the run log:
+
+| variable | what it is |
+|---|---|
+| `AZURE_SIGNING_ENDPOINT` | regional endpoint, e.g. `https://eus.codesigning.azure.net/` |
+| `AZURE_SIGNING_ACCOUNT` | Artifact Signing account name |
+| `AZURE_SIGNING_PROFILE` | certificate profile name |
+
+Base64-encode the two binary file secrets with:
 
 ```bash
 base64 -i DeveloperID.p12 | pbcopy
-base64 -i Authenticode.pfx | pbcopy
 base64 -i release.keystore | pbcopy
 ```
 
+The App Store Connect key must be a **Team** key with the Developer role. Individual keys are not
+eligible for the Notary API and fail with an unhelpful `401`. Validate it before loading it, so a
+bad credential surfaces in seconds instead of at the end of a release build:
+
+```bash
+xcrun notarytool history --key AuthKey_XXXXXXXXXX.p8 --key-id XXXXXXXXXX --issuer <issuer-uuid>
+```
+
+### Why Windows signing has no certificate file
+
+CA/Browser Forum ballot CSC-13 took effect on 2023-06-01: every code-signing private key, OV and EV
+alike, must be generated inside a FIPS 140-2 Level 2 hardware module and is non-exportable. There is
+no `.pfx` to hand a runner, so signing goes through a hosted service — here Azure Artifact Signing,
+authenticated by OIDC, which stores no signing secret in this repository at all.
+
+Its certificates are valid for roughly three days, which is why the signing step timestamps every
+binary. The RFC 3161 countersignature is what keeps a signature verifying long after the certificate
+that made it has expired; an untimestamped build would stop validating within the week.
+
 Notarization runs only when the complete notary group is set and requires the macOS certificate.
 The workflow validates the stapled ticket. Windows signing timestamps every application-owned
-executable and library, then verifies each signature before packaging. Android verifies the APK's
+executable and library, then verifies each signature with `signtool` independently of the signing
+action's own exit code, before packaging. Android verifies the APK's
 signature and stamped version before upload.
 
 ## libopus
