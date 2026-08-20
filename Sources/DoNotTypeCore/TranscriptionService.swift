@@ -118,6 +118,7 @@ public struct TranscriptionService: Sendable {
 
     public func transcribe(
         audio: AudioFile, context: ScreenContext?,
+        styleClause: String? = nil,
         connection: ConnectionPreference = .pooled
     ) async throws -> TranscriptionResult {
         var parts: [InputPart] = []
@@ -168,11 +169,22 @@ public struct TranscriptionService: Sendable {
                 "connection": connection == .fresh ? "fresh" : "pooled",
             ])
 
+        // A style rule folded into the transcription instruction rather than sent as its own
+        // request. The model returns both fields, so the verbatim transcript still exists before
+        // anything is done to it — the invariant that makes "revert to what I said" possible —
+        // without the round trip a second pass costs. Only for backends that can actually do both
+        // jobs: a recogniser gets the plain instruction and is rewritten downstream, if at all.
+        let foldsInStyle = styleClause != nil && provider.grounding(forModel: model) == .multimodal
+        let instruction = foldsInStyle
+            ? systemInstruction + Self.styledInstructionSuffix(styleClause!)
+            : systemInstruction
+
         let started = Date()
         var result = try await provider.transcribe(
             TranscriptionRequest(
-                model: model, systemInstruction: systemInstruction, parts: parts,
-                fidelity: fidelity, keyterms: keyterms, connection: connection))
+                model: model, systemInstruction: instruction, parts: parts,
+                fidelity: fidelity, keyterms: keyterms, wantsStyledOutput: foldsInStyle,
+                connection: connection))
         Self.log.debug(
             "transcribed",
             [
@@ -207,6 +219,55 @@ public struct TranscriptionService: Sendable {
         return result
     }
 
+    /// The instruction that turns one transcription request into a transcribe-and-rewrite request.
+    ///
+    /// It names the preservation rule again, in the request that has the audio, because that is the
+    /// one place it can actually be obeyed: the two-pass rewriter never sees the recording, so it
+    /// has nothing to check a number against and "corrects" version numbers it believes are stale.
+    ///
+    /// The measured case for one request is latency — 2.54 s against 3.11 s over 20 trials on
+    /// `gemini-3.5-flash` — and not fidelity. Substitution is saturated on the reference clip at
+    /// that model (85% with no context at all), so it separates nothing and no fidelity claim rests
+    /// on it. This rule is here on the mechanism argument alone. See `docs/PROMPT.md`.
+    static func styledInstructionSuffix(_ styleClause: String) -> String {
+        """
+
+
+        Return `transcript` as the exact verbatim transcription, unchanged, and `styled` as that \
+        same transcript rewritten in the style below. The rewrite may not alter any number, name, \
+        identifier or fact that appears in `transcript`.
+
+        \(styleClause)
+        """
+    }
+
+    /// Transcribes and applies a rewrite style, in one request where the backend allows it.
+    ///
+    /// Returns the verbatim transcript and the styled text separately, whichever path ran. A
+    /// backend that cannot do both jobs in one call — every speech recogniser, and any model that
+    /// returned no `styled` field — falls back to the second pass, so the caller gets the same
+    /// pair either way and never has to ask which happened.
+    public func transcribeStyled(
+        audio: AudioFile, context: ScreenContext?, styleClause: String, rewriteInstruction: String
+    ) async throws -> (result: TranscriptionResult, styled: String, wasSinglePass: Bool) {
+        let result = try await transcribeLong(
+            audio: audio, context: context, styleClause: styleClause)
+        let verbatim = result.transcript.transcript
+
+        if let styled = result.transcript.styled?.trimmed, !styled.isEmpty {
+            return (result, styled, true)
+        }
+
+        // Not an error: a recogniser was never going to answer the wider schema, and a model that
+        // dropped the field still gave us the words. Either way the rewrite is still owed.
+        Self.log.debug(
+            "no styled field; falling back to a second pass",
+            ["provider": provider.name, "model": model])
+        guard !verbatim.trimmed.isEmpty else { return (result, verbatim, false) }
+        let styled = try await rewrite(verbatim, instruction: rewriteInstruction)
+        return (result, styled, false)
+    }
+
     private func describe(_ support: GroundingSupport) -> String {
         switch support {
         case .multimodal: "multimodal"
@@ -226,10 +287,12 @@ public struct TranscriptionService: Sendable {
     /// request is being asked to transcribe.
     private func hedgedAttempt(
         audio: AudioFile, context: ScreenContext?,
+        styleClause: String? = nil,
         connection: ConnectionPreference = .pooled
     ) async throws -> TranscriptionResult {
         guard hedgeStalledRequests else {
-            return try await transcribe(audio: audio, context: context, connection: connection)
+            return try await transcribe(
+                audio: audio, context: context, styleClause: styleClause, connection: connection)
         }
 
         let deadline = StallHedge.deadlineSeconds(audioSeconds: audio.durationSeconds)
@@ -253,7 +316,7 @@ public struct TranscriptionService: Sendable {
             // is how this feature came to fire three times and lose three times. See `StallHedge`.
             attempt: { isHedge in
                 try await transcribe(
-                    audio: audio, context: context,
+                    audio: audio, context: context, styleClause: styleClause,
                     connection: isHedge ? .fresh : connection)
             })
     }
@@ -262,6 +325,7 @@ public struct TranscriptionService: Sendable {
     public func transcribeWithRetry(
         audio: AudioFile,
         context: ScreenContext?,
+        styleClause: String? = nil,
         attempts: Int = 3,
         initialDelay: Duration = .milliseconds(600)
     ) async throws -> TranscriptionResult {
@@ -277,7 +341,7 @@ public struct TranscriptionService: Sendable {
                 // by luck — the failure had made URLSession discard the dead connection — rather
                 // than because anything asked for it.
                 return try await hedgedAttempt(
-                    audio: audio, context: context,
+                    audio: audio, context: context, styleClause: styleClause,
                     connection: attempt == 1 ? .pooled : .fresh)
             } catch {
                 lastError = error
@@ -330,6 +394,7 @@ public struct TranscriptionService: Sendable {
     public func transcribeLong(
         audio: AudioFile,
         context: ScreenContext?,
+        styleClause: String? = nil,
         attempts: Int = 3,
         maxConcurrent: Int = 3,
         onProgress: (@Sendable (Int, Int) -> Void)? = nil
@@ -337,8 +402,15 @@ public struct TranscriptionService: Sendable {
         let chunks = AudioChunker.split(wav: audio.data)
         guard chunks.count > 1 else {
             return try await transcribeWithRetry(
-                audio: audio, context: context, attempts: attempts)
+                audio: audio, context: context, styleClause: styleClause, attempts: attempts)
         }
+
+        // A split recording deliberately does *not* fold the style in. Each chunk is its own
+        // request with no idea what the others produced, so a per-chunk rewrite would style five
+        // fragments separately and stitch the results — five openings, five closings, and prose
+        // that reads like it was written by five people. A style belongs to the whole utterance,
+        // so a split recording is transcribed verbatim here and rewritten once, downstream, by
+        // `transcribeStyled`'s second pass over the stitched text.
 
         Self.log.info(
             "split recording",

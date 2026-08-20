@@ -77,14 +77,18 @@ public struct FallbackTranscriber: Sendable {
     /// A primary that *fails* rather than stalls hands over immediately — there is nothing left to
     /// wait for. If both fail the primary's error is thrown, because that is the backend the user
     /// chose and its error is the one that explains their configuration.
+    /// - Parameter styleClause: folded into the request when set, so a rewrite costs no second
+    ///   round trip. The fallback leg carries it too: a hedged dictation that came back verbatim
+    ///   while the primary's came back styled would make the rewrite depend on which backend won.
     public func transcribe(
         audio: AudioFile,
         context: ScreenContext?,
+        styleClause: String? = nil,
         onProgress: (@Sendable (Int, Int) -> Void)? = nil
     ) async throws -> Outcome {
         guard let secondary else {
             let result = try await primary.transcribeLong(
-                audio: audio, context: context, onProgress: onProgress)
+                audio: audio, context: context, styleClause: styleClause, onProgress: onProgress)
             return Outcome(result: result, attribution: attribution(primary, wasFallback: false))
         }
 
@@ -92,7 +96,8 @@ public struct FallbackTranscriber: Sendable {
             group.addTask {
                 Outcome(
                     result: try await primary.transcribeLong(
-                        audio: audio, context: context, onProgress: onProgress),
+                        audio: audio, context: context, styleClause: styleClause,
+                        onProgress: onProgress),
                     attribution: attribution(primary, wasFallback: false))
             }
             group.addTask {
@@ -112,7 +117,8 @@ public struct FallbackTranscriber: Sendable {
                     ])
                 return Outcome(
                     result: try await secondary.transcribeLong(
-                        audio: audio, context: context, onProgress: nil),
+                        audio: audio, context: context, styleClause: styleClause,
+                        onProgress: nil),
                     attribution: attribution(secondary, wasFallback: true))
             }
 
