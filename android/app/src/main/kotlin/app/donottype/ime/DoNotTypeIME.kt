@@ -78,6 +78,7 @@ class DoNotTypeIME : InputMethodService() {
     private val dictation by lazy { DictationController(this, scope, service) }
 
     private lateinit var statusLabel: TextView
+    private lateinit var settingsButton: ImageButton
     private lateinit var modeButton: Button
     private lateinit var talkButton: Button
     private lateinit var returnButton: Button
@@ -251,6 +252,7 @@ class DoNotTypeIME : InputMethodService() {
             }
         }
 
+        settingsButton = buildSettingsButton()
         modeButton = buildModeButton()
         indicator = DictationIndicatorView(ui)
 
@@ -279,17 +281,33 @@ class DoNotTypeIME : InputMethodService() {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(TALK_H_DP)),
         )
 
-        // The utility row, in iOS's order: mode on the left, return under the thumb in the middle,
-        // backspace on the right where every other keyboard on the phone puts it. The mode chip
-        // shares this row rather than overlapping the talk button, which is what it did while it
-        // was the only thing beside it.
+        // The utility row, in iOS's order: settings and mode on the left, return under the thumb
+        // in the middle, and backspace on the right where every other keyboard on the phone puts
+        // it. Settings is deliberately beside the mode it configures rather than hidden behind a
+        // status-message state.
         root.addView(
             FrameLayout(ui).apply {
                 addView(
-                    modeButton,
+                    LinearLayout(ui).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        addView(
+                            settingsButton,
+                            LinearLayout.LayoutParams(dp(SETTINGS_W_DP), dp(KEY_H_DP)).apply {
+                                rightMargin = dp(UTILITY_GAP_DP)
+                            },
+                        )
+                        addView(
+                            modeButton,
+                            LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                                dp(MODE_H_DP),
+                            ),
+                        )
+                    },
                     FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT,
-                        dp(MODE_H_DP),
+                        dp(KEY_H_DP),
                         Gravity.START or Gravity.CENTER_VERTICAL,
                     ),
                 )
@@ -396,6 +414,21 @@ class DoNotTypeIME : InputMethodService() {
             }
             refreshModeButton()
         }
+    }
+
+    /** The keyboard's own route to its settings, always available beside the mode switcher. */
+    private fun buildSettingsButton(): ImageButton = ImageButton(ui).apply {
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        val inset = (dp(KEY_H_DP) - dp(SETTINGS_ICON_DP)) / 2
+        setPadding(inset, inset, inset, inset)
+        contentDescription = "Keyboard settings"
+        setImageDrawable(
+            AppCompatResources.getDrawable(ui, R.drawable.ic_settings)?.mutate()?.apply {
+                setTint(ui.themeColor(com.google.android.material.R.attr.colorOnSurface))
+            },
+        )
+        background = keyBackground(dp(KEY_CORNER_DP).toFloat())
+        setOnClickListener { openTheApp("keyboard settings button") }
     }
 
     /**
@@ -835,8 +868,8 @@ class DoNotTypeIME : InputMethodService() {
         dictation.notice()
     }
 
-    private fun openTheApp() {
-        log.info(mapOf("reason" to statusLabel.text.toString())) { "opening the app to fix it" }
+    private fun openTheApp(reason: String = statusLabel.text.toString()) {
+        log.info(mapOf("reason" to reason)) { "opening the app settings" }
         try {
             startActivity(
                 Intent(this, SettingsActivity::class.java).apply {
@@ -988,9 +1021,12 @@ class DoNotTypeIME : InputMethodService() {
 
         /** The flat keys, at iOS's 38dp height and 10pt corner. */
         const val ROW_GAP_DP = 6
+        const val UTILITY_GAP_DP = 6
         const val KEY_H_DP = 38
         const val KEY_CORNER_DP = 10
         const val KEY_PAD_DP = 10
+        const val SETTINGS_W_DP = 38
+        const val SETTINGS_ICON_DP = 20
         const val RETURN_W_DP = 84
         const val RETURN_ICON_DP = 20
         const val BACKSPACE_W_DP = 52
