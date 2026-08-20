@@ -1,6 +1,7 @@
 package app.donottype.ime
 
 import app.donottype.PromptAssets
+import app.donottype.R
 import app.donottype.Settings
 import app.donottype.accessibility.ScreenReaderService
 import app.donottype.SettingsActivity
@@ -13,8 +14,9 @@ import app.donottype.core.NoSpeechException
 import app.donottype.core.Log as DntLog
 import app.donottype.core.RewriteAvailability
 import app.donottype.core.PersonalDictionary
+import app.donottype.ui.themeColor
+import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.inputmethodservice.InputMethodService
 import android.util.Log
 import android.view.Gravity
@@ -28,6 +30,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import kotlinx.coroutines.CoroutineScope
@@ -69,6 +72,20 @@ class DoNotTypeIME : InputMethodService() {
     private lateinit var modeButton: Button
     private lateinit var talkButton: Button
     private lateinit var indicator: DictationIndicatorView
+
+    /**
+     * The context every view on the bar is built from, and every colour on it resolved against.
+     *
+     * An `InputMethodService` is a service, and a service's theme is whatever the platform picked
+     * for input methods -- not Theme.DoNotType. Reading `?attr/colorPrimary` off `this` therefore
+     * resolves against a theme that assigns none of the Material 3 roles the app's screens are
+     * drawn from, and returns the platform's slate rather than the app's blue. That is why the
+     * keyboard's palette used to be six hex literals, and why it stayed dark on a light phone.
+     *
+     * One wrapper fixes both: it carries the app's theme, and it delegates to the service's own
+     * resources, so `values-night` answers for this bar exactly when it answers for the app.
+     */
+    private val ui: Context by lazy { ContextThemeWrapper(this, R.style.Theme_DoNotType) }
 
     private val state: State get() = dictation.state
 
@@ -176,11 +193,13 @@ class DoNotTypeIME : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
-        val root = LinearLayout(this).apply {
+        val root = LinearLayout(ui).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(PAD_SIDE, PAD_TOP, PAD_SIDE, PAD_BOTTOM)
-            setBackgroundColor(Color.parseColor("#111417"))
+            setPadding(padSide, padTop, padSide, padBottom)
+            setBackgroundColor(
+                ui.themeColor(com.google.android.material.R.attr.colorSurfaceContainer),
+            )
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
             )
@@ -190,14 +209,16 @@ class DoNotTypeIME : InputMethodService() {
             // of "Tap to talk" -- the only control this keyboard has.
             ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
                 val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
-                view.setPadding(PAD_SIDE, PAD_TOP, PAD_SIDE, PAD_BOTTOM + nav.bottom)
+                view.setPadding(padSide, padTop, padSide, padBottom + nav.bottom)
                 insets
             }
         }
 
-        statusLabel = TextView(this).apply {
+        statusLabel = TextView(ui).apply {
             textSize = 14f
-            setTextColor(Color.parseColor("#8A9BA8"))
+            setTextColor(
+                ui.themeColor(com.google.android.material.R.attr.colorOnSurfaceVariant),
+            )
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 0)
             maxLines = 2
@@ -214,9 +235,9 @@ class DoNotTypeIME : InputMethodService() {
         }
 
         modeButton = buildModeButton()
-        indicator = DictationIndicatorView(this)
+        indicator = DictationIndicatorView(ui)
 
-        talkButton = Button(this).apply {
+        talkButton = Button(ui).apply {
             textSize = 17f
             // Tap to toggle, hold to talk -- the same gesture the desktop hotkey uses, and for the
             // same reason. Hold-only forces you to keep a finger down for the length of a thought,
@@ -252,7 +273,7 @@ class DoNotTypeIME : InputMethodService() {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(28)),
         )
 
-        val primaryRow = FrameLayout(this).apply {
+        val primaryRow = FrameLayout(ui).apply {
             addView(
                 talkButton,
                 FrameLayout.LayoutParams(dp(160), dp(56), Gravity.CENTER),
@@ -272,7 +293,7 @@ class DoNotTypeIME : InputMethodService() {
     }
 
     /** Shows the current live mode without taking horizontal space from the speaking control. */
-    private fun buildModeButton(): Button = Button(this).apply {
+    private fun buildModeButton(): Button = Button(ui).apply {
         textSize = 12f
         isAllCaps = false
         minWidth = 0
@@ -316,8 +337,27 @@ class DoNotTypeIME : InputMethodService() {
         modeButton.text = current
         modeButton.isEnabled = canSwitch
         modeButton.alpha = if (canSwitch) 1f else 0.55f
-        modeButton.setTextColor(Color.parseColor("#0B0F14"))
-        modeButton.setBackgroundColor(Color.parseColor(if (rewrite) "#B69CFF" else "#7FB2FF"))
+        // Rewrite is the container pair rather than a second saturated fill: two equally loud
+        // chips beside the talk button would compete with it, and the mode is a label more often
+        // than it is a control.
+        modeButton.setTextColor(
+            ui.themeColor(
+                if (rewrite) {
+                    com.google.android.material.R.attr.colorOnTertiaryContainer
+                } else {
+                    com.google.android.material.R.attr.colorOnPrimary
+                },
+            ),
+        )
+        modeButton.setBackgroundColor(
+            ui.themeColor(
+                if (rewrite) {
+                    com.google.android.material.R.attr.colorTertiaryContainer
+                } else {
+                    androidx.appcompat.R.attr.colorPrimary
+                },
+            ),
+        )
         modeButton.contentDescription = when {
             canSwitch -> "Current mode: $current. Tap to switch to $next"
             !canChange -> "Current mode: $current. Mode is fixed while transcribing"
@@ -592,11 +632,18 @@ class DoNotTypeIME : InputMethodService() {
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density + 0.5f).toInt()
 
+    // The bar's own padding, in dp. It was three raw pixel constants -- 48, 32, 32 -- which is
+    // 18dp of gutter on a 2.6x phone and less on a denser one, the same mistake the app's screens
+    // were built on before res/values/dimens.xml.
+    private val padSide: Int get() = dp(PAD_SIDE_DP)
+    private val padTop: Int get() = dp(PAD_TOP_DP)
+    private val padBottom: Int get() = dp(PAD_BOTTOM_DP)
+
     private companion object {
         const val TAG = "DoNotTypeIME"
 
-        const val PAD_SIDE = 48
-        const val PAD_TOP = 32
-        const val PAD_BOTTOM = 32
+        const val PAD_SIDE_DP = 18
+        const val PAD_TOP_DP = 12
+        const val PAD_BOTTOM_DP = 12
     }
 }
