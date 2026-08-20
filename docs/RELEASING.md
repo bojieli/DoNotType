@@ -6,16 +6,17 @@ tagging.
 
 ## Latest successful CI build
 
-Every fully green push to `main` updates the rolling `latest` prerelease with the macOS, Windows,
-and Android packages produced by that same CI run. The release links the exact commit and workflow
-run, verifies each archive before promotion, and publishes a matching `.sha256` beside every app.
+Every fully green push to `main` updates the rolling `latest` prerelease with the macOS and Android
+packages produced by that same CI run. The release links the exact commit and workflow run, verifies
+each archive before promotion, and publishes a matching `.sha256` beside every app.
 
 This is a development download surface, not a versioned release. On the upstream repository the
 macOS bundle is Developer ID signed and notarized so it can be used as an everyday install; the
-Windows binaries remain unsigned and the Android APK uses a debug key. Forks without Apple secrets
-still exercise the same bundle and launch checks with an ad-hoc signature, but cannot publish the
-upstream `latest` release. The moving `latest` tag is updated only after every CI job succeeds;
-stable `v*` tags are never moved or overwritten.
+Android APK uses a debug key. Windows source still compiles in CI, but no Windows production layout
+is built or distributed until it has been manually verified and Authenticode signing is available.
+Forks without Apple secrets still exercise the same macOS bundle and launch checks with an ad-hoc
+signature, but cannot publish the upstream `latest` release. The moving `latest` tag is updated only
+after every CI job succeeds; stable `v*` tags are never moved or overwritten.
 
 ## Tag-driven releases
 
@@ -27,8 +28,8 @@ git push origin v0.2.0
 ```
 
 Pushing a tag runs [`.github/workflows/release.yml`](../.github/workflows/release.yml), which builds
-all four platforms, runs each platform's tests first, and opens a **draft** GitHub release with the
-artifacts attached. Read the generated notes, then publish.
+macOS and Android release artifacts, runs their tests plus the iOS UI suite, and opens a **draft**
+GitHub release with the artifacts attached. Read the generated notes, then publish.
 
 ### Version stamping
 
@@ -63,7 +64,6 @@ would. Leave it unchecked for an ordinary packaging rehearsal.
 | artifact | contents |
 |---|---|
 | `DoNotType-macOS.zip` | the `.app` bundle |
-| `DoNotType-Windows-x64.zip` | self-contained app and CLI, `opus.dll`, `prompt/` |
 | `DoNotType-Android.apk` | installable APK |
 | `*.sha256` | one per artifact |
 
@@ -87,10 +87,10 @@ commit where iOS is broken.
 
 ## Package managers
 
-Manifests live in [`packaging/`](../packaging/) and are **not** submitted yet: registry onboarding
-should follow a notarized macOS release and an Authenticode-signed Windows release with some release
-history. They are kept in the tree so that the shape is reviewable and so that submitting is filling
-in a version rather than authoring three files under time pressure.
+Manifests live in [`packaging/`](../packaging/) and are **not** submitted yet. Homebrew onboarding
+should follow a notarized macOS release with some public history. The winget drafts remain dormant:
+there is no Windows release artifact for them to reference until Windows production verification
+and Authenticode signing exist.
 
 After a release is published:
 
@@ -98,11 +98,10 @@ After a release is published:
 ./scripts/update-packaging.sh 0.2.0
 ```
 
-The script reads the `.sha256` files the workflow published beside each artifact and writes the
-version and checksums into all four manifests. No hash is typed by hand: a cask with a stale
-checksum fails at install with a complaint about a corrupt download, and a winget manifest with one
-fails with a complaint about a tampered package. Both read as something far more alarming than a
-forgotten field.
+The script reads the macOS `.sha256` file the workflow published and writes the version and checksum
+into the Homebrew cask. No hash is typed by hand: a cask with a stale checksum fails at install with
+a complaint about a corrupt download, which reads as something far more alarming than a forgotten
+field. It deliberately does not update the dormant winget drafts.
 
 Submission is deliberately manual, because each submission is a pull request to somebody else's
 repository:
@@ -110,21 +109,18 @@ repository:
 | | where |
 |---|---|
 | Homebrew | copy `packaging/homebrew/donottype.rb` into the tap's `Casks/` |
-| winget | `wingetcreate submit packaging/winget/` |
+| winget | unavailable until a verified, Authenticode-signed Windows artifact is restored |
 
 ## Signing
 
 A dry run — `workflow_dispatch` with `publish=false` — needs no secrets and still produces working
 artifacts. This is deliberate: a fork should be able to exercise the complete packaging path. Those
-artifacts are ad-hoc signed, unsigned, or development-signed depending on the platform, and are
-suitable for testing rather than an official public release:
+artifacts are ad-hoc or development-signed depending on the platform and are suitable for testing
+rather than an official public release:
 
 - **macOS** refuses to open an ad-hoc-signed app normally, and because TCC keys permissions to the
   code signature, every update makes the system forget the Accessibility grant, forcing it to be
   re-granted on every release.
-- **Windows** binaries have no Authenticode signature. Windows therefore identifies no publisher,
-  and SmartScreen may warn or block before first launch. A signature establishes the publisher;
-  reputation still accumulates over time and is not guaranteed by the certificate alone.
 - **Android** falls back to a debug key. The APK installs from a file, but a debug-signed APK can
   never be updated in place by a differently-signed one; each update requires an uninstall and
   loses the history each time.
@@ -135,8 +131,8 @@ the wrong signature.
 
 Signing is **required**, not merely recommended, for any run that can reach users: a `v*` tag push,
 or a manual run with `publish=true`. Those runs fail in their first step when a platform's signing
-configuration is absent. A manual run with `publish=false` still builds unsigned on every platform,
-so a fork can exercise the complete packaging path without holding any credential.
+configuration is absent. A manual run with `publish=false` still builds test-signed artifacts, so a
+fork can exercise the complete packaging path without holding any credential.
 
 | secret | what it is |
 |---|---|
@@ -145,22 +141,10 @@ so a fork can exercise the complete packaging path without holding any credentia
 | `NOTARY_KEY_ID` | App Store Connect **Team** key ID |
 | `NOTARY_ISSUER_ID` | App Store Connect issuer ID |
 | `NOTARY_KEY` | the `.p8` private key, verbatim — not base64 |
-| `AZURE_CLIENT_ID` | app registration client ID for Artifact Signing |
-| `AZURE_TENANT_ID` | its directory (tenant) ID |
-| `AZURE_SUBSCRIPTION_ID` | the subscription holding the signing account |
 | `ANDROID_KEYSTORE` | upload keystore, base64-encoded |
 | `ANDROID_KEYSTORE_PASSWORD` | its password |
 | `ANDROID_KEY_ALIAS` | key alias inside the keystore |
 | `ANDROID_KEY_PASSWORD` | optional separate key password; defaults to the keystore password |
-
-Windows signing also needs three repository **variables**, which are configuration rather than
-credentials and are readable in the run log:
-
-| variable | what it is |
-|---|---|
-| `AZURE_SIGNING_ENDPOINT` | regional endpoint, e.g. `https://eus.codesigning.azure.net/` |
-| `AZURE_SIGNING_ACCOUNT` | Artifact Signing account name |
-| `AZURE_SIGNING_PROFILE` | certificate profile name |
 
 Base64-encode the two binary file secrets with:
 
@@ -177,32 +161,9 @@ bad credential surfaces in seconds instead of at the end of a release build:
 xcrun notarytool history --key AuthKey_XXXXXXXXXX.p8 --key-id XXXXXXXXXX --issuer <issuer-uuid>
 ```
 
-### Why Windows signing has no certificate file
-
-CA/Browser Forum ballot CSC-13 took effect on 2023-06-01: every code-signing private key, OV and EV
-alike, must be generated inside a FIPS 140-2 Level 2 hardware module and is non-exportable. There is
-no `.pfx` to hand a runner, so signing goes through a hosted service — here Azure Artifact Signing,
-authenticated by OIDC, which stores no signing secret in this repository at all.
-
-Its certificates are valid for roughly three days, which is why the signing step timestamps every
-binary. The RFC 3161 countersignature is what keeps a signature verifying long after the certificate
-that made it has expired; an untimestamped build would stop validating within the week.
-
 Notarization runs only when the complete notary group is set and requires the macOS certificate.
-The workflow validates the stapled ticket. Windows signing timestamps every application-owned
-executable and library, then verifies each signature with `signtool` independently of the signing
-action's own exit code, before packaging. Android verifies the APK's
-signature and stamped version before upload.
-
-## libopus
-
-Windows is the only platform with no Opus encoder in the box, so the workflow **builds libopus from
-source** — a pinned tag, compiled in the open — rather than downloading a binary. A release `.dll`
-pulled from an arbitrary host is a supply-chain decision that nobody reviewed; a compile that
-anyone can audit from the build log is not.
-
-`opus.dll` ships beside the executable, which is where the import resolver looks first. Without it
-the app still dictates, but uploads WAV instead: roughly 16× more data and noticeably slower.
+The workflow validates the stapled ticket. Android verifies the APK's signature and stamped version
+before upload.
 
 ## Pre-tagging gates
 

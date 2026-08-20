@@ -40,17 +40,17 @@ one version format.
 
 - **Release artifacts now have enforced provenance and stricter security boundaries.** macOS
   signing failures can no longer fall back silently to an ad-hoc signature, tagged builds verify
-  the resulting signature, transient signing material is removed, and every desktop archive and
-  Android APK receives a GitHub build-provenance attestation. The tag workflow now runs the iOS UI
+  the resulting signature, transient signing material is removed, and every downloadable app
+  receives a GitHub build-provenance attestation. The tag workflow now runs the iOS UI
   suite and Android lint instead of accepting compile-only evidence, while CI checks shell scripts
   and workflow definitions and dependency updates cover Swift and NuGet as well as Gradle and
-  Actions. It stamps and checks every bundled version, optionally Authenticode-signs and verifies
-  Windows binaries, validates APK and notarization signatures, verifies every checksum and archive,
-  and publishes only the six intended release assets rather than flattening iOS test-result
-  internals beside them. Provider requests also refuse cross-origin redirects so API-key headers,
-  audio, and screen context cannot be forwarded to an endpoint the user did not configure; remote
-  overrides require HTTPS, reject embedded credentials, and now fail explicitly instead of
-  silently sending a recording to the built-in provider when the override is malformed.
+  Actions. It stamps and checks every bundled version, validates APK and notarization signatures,
+  verifies every checksum and archive, and publishes only the four intended release assets rather
+  than flattening iOS test-result internals beside them. Provider requests also refuse cross-origin
+  redirects so API-key headers, audio, and screen context cannot be forwarded to an endpoint the
+  user did not configure; remote overrides require HTTPS, reject embedded credentials, and now fail
+  explicitly instead of silently sending a recording to the built-in provider when the override is
+  malformed.
 
 - **Cold iOS keyboard handoff survives app activation.** Keyboard ownership is recorded before the
   asynchronous microphone start, so the brief inactive scene phase during a cold launch cannot
@@ -85,11 +85,11 @@ one version format.
   button previously ignored taps. Windows confirmations can no longer race with a later recording
   and hide its overlay.
 
-- **Reproducible Android and self-contained Windows release builds.** Android now carries the
+- **Reproducible Android and self-contained Windows builds.** Android now carries the
   Gradle 8.9 wrapper and checksum required by its pinned Android Gradle Plugin instead of trusting
   whichever system Gradle happens to be installed. The Windows app and CLI now share one private
-  .NET runtime, so both work on a clean machine without a global .NET installation. CI exercises
-  the exact packaged layout, and build actions are current and pinned to immutable revisions.
+  .NET runtime, so both can work on a clean machine without a global .NET installation when built
+  locally. Windows production packaging is not part of CI or releases, as recorded under Removed.
 
 - **Microphone capture follows the visible mobile UI.** Closing the Android keyboard now discards
   an active recording instead of leaving the microphone running in an invisible IME service, and
@@ -629,6 +629,13 @@ deliberate:
   picks xAI in Settings — one dropdown, and it keeps its own key and model.
 
 ### Removed
+
+- **Windows production downloads.** Windows source remains in the repository and is compiled by
+  the cross-platform validation job, but CI no longer creates a self-contained Windows production
+  layout and neither rolling nor versioned releases attach one. The prior archive was unsigned and
+  had not completed the manual release checks; leaving it beside signed, verified artifacts made a
+  stronger claim than the evidence supported. Distribution can return after both manual validation
+  and Authenticode signing are available.
 
 - **The number check.** It transcribed every grounded dictation a second time without the screen
   and spliced that run's digit sequences into the first one, because every regression grounding

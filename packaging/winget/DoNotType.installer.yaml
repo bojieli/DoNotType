@@ -1,12 +1,10 @@
 # winget manifest — installer.
 #
-# Not submitted to microsoft/winget-pkgs yet: registry onboarding should follow an
-# Authenticode-signed release with some public history. Kept here so the shape is reviewable, and so
-# submitting is a matter of filling in a version rather than authoring three files under pressure.
+# Dormant: Windows production artifacts are not currently built or distributed. Do not submit this
+# manifest until the Windows build has been manually verified and Authenticode signing is available.
 #
-# `scripts/update-packaging.sh <version>` writes the version and the SHA256 from a published
-# release. A manifest with a stale hash fails at install with a message about a tampered package,
-# which reads as something far more alarming than a forgotten field.
+# `scripts/update-packaging.sh` deliberately does not update this manifest while no Windows release
+# exists. The placeholder URL and checksum below must never be submitted.
 PackageIdentifier: bojieli.DoNotType
 PackageVersion: 0.0.0
 InstallerType: zip

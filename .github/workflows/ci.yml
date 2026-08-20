@@ -192,10 +192,9 @@ jobs:
           xcrun stapler validate .build/DoNotType.app
           spctl --assess --type execute --verbose=4 .build/DoNotType.app
 
-      # Building it proves nothing about whether it starts — the same reasoning as the Windows job
-      # below, which caught an app that had compiled for months and never run. A menu-bar agent
-      # cannot be driven by XCUITest, so this checks the bundle, launches the real thing, and reads
-      # back the line it logs about itself. See scripts/macos-launch-check.sh.
+      # Building it proves nothing about whether it starts. A menu-bar agent cannot be driven by
+      # XCUITest, so this checks the bundle, launches the real thing, and reads back the line it
+      # logs about itself. See scripts/macos-launch-check.sh.
       - name: Launch the app and check it stays up
         run: ./scripts/macos-launch-check.sh
 
@@ -266,7 +265,7 @@ jobs:
           overwrite: true
 
   windows-core:
-    name: Windows core
+    name: Windows source validation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -285,8 +284,8 @@ jobs:
       - name: Core tests
         run: dotnet test windows/DoNotType.Core.Tests/DoNotType.Core.Tests.csproj --no-restore
 
-      # EnableWindowsTargeting lets the tray app and the CLI compile here too, so a change that
-      # breaks either is caught on the fast runner rather than on the Windows one.
+      # EnableWindowsTargeting lets the tray app and the CLI compile without creating or packaging
+      # a production Windows build. Windows is source-supported but not a release artifact.
       - name: Build everything
         run: dotnet build windows/DoNotType.slnx --no-restore
 
@@ -309,133 +308,6 @@ jobs:
             echo "  expected 'DoNotType — $version_line'" >&2
             exit 1
           fi
-
-  windows-app:
-    name: Windows app
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: '10.0.x'
-
-      # The same tests the Linux job runs, run again here — because three of them only mean
-      # something on Windows. Media Foundation decodes MP3 and M4A through COM interop whose vtable
-      # offsets cannot be checked by compiling, and DPAPI cannot be exercised anywhere else. On
-      # Linux those tests assert the refusal message instead; this is where they assert the audio.
-      - name: Core tests, on Windows
-        run: dotnet test windows/DoNotType.Core.Tests/DoNotType.Core.Tests.csproj
-
-      - name: Build the tray app
-        run: dotnet build windows/DoNotType.App/DoNotType.App.csproj -c Release
-
-      - name: Build the CLI
-        run: dotnet build windows/DoNotType.Cli/DoNotType.Cli.csproj -c Release
-
-      # Publish both executables into one self-contained runtime layout. The release used to put a
-      # framework-dependent CLI beside a single-file app, but a single-file app's private runtime
-      # cannot satisfy another executable; dnt.exe therefore failed on a clean Windows install.
-      - name: Publish the release layout
-        shell: powershell
-        run: |
-          dotnet publish windows/DoNotType.App/DoNotType.App.csproj `
-            -c Release -r win-x64 --self-contained true `
-            -p:PublishSingleFile=false -o publish
-          dotnet publish windows/DoNotType.Cli/DoNotType.Cli.csproj `
-            -c Release -r win-x64 --self-contained true `
-            -p:PublishSingleFile=false -o publish
-          if (!(Test-Path publish/hostfxr.dll)) { throw "the private .NET runtime is missing" }
-          if (!(Test-Path publish/dnt.runtimeconfig.json)) { throw "the CLI runtime config is missing" }
-          if (!(Test-Path publish/LICENSE.txt)) { throw "the MIT license is missing" }
-          if ((Get-Content publish/LICENSE.txt -First 1) -ne "MIT License") {
-            throw "the bundled license is not MIT"
-          }
-
-      # Media Foundation needs a real Windows session, so this is also the first moment the CLI
-      # decodes a compressed recording end to end.
-      - name: Decode every format through the CLI
-        shell: powershell
-        run: |
-          $env:DOTNET_ROOT = "$env:RUNNER_TEMP\no-global-dotnet"
-          $env:DOTNET_MULTILEVEL_LOOKUP = "0"
-          $dnt = "$PWD\publish\dnt.exe"
-          & $dnt doctor --no-stored-key
-          if ($LASTEXITCODE -ne 0) { throw "dnt doctor reported a problem" }
-
-      # Building a WinForms app proves nothing about whether it starts. This launches the real
-      # tray app, waits, and fails if it is not still running -- which covers the tray icon, the
-      # global hotkey install, settings load and the first window it opens. Screenshots are
-      # uploaded so a person can look at what it actually drew.
-      - name: Launch it and check it stays up
-        shell: powershell
-        run: |
-          Add-Type -AssemblyName System.Drawing, System.Windows.Forms
-          New-Item -ItemType Directory -Force -Path shots | Out-Null
-
-          $exe = "$PWD\publish\DoNotType.exe"
-          $err = "$PWD\shots\stderr.txt"
-          $proc = Start-Process $exe -PassThru -RedirectStandardError $err
-          Start-Sleep -Seconds 25
-
-          if ($proc.HasExited) {
-            Write-Host "exit code $($proc.ExitCode)"
-            if (Test-Path $err) { Get-Content $err }
-            throw "the tray app died within 25 seconds of starting"
-          }
-
-          $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
-          $bmp = New-Object System.Drawing.Bitmap($b.Width, $b.Height)
-          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.X, $b.Y, 0, 0, $bmp.Size)
-          $bmp.Save("$PWD\shots\desktop.png", [System.Drawing.Imaging.ImageFormat]::Png)
-
-          # With no API key configured the app opens Settings on first run, so that window
-          # existing is also the check that the settings form builds without throwing.
-          $settings = (Get-Process -Id $proc.Id).MainWindowTitle
-          Write-Host "main window: '$settings'"
-          if ($settings -ne "DoNotType Settings") {
-            throw "expected the settings window to open on a first run with no key, got '$settings'"
-          }
-
-          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-
-      # Match the versioned release layout: build the one native dependency from the reviewed
-      # source commit, then put it beside both self-contained executables before archiving.
-      - name: Build libopus for latest Windows artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        shell: powershell
-        run: |
-          git clone --depth 1 --branch v1.5.2 https://github.com/xiph/opus.git $env:RUNNER_TEMP/opus
-          if ((git -C $env:RUNNER_TEMP/opus rev-parse HEAD) -ne "ddbe48383984d56acd9e1ab6a090c54ca6b735a6") {
-            throw "the libopus v1.5.2 tag no longer resolves to the reviewed commit"
-          }
-          cmake -S $env:RUNNER_TEMP/opus -B $env:RUNNER_TEMP/opus/build `
-            -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release
-          cmake --build $env:RUNNER_TEMP/opus/build --config Release
-          Copy-Item $env:RUNNER_TEMP/opus/build/Release/opus.dll publish/opus.dll
-
-      - name: Package latest Windows build
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        shell: powershell
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Compress-Archive -Path publish/* -DestinationPath dist/DoNotType-Windows-x64.zip
-          $hash = (Get-FileHash dist/DoNotType-Windows-x64.zip -Algorithm SHA256).Hash.ToLower()
-          [System.IO.File]::WriteAllText(
-            "$PWD/dist/DoNotType-Windows-x64.zip.sha256",
-            "$hash  DoNotType-Windows-x64.zip`n")
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        with:
-          name: latest-windows
-          path: dist/
-          overwrite: true
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: windows-screenshots
-          path: shots/
 
   android:
     name: Android
@@ -563,7 +435,7 @@ jobs:
   # notarization, version stamping, and a human review still gate anything called stable.
   promote-latest:
     name: Promote latest build
-    needs: [hygiene, contract, swift, windows-core, windows-app, android, ios]
+    needs: [hygiene, contract, swift, windows-core, android, ios]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -580,15 +452,12 @@ jobs:
           expected=(
             DoNotType-macOS.zip
             DoNotType-macOS.zip.sha256
-            DoNotType-Windows-x64.zip
-            DoNotType-Windows-x64.zip.sha256
             DoNotType-Android.apk
             DoNotType-Android.apk.sha256
           )
           for asset in "${expected[@]}"; do test -s "dist/$asset"; done
           (cd dist && sha256sum --check ./*.sha256)
           unzip -tq dist/DoNotType-macOS.zip
-          unzip -tq dist/DoNotType-Windows-x64.zip
           unzip -tq dist/DoNotType-Android.apk
 
       - name: Write release notes
@@ -598,11 +467,12 @@ jobs:
 
           - Commit: [$GITHUB_SHA](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)
           - CI run: [$GITHUB_RUN_ID](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)
-          - Platforms: macOS, Windows x64, Android
+          - Platforms: macOS, Android
 
           These are development artifacts from CI. The macOS app is Developer ID signed and
-          notarized; Windows is unsigned, and Android uses a debug key. Use a versioned release for
-          stable, reviewed artifacts. Verify every download with its adjacent SHA-256 file.
+          notarized; Android uses a debug key. Windows is deliberately not distributed because no
+          signed production build has been verified. Use a versioned release for stable, reviewed
+          artifacts. Verify every download with its adjacent SHA-256 file.
           EOF
 
       # Replace assets first and move the rolling tag last. A failed upload therefore cannot make
@@ -613,6 +483,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if gh release view latest >/dev/null 2>&1; then
+            # These assets predate the decision not to distribute an unsigned, unverified Windows
+            # production build. Deleting them here prevents a retired file from surviving merely
+            # because the current run no longer produces a replacement with the same name.
+            gh release delete-asset latest DoNotType-Windows-x64.zip --yes 2>/dev/null || true
+            gh release delete-asset latest DoNotType-Windows-x64.zip.sha256 --yes 2>/dev/null || true
             gh release upload latest dist/* --clobber
             gh release edit latest \
               --title "Latest successful main build" --prerelease --notes-file latest-notes.md

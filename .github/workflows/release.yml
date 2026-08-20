@@ -184,8 +184,8 @@ jobs:
           [[ "$bundled_version" == "$VERSION" ]] ||
             fail "the bundle's CFBundleShortVersionString is '$bundled_version', expected $VERSION."
 
-          # Same one-line format the Windows job asserts; CI checks it on every push so a tag
-          # should never be the first place this is discovered.
+          # CI also asserts this one-line format on the Windows source CLI, so a tag should never
+          # be the first place a shared version contract drifts.
           reported_version=$(.build/DoNotType.app/Contents/MacOS/dnt --version)
           [[ "$reported_version" == "dnt $VERSION ("* ]] ||
             fail "the bundled CLI reports '$reported_version', expected 'dnt $VERSION (<commit>, <date>)'."
@@ -226,240 +226,6 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos
-          path: dist/
-
-  windows:
-    name: Windows app
-    needs: version
-    runs-on: windows-2022
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-    env:
-      PUBLISHABLE: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish }}
-      # Authenticode signing runs through Azure Artifact Signing rather than a certificate file.
-      # Since CA/Browser Forum ballot CSC-13 took effect on 2023-06-01, every code-signing private
-      # key — OV and EV alike — must be generated inside a FIPS 140-2 Level 2 hardware module and
-      # is non-exportable, so there is no .pfx to hand a runner. Authentication is OIDC: the run
-      # exchanges its own identity token for a short-lived Azure credential, which means no signing
-      # secret is stored in this repository at all.
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
-      SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
-      SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Validate signing configuration
-        shell: bash
-        run: |
-          signing_values=0
-          for value in "$AZURE_CLIENT_ID" "$AZURE_TENANT_ID" "$AZURE_SUBSCRIPTION_ID" \
-                       "$SIGNING_ENDPOINT" "$SIGNING_ACCOUNT" "$SIGNING_PROFILE"; do
-            if [[ -n "$value" ]]; then signing_values=$((signing_values + 1)); fi
-          done
-          if [[ "$signing_values" -ne 0 && "$signing_values" -ne 6 ]]; then
-            echo "Windows signing needs all of AZURE_CLIENT_ID, AZURE_TENANT_ID," >&2
-            echo "AZURE_SUBSCRIPTION_ID, AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT, and" >&2
-            echo "AZURE_SIGNING_PROFILE, or none of them. Partial configuration would produce an" >&2
-            echo "unsigned release that looks configured. See docs/RELEASING.md." >&2
-            exit 1
-          fi
-          if [[ "$PUBLISHABLE" == "true" && "$signing_values" -eq 0 ]]; then
-            echo "a publishable release requires Windows Authenticode signing." >&2
-            echo "Unsigned binaries identify no publisher, so SmartScreen may warn or block on" >&2
-            echo "first launch. See docs/RELEASING.md for the signing configuration." >&2
-            exit 1
-          fi
-          echo "SIGNING_CONFIGURED=$([[ "$signing_values" -eq 6 ]] && echo true || echo false)" \
-            >> "$GITHUB_ENV"
-
-      - name: Stamp the version
-        shell: bash
-        env:
-          # Without the leading v: MSBuild rejects "v0.1.0" as an assembly version, and it says so
-          # through a NuGet restore that fails without logging an error, which reads as an outage.
-          VERSION: ${{ needs.version.outputs.version }}
-        run: |
-          ./scripts/stamp-version.sh "$VERSION"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-
-      - name: Restore locked NuGet graph
-        run: dotnet restore windows/DoNotType.slnx --locked-mode
-
-      - name: Unit tests
-        run: dotnet test windows/DoNotType.Core.Tests/DoNotType.Core.Tests.csproj -c Release --no-restore
-
-      # Built from source rather than downloaded. libopus is the project's only native dependency,
-      # and a release binary pulled from a random host is a supply-chain decision nobody reviewed;
-      # compiling a pinned tag in the open is one anybody can audit from the log.
-      - name: Build libopus
-        shell: pwsh
-        run: |
-          git clone --depth 1 --branch v1.5.2 https://github.com/xiph/opus.git $env:RUNNER_TEMP/opus
-          if ((git -C $env:RUNNER_TEMP/opus rev-parse HEAD) -ne "ddbe48383984d56acd9e1ab6a090c54ca6b735a6") {
-            throw "the libopus v1.5.2 tag no longer resolves to the reviewed commit"
-          }
-          cmake -S $env:RUNNER_TEMP/opus -B $env:RUNNER_TEMP/opus/build `
-            -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release
-          cmake --build $env:RUNNER_TEMP/opus/build --config Release
-          New-Item -ItemType Directory -Force -Path native | Out-Null
-          Copy-Item $env:RUNNER_TEMP/opus/build/Release/opus.dll native/opus.dll
-
-      # A shared self-contained layout keeps both executables runnable on a machine without .NET.
-      # A framework-dependent CLI beside a single-file app does not work: the app's embedded
-      # runtime is private and cannot satisfy dnt.exe. Publishing both to one directory deduplicates
-      # that runtime, so correctness costs only a few MB rather than a second 70 MB runtime.
-      - name: Publish self-contained app
-        shell: pwsh
-        run: >
-          dotnet publish windows/DoNotType.App/DoNotType.App.csproj
-          -c Release -r win-x64 --self-contained true
-          -p:PublishSingleFile=false -p:Version=$env:VERSION -o publish
-
-      - name: Publish self-contained CLI into the shared runtime
-        run: >
-          dotnet publish windows/DoNotType.Cli/DoNotType.Cli.csproj
-          -c Release -r win-x64 --self-contained true
-          -p:PublishSingleFile=false -p:Version=$env:VERSION -o publish
-
-      - name: Prepare release layout
-        shell: pwsh
-        run: Copy-Item native/opus.dll publish/opus.dll
-
-      - name: Exercise the packaged executables without a global runtime
-        shell: pwsh
-        run: |
-          if (!(Test-Path publish/hostfxr.dll)) { throw "the private .NET runtime is missing" }
-          $env:DOTNET_ROOT = "$env:RUNNER_TEMP\no-global-dotnet"
-          $env:DOTNET_MULTILEVEL_LOOKUP = "0"
-          $dnt = "$PWD\publish\dnt.exe"
-          if (!(Test-Path publish/LICENSE.txt)) { throw "the MIT license is missing" }
-          if ((Get-Content publish/LICENSE.txt -First 1) -ne "MIT License") {
-            throw "the bundled license is not MIT"
-          }
-          & $dnt prompt validate
-          if ($LASTEXITCODE -ne 0) { throw "the packaged prompt is missing or invalid" }
-          & $dnt providers --no-stored-key
-          if ($LASTEXITCODE -ne 0) { throw "the packaged CLI did not start" }
-          $reportedVersion = (& $dnt --version | Out-String).Trim()
-          if ($LASTEXITCODE -ne 0 -or !$reportedVersion.StartsWith("dnt $env:VERSION (")) {
-            throw "the packaged CLI reports '$reportedVersion', expected $env:VERSION"
-          }
-
-          $app = Start-Process "$PWD\publish\DoNotType.exe" -PassThru
-          try {
-            Start-Sleep -Seconds 15
-            if ($app.HasExited) {
-              throw "the packaged app exited during its launch check with code $($app.ExitCode)"
-            }
-          }
-          finally {
-            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
-          }
-
-      # Enumerated before signing so a renamed or missing binary fails here, naming the file,
-      # rather than shipping a half-signed archive that only a user discovers.
-      - name: Check the binaries to sign are all present
-        if: env.SIGNING_CONFIGURED == 'true'
-        shell: pwsh
-        run: |
-          $binaries = @(
-            "publish\DoNotType.exe",
-            "publish\dnt.exe",
-            "publish\DoNotType.App.dll",
-            "publish\DoNotType.Cli.dll",
-            "publish\DoNotType.Core.dll",
-            "publish\opus.dll"
-          )
-          foreach ($binary in $binaries) {
-            if (!(Test-Path $binary)) { throw "release binary is missing: $binary" }
-          }
-
-      # OIDC: the workflow's own identity token is exchanged for a short-lived Azure credential,
-      # so no Azure secret is stored. `id-token: write` above is what makes that possible.
-      - name: Authenticate to Azure
-        if: env.SIGNING_CONFIGURED == 'true'
-        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      # Timestamping is not optional here: Artifact Signing issues certificates valid for roughly
-      # three days, so an untimestamped signature stops verifying almost immediately. The
-      # countersignature is what keeps it valid long after the certificate itself expires.
-      - name: Sign Windows binaries
-        if: env.SIGNING_CONFIGURED == 'true'
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
-        with:
-          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\publish
-          files-folder-filter: exe,dll
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-
-      # Verified independently of the signing action rather than trusting its exit code, and with
-      # the same signtool check the previous certificate-file path used.
-      - name: Verify Windows signatures
-        if: env.SIGNING_CONFIGURED == 'true'
-        shell: pwsh
-        run: |
-          $signTool = Get-ChildItem `
-            "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" `
-            -ErrorAction SilentlyContinue |
-            Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
-          if (!$signTool) { throw "signtool.exe was not found on the Windows runner" }
-
-          $binaries = @(
-            "publish\DoNotType.exe",
-            "publish\dnt.exe",
-            "publish\DoNotType.App.dll",
-            "publish\DoNotType.Cli.dll",
-            "publish\DoNotType.Core.dll",
-            "publish\opus.dll"
-          )
-          foreach ($binary in $binaries) {
-            & $signTool verify /pa /all /tw $binary
-            if ($LASTEXITCODE -ne 0) {
-              throw "signature verification failed for $binary"
-            }
-          }
-
-      - name: Package
-        shell: pwsh
-        run: |
-          # Both project files already publish prompt/ with its directory layout preserved. Copying
-          # it again here would create publish/prompt/prompt on PowerShell and ship two contracts.
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Compress-Archive -Path publish/* -DestinationPath dist/DoNotType-Windows-x64.zip
-          # Written byte-for-byte rather than through Out-File, which appends a CRLF even with
-          # -Encoding ascii. The trailing \r becomes part of the filename as far as `shasum -c` is
-          # concerned, so verification fails with "No such file or directory" while the hash itself
-          # is perfectly correct — a failure that reads as corruption and is not.
-          $hash = (Get-FileHash dist/DoNotType-Windows-x64.zip -Algorithm SHA256).Hash.ToLower()
-          [System.IO.File]::WriteAllText(
-            "$PWD/dist/DoNotType-Windows-x64.zip.sha256",
-            "$hash  DoNotType-Windows-x64.zip`n")
-
-      - name: Attest build provenance
-        if: github.event.repository.visibility == 'public'
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: dist/DoNotType-Windows-x64.zip
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: windows
           path: dist/
 
   android:
@@ -665,7 +431,7 @@ jobs:
 
   publish:
     name: Publish release
-    needs: [version, macos, windows, android, ios]
+    needs: [version, macos, android, ios]
     if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
     runs-on: ubuntu-latest
     permissions:
@@ -678,10 +444,6 @@ jobs:
           path: artifacts/macos
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: windows
-          path: artifacts/windows
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
           name: android
           path: artifacts/android
 
@@ -691,8 +453,6 @@ jobs:
           assets=(
             macos/DoNotType-macOS.zip
             macos/DoNotType-macOS.zip.sha256
-            windows/DoNotType-Windows-x64.zip
-            windows/DoNotType-Windows-x64.zip.sha256
             android/DoNotType-Android.apk
             android/DoNotType-Android.apk.sha256
           )
@@ -702,7 +462,6 @@ jobs:
           done
           (cd dist && sha256sum --check ./*.sha256)
           unzip -tq dist/DoNotType-macOS.zip
-          unzip -tq dist/DoNotType-Windows-x64.zip
           unzip -tq dist/DoNotType-Android.apk
           ls -la dist/
 
@@ -744,12 +503,8 @@ jobs:
             **macOS** — unzip and drag to Applications. Grant Accessibility and Microphone when
             asked; both are required, and the app checks them at launch.
 
-            **Windows** — unzip anywhere and run `DoNotType.exe`. `opus.dll` must stay beside it:
-            without it dictation still works but uploads are ~16× larger and noticeably slower, and
-            `.opus` recordings cannot be read at all.
-
-            Both desktop archives also contain **`dnt`**, the command line: transcribe a recording,
-            read the log, check which key is being used. On macOS it is inside the bundle at
+            The macOS archive also contains **`dnt`**, the command line: transcribe a recording,
+            read the log, check which key is being used. It is inside the bundle at
             `DoNotType.app/Contents/MacOS/dnt`. See `docs/CLI.md`.
 
             **Android** — install the APK, then enable the keyboard in Settings › System ›
@@ -765,15 +520,15 @@ jobs:
             ## Signing
 
             Every artifact here is signed. The release job refuses to build a publishable tag
-            without a Developer ID certificate and notarization credentials for macOS, an
-            Authenticode identity for Windows, and an upload keystore for Android — so a versioned
-            release cannot be produced unsigned, and there is no "this one might not be" case for
-            you to check.
+            without a Developer ID certificate and notarization credentials for macOS and an
+            upload keystore for Android, so a versioned release cannot be produced unsigned.
+
+            Windows is deliberately not distributed. Its production build has not been manually
+            verified and no Authenticode signing service is configured.
 
             That gate is why the earlier v0.1.x tags were withdrawn rather than fixed: they were
             built before it existed, and an ad-hoc macOS bundle also loses its Accessibility grant
             on every update, because TCC keys permissions to the code signature.
 
-            The unsigned builds that still exist are the rolling
-            [`latest`](https://github.com/bojieli/DoNotType/releases/tag/latest) prerelease, which
-            says so on its own page.
+            The rolling [`latest`](https://github.com/bojieli/DoNotType/releases/tag/latest)
+            prerelease describes its own development-signing status on its page.

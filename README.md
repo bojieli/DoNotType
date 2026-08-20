@@ -62,14 +62,16 @@ the recording remains the source for what you actually said.
 
 ## Quick start
 
-Download a prebuilt **macOS**, **Windows**, or **Android** package from
+Download a prebuilt **macOS** or **Android** package from
 [Releases](https://github.com/bojieli/DoNotType/releases). Each artifact has a matching `.sha256`
 file. The iOS client currently needs to be built from source.
 
-There is no versioned release yet. The available package is
-[the rolling build from the latest green `main`](https://github.com/bojieli/DoNotType/releases/tag/latest).
-It is development software: the macOS app is Developer ID signed and notarized, while Windows is
-unsigned and Android uses a debug key. Building from source gives you a locally signed macOS app.
+Use the newest versioned release for reviewed artifacts, or
+[the rolling build from the latest green `main`](https://github.com/bojieli/DoNotType/releases/tag/latest)
+for development. The macOS download is Developer ID signed and notarized. Windows remains available
+as source but is deliberately not distributed until its production build is manually verified and
+Authenticode signing is available. The rolling Android build uses a debug key; versioned Android
+releases use the configured release keystore.
 
 To build and install the macOS app:
 
