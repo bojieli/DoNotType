@@ -48,6 +48,23 @@ jobs:
             echo "a colliding version unexpectedly passed validation" >&2
             exit 1
           fi
+          # Each of these was typed into the release workflow's version field by someone who
+          # expected it to work. The release job runs the stamper once per platform, so a rejected
+          # input is the one failure that lands on four runners at once — and it must therefore
+          # say what to type instead. Assert the rejection *and* that the message names the
+          # accepted spelling, because a bare "invalid" is what sent the last one to be diagnosed
+          # as missing signing secrets.
+          for bad in 0.2.0-rc1 v0.2.0 1.2 1.2.3.4 01.2.3 1.2.3+build9; do
+            if message=$(./scripts/stamp-version.sh "$bad" 2>&1); then
+              echo "✗ '$bad' was accepted as a version; it must be rejected" >&2
+              exit 1
+            fi
+            if ! grep -Fq 'three dot-separated numbers' <<< "$message"; then
+              echo "✗ rejecting '$bad' did not state the accepted format:" >&2
+              printf '%s\n' "$message" >&2
+              exit 1
+            fi
+          done
           # The release workflow greps the built CLI's output for `dnt <version> (`, on both
           # platforms. Stamping a literal that cannot produce that line is invisible until a tag
           # is cut and the signed macOS build fails verification, so assert the stamped spelling

@@ -21,8 +21,32 @@ VERSION="${1:-}"
 # Rejects a tag like `v1.2`, `1.2.3-beta`, or `01.2.3` early rather than after three builds:
 # CFBundleVersion and Android's versionName both want a dotted numeric string, and a malformed one
 # fails late. Leading zeroes are rejected so every version has one canonical spelling.
+#
+# The message names the grammar and the reason, because this runs once per platform in the release
+# workflow: a rejected `--version` input fails four jobs on three operating systems within a minute
+# of each other, and "all platforms red, publish skipped" reads exactly like absent signing
+# secrets. Saying what is accepted here is what stops that from being diagnosed as an outage.
 if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-  echo "✗ '$VERSION' is not x.y.z" >&2
+  echo "✗ '$VERSION' is not a version this project can stamp." >&2
+  echo "  Expected three dot-separated numbers and nothing else: 0.2.0, 1.0.0, 12.4.31." >&2
+  case "$VERSION" in
+    v*)
+      echo "  Drop the leading 'v': the tag is v${VERSION#v}, the version is ${VERSION#v}." >&2
+      ;;
+    *-*|*+*)
+      echo "  A pre-release or build suffix cannot be carried. Apple's CFBundleVersion and" >&2
+      echo "  Android's versionCode are integers computed from these three numbers, and there" >&2
+      echo "  is nowhere in either to put '${VERSION#*[-+]}'. Ship a normal version and mark" >&2
+      echo "  the GitHub release itself as a pre-release, which is a publishing choice rather" >&2
+      echo "  than part of the number every client reports." >&2
+      ;;
+    *.*.*.*)
+      echo "  Four components is one too many; the build number is derived, not supplied." >&2
+      ;;
+    0*|*.0[0-9]*)
+      echo "  Leading zeroes are rejected so each version has exactly one spelling." >&2
+      ;;
+  esac
   exit 2
 fi
 

@@ -38,6 +38,12 @@ Versions use canonical `x.y.z` numbers. Minor and patch are limited to `0`–`99
 build number and Android version code reserve two decimal places for each; the stamping script
 rejects a value that would collide or exceed Android's numeric limit.
 
+Three numbers and nothing else. No leading `v` — the tag is `v0.2.0`, the version is `0.2.0` — and
+no `-rc1` or `+build` suffix: `CFBundleVersion` and `versionCode` are integers computed from those
+three numbers, so a suffix has nowhere to go on two of the four platforms. To ship a candidate, use
+an ordinary version and mark the GitHub release itself as a pre-release, which is a property of the
+release rather than of the number every client reports.
+
 ### Dry runs
 
 To exercise the packaging without cutting a release, run the workflow manually from the Actions tab
