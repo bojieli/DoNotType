@@ -17,6 +17,10 @@ import app.donottype.core.PersonalDictionary
 import app.donottype.ui.themeColor
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.inputmethodservice.InputMethodService
 import android.util.Log
 import android.view.Gravity
@@ -30,7 +34,9 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.appcompat.view.ContextThemeWrapper
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import kotlinx.coroutines.CoroutineScope
@@ -237,70 +243,105 @@ class DoNotTypeIME : InputMethodService() {
         modeButton = buildModeButton()
         indicator = DictationIndicatorView(ui)
 
-        talkButton = Button(ui).apply {
-            textSize = 17f
-            // Tap to toggle, hold to talk -- the same gesture the desktop hotkey uses, and for the
-            // same reason. Hold-only forces you to keep a finger down for the length of a thought,
-            // which is fine for a sentence and miserable for a paragraph; toggle-only means a
-            // mis-tap leaves the microphone open. Supporting both costs one timer: if the button
-            // is still down after HOLD_THRESHOLD_MS the gesture is a hold and release ends it,
-            // otherwise it was a tap and recording continues until the next tap.
-            setOnTouchListener { view, event ->
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        view.performClick()
-                        dictation.pressDown(event.eventTime)
-                        true
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        dictation.pressUp(
-                            cancelled = event.action == MotionEvent.ACTION_CANCEL,
-                            eventTime = event.eventTime,
-                        )
-                        true
-                    }
-                    else -> false
-                }
-            }
-        }
+        talkButton = buildTalkButton()
 
         root.addView(
             statusLabel,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)),
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(STATUS_DP)),
         )
         root.addView(
             indicator,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(28)),
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(METER_DP)),
         )
 
         val primaryRow = FrameLayout(ui).apply {
             addView(
                 talkButton,
-                FrameLayout.LayoutParams(dp(160), dp(56), Gravity.CENTER),
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(TALK_H_DP), Gravity.CENTER,
+                ),
             )
             addView(
                 modeButton,
-                FrameLayout.LayoutParams(dp(80), dp(34), Gravity.START or Gravity.CENTER_VERTICAL),
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dp(MODE_H_DP),
+                    Gravity.START or Gravity.CENTER_VERTICAL,
+                ),
             )
         }
         root.addView(
             primaryRow,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)),
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(TALK_H_DP)),
         )
         refreshModeButton()
         render()
         return root
     }
 
-    /** Shows the current live mode without taking horizontal space from the speaking control. */
-    private fun buildModeButton(): Button = Button(ui).apply {
-        textSize = 12f
+    /**
+     * The one control the keyboard is for: a capsule, matching the app's record button and iOS's
+     * Speak button rather than the platform's rectangle.
+     *
+     * Its background is set per state by [renderTalkButton], so the shape is a drawable this file
+     * owns rather than a `setBackgroundColor` -- which would replace the shape along with the
+     * colour and leave a square button the first time the state changed.
+     */
+    private fun buildTalkButton(): Button = Button(ui).apply {
+        textSize = 17f
         isAllCaps = false
-        minWidth = 0
-        minimumWidth = 0
+        stateListAnimator = null
+        // A minimum rather than a fixed width. The button is 170dp for "Tap to talk", which is
+        // what iOS is, but its widest state is "API key required" -- and that clipped, so the one
+        // state that explains why nothing works was the one state you could not read.
+        minWidth = dp(TALK_W_DP)
+        minimumWidth = dp(TALK_W_DP)
         minHeight = 0
         minimumHeight = 0
-        setPadding(dp(8), dp(2), dp(8), dp(2))
+        gravity = Gravity.CENTER
+        setPadding(dp(TALK_PAD_DP), 0, dp(TALK_PAD_DP), 0)
+        compoundDrawablePadding = dp(6)
+        // Tap to toggle, hold to talk -- the same gesture the desktop hotkey uses, and for the
+        // same reason. Hold-only forces you to keep a finger down for the length of a thought,
+        // which is fine for a sentence and miserable for a paragraph; toggle-only means a
+        // mis-tap leaves the microphone open. Supporting both costs one timer: if the button
+        // is still down after HOLD_THRESHOLD_MS the gesture is a hold and release ends it,
+        // otherwise it was a tap and recording continues until the next tap.
+        setOnTouchListener { view, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    view.performClick()
+                    dictation.pressDown(event.eventTime)
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    dictation.pressUp(
+                        cancelled = event.action == MotionEvent.ACTION_CANCEL,
+                        eventTime = event.eventTime,
+                    )
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    /**
+     * Shows the current live mode without taking horizontal space from the speaking control.
+     *
+     * Smaller than iOS's 86x34 pill, on purpose. iOS puts its mode control on a row of its own; on
+     * this bar it sits beside the talk button, and at the old size a saturated block competed with
+     * the one control the keyboard exists for. It is read far more often than it is pressed.
+     */
+    private fun buildModeButton(): Button = Button(ui).apply {
+        textSize = 11f
+        isAllCaps = false
+        stateListAnimator = null
+        minWidth = dp(MODE_W_DP)
+        minimumWidth = dp(MODE_W_DP)
+        minHeight = 0
+        minimumHeight = 0
+        setPadding(dp(9), 0, dp(9), 0)
         setOnClickListener {
             val rewrite = !Settings.rewriteModeEnabled
             val availability = RewriteAvailability.resolve(Settings.provider) {
@@ -318,6 +359,29 @@ class DoNotTypeIME : InputMethodService() {
             refreshModeButton()
         }
     }
+
+    // MARK: - Bar styling
+
+    /** A filled capsule or key in [color], pressable. Used for the talk button and the mode chip. */
+    private fun filled(color: Int, radius: Float): Drawable {
+        val fill = GradientDrawable().apply {
+            cornerRadius = radius
+            setColor(color)
+        }
+        return RippleDrawable(ColorStateList.valueOf(rippleColor()), fill, null)
+    }
+
+    /** Visible against both a light and a dark fill without becoming a second colour. */
+    private fun rippleColor(): Int = ColorUtils.setAlphaComponent(
+        ui.themeColor(com.google.android.material.R.attr.colorOnSurface),
+        RIPPLE_ALPHA,
+    )
+
+    private fun tinted(id: Int, color: Int, sizeDp: Int): Drawable? =
+        AppCompatResources.getDrawable(ui, id)?.mutate()?.apply {
+            setTint(color)
+            setBounds(0, 0, dp(sizeDp), dp(sizeDp))
+        }
 
     private fun refreshModeButton() {
         if (!::modeButton.isInitialized) return
@@ -349,7 +413,7 @@ class DoNotTypeIME : InputMethodService() {
                 },
             ),
         )
-        modeButton.setBackgroundColor(
+        modeButton.background = filled(
             ui.themeColor(
                 if (rewrite) {
                     com.google.android.material.R.attr.colorTertiaryContainer
@@ -357,6 +421,7 @@ class DoNotTypeIME : InputMethodService() {
                     androidx.appcompat.R.attr.colorPrimary
                 },
             ),
+            dp(MODE_H_DP) / 2f,
         )
         modeButton.contentDescription = when {
             canSwitch -> "Current mode: $current. Tap to switch to $next"
@@ -595,38 +660,85 @@ class DoNotTypeIME : InputMethodService() {
                         "Tap to talk, or hold"
                     })
                 }
-                talkButton.text = if (hasAPIKey) "Tap to talk" else "API key required"
-                talkButton.isEnabled = hasAPIKey
+                renderTalkButton(
+                    text = if (hasAPIKey) "Tap to talk" else "API key required",
+                    icon = R.drawable.ic_mic,
+                    enabled = hasAPIKey,
+                )
                 indicator.mode = DictationIndicatorView.Mode.IDLE
             }
             State.RECORDING -> {
                 showStatus("Listening…")
-                talkButton.text = "Tap to stop"
-                talkButton.isEnabled = true
+                renderTalkButton(text = "Tap to stop", icon = R.drawable.ic_stop, recording = true)
                 indicator.mode = DictationIndicatorView.Mode.RECORDING
             }
             State.TRANSCRIBING -> {
                 // Named rather than left as a spinner: after you stop talking the wait is dead
                 // time, and "Transcribing" tells you what is consuming it and that it will end.
                 showStatus("Transcribing…")
-                talkButton.text = "Working…"
-                talkButton.isEnabled = false
+                renderTalkButton(text = "Working…", icon = null, enabled = false)
                 indicator.mode = DictationIndicatorView.Mode.TRANSCRIBING
             }
             State.NOTICE -> {
                 // showNotice already supplied the meaningful line; do not overwrite it with the
                 // generic idle prompt as the old IDLE transition did.
-                talkButton.text = "Tap to talk"
-                talkButton.isEnabled = hasAPIKey
+                renderTalkButton(
+                    text = "Tap to talk",
+                    icon = R.drawable.ic_mic,
+                    enabled = hasAPIKey,
+                )
                 indicator.mode = DictationIndicatorView.Mode.IDLE
             }
             State.ERROR -> {
-                talkButton.text = if (hasAPIKey) "Tap to talk" else "API key required"
-                talkButton.isEnabled = hasAPIKey
+                renderTalkButton(
+                    text = if (hasAPIKey) "Tap to talk" else "API key required",
+                    icon = R.drawable.ic_mic,
+                    enabled = hasAPIKey,
+                )
                 indicator.mode = DictationIndicatorView.Mode.IDLE
             }
         }
         refreshModeButton()
+    }
+
+    /**
+     * The talk button, in one place so its shape cannot be lost with its colour.
+     *
+     * Red while recording, for the same reason the app's record button is: it is the one state
+     * where the next press throws something away if it was not meant, and the colour is the only
+     * part of the button visible from across a room.
+     */
+    private fun renderTalkButton(
+        text: String,
+        icon: Int?,
+        enabled: Boolean = true,
+        recording: Boolean = false,
+    ) {
+        val fill = ui.themeColor(
+            when {
+                recording -> androidx.appcompat.R.attr.colorError
+                enabled -> androidx.appcompat.R.attr.colorPrimary
+                else -> com.google.android.material.R.attr.colorSurfaceContainerHighest
+            },
+        )
+        val onFill = ui.themeColor(
+            when {
+                recording -> com.google.android.material.R.attr.colorOnError
+                enabled -> com.google.android.material.R.attr.colorOnPrimary
+                else -> com.google.android.material.R.attr.colorOnSurfaceVariant
+            },
+        )
+        talkButton.text = text
+        talkButton.isEnabled = enabled
+        talkButton.setTextColor(onFill)
+        // setCompoundDrawablesRelative rather than ...WithIntrinsicBounds, which re-derives the
+        // bounds from the vector's own 24dp and throws away the size asked for here.
+        talkButton.setCompoundDrawablesRelative(
+            icon?.let { tinted(it, onFill, TALK_ICON_DP) }, null, null, null,
+        )
+        // Half the height, so both ends are semicircles: the capsule iOS gets from
+        // `cornerStyle = .capsule`, and the same shape as the app's own record control.
+        talkButton.background = filled(fill, dp(TALK_H_DP) / 2f)
     }
 
     private fun dp(value: Int): Int =
@@ -639,11 +751,38 @@ class DoNotTypeIME : InputMethodService() {
     private val padTop: Int get() = dp(PAD_TOP_DP)
     private val padBottom: Int get() = dp(PAD_BOTTOM_DP)
 
+    /**
+     * The bar's geometry, in dp, matching the iOS keyboard's so the two feel like one product.
+     *
+     * iOS is 170x58 for the Speak button with a 29pt radius, and points and dp are the same size in
+     * the hand, so that number carries over unchanged; only the total height differs, because iOS
+     * pins its keyboard to 170pt and an Android IME is as tall as its content. The mode chip is
+     * deliberately smaller than iOS's 86x34 -- see [buildModeButton].
+     *
+     * The widths are minimums, not fixed sizes. iOS lays its keys out in English and never has to
+     * fit anything longer, whereas these labels change with what has gone wrong ("API key
+     * required") -- and a control that clips its own label is worse than one a few dp wider than
+     * its counterpart.
+     */
     private companion object {
         const val TAG = "DoNotTypeIME"
 
-        const val PAD_SIDE_DP = 18
-        const val PAD_TOP_DP = 12
-        const val PAD_BOTTOM_DP = 12
+        const val PAD_SIDE_DP = 12
+        const val PAD_TOP_DP = 6
+        const val PAD_BOTTOM_DP = 8
+
+        const val STATUS_DP = 34
+        const val METER_DP = 26
+
+        const val TALK_W_DP = 170
+        const val TALK_H_DP = 58
+        const val TALK_ICON_DP = 22
+        const val TALK_PAD_DP = 20
+
+        const val MODE_W_DP = 68
+        const val MODE_H_DP = 28
+
+        /** Visible against both a light and a dark fill without becoming a second fill. */
+        const val RIPPLE_ALPHA = 40
     }
 }
