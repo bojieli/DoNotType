@@ -92,6 +92,15 @@ fun Context.screenScaffold(content: (LinearLayout) -> Unit): ScrollView {
     val column = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(gutter, dimen(R.dimen.space_m), gutter, dimen(R.dimen.space_xxl))
+        // Takes the initial focus itself so the scroll view does not.
+        //
+        // A ScrollView scrolls to whichever descendant holds focus at first layout, and with no
+        // claimant that is the topmost EditText -- so a screen whose first field is halfway down
+        // opens halfway down, past its own title. It is a race rather than a constant: the same
+        // screen opened at the top on the next launch, which is the worst version of the bug,
+        // because the section a flow puts first is the section it is arguing should be read first.
+        isFocusableInTouchMode = true
+        descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
     }
     content(column)
     return ScrollView(this).apply {
