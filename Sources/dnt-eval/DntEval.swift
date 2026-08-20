@@ -13,7 +13,7 @@ struct DntEval: AsyncParsableCommand {
         subcommands: [
             Probe.self, Once.self, Suite.self, Ablate.self, Rewrite.self, Conformance.self,
             Encode.self, OggGolden.self, ToneGolden.self, KeytermsCommand.self, Dictation.self,
-            Silence.self, Replay.self, HistoryBenchmark.self,
+            Silence.self, Replay.self, HistoryBenchmark.self, Rescore.self,
         ],
         defaultSubcommand: Suite.self
     )
@@ -280,6 +280,14 @@ struct Suite: AsyncParsableCommand {
         help: "Runs per case. Transcription is non-deterministic; one run is an anecdote.")
     var repeatCount: Int = 3
 
+    @Option(
+        name: .long,
+        help: """
+            Write every transcript and this run's verdict here, so the scoring can be re-checked \
+            without the audio. Commit it — see `dnt-eval rescore`.
+            """)
+    var scorecard: String?
+
     mutating func run() async throws {
         let (runner, kind) = try options.makeRunner()
         let cases = try EvalRunner.loadCases(in: URL(fileURLWithPath: directory))
@@ -304,6 +312,11 @@ struct Suite: AsyncParsableCommand {
         var byPass = [[EvalOutcome]](repeating: [], count: max(1, repeatCount))
         var unstable: [String] = []
 
+        // Every transcript, labelled by case and pass, for `--scorecard`. Collected as the run
+        // goes rather than reconstructed after, because a case that errored contributes no entry
+        // and a scorecard must not imply it did.
+        var scorecardEntries: [EvalScorecard.Entry] = []
+
         for (testCase, url) in cases {
             var runs: [EvalOutcome] = []
             for pass in 0..<repeatCount {
@@ -311,6 +324,13 @@ struct Suite: AsyncParsableCommand {
                     let outcome = try await runner.run(testCase, caseFile: url)
                     byPass[pass].append(outcome)
                     runs.append(outcome)
+                    scorecardEntries.append(
+                        EvalScorecard.Entry(
+                            caseID: outcome.caseID,
+                            pass: pass,
+                            withContext: outcome.withContext,
+                            withoutContext: outcome.withoutContext,
+                            audioTokens: outcome.audioTokens))
                 } catch {
                     // One unreachable case must not discard the whole run. Recorded and reported
                     // rather than swallowed, so a partial suite is never mistaken for a clean one.
@@ -370,18 +390,56 @@ struct Suite: AsyncParsableCommand {
                     + "anything — re-measure with more passes before believing it.")
         }
 
+        // Printed in full, never truncated: a caller debugging a failed run needs the exact text
+        // to paste, and a clipped message sends them looking for a fault that is not there.
         if !errored.isEmpty {
             print("\nerrors (\(errored.count) run(s) did not complete):")
-            for message in errored.prefix(5) { print("  \(message.prefix(120))") }
+            for message in errored { print("  \(message)") }
         }
 
         try await options.closeCassette(runner)
+
+        // Written before the failure exits below: a run that found a regression is exactly the run
+        // whose transcripts somebody needs to read.
+        if let scorecard {
+            let url = URL(fileURLWithPath: scorecard)
+            try EvalScorecard(
+                provenance: Cassette.Provenance(
+                    provider: kind.rawValue,
+                    model: runner.model,
+                    fidelity: runner.fidelity.rawValue,
+                    recordedAt: Date(),
+                    promptDigest: CassetteKey.digest(of: runner.systemInstruction)),
+                caseDirectory: directory,
+                summary: EvalScorecard.Summary(outcomes: all),
+                entries: scorecardEntries
+            ).write(to: url)
+            print("\nwrote \(scorecardEntries.count) transcript pair(s) to \(scorecard)")
+        }
 
         if !regressions.isEmpty {
             print("\nregressions:")
             for outcome in regressions {
                 print("  \(outcome.caseID): \(outcome.withoutContext) → \(outcome.withContext)")
             }
+            throw ExitCode.failure
+        }
+
+        // A suite that measured nothing is not a passing suite. Both of these used to print and
+        // then exit 0, which is the worst way to be wrong: a replay against a stale cassette
+        // reported 48 errors, scored zero runs, and still turned a CI job green — so the job
+        // testified that the scoring was intact when it had not scored anything at all.
+        if !errored.isEmpty {
+            print(
+                "\n✗ \(errored.count) run(s) did not complete. A suite that could not run every "
+                    + "case has not measured anything, so this is a failure and not a partial "
+                    + "result.")
+            throw ExitCode.failure
+        }
+        if all.isEmpty {
+            print(
+                "\n✗ no runs completed, so nothing was measured. If this was a replay, the "
+                    + "cassette does not answer the requests this suite makes — re-record it.")
             throw ExitCode.failure
         }
     }
