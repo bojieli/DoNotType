@@ -1,0 +1,308 @@
+{
+  "caseDirectory" : "eval/nearmiss",
+  "entries" : [
+    {
+      "caseID" : "gemini-version",
+      "pass" : 0,
+      "withContext" : "We should switch to gemini three point five flash for this.",
+      "withoutContext" : "We should switch to gemini three point five flash for this."
+    },
+    {
+      "caseID" : "gemini-version",
+      "pass" : 1,
+      "withContext" : "We should switch to gemini three point five flash for this.",
+      "withoutContext" : "We should switch to gemini three point five flash for this."
+    },
+    {
+      "caseID" : "gemini-version",
+      "pass" : 2,
+      "withContext" : "We should switch to gemini three point five flash for this.",
+      "withoutContext" : "We should switch to gemini three point five flash for this."
+    },
+    {
+      "caseID" : "port-number",
+      "pass" : 0,
+      "withContext" : "Run the dev server on port eighty eighty one.",
+      "withoutContext" : "Run the dev server on port eighty eighty one."
+    },
+    {
+      "caseID" : "port-number",
+      "pass" : 1,
+      "withContext" : "Run the dev server on port eighty eighty one.",
+      "withoutContext" : "Run the dev server on port eighty eighty one."
+    },
+    {
+      "caseID" : "port-number",
+      "pass" : 2,
+      "withContext" : "Run the dev server on port eighty eighty one.",
+      "withoutContext" : "Run the dev server on port eighty eighty one."
+    },
+    {
+      "caseID" : "person-name",
+      "pass" : 0,
+      "withContext" : "Can you send the draft to priya before friday?",
+      "withoutContext" : "Can you send the draft to priya before friday?"
+    },
+    {
+      "caseID" : "person-name",
+      "pass" : 1,
+      "withContext" : "Can you send the draft to priya before friday?",
+      "withoutContext" : "Can you send the draft to priya before friday?"
+    },
+    {
+      "caseID" : "person-name",
+      "pass" : 2,
+      "withContext" : "Can you send the draft to priya before friday?",
+      "withoutContext" : "Can you send the draft to priya before friday?"
+    },
+    {
+      "caseID" : "jargon-spelling",
+      "pass" : 0,
+      "withContext" : "We load the native library through coffee at startup.",
+      "withoutContext" : "We load the native library through coffee at startup."
+    },
+    {
+      "caseID" : "jargon-spelling",
+      "pass" : 1,
+      "withContext" : "We load the native library through coffee at startup.",
+      "withoutContext" : "We load the native library through coffee at startup."
+    },
+    {
+      "caseID" : "jargon-spelling",
+      "pass" : 2,
+      "withContext" : "We load the native library through coffee at startup.",
+      "withoutContext" : "We load the native library through coffee at startup."
+    },
+    {
+      "caseID" : "git-command",
+      "pass" : 0,
+      "withContext" : "Let's just do git commit dash dash amend and move on.",
+      "withoutContext" : "Let's just do git commit dash dash amend and move on."
+    },
+    {
+      "caseID" : "git-command",
+      "pass" : 1,
+      "withContext" : "Let's just do git commit dash dash amend and move on.",
+      "withoutContext" : "Let's just do git commit dash dash amend and move on."
+    },
+    {
+      "caseID" : "git-command",
+      "pass" : 2,
+      "withContext" : "Let's just do git commit dash dash amend and move on.",
+      "withoutContext" : "Let's just do git commit dash dash amend and move on."
+    },
+    {
+      "caseID" : "real-version-number",
+      "pass" : 0,
+      "withContext" : "Simplified thoughts, and it continues this thinking. Why this works? So we basically observe the LM processing speed. We know that for the prefill, for input tokens, we can achieve more than five hundred tokens per second for the input. And also the solar models, including Jimena two point five",
+      "withoutContext" : "Simplified thoughts, and it continues this thinking. Why this works? So we basically observe the LM processing speed. We know that for the prefill, for input tokens, we can achieve more than five hundred tokens per second for the input. And also the solar models, including Jimena two point five"
+    },
+    {
+      "caseID" : "real-version-number",
+      "pass" : 1,
+      "withContext" : "Satisfied thoughts, and it continues this thinking. Why this works? So we basically observe the LM processing speed. We know that for the prefill, for input tokens, we can achieve more than five hundred tokens per second for the input. And also the solar models, including Jimena two point five",
+      "withoutContext" : "Simplified thoughts, and it continues this thinking. Why this works? So we basically observe the LM processing speed. We know that for the prefill, for input tokens, we can achieve more than five hundred tokens per second for the input. And also the solar models, including Jimena two point five"
+    },
+    {
+      "caseID" : "real-version-number",
+      "pass" : 2,
+      "withContext" : "Simplified thoughts, and it continues this thinking. Why this works? So we basically observe the LM processing speed. We know that for the prefill, for input tokens, we can achieve more than five hundred tokens per second for the input. And also the solar models, including Jimena two point five",
+      "withoutContext" : "Simplified thoughts, and it continues this thinking. Why this works? So we basically observe the LM processing speed. We know that for the prefill, for input tokens, we can achieve more than five hundred tokens per second for the input. And also the solar models, including Jimena two point five"
+    },
+    {
+      "caseID" : "real-mandarin",
+      "pass" : 0,
+      "withContext" : "那么现在通过AI呢，可以在其中去增加自己的response，就是用户可以去选择一个自己的选择，然后AI在其中呢，呃，经过处理之后呢，它会引入到一个新的storyline，那么这个新的storyline可能就是AI生成的这样的一个完全不同的隐藏款剧情。 那么根据这个AI呢，呃，AI还可以根据用户的这个响应的这个稀缺程度，然后来评-",
+      "withoutContext" : "那么现在通过AI呢，可以在其中去增加自己的response，就是用户可以去选择一个自己的选择，然后AI在其中呢，呃，经过处理之后呢，它会引入到一个新的storyline，那么这个新的storyline可能就是AI生成的这样的一个完全不同的隐藏款剧情。 那么根据这个AI呢，呃，AI还可以根据用户的这个响应的这个稀缺程度，然后来评-"
+    },
+    {
+      "caseID" : "real-mandarin",
+      "pass" : 1,
+      "withContext" : "那么现在通过AI呢，可以在其中去增加自己的response，就是用户可以去选择一个自己的选择，然后AI在其中呢，呃，经过处理之后呢，它会引入到一个新的storyline，那么这个新的storyline可能就是AI生成的这样的一个完全不同的隐藏款剧情。 那么根据这个AI呢，呃，AI还可以根据用户的这个响应的这个稀缺程度，然后来评-",
+      "withoutContext" : "那么现在通过AI呢，可以在其中去增加自己的response，就是用户可以去选择一个自己的选择，然后AI在其中呢，呃，经过处理之后呢，它会引入到一个新的storyline，那么这个新的storyline可能就是AI生成的这样的一个完全不同的隐藏款剧情。 那么根据这个AI呢，呃，AI还可以根据用户的这个响应的这个稀缺程度，然后来评-"
+    },
+    {
+      "caseID" : "real-mandarin",
+      "pass" : 2,
+      "withContext" : "那么现在通过AI呢，可以在其中去增加自己的response，就是用户可以去选择一个自己的选择，然后AI在其中呢，呃，经过处理之后呢，它会引入到一个新的storyline，那么这个新的storyline可能就是AI生成的这样的一个完全不同的隐藏款剧情。 那么根据这个AI呢，呃，AI还可以根据用户的这个响应的这个稀缺程度，然后来评-",
+      "withoutContext" : "那么现在通过AI呢，可以在其中去增加自己的response，就是用户可以去选择一个自己的选择，然后AI在其中呢，呃，经过处理之后呢，它会引入到一个新的storyline，那么这个新的storyline可能就是AI生成的这样的一个完全不同的隐藏款剧情。 那么根据这个AI呢，呃，AI还可以根据用户的这个响应的这个稀缺程度，然后来评-"
+    },
+    {
+      "caseID" : "real-codeswitch",
+      "pass" : 0,
+      "withContext" : "我要是把这几个要给它串起来，就搞成一个 retrieval pipeline 要给它串一起的，然后它这所有都一样，所以说我要把它，那这个给它分开，比如说这个是四二四零我印象里，然后 OK，然后这个就是这这就算是这个弄好了，然后可以看到在这个里边，它就把这个 index 已经把它这个这这",
+      "withoutContext" : "我要是把这几个要给它串起来，就搞成一个 retrieval pipeline 要给它串一起的，然后它这所有都一样，所以说我要把它，那这个给它分开，比如说这个是四二四零我印象里，然后 OK，然后这个就是这这就算是这个弄好了，然后可以看到在这个里边，它就把这个 index 已经把它这个这这"
+    },
+    {
+      "caseID" : "real-codeswitch",
+      "pass" : 1,
+      "withContext" : "我要是把这几个要给它串起来，就搞成一个 retrieval pipeline 要给它串一起的，然后它这所有都一样，所以说我要把它，那这个给它分开，比如说这个是四二四零我印象里，然后 OK，然后这个就是这这就算是这个弄好了，然后可以看到在这个里边，它就把这个 index 已经把这这个这",
+      "withoutContext" : "我要是把这几个要给它串起来，就搞成一个 retrieval pipeline 要给它串一起的，然后它这所有都一样，所以说我要把它，那这个给它分开，比如说这个是四二四零我印象里，然后 OK，然后这个就是这这就算是这个弄好了，然后可以看到在这个里边，它就把这个 index 已经把它这个这这"
+    },
+    {
+      "caseID" : "real-codeswitch",
+      "pass" : 2,
+      "withContext" : "我要是把这几个要给它串起来，就搞成一个 retrieval pipeline 要给它串一起的，然后它这所有都一样，所以说我要把它，那这个给它分开，比如说这个是四二四零我印象里，然后 OK，然后这个就是这这就算是这个弄好了，然后可以看到在这个里边，它就把这个 index 已经把它这个这这",
+      "withoutContext" : "我要是把这几个要给它串起来，就搞成一个 retrieval pipeline 要给它串一起的，然后它这所有都一样，所以说我要把它，那这个给它分开，比如说这个是四二四零我印象里，然后 OK，然后这个就是这这就算是这个弄好了，然后可以看到在这个里边，它就把这个 index 已经把它这个这这"
+    },
+    {
+      "caseID" : "real-acronym",
+      "pass" : 0,
+      "withContext" : "一部分参数呢，它是专门呢，就是用像这个跟用现在的类似 DAP-DAPo 的方法，然后去训它的 gradient。然后另外一种呢，就是说我就用这个 Max，呃，就是呃，Next Token Prediction 的方法去 minimize 它 predict 的 loss，但是这里 predict 的东西它不是 X f t",
+      "withoutContext" : "一部分参数呢，它是专门呢，就是用像这个跟用现在的类似 DAP-DAPo 的方法，然后去训它的 gradient。然后另外一种呢，就是说我就用这个 Max，呃，就是呃，Next Token Prediction 的方法去 minimize 它 predict 的 loss，但是这里 predict 的东西它不是 X f t"
+    },
+    {
+      "caseID" : "real-acronym",
+      "pass" : 1,
+      "withContext" : "一部分参数呢，它是专门呢，就是用像这个跟用现在的类似 DAP-DAPo 的方法，然后去训它的 gradient。然后另外一种呢，就是说我就用这个 Max，呃，就是呃，Next Token Prediction 的方法去 minimize 它 predict 的 loss，但是这里 predict 的东西它不是 X f t",
+      "withoutContext" : "一部分参数呢，它是专门呢，就是用像这个跟用现在的类似 DAP-DAPo 的方法，然后去训它的 gradient。然后另外一种呢，就是说我就用这个 Max，呃，就是呃，Next Token Prediction 的方法去 minimize 它 predict 的 loss，但是这里 predict 的东西它不是 X f t"
+    },
+    {
+      "caseID" : "real-acronym",
+      "pass" : 2,
+      "withContext" : "一部分参数呢，它是专门呢，就是用像这个跟用现在的类似 DAP-DAPo 的方法，然后去训它的 gradient。然后另外一种呢，就是说我就用这个 Max，呃，就是呃，Next Token Prediction 的方法去 minimize 它 predict 的 loss，但是这里 predict 的东西它不是 X f t",
+      "withoutContext" : "一部分参数呢，它是专门呢，就是用像这个跟用现在的类似 DAP-DAPo 的方法，然后去训它的 gradient。然后另外一种呢，就是说我就用这个 Max，呃，就是呃，Next Token Prediction 的方法去 minimize 它 predict 的 loss，但是这里 predict 的东西它不是 X f t"
+    },
+    {
+      "caseID" : "real-acronym-chain",
+      "pass" : 0,
+      "withContext" : "Wait for the speech and event of the VAD model, which is-- which means voice activity detection, and then feed that into the ASR model, and then feed the complete sentence into the large language model, which performs the thought process, and then split all the responses of the large language model",
+      "withoutContext" : "Wait for the speech and event of the VAD model, which is-- which means voice activity detection, and then feed that into the ASR model, and then feed the complete sentence into the large language model, which performs the thought process, and then split all the responses of the large language model"
+    },
+    {
+      "caseID" : "real-acronym-chain",
+      "pass" : 1,
+      "withContext" : "Wait for the speech and event of the VAD model, which is-- which means voice activity detection, and then feed that into the ASR model, and then feed the complete sentence into the large language model, which performs the thought process, and then split all the responses of the large language model",
+      "withoutContext" : "Wait for the speech and event of the VAD model, which is-- which means voice activity detection, and then feed that into the ASR model, and then feed the complete sentence into the large language model, which performs the thought process, and then split all the responses of the large language model"
+    },
+    {
+      "caseID" : "real-acronym-chain",
+      "pass" : 2,
+      "withContext" : "Wait for the speech and event of the VAD model, which is-- which means voice activity detection, and then feed that into the ASR model, and then feed the complete sentence into the large language model, which performs the thought process, and then split all the responses of the large language model",
+      "withoutContext" : "Wait for the speech and event of the VAD model, which is-- which means voice activity detection, and then feed that into the ASR model, and then feed the complete sentence into the large language model, which performs the thought process, and then split all the responses of the large language-"
+    },
+    {
+      "caseID" : "real-jargon",
+      "pass" : 0,
+      "withContext" : "Each problem that are identified, and for some important work items, we can read the Scrum dashboard and create a work item and create a test cases and the session that means the agent's working session for the manual inspection of the developer.",
+      "withoutContext" : "Each problem that are identified, and for some important work items, we can read the Scrum dashboard and create a work item and create a test cases and the session that is means the agent's working session for the manual inspection of the developer."
+    },
+    {
+      "caseID" : "real-jargon",
+      "pass" : 1,
+      "withContext" : "Each problem that are identified, and for some important work items, we can read the Scrum dashboard and create a work item and create a test cases and the session that is means the agent's working session for the manual inspection of the developer.",
+      "withoutContext" : "Each problem that are identified, and for some important work items, we can read the Scrum dashboard and create a work item and create a test cases and the session that is means the agent's working session for the manual inspection of the developer."
+    },
+    {
+      "caseID" : "real-jargon",
+      "pass" : 2,
+      "withContext" : "Each problem that are identified, and for some important work items, we can read the Scrum dashboard and create a work item and create a test cases and the session that is means the agent's working session for the manual inspection of the developer.",
+      "withoutContext" : "Each problem that are identified, and for some important work items, we can read the Scrum dashboard and create a work item and create a test cases and the session that means the agent's working session for the manual inspection of the developer."
+    },
+    {
+      "caseID" : "real-brand",
+      "pass" : 0,
+      "withContext" : "确，因为就是举个简单的例子，如果说这个搜索这事儿这么简单的话，那每个人都可以说做一个 Google，那为什么 Google 的搜索结果就比必应的好，对吧？必应的又比其他的一些搜索引擎更好？那原因就是说它有很多的这种用户、用户反馈的这些数据，然后还有它自己的一些排序的一些算法，它能够是保证同一个 query 进去之后，它",
+      "withoutContext" : "确，因为就是举个简单的例子，如果说这个搜索这事儿这么简单的话，那每个人都可以说做一个 Google，那为什么 Google 的搜索结果就比必应的好，对吧？必应的又比其他的一些搜索引擎更好？那原因就是说它有很多的这种用户、用户反馈的这些数据，然后还有它自己的一些排序的一些算法，它能够是保证同一个 query 进去之后，它"
+    },
+    {
+      "caseID" : "real-brand",
+      "pass" : 1,
+      "withContext" : "确，因为就是举个简单的例子，如果说这个搜索这事儿这么简单的话，那每个人都可以说做一个 Google，那为什么 Google 的搜索结果就比必应的好，对吧？必应的又比其他的一些搜索引擎更好？那原因就是说它有很多的这种用户、用户反馈的这些数据，然后还有它自己的一些排序的一些算法，它能够是保证同一个 query 进去之后，它",
+      "withoutContext" : "确，因为就是举个简单的例子，如果说这个搜索这事儿这么简单的话，那每个人都可以说做一个 Google，那为什么 Google 的搜索结果就比必应的好，对吧？必应的又比其他的一些搜索引擎更好？那原因就是说它有很多的这种用户、用户反馈的这些数据，然后还有它自己的一些排序的一些算法，它能够是保证同一个 query 进去之后，它"
+    },
+    {
+      "caseID" : "real-brand",
+      "pass" : 2,
+      "withContext" : "确，因为就是举个简单的例子，如果说这个搜索这事儿这么简单的话，那每个人都可以说做一个 Google，那为什么 Google 的搜索结果就比必应的好，对吧？必应的又比其他的一些搜索引擎更好？那原因就是说它有很多的这种用户、用户反馈的这些数据，然后还有它自己的一些排序的一些算法，它能够是保证同一个 query 进去之后，它",
+      "withoutContext" : "确，因为就是举个简单的例子，如果说这个搜索这事儿这么简单的话，那每个人都可以说做一个 Google，那为什么 Google 的搜索结果就比必应的好，对吧？必应的又比其他的一些搜索引擎更好？那原因就是说它有很多的这种用户、用户反馈的这些数据，然后还有它自己的一些排序的一些算法，它能够是保证同一个 query 进去之后，它"
+    },
+    {
+      "caseID" : "benefit-novel-name",
+      "pass" : 0,
+      "withContext" : "Ask keith to review the merge before standup.",
+      "withoutContext" : "Ask keith to review the merge before standup."
+    },
+    {
+      "caseID" : "benefit-novel-name",
+      "pass" : 1,
+      "withContext" : "Ask keith to review the merge before standup.",
+      "withoutContext" : "Ask keith to review the merge before stand up."
+    },
+    {
+      "caseID" : "benefit-novel-name",
+      "pass" : 2,
+      "withContext" : "Ask keith to review the merge before stand up.",
+      "withoutContext" : "Ask keith to review the merge before stand up."
+    },
+    {
+      "caseID" : "benefit-novel-codename",
+      "pass" : 0,
+      "withContext" : "The thesali rollout is blocked on the brindalwood cluster.",
+      "withoutContext" : "The thesali rollout is blocked on the brindalwood cluster."
+    },
+    {
+      "caseID" : "benefit-novel-codename",
+      "pass" : 1,
+      "withContext" : "The thesali rollout is blocked on the brindalwood cluster.",
+      "withoutContext" : "The thesali rollout is blocked on the brindalwood cluster."
+    },
+    {
+      "caseID" : "benefit-novel-codename",
+      "pass" : 2,
+      "withContext" : "The thesali rollout is blocked on the brindalwood cluster.",
+      "withoutContext" : "The thesali rollout is blocked on the brindalwood cluster."
+    },
+    {
+      "caseID" : "benefit-novel-repo",
+      "pass" : 0,
+      "withContext" : "Clone quillmark dash sync and run the setup script.",
+      "withoutContext" : "Clone quillmark dash sync and run the setup script."
+    },
+    {
+      "caseID" : "benefit-novel-repo",
+      "pass" : 1,
+      "withContext" : "Clone quillmark dash sync and run the setup script.",
+      "withoutContext" : "Clone quillmark dash sync and run the setup script."
+    },
+    {
+      "caseID" : "benefit-novel-repo",
+      "pass" : 2,
+      "withContext" : "Clone quillmark dash sync and run the setup script.",
+      "withoutContext" : "Clone quillmark dash sync and run the setup script."
+    },
+    {
+      "caseID" : "benefit-caret-channel",
+      "pass" : 0,
+      "withContext" : "Ask keith to review the merge before stand up.",
+      "withoutContext" : "Ask keith to review the merge before standup."
+    },
+    {
+      "caseID" : "benefit-caret-channel",
+      "pass" : 1,
+      "withContext" : "Ask keith to review the merge before stand up.",
+      "withoutContext" : "Ask keith to review the merge before stand up."
+    },
+    {
+      "caseID" : "benefit-caret-channel",
+      "pass" : 2,
+      "withContext" : "Ask keith to review the merge before stand up.",
+      "withoutContext" : "Ask keith to review the merge before stand up."
+    }
+  ],
+  "provenance" : {
+    "fidelity" : "light",
+    "model" : "grok-stt",
+    "promptDigest" : "c1394bed994c",
+    "provider" : "xai",
+    "recordedAt" : "2026-08-20T02:56:53Z"
+  },
+  "summary" : {
+    "improved" : 0,
+    "neutralCorrect" : 15,
+    "neutralWrong" : 33,
+    "passed" : 15,
+    "regressed" : 0,
+    "runs" : 48
+  }
+}
