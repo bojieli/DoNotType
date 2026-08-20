@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to stamp into manually built artifacts'
+        description: 'Version to stamp, as x.y.z (no leading v, no -rc suffix)'
         type: string
         required: true
         default: '0.1.0'
@@ -26,8 +26,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # What this release is called is decided once, before any platform starts building. The four
+  # platform jobs used to each derive the version and each discover a bad one on their own runner:
+  # a mistyped manual `0.2.0-rc1` failed macOS, Windows, iOS and Android within a minute of each
+  # other, and four red platforms above a skipped publish is the same shape as absent signing
+  # secrets, so it gets read as one. Rejecting the input here costs one Ubuntu runner, names the
+  # input, and leaves the platform jobs to fail only for reasons of their own.
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve and validate the version
+        id: resolve
+        env:
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then version="$MANUAL_VERSION"; fi
+          # Validated by running the real stamper on a throwaway checkout rather than by repeating
+          # its rule here, because two copies of a rule is how a rule drifts. Nothing is committed,
+          # and each platform job stamps its own checkout again for real.
+          ./scripts/stamp-version.sh "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
   macos:
     name: macOS app
+    needs: version
     runs-on: macos-15
     permissions:
       contents: read
@@ -94,12 +122,10 @@ jobs:
       # with the tag it was built from is a support conversation nobody can win.
       - name: Stamp the version
         env:
-          MANUAL_VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then version="$MANUAL_VERSION"; fi
-          ./scripts/stamp-version.sh "$version"
-          echo "VERSION=$version" >> "$GITHUB_ENV"
+          ./scripts/stamp-version.sh "$VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       # A release that fails its own suite should not exist. Cheap insurance against tagging a
       # commit that was never green.
@@ -204,6 +230,7 @@ jobs:
 
   windows:
     name: Windows app
+    needs: version
     runs-on: windows-2022
     permissions:
       contents: read
@@ -256,13 +283,11 @@ jobs:
       - name: Stamp the version
         shell: bash
         env:
-          MANUAL_VERSION: ${{ inputs.version }}
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then VERSION="$MANUAL_VERSION"; fi
-          ./scripts/stamp-version.sh "$VERSION"
           # Without the leading v: MSBuild rejects "v0.1.0" as an assembly version, and it says so
           # through a NuGet restore that fails without logging an error, which reads as an outage.
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          ./scripts/stamp-version.sh "$VERSION"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Restore locked NuGet graph
@@ -439,6 +464,7 @@ jobs:
 
   android:
     name: Android APK
+    needs: version
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -483,12 +509,10 @@ jobs:
 
       - name: Stamp the version
         env:
-          MANUAL_VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then version="$MANUAL_VERSION"; fi
-          ./scripts/stamp-version.sh "$version"
-          echo "VERSION=$version" >> "$GITHUB_ENV"
+          ./scripts/stamp-version.sh "$VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Unit tests
         working-directory: android
@@ -590,18 +614,17 @@ jobs:
   # commit where iOS is broken.
   ios:
     name: iOS tests
+    needs: version
     runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Stamp the version
         env:
-          MANUAL_VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then version="$MANUAL_VERSION"; fi
-          ./scripts/stamp-version.sh "$version"
-          echo "VERSION=$version" >> "$GITHUB_ENV"
+          ./scripts/stamp-version.sh "$VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Generate the project
         run: |
@@ -642,7 +665,7 @@ jobs:
 
   publish:
     name: Publish release
-    needs: [macos, windows, android, ios]
+    needs: [version, macos, windows, android, ios]
     if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
     runs-on: ubuntu-latest
     permissions:
@@ -691,7 +714,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: v${{ inputs.version }}
+          RELEASE_TAG: v${{ needs.version.outputs.version }}
         run: |
           existing=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
             --jq '.object.sha' 2>/dev/null || true)
@@ -710,7 +733,7 @@ jobs:
       - name: Draft the release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v{0}', inputs.version) }}
+          tag_name: v${{ needs.version.outputs.version }}
           target_commitish: ${{ github.sha }}
           draft: true
           generate_release_notes: true

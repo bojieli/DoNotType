@@ -42,7 +42,8 @@ Three numbers and nothing else. No leading `v` — the tag is `v0.2.0`, the vers
 no `-rc1` or `+build` suffix: `CFBundleVersion` and `versionCode` are integers computed from those
 three numbers, so a suffix has nowhere to go on two of the four platforms. To ship a candidate, use
 an ordinary version and mark the GitHub release itself as a pre-release, which is a property of the
-release rather than of the number every client reports.
+release rather than of the number every client reports. A `Version` job validates the string before
+any platform builds, so a mistyped input costs one runner instead of failing all four.
 
 ### Dry runs
 
