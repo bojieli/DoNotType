@@ -41,6 +41,16 @@
   </sub>
 </div>
 
+## Voice is the highest-bandwidth way to talk to a computer
+
+Speaking lets you get a complete thought into a computer at speaking speed, without first
+translating it into keystrokes. DoNotType turns that bandwidth into text at your cursor:
+talk naturally, and keep your wording.
+
+The screen completes the loop. It gives DoNotType the visual context to spell a project name,
+acronym, or technical term correctly, while the recording remains the authority for what you
+said. Voice is the fastest way in; text is the precise, inspectable way back.
+
 ## Dictation that stays yours
 
 Live dictation has two modes. **Dictate** keeps your wording and is the default. **Rewrite** can make
