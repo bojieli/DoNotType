@@ -6,8 +6,8 @@
   <p><strong>Your voice says it. Your screen spells it.</strong></p>
 
   <p>
-    Open-source voice dictation that keeps your own wording by default,<br>
-    while using on-screen context to spell names, jargon, and technical terms correctly.
+    Open-source voice dictation that keeps your wording by default,<br>
+    and uses the text on your screen to spell names, jargon, and technical terms correctly.
   </p>
 
   <p>
@@ -18,7 +18,7 @@
 
   <p>
     macOS · Windows · Android · iOS<br>
-    Your API key · No DoNotType account · No server in the middle
+    Bring your own API key · No DoNotType account · No DoNotType server
   </p>
 
   <p>
@@ -43,38 +43,35 @@
 
 ## Dictation that stays yours
 
-**How your transcript should read is your call, not the tool's.** Some people want polished prose
-out of a dictation. Others — the reason this project exists — find that AI polish reads like AI
-wrote it, and would rather keep their own wording. Both are legitimate preferences, so DoNotType
-makes it a setting instead of a verdict.
+You decide how the transcript should read. `verbatim` is the default, while `rewrite` and `summary`
+are available when they are useful. Whichever mode you choose, the original transcript remains
+available.
 
-`verbatim` ships as the default, and it is a default rather than a principle: `rewrite` and
-`summary` are one setting away, and your own words stay available whichever you pick. What is not
-configurable is the spelling — DoNotType reads your screen to get names, jargon, and version
-numbers right, in every mode.
+DoNotType uses the text on your screen to resolve spelling. It can pick up a project name, an
+acronym, or a version number that a model would otherwise guess at. The screen helps with spelling;
+the recording remains the source for what you actually said.
 
 | | What happens |
 |---|---|
-| **Built-in dictation** | Keeps your phrasing, but without screen context it often misses project names, jargon, and other technical terms. |
-| **AI dictation that rewrites** | Larger models and more context produce fluent text, but the polished version is usually the only version you get back. |
-| **DoNotType** | You choose whether the transcript is polished, uses your screen only to ground spelling, and keeps your own words retrievable either way. |
+| **Built-in dictation** | Keeps your phrasing, but has no screen context to help with project names, jargon, or technical terms. |
+| **AI dictation that rewrites** | Produces fluent text, but often gives you only the polished version. |
+| **DoNotType** | Uses the screen for spelling, lets you choose the style, and keeps the original alongside it. |
 
-| Your choice of style | Context grounded | Direct and inspectable |
+| Style | Screen context | Transparency |
 |:---:|:---:|:---:|
-| Verbatim by default, polished on request, and your own wording stays recoverable in both. | Visible text helps resolve names, acronyms, brands, and code-switched terms. | Requests go to the provider you choose, and the prompt and sent context remain visible. |
+| Verbatim by default; polished text is available when you ask for it. | Visible text helps resolve names, acronyms, brands, and code-switched terms. | You can inspect the prompt and context sent with each request. |
 
 ## Quick start
 
 Download a prebuilt **macOS**, **Windows**, or **Android** package from
-[Releases](https://github.com/bojieli/DoNotType/releases). Every artifact has a matching
-`.sha256` file. The iOS client can currently be built from source.
+[Releases](https://github.com/bojieli/DoNotType/releases). Each artifact has a matching `.sha256`
+file. The iOS client currently needs to be built from source.
 
-No versioned release has been published yet, so what is there now is
-[the rolling build from the newest green `main`](https://github.com/bojieli/DoNotType/releases/tag/latest).
-It is development output and says so: the macOS app is ad-hoc signed, so Gatekeeper will refuse it
-until you allow it in System Settings › Privacy & Security; Windows is unsigned; Android is signed
-with a debug key. Building from source below gives you a locally signed macOS app instead, which is
-the smoother path today.
+There is no versioned release yet. The available package is
+[the rolling build from the latest green `main`](https://github.com/bojieli/DoNotType/releases/tag/latest).
+It is development software: the macOS app is ad-hoc signed and needs to be allowed in System
+Settings › Privacy & Security, Windows is unsigned, and Android uses a debug key. Building from
+source gives you a locally signed macOS app.
 
 To build and install the macOS app:
 
@@ -85,30 +82,28 @@ export GEMINI_API_KEY=...       # or add it later in Settings
 make app && make install        # builds, signs, and installs to /Applications
 ```
 
-Then **tap Right ⌘, speak, and tap it again**. Your words appear where the cursor was. On first
-launch, the app guides you through Accessibility and Microphone permissions.
+Then **tap Right ⌘, speak, and tap it again**. The transcript appears at the cursor. On first
+launch, DoNotType guides you through the Accessibility and Microphone permissions.
 
-Tapping and holding are the same key and the same default mode, so you are not choosing
-between them in advance:
+The same key supports either a tap or a hold:
 
 | Gesture | What happens | Best for |
 |---|---|---|
-| **Tap, speak, tap** | The first tap starts recording, the second ends it. Nothing to hold. | Most dictation, and anything longer than a sentence. |
-| **Hold, speak, release** | Holding past half a second records only while held. | Short utterances, when holding is less thought than counting taps. |
-| **Tap, speak, Return** | Return ends the recording, inserts, and can send the text on its way. | A prompt or chat box you were going to submit anyway. |
+| **Tap, speak, tap** | The first tap starts recording and the second ends it. | Longer dictation and everyday use. |
+| **Hold, speak, release** | After half a second, recording continues only while you hold the key. | Short utterances. |
+| **Tap, speak, Return** | Return ends the recording, inserts the text, and can submit it. | Prompts and chat messages you were about to send. |
 
-That third gesture is the reason for **Settings › Dictation › Finish with Return**. Set it to
-`Insert + Return` and DoNotType inserts the transcript and then presses Return for you — so
-speaking into a CLI like Claude Code or Codex ends with the prompt submitted, no keyboard at all.
-Apps where Return means "new line" and ⌘/Ctrl Return means "send" want `Insert + ⌘ Return`
-instead.
+The third gesture is controlled by **Settings › Dictation › Finish with Return**. With
+`Insert + Return`, DoNotType inserts the transcript and presses Return for you. This is useful for
+CLI prompts such as Claude Code or Codex. In apps where Return creates a new line and ⌘/Ctrl Return
+submits the message, choose `Insert + ⌘ Return` instead.
 
-It ships as `Insert only`, because Return is a meaningful key while somebody is composing and
-opting into a synthetic one should be deliberate. Either way the keystroke is sent only if the
-field you dictated into is still focused; if you clicked elsewhere while the request was in
-flight, the text is inserted and nothing is submitted. Escape cancels while a dictation is active.
+The default is `Insert only`, so a dictation never submits a message without your permission. The
+extra keystroke is sent only when the original field is still focused. If you click somewhere else
+while the request is in flight, DoNotType inserts the text and skips the submission. Escape cancels
+an active dictation.
 
-Existing recordings use the same pipeline from the app or the CLI:
+Existing recordings use the same pipeline, whether you start from the app or the CLI:
 
 ```bash
 dnt transcribe interview.m4a                          # verbatim, to stdout
@@ -122,41 +117,40 @@ See the [full CLI reference](docs/CLI.md) for history, diagnostics, logging, and
 
 | 1. Record | 2. Gather context | 3. Transcribe | 4. Insert |
 |:---:|:---:|:---:|:---:|
-| Tap the platform shortcut and speak naturally, or hold it if you prefer. | While you are speaking, DoNotType captures bounded context around the focused app. | Audio and context go directly to your configured provider under a spelling-only contract. | The text lands at your cursor in the style you chose, with your own words kept beside it. |
+| Tap the platform shortcut and speak naturally, or hold it if you prefer. | While you speak, DoNotType captures a bounded view of the focused app. | Audio and context go directly to the provider you chose. The prompt asks the model to use context for spelling only. | The text is inserted at the cursor in your chosen style. The original stays in history. |
 
-Screen context is captured with a 500 ms budget while you are still speaking, so it does not add
-a separate wait. Accessibility text is preferred, with a screenshot fallback where the platform
-supports it. If the recording and the screen disagree, the recording is supposed to win.
+DoNotType captures screen context within a 500 ms budget while you are still speaking, so it does
+not add another wait. It prefers accessibility text and uses a screenshot where the platform
+supports one. If the screen and the recording disagree, the recording wins.
 
-### Three modes, and your words are never the thing you lose
+### Three modes
 
 | Mode | Best for | Behavior |
 |---|---|---|
-| `verbatim` | Everyday dictation, and the default | One request; you get what you said. |
-| `rewrite` | Formal, concise, or casual variants | The same request returns both the polished text and what you said, so choosing a style costs no extra wait. |
-| `summary` | Briefs, bullet points, or action items | Discards content by design — which is why it is a separate request, and why your transcript is kept. |
+| `verbatim` | Everyday dictation; the default | One request returns the words you said. |
+| `rewrite` | Formal, concise, or casual variants | One request returns both the polished text and the original transcript. |
+| `summary` | Briefs, bullet points, or action items | A separate request produces a shorter version. The full transcript is kept. |
 
 Changed your mind after the fact? `⌘⌥Z` on macOS or `Ctrl+Alt+Z` on Windows puts your own wording
 back.
 
-The same contract is used by every client: on the short, non-segmented model-backed path the
-transcription request returns both `transcript` and `styled`, so choosing a rewrite does not add a
-round trip on macOS, Windows, Android, or iOS. Live segmented capture and recordings long enough
-to split are assembled verbatim first and then styled once, and speech-recognition providers still
-use the compatible second stage when they cannot return styled text themselves.
+All four clients follow the same behavior. A short, unsplit request to a model can return both
+`transcript` and `styled`, so a rewrite does not require another round trip. Live segmented capture
+and long recordings are assembled verbatim first and styled once. Speech-recognition providers
+that cannot return styled text use the existing second-stage rewrite instead.
 
 ## Highlights
 
 | Capability | What you get |
 |---|---|
-| **Four platforms, one contract** | macOS menu bar, Windows tray, Android keyboard, and iOS voice keyboard clients all bundle the same versioned [`prompt/`](prompt/). |
+| **Shared prompt** | macOS menu bar, Windows tray, Android keyboard, and iOS voice keyboard clients all bundle the same versioned [`prompt/`](prompt/). |
 | **Screen grounding** | Accessibility tree on macOS, UI Automation on Windows, and `AccessibilityService` on Android, with screenshot fallback where supported. |
-| **Provider choice** | Google Gemini by default, OpenRouter, self-hosted vLLM or llama.cpp, and speech-recognition services including xAI, Deepgram, and Mistral Voxtral. |
-| **Personal dictionary** | A local, visible, optional dictionary with one-column CSV import; correction learning is opt-in, labelled, and removable. |
+| **Provider choice** | Google Gemini by default, OpenRouter, self-hosted vLLM or llama.cpp, and speech-recognition services such as xAI, Deepgram, and Mistral Voxtral. |
+| **Personal dictionary** | A local dictionary with one-column CSV import; correction learning is opt-in, labelled, and removable. |
 | **File transcription** | WAV, MP3, M4A, and Opus recordings through the same pipeline, with per-item history and retry. |
-| **Offline tolerance** | Dictation queues before a request is spent and resumes on reconnect; failed audio remains available until it succeeds. |
-| **Fallback backend** | An optional second backend can bound the latency tail without changing your primary provider. |
-| **Honest diagnostics** | Structured logs with transcripts withheld by default, plus median/p95 wait and per-model success rates measured on your own setup. |
+| **Works through interruptions** | Dictation waits before spending a request and resumes after reconnecting; failed audio remains available until it succeeds. |
+| **Fallback backend** | An optional second backend can take over when the primary request stalls. |
+| **Diagnostics** | Structured logs with transcripts withheld by default, plus median/p95 wait and per-model success rates measured on your own setup. |
 
 ## Platform support
 
@@ -165,25 +159,24 @@ use the compatible second stage when they cannot return styled text themselves.
 | **macOS** | Menu-bar app, tap or hold Right ⌘ | ✅ Accessibility tree + screenshot | ✅ Manual, CSV, optional learning | ✅ | `dnt` | `make app` |
 | **Windows** | Tray app, tap or hold Right Ctrl | ✅ UI Automation | ✅ Manual, CSV, optional learning | ✅ | `dnt.exe` | `cd windows && dotnet build` |
 | **Android** | Keyboard, records in-process | ✅ `AccessibilityService` | ✅ Manual, CSV, optional learning | ✅ | — | `cd android && ./gradlew assembleDebug` |
-| **iOS** | Voice keyboard; containing app records | ❌ Not possible in the sandbox | ✅ Manual, CSV, best-effort learning | ✅ | — | `cd ios && xcodegen generate` |
+| **iOS** | Voice keyboard; containing app records | ❌ Unavailable in the iOS sandbox | ✅ Manual, CSV, best-effort learning | ✅ | — | `cd ios && xcodegen generate` |
 
-See [platform parity](docs/PARITY.md) for a feature-by-feature breakdown and the reason for every
-gap.
+See [platform parity](docs/PARITY.md) for the feature-by-feature breakdown and the reasons for
+the differences.
 
 ## Principles
 
-1. **Dictation, not authorship.** Polishing a transcript is a preference the app offers; deciding
-   for you what you meant to say is not. Whatever style you pick, your own words are stored and
-   recoverable, so a rewrite sits beside them rather than replacing them.
-2. **Grounding spells; it never decides.** Screen context is sent raw—without term extraction or
-   prior transcripts—and its authority is limited to spelling. The audio remains authoritative.
+1. **Dictation, not authorship.** Rewriting is optional. Whatever style you choose, the original
+   transcript is stored and can be recovered.
+2. **Context helps with spelling.** Screen context is sent raw, without term extraction or prior
+   transcripts. It can clarify a name or acronym, but the audio remains authoritative.
 3. **No DoNotType server in the middle.** There is no DoNotType account, sign-in, subscription,
    telemetry, or analytics. Requests go from your device to the provider you configure with
-   `store: false`; keys live in Keychain, DPAPI, or Android Keystore.
-4. **Everything is inspectable.** The transcription prompt is made of versioned files you can
-   read, edit, and restore. The Context Inspector shows exactly what was sent with each dictation.
-5. **Claims carry numbers.** Prompt, context-format, and default-backend changes require
-   before-and-after measurements, not arguments.
+   `store: false`. Keys stay in Keychain, DPAPI, or Android Keystore.
+4. **Everything is inspectable.** The transcription prompt is made of versioned files you can read,
+   edit, and restore. The Context Inspector shows exactly what was sent with each dictation.
+5. **Measure changes.** Changes to prompts, context format, or the default backend come with
+   before-and-after measurements.
 
 ## What this will never do
 
@@ -193,15 +186,15 @@ gap.
 - Hide the transcription contract or the context sent to your chosen provider.
 - Present an intuition as an accuracy claim without measuring it.
 
-These boundaries are product constraints, not roadmap gaps. Rewriting is a feature here and a good
-one — it just will not become the only version you are given back.
+These are product boundaries, not unfinished roadmap items. Rewriting is useful when you want it,
+but it never replaces your original transcript.
 
 ## Documentation
 
 | Start here | What it covers |
 |---|---|
 | [`prompt/`](prompt/) | The transcription contract itself—the exact text sent, one part per file. |
-| [Prompt design](docs/PROMPT.md) | Why the contract is worded this way and its measured changelog. |
+| [Prompt design](docs/PROMPT.md) | Why the prompt is written this way and its measured changelog. |
 | [Architecture](docs/ARCHITECTURE.md) | How the components fit together and which decisions were measured. |
 | [CLI reference](docs/CLI.md) | File transcription, history, diagnostics, and logging. |
 | [Platform parity](docs/PARITY.md) | What each client can do and why anything is missing. |
@@ -214,9 +207,9 @@ testing, release instructions, and other maintainer guides.
 
 ## Research and contribute
 
-The central research question is not whether more context helps. It is **which context helps under
-a finite token, latency, and privacy budget without overriding the recording**. Better policies
-should be established by controlled ablation rather than intuition.
+The central research question is **which context helps within a finite token, latency, and privacy
+budget without overriding the recording**. We want to answer that with controlled ablations, not
+intuition.
 
 <details>
 <summary><strong>Questions worth testing</strong></summary>
@@ -241,15 +234,15 @@ should be established by controlled ablation rather than intuition.
 | **Benchmarks** | Reproducible cases, legally shareable corpora, cassettes, scoring improvements, and independent replications. |
 | **Clients and tooling** | Cross-platform parity, diagnostics, evaluation infrastructure, accessibility, and documentation. |
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md), the current
-[context format](docs/CONTEXT_FORMAT.md), and the [evaluation method](docs/EVALUATION.md). Changes
-to `prompt/` or the context format need **a measurement, not an argument**.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md), the current [context format](docs/CONTEXT_FORMAT.md),
+and the [evaluation method](docs/EVALUATION.md). If you change `prompt/` or the context format,
+include **a measurement, not an argument**.
 
 ## Security
 
-DoNotType reads your screen—that is the feature, and it deserves a plain description of what the
-app can see, where keys live, and the threat model, including prompt injection. Read
-[SECURITY.md](SECURITY.md), and please do not open a public issue for vulnerabilities.
+DoNotType reads your screen; that is the feature. [SECURITY.md](SECURITY.md) explains what the app
+can see, where keys live, and the threat model, including prompt injection. Follow the reporting
+instructions there instead of opening a public issue for a vulnerability.
 
 ## License
 
