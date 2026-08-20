@@ -44,18 +44,22 @@
 ## Dictation that stays yours
 
 Most voice tools make you choose between keeping your natural phrasing and spelling uncommon
-terms correctly. DoNotType is built around a third option: **transcribe first, ground the spelling
-in visible context, and keep the original recoverable.**
+terms correctly. DoNotType does both: **transcribe what you said, ground the spelling in visible
+context, and keep that transcript recoverable whatever you do with it next.**
+
+Whether a transcript reads as spoken or gets polished into prose is a preference, not a
+correctness question, so it is a setting. `verbatim` is the default; `rewrite` and `summary` are
+there when you want them, and the original is stored before either one runs.
 
 | | What happens |
 |---|---|
 | **Built-in dictation** | Keeps your phrasing, but without screen context it often misses project names, jargon, and other technical terms. |
-| **Commercial AI dictation** | Uses larger models and context, but commonly returns a polished rewrite instead of the exact words you said. |
-| **DoNotType** | Produces and stores a verbatim transcript first, uses your screen only to ground spelling, and makes rewriting an optional second stage. |
+| **AI dictation that rewrites** | Larger models and more context produce fluent text, but the polished version is usually the only version you get back. |
+| **DoNotType** | Stores the verbatim transcript first, uses your screen only to ground spelling, and treats rewriting as an optional second pass you can undo. |
 
-| Verbatim first | Context grounded | Direct and inspectable |
+| Verbatim by default | Context grounded | Direct and inspectable |
 |:---:|:---:|:---:|
-| Your original transcript is stored before any optional rewrite or summary. | Visible text helps resolve names, acronyms, brands, and code-switched terms. | Requests go to the provider you choose, and the prompt and sent context remain visible. |
+| Verbatim unless you ask otherwise, and your original is stored before any rewrite or summary. | Visible text helps resolve names, acronyms, brands, and code-switched terms. | Requests go to the provider you choose, and the prompt and sent context remain visible. |
 
 ## Quick start
 
@@ -79,8 +83,21 @@ export GEMINI_API_KEY=...       # or add it later in Settings
 make app && make install        # builds, signs, and installs to /Applications
 ```
 
-Then **hold Right ⌘, speak, and release**. Your words appear where the cursor was. On first
+Then **tap Right ⌘, speak, and tap it again**. Your words appear where the cursor was. On first
 launch, the app guides you through Accessibility and Microphone permissions.
+
+Both gestures work on the same key, and you do not choose between them in advance:
+
+| Gesture | What happens | Best for |
+|---|---|---|
+| **Tap, speak, tap** | The first tap starts recording, the second ends it. Nothing to hold. | Most dictation, and anything longer than a sentence. |
+| **Hold, speak, release** | Holding past half a second records only while held. | Short utterances, when holding is less thought than counting taps. |
+| **Tap, speak, Return** | Return ends the recording and inserts, in one key. | A chat box or prompt you were going to submit anyway. |
+
+Return stops and inserts; whether it also *submits* is a separate choice, off by default because
+Return means something while you are composing. Turn it on in Settings › Dictation › **Finish
+with Return** (`Insert + Return` or `Insert + ⌘ Return`). Escape cancels while a dictation is
+active.
 
 Existing recordings use the same pipeline from the app or the CLI:
 
@@ -96,7 +113,7 @@ See the [full CLI reference](docs/CLI.md) for history, diagnostics, logging, and
 
 | 1. Record | 2. Gather context | 3. Transcribe | 4. Insert |
 |:---:|:---:|:---:|:---:|
-| Hold the platform shortcut and speak naturally. | While you are speaking, DoNotType captures bounded context around the focused app. | Audio and context go directly to your configured provider under a spelling-only contract. | The verbatim result is stored and inserted at your cursor; optional transformations remain separate. |
+| Tap the platform shortcut and speak naturally, or hold it if you prefer. | While you are speaking, DoNotType captures bounded context around the focused app. | Audio and context go directly to your configured provider under a spelling-only contract. | The verbatim result is stored and inserted at your cursor; optional transformations remain separate. |
 
 Screen context is captured with a 500 ms budget while you are still speaking, so it does not add
 a separate wait. Accessibility text is preferred, with a screenshot fallback where the platform
@@ -129,8 +146,8 @@ Undo a transformation and return to the original with `⌘⌥Z` on macOS or `Ctr
 
 | | Dictation | Screen grounding | Personal dictionary | File transcription | CLI | Build |
 |---|---|---|---|---|---|---|
-| **macOS** | Menu-bar app, hold Right ⌘ | ✅ Accessibility tree + screenshot | ✅ Manual, CSV, optional learning | ✅ | `dnt` | `make app` |
-| **Windows** | Tray app, hold Right Ctrl | ✅ UI Automation | ✅ Manual, CSV, optional learning | ✅ | `dnt.exe` | `cd windows && dotnet build` |
+| **macOS** | Menu-bar app, tap or hold Right ⌘ | ✅ Accessibility tree + screenshot | ✅ Manual, CSV, optional learning | ✅ | `dnt` | `make app` |
+| **Windows** | Tray app, tap or hold Right Ctrl | ✅ UI Automation | ✅ Manual, CSV, optional learning | ✅ | `dnt.exe` | `cd windows && dotnet build` |
 | **Android** | Keyboard, records in-process | ✅ `AccessibilityService` | ✅ Manual, CSV, optional learning | ✅ | — | `cd android && ./gradlew assembleDebug` |
 | **iOS** | Voice keyboard; containing app records | ❌ Not possible in the sandbox | ✅ Manual, CSV, best-effort learning | ✅ | — | `cd ios && xcodegen generate` |
 
