@@ -61,7 +61,8 @@ public sealed class ContextInspectorForm : Form
         {
             Dock = DockStyle.Bottom,
             FlowDirection = FlowDirection.RightToLeft,
-            Height = 46,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(10, 8, 10, 8),
         };
 
@@ -76,6 +77,14 @@ public sealed class ContextInspectorForm : Form
 
         Controls.Add(body);
         Controls.Add(footer);
+
+        // As in SettingsForm, and last for the same reason: the sizes above are 96 DPI pixels, and
+        // saying so is what lets WinForms carry them to the DPI actually in use. This window is the
+        // evidence somebody attaches to a bug report, so it is the last one that can afford to
+        // render with its buttons cut in half.
+        AutoScaleDimensions = new SizeF(7F, 15F);
+        AutoScaleMode = AutoScaleMode.Font;
+
         AcceptButton = close;
         CancelButton = close;
     }
