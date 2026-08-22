@@ -32,21 +32,37 @@ public sealed class SettingsTransferTab(
     public TabPage Build()
     {
         var page = new TabPage("Transfer");
-        var top = new Panel { Dock = DockStyle.Top, Height = 102, Padding = new Padding(12, 8, 12, 4) };
+        // Both this panel and the button row size to their contents. Seven buttons whose widths are
+        // set by their labels do not fit one line once the font grows, and a row that may become
+        // two cannot be held by a constant height.
+        var top = new Panel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(12, 8, 12, 4),
+        };
         var warning = new Label
         {
             Text = "⚠ Exports include API keys in plaintext. Treat the JSON file and QR code "
                 + "like a password; review the provider and endpoint before importing.",
             ForeColor = Color.DarkOrange,
             Dock = DockStyle.Top,
-            Height = 38,
+            AutoSize = true,
+            // AutoSize alone grows a docked label sideways to fit one line rather than wrapping it,
+            // which put this warning 401px past the right edge. The width is the same 560 the
+            // Caption helper uses, and autoscaling carries it to whatever the current DPI needs.
+            MaximumSize = new Size(560, 0),
         };
         var buttons = new FlowLayoutPanel
         {
             Dock = DockStyle.Bottom,
-            Height = 42,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            // Wrapping is what keeps the last button reachable; without it "Import QR image…" sat
+            // 494px past the right edge at 200% with no way to scroll to it.
+            WrapContents = true,
         };
 
         Button Add(string label, Action action)
@@ -183,6 +199,14 @@ public sealed class SettingsTransferTab(
             };
             window.Controls.Add(image);
             window.Controls.Add(warning);
+
+            // After the children, as everywhere else: assigning AutoScaleMode scales whatever is
+            // present at that moment and takes the result as the new baseline, so an object
+            // initializer would scale an empty form and leave the contents behind. Without it a QR
+            // code that has to survive being photographed off the screen renders at half size.
+            window.AutoScaleDimensions = new SizeF(7F, 15F);
+            window.AutoScaleMode = AutoScaleMode.Font;
+
             window.FormClosed += (_, _) => bitmap.Dispose();
             window.ShowDialog();
         });
