@@ -8,6 +8,98 @@ repository's local calendar date.
 
 ## Unreleased
 
+## 0.3.0 - 2026-08-25
+
+A model that quietly dropped most of a long dictation, and the three ways that is now caught. The
+default model moves back to `gemini-3.6-flash`, a new guard notices a transcript too short for the
+audio, and cuts in a long recording are placed by Silero rather than by frame energy. On Windows,
+the settings windows and the recording pill finally scale with the display.
+
+### Fixed
+
+- **A long recording could come back missing most of what was said, with nothing to indicate it.**
+  Measured on a 90-second Mandarin recording, `gemini-3.5-flash` returned roughly 100 characters of
+  a 310-character transcript on **6 runs in 10**, stopping mid-sentence at the identical point each
+  time; `gemini-3.6-flash` did it 0 times in 20. It is not the output-token cap. Nothing in the
+  pipeline noticed, because `HallucinationGuard`'s rate ceiling is a *maximum* and 1.1 characters a
+  second passes it by being below the floor of suspicion rather than above the ceiling — so the
+  text read as fluent and plausible and was only wrong in what it did not say. `TruncationGuard`
+  now measures the transcript against Silero-confirmed speech rather than recording length, because
+  length cannot separate the cases: across 350 real dictations the legitimate minimum is 1.55
+  characters a second of audio and the truncated transcript ran 1.09, while against speech the
+  truncated runs are 2.00 and 2.27 and the lowest real dictation is 4.92. Nothing is deleted — a
+  truncated transcript is still part of what was said — and short clips, unknown speech length and
+  an empty transcript are all left alone.
+
+- **Windows split long recordings at the first quiet frame instead of near a minute.** A C# record
+  *struct* ignores its primary constructor's defaults for `new()` and zero-initialises instead, so
+  `AudioChunker.DefaultPolicy` was every field zero: no minimum chunk length, a zero target, a zero
+  horizon that emptied the preferred set on every call, and a minimum pause of zero that made a
+  single 20 ms dip a legal cut. Swift and Kotlin aimed at 60 seconds throughout. Every chunker test
+  passed, because they assert that cuts land in silence and that no audio is lost, and both stay
+  true when the chunks are tiny. The default is now explicit and pinned field-for-field in all three
+  cores.
+
+- **A cut preferred a breath near the target over a clean sentence break slightly earlier.** The
+  boundary score subtracted the raw distance from the target — linear, unbounded, and in the same
+  units as nothing else in the score — so it dominated every quality term. Normalised by the width
+  of the acceptable window, distance still breaks ties but can no longer overrule a much better
+  pause inside the range the policy already called acceptable. Measured over the 60 retained
+  recordings past the splitting threshold: the median pause a cut lands in goes from 0.76 s to
+  1.32 s and cuts landing in a pause of a second or more from 40% to 60%, with the same number of
+  chunks and a slightly shorter final chunk.
+
+- **The Windows settings windows and the recording pill scale with the display.** No window ever
+  assigned `AutoScaleMode`, so it stayed at `Inherit` and scaled nothing while the manifest asked
+  for PerMonitorV2 and the fonts scaled regardless; every pixel count in those files is a 96 DPI
+  number. The General tab's Save button sat below the fold with nothing left to scroll, because a
+  scrolling panel takes its extent from the last control's bounds and not from the container's
+  bottom padding — and the same was true of the Context Inspector's body, which renders the whole
+  encoded context and so does overflow. The recording pill was a 96 DPI drawing carrying a 9pt font
+  that grows with the display: at 200% a 24px line was asked to sit in a pill laid out for a 15px
+  one.
+
+### Changed
+
+- **`gemini-3.6-flash` is the default again.** It was demoted on 2026-08-17 because it was slow:
+  4.39 s median on a short clip against 1.34 s, a 10.59 s p90, a 39.06 s maximum and 16% of
+  requests over 8 s. Re-measured, it answers the same clip in 1.95 s median against 1.45 s, p90
+  2.36 s, max 2.57 s, and nothing over 8 s in 20 runs; across recording lengths it costs 1.14–1.43×,
+  or +0.4 s to +1.8 s. The near-miss margin between the two is 41/47 against 39/47, inside the
+  suite's own per-pass noise, and is deliberately not the argument — the truncation behaviour above
+  is. **An existing installation keeps whatever model it has explicitly stored; only fresh installs
+  and unset fields change.**
+
+- **Cuts in a long recording are placed by Silero, not by frame energy.** Silero has been loaded and
+  run on every recording since it replaced the noise-floor heuristic, but only ever as a yes/no gate
+  on whether a chunk contains speech. The energy finder fragments a long pause the moment a breath
+  or a keyboard tap crosses the floor — 226 pauses of two seconds or more across 147 real
+  recordings, against 451 that Silero finds in the same audio. Taking the gaps between finalised
+  speech runs instead moves the median pause a cut lands in to 2.14 s and cuts landing in a pause of
+  a second or more to 77%. The model's recurrent state is carried across the capture rather than
+  re-read, so a live recording costs about 1.6 s of CPU for five minutes of audio instead of
+  roughly a core; audio Silero cannot parse still falls back to the energy finder rather than
+  growing into one unbounded request. macOS and iOS; Android still uses energy boundaries.
+
+- **The tokens a thinking level spends are reported rather than discarded.** The Gemini API returns
+  `total_thought_tokens` beside `total_output_tokens`, and every client threw it away, so the cost
+  of the dial was invisible in history and in the logs. It is a separate field, not part of the
+  output count: `total_tokens` is input + output + thought. Measured on a 22-second clip, `minimal`
+  and `low` both report exactly 0 on both shipping models — they are the same behaviour under two
+  names — and `medium` reports 500 and 700 against an 81-token transcript.
+
+### Documentation
+
+- **`docs/INCREMENTAL.md` records an investigation that ended in the feature not being built.**
+  Transcribing a long dictation while it is still being spoken, with a slower model on the hidden
+  latency and the earlier transcripts as context, was measured and rejected: segmenting recovered
+  more than 15% more text on 0 of 10 long recordings, was consistently worse on 6 Mandarin ones,
+  and a review of 258 aligned disagreements preferred the whole-file transcript. Raising the
+  thinking level was worse on both models, 1.6–2.3× slower, and quintupled screen-context
+  regressions on 3.6. The document keeps the rejected designs, the measurements that killed them,
+  and the mistakes made along the way — chief among them citing the near-miss suite for a question
+  its short clips cannot see.
+
 ## 0.2.0 - 2026-08-20
 
 Release preparation repaired the Android build after the AGP 9 migration, refreshed the Windows
