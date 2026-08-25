@@ -935,6 +935,53 @@ public class AudioChunkerTests
 
     private static byte[] Seconds(double value) => Speech((value, 0));
 
+    /// <summary>
+    /// The default policy is the one the other two cores use, field for field.
+    /// </summary>
+    /// <remarks>
+    /// Pinned because it silently was not. A record <em>struct</em> ignores its primary
+    /// constructor's defaults for <c>new()</c> and zero-initialises instead, so
+    /// <c>DefaultPolicy</c> was all zeros and this client split at the first 20 ms quiet frame
+    /// while Swift and Kotlin aimed at 60 seconds. Nothing caught it: the chunker tests assert
+    /// that cuts land in silence and that no audio is lost, and both stay true with tiny chunks.
+    /// </remarks>
+    [Fact]
+    public void TheDefaultPolicyMatchesTheOtherCores()
+    {
+        var policy = AudioChunker.DefaultPolicy;
+        Assert.Equal(45, policy.MinimumSeconds);
+        Assert.Equal(60, policy.TargetSeconds);
+        Assert.Equal(75, policy.HorizonSeconds);
+        Assert.Equal(0.32, policy.MinimumPauseSeconds);
+        Assert.Equal(0.5, policy.PreferredPauseSeconds);
+        Assert.Equal(policy, new AudioChunker.BoundaryPolicy());
+    }
+
+    /// <summary>
+    /// A clean sentence break inside the acceptable window beats a shallow breath sitting exactly
+    /// on the target.
+    /// </summary>
+    /// <remarks>
+    /// The distance penalty used to be the raw difference from the target — linear, unbounded, and
+    /// in the same units as nothing else in the score — so a 1.4 s pause twelve seconds early lost
+    /// to a 0.4 s one on the target, every time. Normalised by the width of the window, quality
+    /// wins inside the range the policy already called acceptable. Mirrors
+    /// <c>BoundaryScoreTests</c> in Swift.
+    /// </remarks>
+    [Fact]
+    public void ALongPauseInsideTheWindowBeatsAShortOneOnTheTarget()
+    {
+        // Ordinary pauses first: the floor is the 2nd percentile of frame energy, so a fixture
+        // whose only quiet is the pause under test estimates its floor from speech itself.
+        var wav = Speech((4, 0.7), (8, 0.7), (10, 0.7), (10, 0.7), (14, 1.4), (11, 0.4), (40, 0));
+        var body = AudioChunker.PcmBody(wav)!;
+        var cut = AudioChunker.BestBoundary(body);
+
+        Assert.NotNull(cut);
+        var seconds = cut!.Value / (double)(16_000 * 2);
+        Assert.InRange(seconds, 47.5, 49.5);
+    }
+
     [Fact]
     public void ShortRecordingsAreNotSplit()
     {
