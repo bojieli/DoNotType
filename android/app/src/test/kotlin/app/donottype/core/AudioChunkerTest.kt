@@ -178,3 +178,61 @@ class AudioChunkerTest {
         assertEquals("", AudioChunker.stitch(emptyList()))
     }
 }
+
+/**
+ * The boundary scorer's distance penalty, and the default policy it operates under.
+ *
+ * Mirrors `BoundaryScoreTests` in Swift and the equivalent cases in C#. The C# port had drifted:
+ * a record struct ignores its primary constructor's defaults for `new()`, so that client's default
+ * policy was every field zero and it split at the first 20 ms quiet frame. Pinning the values in
+ * all three is cheaper than finding that again.
+ */
+class BoundaryPolicyParityTest {
+    @Test
+    fun `the default policy is the one the other cores use`() {
+        val policy = AudioChunker.BoundaryPolicy()
+        kotlin.test.assertEquals(45.0, policy.minimumSeconds)
+        kotlin.test.assertEquals(60.0, policy.targetSeconds)
+        kotlin.test.assertEquals(75.0, policy.horizonSeconds)
+        kotlin.test.assertEquals(0.32, policy.minimumPauseSeconds)
+        kotlin.test.assertEquals(0.5, policy.preferredPauseSeconds)
+    }
+
+    /**
+     * A clean sentence break inside the window beats a shallow breath sitting on the target.
+     *
+     * The distance penalty used to be the raw difference from the target — linear, unbounded, and
+     * in the same units as nothing else in the score — so a 1.4 s pause twelve seconds early lost
+     * to a 0.4 s one on the target every time.
+     */
+    @Test
+    fun `a long pause inside the window beats a short one on the target`() {
+        // Ordinary pauses first: the floor is the 2nd percentile of frame energy, so a fixture
+        // whose only quiet is the pause under test estimates its floor from speech itself.
+        val pcm = speech(
+            4.0 to 0.7, 8.0 to 0.7, 10.0 to 0.7, 10.0 to 0.7,
+            14.0 to 1.4, 11.0 to 0.4, 40.0 to 0.0,
+        )
+        val cut = kotlin.test.assertNotNull(AudioChunker.bestBoundary(pcm))
+        val seconds = cut / 32_000.0
+        kotlin.test.assertTrue(
+            seconds in 47.5..49.5,
+            "cut landed at $seconds s, expected the 1.4 s pause",
+        )
+    }
+
+    private fun speech(vararg segments: Pair<Double, Double>): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        var phase = 0.0
+        for ((loud, silence) in segments) {
+            repeat((loud * 16_000).toInt()) {
+                phase += 2 * Math.PI * 220 / 16_000
+                val sample = (kotlin.math.sin(phase) * 12_000).toInt().toShort()
+                out.write(sample.toInt() and 0xFF)
+                out.write((sample.toInt() shr 8) and 0xFF)
+            }
+            out.write(ByteArray((silence * 16_000).toInt() * 2))
+        }
+        return out.toByteArray()
+    }
+}
