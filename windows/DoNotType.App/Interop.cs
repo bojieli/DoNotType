@@ -102,6 +102,44 @@ internal static partial class Interop
         return length > 0 ? new string(buffer, 0, length) : string.Empty;
     }
 
+    // ---- Per-monitor DPI ---------------------------------------------------------------------
+    //
+    // The scale of a monitor the app is not currently on. Control.DeviceDpi answers for the
+    // monitor a window is already displayed on, which is the wrong question for the recording
+    // overlay: it is hidden between dictations and re-shown wherever the cursor now is, so it has
+    // to be sized for a screen it has not moved to yet.
+
+    internal const int MONITOR_DEFAULTTONEAREST = 2;
+    /// <summary>MDT_EFFECTIVE_DPI: the scale the user chose, which is what the UI is drawn at.</summary>
+    internal const int MDT_EFFECTIVE_DPI = 0;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct POINT
+    {
+        public int x;
+        public int y;
+    }
+
+    [LibraryImport("user32.dll")]
+    internal static partial IntPtr MonitorFromPoint(POINT pt, int dwFlags);
+
+    /// <summary>Returns an HRESULT; S_OK is 0.</summary>
+    [LibraryImport("shcore.dll")]
+    internal static partial int GetDpiForMonitor(
+        IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    /// <summary>
+    /// Dots per inch of the monitor under <paramref name="point"/>, in physical screen
+    /// coordinates. Falls back to 96 — an unscaled display — rather than throwing, because a
+    /// wrongly sized pill is worth strictly less than a dictation that fails to start.
+    /// </summary>
+    internal static uint MonitorDpiAt(Point point)
+    {
+        var monitor = MonitorFromPoint(
+            new POINT { x = point.X, y = point.Y }, MONITOR_DEFAULTTONEAREST);
+        return GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out var dpiX, out _) == 0 ? dpiX : 96;
+    }
+
     // ---- Audio capture (winmm) ---------------------------------------------------------------
     //
     // waveIn rather than WASAPI or NAudio: 16 kHz mono PCM is exactly what waveIn does natively,
