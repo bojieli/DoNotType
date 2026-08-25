@@ -76,6 +76,31 @@ public sealed class RecordingOverlay : Form
     private string _hint = string.Empty;
     private string _subhint = string.Empty;
 
+    /// <summary>
+    /// The pill's size in the 96 DPI units every constant in this file is written in.
+    /// <see cref="Control.Size"/> is this times <see cref="_scale"/>; painting works in these.
+    /// </summary>
+    private Size _design = new(CompactWidth, CompactHeight);
+
+    /// <summary>
+    /// Device pixels per 96 DPI unit, for the screen the pill is about to appear on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Positioning this window in physical pixels is deliberate, and is what the manifest's
+    /// PerMonitorV2 is for. Sizing it in them was not: the numbers above are a 96 DPI drawing,
+    /// while the text is a point size and grows with the display whatever the pill does. At 200%
+    /// that asked a 24px line to sit in a 52px pill laid out for a 15px one.
+    /// </para>
+    /// <para>
+    /// Read from the monitor rather than from <see cref="Control.DeviceDpi"/>. The pill is hidden
+    /// between dictations and re-shown wherever the cursor now is, so its own DeviceDpi describes
+    /// wherever it was last shown — stale in exactly the case that matters, a second display at a
+    /// different scale. WM_DPICHANGED arrives after the move, which is too late to have sized it.
+    /// </para>
+    /// </remarks>
+    private float _scale = 1f;
+
     public RecordingOverlay()
     {
         FormBorderStyle = FormBorderStyle.None;
@@ -93,6 +118,21 @@ public sealed class RecordingOverlay : Form
     }
 
     protected override bool ShowWithoutActivation => true;
+
+    /// <summary>A 96 DPI number in device pixels, for the screen the pill is on.</summary>
+    private int Scaled(int units) => (int)Math.Round(units * _scale);
+
+    /// <summary>
+    /// A point size as 96 DPI pixels. The sizes here were chosen in points; the grid they are
+    /// drawn on is pixels, and a font declared in pixels is the one that stays on it.
+    /// </summary>
+    private static float Px(float points) => points * 96f / 72f;
+
+    /// <summary>
+    /// Adopts the scale of the screen the pill is about to appear on. Before sizing, because the
+    /// size depends on it, and before positioning, because the gap above the taskbar does too.
+    /// </summary>
+    private void AdoptScreenScale() => _scale = Interop.MonitorDpiAt(Cursor.Position) / 96f;
 
     protected override CreateParams CreateParams
     {
@@ -126,6 +166,7 @@ public sealed class RecordingOverlay : Form
         _hint = hint;
         _subhint = subhint;
         ClearLevels();
+        AdoptScreenScale();
         ResizeForPhase();
         PositionAtBottomOfActiveScreen();
         if (!Visible) base.Show();
@@ -139,6 +180,7 @@ public sealed class RecordingOverlay : Form
         _phase = phase;
         _hint = hint ?? string.Empty;
         _subhint = subhint ?? string.Empty;
+        AdoptScreenScale();
         ResizeForPhase();
         PositionAtBottomOfActiveScreen();
         Invalidate();
@@ -151,15 +193,25 @@ public sealed class RecordingOverlay : Form
     {
         if (_phase is not (Phase.Failed or Phase.Notice))
         {
-            Size = new Size(CompactWidth, CompactHeight);
+            SetDesignSize(CompactWidth, CompactHeight);
             return;
         }
 
         using var graphics = CreateGraphics();
         using var font = MessageFont();
+        // Measured in design units, not device ones. A pixel-sized font is not re-scaled by the
+        // display the way a point-sized one is, so this answers the same on every monitor and the
+        // one scaling happens in SetDesignSize.
         var measured = graphics.MeasureString(
             _hint, font, FailureWidth - TextLeft - 24);
-        Size = new Size(FailureWidth, Math.Max(CompactHeight, (int)measured.Height + 28));
+        SetDesignSize(FailureWidth, Math.Max(CompactHeight, (int)measured.Height + 28));
+    }
+
+    /// <summary>Records the pill's size on the 96 DPI grid, and applies it scaled.</summary>
+    private void SetDesignSize(int width, int height)
+    {
+        _design = new Size(width, height);
+        Size = new Size(Scaled(width), Scaled(height));
     }
 
     public new void Hide()
@@ -174,7 +226,7 @@ public sealed class RecordingOverlay : Form
         var screen = Screen.FromPoint(Cursor.Position).WorkingArea;
         Location = new Point(
             screen.Left + (screen.Width - Width) / 2,
-            screen.Bottom - Height - 64);
+            screen.Bottom - Height - Scaled(64));
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -183,6 +235,8 @@ public sealed class RecordingOverlay : Form
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(Color.Black);
 
+        // The outline and the window region are the one thing that stays in device pixels: Region
+        // is interpreted against the client area and knows nothing about a world transform.
         using var path = RoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), Height / 2);
         using var fill = new SolidBrush(Color.FromArgb(220, 18, 18, 20));
         using var border = new Pen(Color.FromArgb(40, 255, 255, 255));
@@ -190,14 +244,20 @@ public sealed class RecordingOverlay : Form
         g.DrawPath(border, path);
         Region = new Region(path);
 
+        // Everything inside is drawn on the 96 DPI grid its constants were written for, and the
+        // display's scale is applied once, here.
+        g.ScaleTransform(_scale, _scale);
+        var width = _design.Width;
+        var height = _design.Height;
+
         using var textBrush = new SolidBrush(Color.FromArgb(200, 235, 235, 235));
         using var font = MessageFont();
 
         switch (_phase)
         {
             case Phase.Recording:
-                DrawMeter(g, new Rectangle(20, Height / 2 - 11, MeterWidth, 22));
-                DrawStatus(g, _hint, _subhint, font, textBrush, TextLeft);
+                DrawMeter(g, new Rectangle(20, height / 2 - 11, MeterWidth, 22));
+                DrawStatus(g, _hint, _subhint, font, textBrush, TextLeft, height);
                 break;
 
             case Phase.Transcribing:
@@ -206,21 +266,21 @@ public sealed class RecordingOverlay : Form
                 // pressing the key again mid-request. Deliberately unlike the recording waveform:
                 // there is no input left to reflect, so anything level-driven would be decoration
                 // pretending to be a signal.
-                DrawThinkingDots(g, new Rectangle(20, Height / 2 - 4, MeterWidth, 8));
+                DrawThinkingDots(g, new Rectangle(20, height / 2 - 4, MeterWidth, 8));
                 var label = _hint.Length == 0 ? "Transcribing…" : $"Transcribing… {_hint}";
-                DrawStatus(g, label, _subhint, font, textBrush, TextLeft);
+                DrawStatus(g, label, _subhint, font, textBrush, TextLeft, height);
                 break;
 
             case Phase.Deriving:
-                DrawThinkingDots(g, new Rectangle(20, Height / 2 - 4, MeterWidth, 8));
+                DrawThinkingDots(g, new Rectangle(20, height / 2 - 4, MeterWidth, 8));
                 DrawStatus(
                     g, _hint.Length == 0 ? "Rewriting…" : _hint, _subhint,
-                    font, textBrush, TextLeft);
+                    font, textBrush, TextLeft, height);
                 break;
 
             case Phase.Inserted:
-                DrawTick(g, new Rectangle(24, Height / 2 - 7, 14, 14));
-                g.DrawString(_hint, font, textBrush, 48, Height / 2 - 8);
+                DrawTick(g, new Rectangle(24, height / 2 - 7, 14, 14));
+                g.DrawString(_hint, font, textBrush, 48, height / 2 - 8);
                 break;
 
             case Phase.Notice:
@@ -229,7 +289,7 @@ public sealed class RecordingOverlay : Form
                 {
                     g.DrawString(
                         _hint, font, info,
-                        new RectangleF(24, 14, Width - 48, Height - 24), format);
+                        new RectangleF(24, 14, width - 48, height - 24), format);
                 }
                 break;
 
@@ -241,30 +301,40 @@ public sealed class RecordingOverlay : Form
                     // a sentence about what to do is worse than none.
                     g.DrawString(
                         _hint, font, warn,
-                        new RectangleF(24, 14, Width - 48, Height - 24), format);
+                        new RectangleF(24, 14, width - 48, height - 24), format);
                 }
                 break;
         }
     }
 
+    /// <summary>
+    /// Declared in pixels rather than points, so it belongs to the same 96 DPI grid as every
+    /// other number here and is scaled once, by the transform in OnPaint. On an unscaled display
+    /// this is the 9pt it has always been.
+    /// </summary>
     private static Font MessageFont() =>
-        new(SystemFonts.MessageBoxFont!.FontFamily, 9f, FontStyle.Regular);
+        new(SystemFonts.MessageBoxFont!.FontFamily, Px(9f), FontStyle.Regular, GraphicsUnit.Pixel);
 
     /// <summary>Two compact rows keep the gesture and the pending submit distinct.</summary>
-    private void DrawStatus(
-        Graphics graphics, string title, string detail, Font titleFont, Brush titleBrush, float x)
+    private static void DrawStatus(
+        Graphics graphics, string title, string detail, Font titleFont, Brush titleBrush, float x,
+        float height)
     {
         if (string.IsNullOrEmpty(detail))
         {
-            graphics.DrawString(title, titleFont, titleBrush, x, Height / 2f - 8);
+            graphics.DrawString(title, titleFont, titleBrush, x, height / 2f - 8);
             return;
         }
 
-        using var detailFont = new Font(titleFont.FontFamily, 8f, FontStyle.Regular);
+        using var detailFont = new Font(
+            titleFont.FontFamily, Px(8f), FontStyle.Regular, GraphicsUnit.Pixel);
         using var detailBrush = new SolidBrush(Color.FromArgb(145, 235, 235, 235));
-        var titleHeight = titleFont.GetHeight(graphics);
-        var detailHeight = detailFont.GetHeight(graphics);
-        var top = (Height - titleHeight - detailHeight) / 2f;
+        // The parameterless overload, which is line spacing at 96 DPI — a design-grid number, and
+        // the same one on every monitor. The Graphics overload answers in the graphics' page unit
+        // and would invite the question of whether the world transform is already in it.
+        var titleHeight = titleFont.GetHeight();
+        var detailHeight = detailFont.GetHeight();
+        var top = (height - titleHeight - detailHeight) / 2f;
         graphics.DrawString(title, titleFont, titleBrush, x, top);
         graphics.DrawString(detail, detailFont, detailBrush, x, top + titleHeight - 1);
     }
