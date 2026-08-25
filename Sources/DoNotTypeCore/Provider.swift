@@ -77,11 +77,27 @@ public struct TokenUsage: Sendable, Equatable, Codable {
     /// This is a correctness signal, not an accounting one: a provider that accepts an audio part
     /// and reports zero audio tokens never gave the audio to the model.
     public var audioTokens: Int?
+    /// Tokens the model spent thinking, when the provider reports them separately.
+    ///
+    /// Kept apart from `completionTokens` because that is where the API puts it: Gemini returns
+    /// `total_thought_tokens` alongside `total_output_tokens` rather than inside it, and
+    /// `total_tokens` is the sum of input, output and thought. Folding the two together would
+    /// make a thinking request indistinguishable from a verbose one.
+    ///
+    /// Worth reporting rather than discarding because it is the entire cost of a `thinking_level`
+    /// and it is otherwise invisible. Measured on a 22-second clip: 0 at both `minimal` and `low`
+    /// — they are the same behaviour under two names — and 500 to 700 at `medium`, against an
+    /// 81-token transcript. See `docs/MODELS.md`.
+    public var thoughtTokens: Int?
 
-    public init(promptTokens: Int? = nil, completionTokens: Int? = nil, audioTokens: Int? = nil) {
+    public init(
+        promptTokens: Int? = nil, completionTokens: Int? = nil, audioTokens: Int? = nil,
+        thoughtTokens: Int? = nil
+    ) {
         self.promptTokens = promptTokens
         self.completionTokens = completionTokens
         self.audioTokens = audioTokens
+        self.thoughtTokens = thoughtTokens
     }
 
     /// Totals the cost of a dictation that took more than one request.
@@ -95,7 +111,8 @@ public struct TokenUsage: Sendable, Equatable, Codable {
         return TokenUsage(
             promptTokens: add(lhs.promptTokens, rhs.promptTokens),
             completionTokens: add(lhs.completionTokens, rhs.completionTokens),
-            audioTokens: add(lhs.audioTokens, rhs.audioTokens))
+            audioTokens: add(lhs.audioTokens, rhs.audioTokens),
+            thoughtTokens: add(lhs.thoughtTokens, rhs.thoughtTokens))
     }
 }
 
