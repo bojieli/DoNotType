@@ -1131,6 +1131,30 @@ public class AudioChunkerTests
         Assert.Null(TokenUsage.Add(new TokenUsage(), new TokenUsage()).AudioTokens);
         Assert.Equal(100, TokenUsage.Add(new TokenUsage(AudioTokens: 100), new TokenUsage()).AudioTokens);
     }
+
+    /// <summary>
+    /// Thought tokens are their own field, and a reported zero is not the same as silence.
+    /// </summary>
+    /// <remarks>
+    /// Zero is the normal reading at <c>minimal</c> and at <c>low</c>. Collapsing it to null
+    /// would make "the model did not think" indistinguishable from "the provider does not
+    /// say", which is the whole reason the field is reported. See docs/MODELS.md.
+    /// </remarks>
+    [Fact]
+    public void ThoughtTokensAddAndAReportedZeroSurvives()
+    {
+        Assert.Equal(
+            1200,
+            TokenUsage.Add(new TokenUsage(ThoughtTokens: 500), new TokenUsage(ThoughtTokens: 700))
+                .ThoughtTokens);
+        Assert.Equal(
+            0,
+            TokenUsage.Add(new TokenUsage(ThoughtTokens: 0), new TokenUsage(ThoughtTokens: 0))
+                .ThoughtTokens);
+        Assert.Null(TokenUsage.Add(new TokenUsage(), new TokenUsage()).ThoughtTokens);
+        Assert.Equal(
+            0, TokenUsage.Add(new TokenUsage(ThoughtTokens: 0), new TokenUsage()).ThoughtTokens);
+    }
 }
 
 /// <summary>
