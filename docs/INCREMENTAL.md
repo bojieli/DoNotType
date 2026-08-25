@@ -138,13 +138,29 @@ It is cheap: 237 minutes of audio analysed in 45 seconds, about **318× real tim
 of one core when run streaming. And it adds no dependency anywhere — Silero already ships and is
 already loaded on all four clients.
 
-**Measured, not yet shipped.** Re-measured on the shipping offline policy the trade is real but
-mixed: median cut pause 0.76 s → 2.14 s and cuts on a pause of a second or more 40% → 77%, at the
-cost of a longer final chunk (p50 17.9 s → 27.7 s, max 59.3 s → 76.9 s). On the offline path that
-costs almost nothing, since latency barely tracks chunk length. In the **live** path it needs
-incremental streaming state: `bestBoundary` runs on every ~200 ms of new audio, and re-running
-Silero over the whole pending buffer each time would burn most of a core. Silero is designed to
-stream — state and a 64-sample context carry window to window — so this is work, not a blocker.
+**Shipped for Swift.** Re-measured on the policy that actually ships, over the 60 retained
+recordings past the splitting threshold: median cut pause 0.76 s → 2.14 s and cuts landing in a
+pause of a second or more 40% → 77%, at the cost of a longer final chunk (p50 17.9 s → 27.7 s).
+That cost is close to nothing here, because request latency barely tracks chunk length — 60 s costs
+2.43 s and 120 s costs 2.98 s.
+
+The reason it was not done when Silero first arrived is that `bestBoundary` runs on every ~200 ms of
+new audio once a minute is pending, and re-running the model over the whole pending buffer costs
+about 0.19 s of CPU per call at that size — roughly a whole core, sustained, until a qualifying
+pause appears. Silero is recurrent and built to stream, so the state and the 64-sample context are
+now carried across calls and only new samples are analysed: 300 s of audio in 1.62 s, fed in the
+85 ms pieces the recorder actually delivers.
+
+Two edges are load-bearing and were both got wrong first. A speech run still **open** when a
+boundary is wanted has to count, because during capture the newest gap is always followed by one —
+only its start is used, and Silero does not report a start until 250 ms of speech confirms it, which
+is exactly the evidence that the pause has ended. Excluding it made the newest pause invisible and
+the segmenter never cut. And **fewer than two runs** hands the decision back to the energy finder,
+so audio Silero cannot parse still gets split rather than growing into one unbounded request — which
+matters more now, since an unbounded request is the case that truncates.
+
+Android still uses energy boundaries and needs the same streaming treatment; Windows has no live
+session.
 
 **The energy finder stays regardless** as the fallback for when the model fails to load.
 `DetectorError.unavailable` is a real state and boundary placement must survive it.
