@@ -162,6 +162,40 @@ public sealed class TranscriptionService(
             result.Transcript, AudioChunker.DurationSeconds(wav));
         if (verdict.Reason == HallucinationGuard.Reason.Kept)
         {
+            // The other end of the same question, and the one nothing used to ask: is this
+            // transcript too *small* for the recording? Screened on the WAV header, which is free,
+            // and only then measured against Silero — so the model runs on roughly the bottom tenth
+            // of transcripts rather than on all of them. Nothing is removed; a truncated transcript
+            // is part of what was said, and the remedy belongs to the caller.
+            if (TruncationGuard.WarrantsInspection(
+                    result.Transcript.Text, AudioChunker.DurationSeconds(wav)))
+            {
+                double? speechSeconds = null;
+                try
+                {
+                    speechSeconds = SpeechActivity.Measure(wav).SpeechMilliseconds / 1000.0;
+                }
+                catch
+                {
+                    // No reading, no accusation.
+                }
+
+                var truncation = TruncationGuard.Inspect(result.Transcript.Text, speechSeconds);
+                if (truncation.IsSuspect)
+                {
+                    // Warning for the same reason the guard above is: the user is about to be
+                    // handed text with their own words missing from the middle of it, and nothing
+                    // else in the pipeline will say so.
+                    Log.Warn(() => "transcript is too short for the speech in the recording",
+                        new Dictionary<string, string>
+                        {
+                            ["provider"] = Provider.Name,
+                            ["detail"] = truncation.Summary,
+                        });
+                    return result with { Truncation = truncation };
+                }
+            }
+
             return result;
         }
 

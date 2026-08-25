@@ -89,8 +89,17 @@ public sealed record TokenUsage(int? PromptTokens = null, int? CompletionTokens 
 /// <param name="ChunkCount">
 /// How many requests the audio was split across. 1 for every ordinary dictation.
 /// </param>
+/// <param name="Truncation">
+/// Whether <c>Transcript</c> looks too short for the amount of speech in the recording. Nothing is
+/// removed — a truncated transcript is <em>some</em> of what was said, and throwing it away would
+/// turn a partial answer into no answer. Carried so a caller can retry, warn, or record that the
+/// words may be incomplete. See <see cref="TruncationGuard"/>.
+/// </param>
 public sealed record TranscriptionResult(
-    Transcript Transcript, TokenUsage Usage, string RawOutput, int ChunkCount = 1);
+    Transcript Transcript, TokenUsage Usage, string RawOutput, int ChunkCount = 1)
+{
+    public TruncationGuard.Verdict Truncation { get; init; } = TruncationGuard.Verdict.Kept;
+}
 
 public sealed class ProviderException(string message) : Exception(message)
 {
