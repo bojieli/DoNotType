@@ -695,16 +695,20 @@ are whatever is on screen — on `real-acronym` that is `GRPO, PPO` while the sp
 
 ## Recommendation
 
-**`gemini-3.5-flash` on the native Gemini API** for the current technical-dictation workload. On
-2026-08-17 it retained names and canonical commands more consistently than 3.6 across seven recent
-real recordings and returned in 2.54 s median against 10.54 s for 3.6. That sweep has no human
-goldens, so it is qualitative evidence rather than an accuracy score.
+**`gemini-3.6-flash` on the native Gemini API.** Re-measured 2026-08-25 — see
+[Re-measurement](#re-measurement--2026-08-25), which supersedes the 2026-08-17 recommendation and
+the latency tables above.
 
-This does **not** erase the older golden result below: on the adversarial near-miss suite 3.6 still
-scores 43–44 / 48 against 31–35 / 48 for 3.5. The product recommendation now prioritises the
-maintainer's current jargon-heavy dictation; the historical suite continues to report the grounding
-trade-off it actually measured. OpenRouter remains a working fallback and useful for models Google
-does not serve directly.
+The near-miss margin between the two Geminis is small (41/47 against 39/47) and inside this suite's
+own per-pass noise. It is not what decides the default. This does: **`gemini-3.5-flash` silently
+truncates long recordings.** On a 90-second clip it returned fluent text missing two thirds of what
+was said, on 6 runs in 10, stopping mid-sentence at the same point each time. `gemini-3.6-flash`
+did it 0 times in 20.
+
+The latency objection that demoted 3.6 has evaporated: it now answers a short clip in 1.95 s median
+against 1.45 s, with nothing over 8 s in 20 runs. Half a second buys the truncation fix.
+
+OpenRouter remains a working fallback and useful for models Google does not serve directly.
 
 ### What the settings window recommends
 
@@ -715,7 +719,7 @@ single question:
 
 | pick | for | measured |
 |---|---|---|
-| **Google** (`gemini-3.5-flash`) | technical dictation | best qualitative term retention on 7 recent real clips; no human goldens; 2.54 s median |
+| **Google** (`gemini-3.6-flash`) | technical dictation | 41/47 near-miss; 0/20 long-recording truncations against 6/10 for 3.5; 1.95 s median |
 | **xAI** (`grok-stt`) | latency | 15 / 48 (25 with keyterms); ~1 s a clip, no tail |
 
 The other four stay in the list unlabelled, each for the narrower question it answers: OpenRouter
@@ -731,6 +735,11 @@ requested. That follow-up is intentionally out of scope for this campaign; the S
 tested here does not expose the parameter.
 
 ## Latency against clip length — 2026-08-16
+
+> **Superseded.** The absolute numbers and the two-speed-class conclusion below no longer hold for
+> `gemini-3.6-flash`; see [Re-measurement](#re-measurement--2026-08-25). Kept because the *method*
+> and the per-request tail analysis remain the right way to ask the question.
+
 
 Four Flash models, two clip lengths, 20 trials per cell across two independent runs — 160 requests,
 none failed. Native API, no screen context, thinking level as the provider picks it per family.
@@ -829,3 +838,106 @@ Check the no-context column before the clock when evaluating any replacement:
 
 - [EVALUATION.md](EVALUATION.md) — benchmark method and per-case readings
 - [GPU-TESTING.md](GPU-TESTING.md) — local serving and measurement procedure
+
+## Re-measurement — 2026-08-25
+
+Prompted by an investigation into incremental transcription (`docs/INCREMENTAL.md`), which needed
+to know what a slower model actually costs. Three of this document's standing conclusions turned
+out to be stale or wrong.
+
+### `gemini-3.6-flash` is no longer slow
+
+One request per trial, timed directly, `thinking_level: minimal`, real retained recordings:
+
+| audio | 3.5 median | 3.6 median | ratio | absolute |
+|---|---|---|---|---|
+| 15 s | 1.68 s | 2.10 s | 1.25× | +0.42 s |
+| 30 s | 1.84 s | 2.33 s | 1.27× | +0.49 s |
+| 60 s | 2.43 s | 3.48 s | 1.43× | +1.05 s |
+| 120 s | 2.98 s | 3.98 s | 1.34× | +1.00 s |
+| 201 s | 4.16 s | 4.73 s | 1.14× | +0.57 s |
+| 294 s | 5.31 s | 7.09 s | 1.34× | +1.78 s |
+
+**And the tail is gone.** The 2026-08-16 table recorded 3.6 at 4.39 s median / 10.59 s p90 /
+39.06 s max on a short clip, with 5 of 31 requests over 8 s. Twenty fresh trials on the same clip:
+
+| model | median | p90 | max | over 8 s |
+|---|---|---|---|---|
+| `gemini-3.5-flash` | 1.45 s | 1.97 s | 2.15 s | 0 / 20 |
+| `gemini-3.6-flash` | 1.95 s | 2.36 s | 2.57 s | **0 / 20** |
+
+If the old 16% rate still held, seeing nothing over 8 s across the 38 requests here would have
+probability ~0.1%. This is a change in the serving pool, not a lucky sample. **The "two speed
+classes" framing above is obsolete.**
+
+### `gemini-3.5-flash` silently truncates long recordings
+
+Found by accident, and the most consequential thing in this document. On one 90-second Mandarin
+recording, `gemini-3.5-flash` at `minimal` returned ~100 characters of a ~310-character transcript,
+stopping mid-sentence at the identical point every time it failed. Ten runs per cell:
+
+| model | thinking | lengths returned | truncated |
+|---|---|---|---|
+| 3.5 | minimal | 92, 94, 97, 101, 107, 111, 299, 303, 309, 319 | **6 / 10** |
+| 3.5 | medium | 110, 111, 290, 294, 304, 308, 309, 312, 312, 316 | 2 / 10 |
+| **3.6** | minimal | 252, 284, 294, 294, 299, 301, 302, 306, 313, 330 | **0 / 10** |
+| **3.6** | medium | 279, 280, 291, 296, 296, 297, 298, 299, 307, 323 | **0 / 10** |
+
+Switching model fixes it; more thinking only mitigates it. It is not a `max_output_tokens` limit —
+308 characters is nowhere near 2048 tokens.
+
+Two properties make this the worst failure mode measured here since the room-tone fabrication that
+prompted `HallucinationGuard`:
+
+- **It is silent.** The text is fluent and plausible. Nothing indicates that the middle of the
+  dictation is missing.
+- **Nothing catches it.** `HallucinationGuard` has a *maximum* characters-per-second ceiling to
+  catch fabrication and no minimum. 1.1 characters a second passes it by being below the ceiling.
+
+It is also **rare and recording-specific**: 0 truncations in 30 whole-file runs across six other
+long recordings. One recording in seven reproduced it, and on that one it fires 40–60% of the time.
+
+### What a thinking level costs, exactly
+
+The API reports thought tokens in their own field. Same 22-second clip, same instruction:
+
+| model | thinking | thought tokens | output tokens | total |
+|---|---|---|---|---|
+| 3.5 | `minimal` | **0** | 79 | 881 |
+| 3.5 | `low` | **0** | 81 | 883 |
+| 3.5 | `medium` | **500** | 81 | 1383 |
+| 3.6 | `minimal` | **0** | 79 | 881 |
+| 3.6 | `low` | **0** | 84 | 886 |
+| 3.6 | `medium` | **700** | 81 | 1583 |
+
+**`minimal` and `low` are both exactly zero**, on both models — `low` is not a cheaper thinking
+tier, it is the same zero-thinking behaviour under another name. `GeminiProvider.cheapestThinkingLevel`
+treats 3.7's rejection of `minimal` as a floor that moved; in cost terms it did not move at all.
+
+**This document's own reasoning about thinking was wrong.** "Per-request tail latency" above argues
+that output tokens pinned at 30 prove the slow requests were not thinking. Thought tokens are *not*
+counted in `total_output_tokens` — they are a separate `total_thought_tokens`, and
+`total_tokens = input + output + thought` (881 = 802 + 79 + 0; 1383 = 802 + 81 + 500). The
+conclusion happened to be right; the field cited could never have shown thinking either way.
+
+`GeminiProvider.parseUsage` discards `total_thought_tokens`, so thinking cost is currently invisible
+in history and in the logs.
+
+### Raising the thinking level is worse, measured
+
+Near-miss suite, 16 cases × 3 passes × 2 requests = 96 requests per condition:
+
+| model | thinking | matched | rate | **regressed** |
+|---|---|---|---|---|
+| 3.5 | minimal | 39 / 47 | 83.0% | 1 |
+| 3.5 | low | 39 / 48 | 81.2% | 2 |
+| 3.5 | medium | 37 / 48 | 77.1% | 2 |
+| 3.6 | minimal | 41 / 47 | 87.2% | 1 |
+| 3.6 | low | 40 / 48 | 83.3% | 2 |
+| 3.6 | medium | 36 / 48 | 75.0% | **5** |
+
+The regression column is the one that matters. `gemini-3.6-flash` at `medium` broke a correct
+baseline **5 times** against 1 at `minimal`, where this suite's per-pass range is 0–2. Screen
+context overwriting spoken content is the failure this project exists to prevent, and raising the
+thinking level made it more frequent. Treat `thinking_level` as a grounding-safety setting rather
+than a quality one, and leave it at the model's floor.

@@ -222,6 +222,22 @@ final class TokenUsageArithmeticTests: XCTestCase {
         let total = TokenUsage(audioTokens: 100) + TokenUsage()
         XCTAssertEqual(total.audioTokens, 100)
     }
+
+    func testThoughtTokensAddLikeEverythingElse() {
+        let total = TokenUsage(thoughtTokens: 500) + TokenUsage(thoughtTokens: 700)
+        XCTAssertEqual(total.thoughtTokens, 1_200)
+    }
+
+    /// A reported zero is the normal reading at `minimal` and at `low`, and it has to
+    /// survive the sum as a zero. Collapsing it to nil would make "the model did not
+    /// think" indistinguishable from "the provider does not say", which is the whole
+    /// reason this field is reported at all.
+    func testAReportedZeroThoughtCountIsNotTheSameAsNoReport() {
+        XCTAssertEqual(
+            (TokenUsage(thoughtTokens: 0) + TokenUsage(thoughtTokens: 0)).thoughtTokens, 0)
+        XCTAssertNil((TokenUsage() + TokenUsage()).thoughtTokens)
+        XCTAssertEqual((TokenUsage(thoughtTokens: 0) + TokenUsage()).thoughtTokens, 0)
+    }
 }
 
 /// The header layout `AVAudioFile` actually writes, which is not the one a canonical-header reader

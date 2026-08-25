@@ -13,8 +13,10 @@ public struct GeminiProvider: TranscriptionProvider {
     public let endpoint: URL
     /// Requested thinking level, or `nil` to let the model decide the cheapest it accepts.
     ///
-    /// Transcription wants as little thinking as the model allows: thought tokens bill as output
-    /// and buy nothing when the job is "write down what was said". `nil` is the default because
+    /// Transcription wants as little thinking as the model allows. Thought tokens are billed and
+    /// reported in their own `total_thought_tokens` field, and they buy nothing here — measured on
+    /// the near-miss suite, `medium` scores *worse* than `minimal` on both shipping models and
+    /// quintuples the count of screen-context regressions on 3.6. `nil` is the default because
     /// the floor moved — `gemini-3.6-flash` accepts `minimal`, and `gemini-3.7-flash` rejects it
     /// outright with *"'minimal' is not a supported thinking level for this model. Allowed values
     /// are: medium, low, high."* A hardcoded `minimal` therefore fails every request on the newer
@@ -27,6 +29,9 @@ public struct GeminiProvider: TranscriptionProvider {
     /// Deliberately a prefix match on the family rather than an allowlist of exact IDs: a new
     /// point release should inherit its family's floor rather than fall back to a level that
     /// costs the user thinking tokens on every dictation.
+    ///
+    /// Note that `minimal` and `low` are the same thing in cost terms: both report exactly 0
+    /// thought tokens on 3.5 and 3.6. The floor "moving" for 3.7 is a naming change, not a price.
     public static func cheapestThinkingLevel(forModel model: String) -> String {
         model.hasPrefix("gemini-3.7") || model.hasPrefix("gemini-4") ? "low" : "minimal"
     }
@@ -178,6 +183,11 @@ public struct GeminiProvider: TranscriptionProvider {
         }
     }
 
+    /// Test seam. `parseUsage` is private because nothing outside this type should be
+    /// reading provider JSON, but the thought-token contract is worth pinning without a
+    /// live request.
+    func parseUsageForTesting(_ usage: [String: Any]?) -> TokenUsage { parseUsage(usage) }
+
     private func parseUsage(_ usage: [String: Any]?) -> TokenUsage {
         guard let usage else { return TokenUsage() }
         let byModality = usage["input_tokens_by_modality"] as? [[String: Any]] ?? []
@@ -188,7 +198,11 @@ public struct GeminiProvider: TranscriptionProvider {
             completionTokens: usage["total_output_tokens"] as? Int,
             // Absent modality breakdown means "not reported", not "zero" — only report 0 when the
             // breakdown exists and audio is genuinely missing from it.
-            audioTokens: byModality.isEmpty ? nil : (audio ?? 0)
+            audioTokens: byModality.isEmpty ? nil : (audio ?? 0),
+            // Its own field, not part of `total_output_tokens`: `total_tokens` is input + output
+            // + thought. A zero here is a real measurement — it is what `minimal` and `low` both
+            // report — so it is passed through rather than treated as absent.
+            thoughtTokens: usage["total_thought_tokens"] as? Int
         )
     }
 }

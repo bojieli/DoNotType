@@ -120,6 +120,21 @@ public sealed class SettingsForm : Form
         tabs.TabPages.Add(new AboutTab().Build());
         Controls.Add(tabs);
 
+        // Every size in this file is a pixel count written against Segoe UI 9pt at 96 DPI, and none
+        // of them mean anything at another DPI unless the form is told which baseline they were
+        // authored against. Left unset, AutoScaleMode stays Inherit and WinForms scales nothing,
+        // while the fonts scale regardless because the manifest asks for PerMonitorV2. At 200% that
+        // put 31px text inside 23px buttons and a 248px block of wrapped help text inside a 112px
+        // panel: the controls were not merely cramped, they were cut through the middle.
+        //
+        // Assigned last, not with the other form properties at the top. Setting AutoScaleMode scales
+        // the form there and then and adopts the result as the new baseline, so doing it before the
+        // tabs exist scales an empty form and leaves every child that arrives afterwards at its
+        // unscaled size — which looks like a fix on a 96 DPI monitor and changes nothing on any
+        // other. This is the order a .Designer.cs emits, for the same reason.
+        AutoScaleDimensions = new SizeF(7F, 15F);
+        AutoScaleMode = AutoScaleMode.Font;
+
         LoadValues();
         RefreshDictionary();
         RefreshHistory();
@@ -216,7 +231,13 @@ public sealed class SettingsForm : Form
             "Screen text is sent as-is and remains separate from your explicit personal "
             + "dictionary. It may correct spelling, never the words you said."));
 
-        var save = new Button { Text = "Save", Width = 120 };
+        // The bottom margin is what makes this button reachable, and it is load-bearing. A scrolling
+        // FlowLayoutPanel takes its scrollable extent from the last control's bounds and margin, and
+        // the container's own bottom padding is not part of it — so scrolling all the way down still
+        // left 31 of this button's 48px below the fold at 200%, with nothing further to scroll.
+        // Measured: neither dropping the panel's bottom padding nor AutoScrollMargin changes the
+        // extent; only this does. Being last in the flow is what makes it this control's problem.
+        var save = new Button { Text = "Save", Width = 120, Margin = new Padding(3, 3, 3, 18) };
         save.Click += (_, _) => SaveValues();
         layout.Controls.Add(save);
 
@@ -434,10 +455,14 @@ public sealed class SettingsForm : Form
         };
         searchBar.Controls.Add(_statusFilter);
 
+        // Sized by its contents rather than by a constant. This row wraps, and how many rows it
+        // wraps into depends on the font: two at 96 DPI, three once the text is twice the width,
+        // at which point any fixed height is wrong by a row no matter what it is scaled by.
         var toolbar = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 74,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(10, 10, 10, 0),
         };
         toolbar.Controls.Add(Labelled("Keep", _retention));
