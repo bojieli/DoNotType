@@ -118,7 +118,7 @@ public sealed class ProviderException(string message) : Exception(message)
 /// </summary>
 public sealed class GeminiProvider(
     string apiKey,
-    string model = "gemini-3.5-flash",
+    string model = "gemini-3.6-flash",
     string? thinkingLevel = null,
     HttpClient? httpClient = null) : ITranscriptionProvider, IStyledTranscriptionProvider
 {
