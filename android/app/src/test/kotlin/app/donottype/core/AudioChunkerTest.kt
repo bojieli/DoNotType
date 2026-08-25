@@ -3,6 +3,7 @@ package app.donottype.core
 import kotlin.math.abs
 import kotlin.math.sin
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -191,11 +192,11 @@ class BoundaryPolicyParityTest {
     @Test
     fun `the default policy is the one the other cores use`() {
         val policy = AudioChunker.BoundaryPolicy()
-        kotlin.test.assertEquals(45.0, policy.minimumSeconds)
-        kotlin.test.assertEquals(60.0, policy.targetSeconds)
-        kotlin.test.assertEquals(75.0, policy.horizonSeconds)
-        kotlin.test.assertEquals(0.32, policy.minimumPauseSeconds)
-        kotlin.test.assertEquals(0.5, policy.preferredPauseSeconds)
+        assertEquals(45.0, policy.minimumSeconds, 0.0)
+        assertEquals(60.0, policy.targetSeconds, 0.0)
+        assertEquals(75.0, policy.horizonSeconds, 0.0)
+        assertEquals(0.32, policy.minimumPauseSeconds, 0.0)
+        assertEquals(0.5, policy.preferredPauseSeconds, 0.0)
     }
 
     /**
@@ -213,11 +214,12 @@ class BoundaryPolicyParityTest {
             4.0 to 0.7, 8.0 to 0.7, 10.0 to 0.7, 10.0 to 0.7,
             14.0 to 1.4, 11.0 to 0.4, 40.0 to 0.0,
         )
-        val cut = kotlin.test.assertNotNull(AudioChunker.bestBoundary(pcm))
-        val seconds = cut / 32_000.0
-        kotlin.test.assertTrue(
-            seconds in 47.5..49.5,
+        val cut = AudioChunker.bestBoundary(pcm)
+        assertNotNull("no boundary found in a clip with two clear pauses", cut)
+        val seconds = cut!! / 32_000.0
+        assertTrue(
             "cut landed at $seconds s, expected the 1.4 s pause",
+            seconds in 47.5..49.5,
         )
     }
 
