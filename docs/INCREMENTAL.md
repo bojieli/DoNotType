@@ -1,29 +1,61 @@
 # Incremental transcription
 
-How a long dictation is transcribed while it is still being spoken, why the boundaries land where
-they do, and which alternatives were measured and rejected.
+An investigation into transcribing a long dictation while it is still being spoken. **The feature
+was not built.** What the measurements found instead was a silent data-loss bug, and the fix for
+that turned out to be one line.
 
-The one-sentence version: **accuracy work belongs on time the user is already spending, and never
-on the critical path.** Everything below follows from that.
+This document is kept because the reasoning is reusable and most of it was wrong in instructive
+ways. If you are here to change the chunker or the model, read *What survived* and *Rejected
+alternatives*; the rest is the trail.
 
-## The problem this solves
+## What was proposed
 
-A long monologue produces one large request at the moment the user stops talking. That request is
-slow because it is large, and the user is waiting for all of it. Worse, the maintainer's report —
-and the premise this design was built on — is that a very long paragraph transcribes *less
-accurately* than the same speech in pieces, because a single request gives the model one pass over
-several minutes of audio.
+A long monologue produces one large request at the moment the user stops talking. The premise was
+that a very long paragraph transcribes *less accurately* than the same speech in pieces, and that
+segments cut while the user is still speaking have a latency budget nobody is watching — so they
+could be given a slower, more accurate model and the transcripts that came before them, with only
+the final piece on the critical path.
 
-`AudioChunker` already splits finished recordings on silence, and `LiveTranscriptionSession`
-already transcribes pause-finalised parts while capture runs. What was missing was the reason to
-do it: those segments were transcribed with the same model and the same settings as the final one,
-so segmenting bought parallelism and nothing else.
+Three things had to be true for that to be worth building. None of them survived.
 
-Incremental transcription changes what the segments are *for*. A segment cut while the user is
-still speaking has a latency budget nobody is watching. It can be given a slower, more accurate
-model, and it can be given the transcripts that came before it. Only the last piece — from the
-final pause to the key release — is ever on the critical path, and that piece is deliberately kept
-short and cheap.
+| claim | verdict |
+|---|---|
+| Segmenting improves accuracy | **No.** Neutral on 10 English recordings, worse on 6 Mandarin ones, and the maintainer's review of 258 disagreements preferred the whole-file transcript. |
+| More thinking on hidden-latency segments buys accuracy | **No.** Worse on both models, 1.6–2.3× slower, and it quintupled screen-context regressions on 3.6. |
+| The accurate model is too slow to use directly | **No longer.** `gemini-3.6-flash` costs +0.5 s, not the 3.3× the old benchmark recorded. |
+
+## What survived
+
+1. **`gemini-3.6-flash` as the default.** It fixes a real bug (below) and now costs half a second.
+2. **A truncation guard.** `TruncationGuard` catches a transcript too short for the speech in the
+   recording — the failure the whole investigation accidentally uncovered.
+3. **A fix to the boundary scorer**, which was preferring a breath near the target over a clean
+   sentence break slightly earlier.
+4. **Silero as a better boundary source**, measured but not yet shipped: it needs incremental
+   streaming state to be viable in the live path.
+
+Nothing about segmentation policy changed. The live path still engages at 90 seconds, and the
+offline splitter still targets 60.
+
+## The bug this actually found
+
+`gemini-3.5-flash` **silently truncates long recordings.** On a 90-second Mandarin recording it
+returned roughly 100 characters of a 310-character transcript, stopping mid-sentence at the
+identical point each time, on 6 runs in 10. `gemini-3.6-flash` did it 0 times in 20. It is not the
+output-token cap.
+
+Nothing noticed. `HallucinationGuard`'s rate ceiling is a *maximum*, so 1.1 characters a second
+passes it by being below the floor of suspicion rather than above the ceiling. The `[NO_SPEECH]`
+marker was not written, because the model did transcribe — just not all of it. The user is handed
+fluent, plausible text with the middle of their dictation deleted.
+
+**The near-miss suite is structurally blind to this.** Its cases are short clips, and truncation
+only happens on long audio. That blind spot is why the default had moved to 3.5 in the first place,
+and it is the most reusable lesson here: a suite that measures one failure mode well will report
+confidently on a recording where a different failure mode is the only thing that matters.
+
+It is rare and recording-specific — 0 truncations in 30 whole-file runs across six other long
+recordings — but on an affected recording it fires 40–60% of the time.
 
 ## The corpus these numbers come from
 
@@ -106,8 +138,32 @@ It is cheap: 237 minutes of audio analysed in 45 seconds, about **318× real tim
 of one core when run streaming. And it adds no dependency anywhere — Silero already ships and is
 already loaded on all four clients.
 
-**The energy finder stays** as the fallback for when the model fails to load. `DetectorError
-.unavailable` is a real state and boundary placement must survive it.
+**Shipped for Swift.** Re-measured on the policy that actually ships, over the 60 retained
+recordings past the splitting threshold: median cut pause 0.76 s → 2.14 s and cuts landing in a
+pause of a second or more 40% → 77%, at the cost of a longer final chunk (p50 17.9 s → 27.7 s).
+That cost is close to nothing here, because request latency barely tracks chunk length — 60 s costs
+2.43 s and 120 s costs 2.98 s.
+
+The reason it was not done when Silero first arrived is that `bestBoundary` runs on every ~200 ms of
+new audio once a minute is pending, and re-running the model over the whole pending buffer costs
+about 0.19 s of CPU per call at that size — roughly a whole core, sustained, until a qualifying
+pause appears. Silero is recurrent and built to stream, so the state and the 64-sample context are
+now carried across calls and only new samples are analysed: 300 s of audio in 1.62 s, fed in the
+85 ms pieces the recorder actually delivers.
+
+Two edges are load-bearing and were both got wrong first. A speech run still **open** when a
+boundary is wanted has to count, because during capture the newest gap is always followed by one —
+only its start is used, and Silero does not report a start until 250 ms of speech confirms it, which
+is exactly the evidence that the pause has ended. Excluding it made the newest pause invisible and
+the segmenter never cut. And **fewer than two runs** hands the decision back to the energy finder,
+so audio Silero cannot parse still gets split rather than growing into one unbounded request — which
+matters more now, since an unbounded request is the case that truncates.
+
+Android still uses energy boundaries and needs the same streaming treatment; Windows has no live
+session.
+
+**The energy finder stays regardless** as the fallback for when the model fails to load.
+`DetectorError.unavailable` is a real state and boundary placement must survive it.
 
 ### Silero still does not detect sentences
 
@@ -140,7 +196,7 @@ So the horizon fallback is load-bearing: past the decision horizon, take the fir
 rather than waiting for a prettier one. Cut quality is a preference. Cutting at all is a
 requirement. Neither is ever allowed to manufacture a mid-word cut.
 
-### The scoring function had a bug
+### The scoring function had a bug, now fixed
 
 `boundaryScore` ranked candidates as:
 
@@ -154,119 +210,51 @@ scorer preferred the breath.** This was invisible at the old 60 s target because
 window was wide relative to the penalty.
 
 Normalising the distance penalty by the width of the `minimum…horizon` window fixes it, and the fix
-is free: median cut pause 1.00 s → 1.20 s and clean cuts 50% → 59%, with **identical** segment
-count and identical tail. No trade at all.
+is free. Re-measured on the policy that actually ships, over the 60 retained recordings past the
+splitting threshold: the median pause a cut lands in goes from **0.76 s to 1.32 s**, cuts landing
+in a pause of a second or more from **40% to 60%**, with the same chunk count and a slightly
+*shorter* final chunk. No trade at all — the old form was wrong rather than differently weighted.
 
-### The policy
+### The policy did not change
 
-| | offline (`AudioChunker.defaultPolicy`) | live |
-|---|---|---|
-| engage after | 90 s of recording | 45 s of recording |
-| `minimum` | 45 s | 20 s |
-| `target` | 60 s | 30 s |
-| `horizon` | 75 s | 45 s |
-| `minimumPause` | 0.32 s | 0.40 s |
-| `preferredPause` | 0.50 s | 0.80 s |
+One policy ships, and it is the one that always shipped: engage past 90 seconds of recording,
+`minimum` 45 s, `target` 60 s, `horizon` 75 s, `minimumPause` 0.32 s, `preferredPause` 0.50 s.
 
-**These are two policies, not one constant that moved.** The offline splitter exists to
-parallelise a recording that has already finished, where the only cost of a boundary is a seam.
-The live segmenter's boundaries have a second job: a boundary is the last moment before which work
-can still be free. That is a different objective and it wants earlier, more frequent cuts.
+A second, more aggressive live policy was designed — engage at 45 s, target 30 s — to put more
+dictations through the incremental path. It is recorded here only so nobody re-derives it: the
+reason it was not shipped is in *Why segmentation was not expanded* below, and it is a quality
+reason rather than a cost one.
 
-`AudioChunker.threshold` (90 s) governs whether a *finished* recording is worth splitting at all
-and should stay where it is. Lowering it to serve the live path would make short offline
-transcriptions pay for coordination they do not need.
+What *did* change is where a cut lands inside that unchanged policy — see the scorer fix above.
 
-Keeping a separate 45 s engagement gate for live matters for the same reason: a 35-second dictation
-that gets split pays a seam to save latency nobody was going to notice. Once the gate opens the
-segmenter still holds all the audio, so it places its first cut by looking *backward* at the best
-pause from 20 s onward. Early boundary, no gamble on short recordings.
+## Why segmentation was not expanded
 
-## The two policies
+The plan was to engage the live segmenter at 45 seconds instead of 90 and cut every 30 seconds
+instead of 60, which would have taken it from 8% to 20% of dictations. Two measurements stopped it.
 
-Both segment identically. They differ in what each request contains.
+**Segmenting does not recover content.** Ten recordings from 136 s to 312 s, each transcribed whole
+and in Silero-policy segments, with no screen context so length was the only variable:
 
-| | `incremental` | `whole` |
-|---|---|---|
-| each boundary sends | the new segment only | everything from the start |
-| seams in the delivered text | one per boundary | **exactly one**, before the tail |
-| audio sent, this corpus | 1.00× | **2.25×** |
-| worst single recording | 1.00× | 5.3× (the 312 s one) |
+| | whole 3.5 | segmented 3.5 | whole 3.6 |
+|---|---|---|---|
+| content, chars/s of audio | 7.79 | 7.64 | 7.77 |
+| divergence from the 3.6 reference | 0.120 | 0.129 | — |
+| closer to the reference | 7 / 10 | 3 / 10 | — |
 
-`whole` is the more accurate shape and the reason is structural rather than statistical: because
-each boundary re-transcribes from the beginning, the delivered transcript is *the last full
-re-transcription plus the tail*. There are no cross-segment seams to stitch, nothing to
-de-duplicate, and audio that was ambiguous early can be re-heard with everything that followed it.
+Segmenting recovered more than 15% more text on **0 of 10** recordings. On six Mandarin recordings
+it was consistently worse. Note the metric's own weakness, which is why it is not the argument: the
+reference is itself a whole-file request, so it structurally favours the whole-file candidate.
 
-The cost was expected to be prohibitive and is not. It grows quadratically in principle, but on a
-real distribution dominated by 45–90 s recordings there are only one or two boundaries, so the
-measured cost is 2.25× the audio tokens. A 90-second re-transcription window caps the tail of the
-distribution at 1.83× but barely helps otherwise, so it belongs as a guard for very long
-recordings, not as the default shape.
+**The maintainer reviewed the actual disagreements and preferred whole-file.** 258 aligned
+differences across the ten recordings, judged by ear against the audio. That is the only ground
+truth in this investigation, and it says segmenting costs quality in the ordinary case.
 
-Upload size is not a constraint. Every request already goes out as 16 kbps Opus, so a 300-second
-re-transcription is roughly 600 KB.
+So blanket segmentation would trade a *frequent* small quality loss for protection against a *rare*
+large one — and the rare one now has a direct fix in the model. Bad trade.
 
-Names are deliberately plain: `incremental` sends each new part once, `whole` sends the whole
-recording each time. `rewrite` was rejected as a name because `TranscriptMode.rewrite` already
-means a text-only styling pass, and the distinction between "re-perceive the audio" and "edit the
-text" is the one thing this document most needs to keep straight.
-
-## The body/tail split
-
-A segment cut mid-speech is a **body** segment; the audio from the last boundary to key release is
-the **tail**.
-
-| | body | tail |
-|---|---|---|
-| latency budget | hidden — the user is still talking | the entire user-visible wait |
-| model | the accurate one | the fast one |
-| thinking level | the model's floor | the model's floor |
-| stall hedge | off, or 30 s | 8 s, as today |
-
-Three details carry this:
-
-**The tail is never made slower for accuracy.** It is the only audio the user waits on. Segmenting
-earlier also *shortens* it — median critical-path audio drops from 52 s to about 12 s — so the
-segmentation change is a latency improvement before any model choice is made.
-
-**The release race is real and needs a hedge.** The user can stop talking three seconds after a
-body segment was dispatched, at which point `finish()` awaits it and the "free" work is on the
-critical path after all. The fix is the shape `FallbackTranscriber` already uses: on release, any
-body segment still in flight gets a shadow request on the fast model, first answer wins. What makes
-this work rather than merely doubling the wait is the finding in
-[MODELS.md](MODELS.md#per-request-tail-latency) that slow draws are **independent per request and
-uncorrelated across models** (|r| ≤ 0.28) — a fast-model shadow is unaffected by whatever queue the
-accurate model is stuck in.
-
-**Turn the stall hedge off for body segments.** It defaults on at 8 s, and 16% of `gemini-3.6-flash`
-requests exceed 8 s. Left on, roughly a third of a long dictation's segments would fire a duplicate
-request to buy latency nobody is waiting for.
-
-## Rolling context
-
-Later segments are given the transcripts of earlier ones, tail-truncated, as a reference part ahead
-of the audio.
-
-It must be labelled as reference and not as text to continue. This is the highest-risk part of the
-design: a model handed "the transcript so far" plus new audio has an easy path to *continuing* the
-text rather than transcribing the sound, and `HallucinationGuard` exists because this model family
-will write fluent invention when handed nothing. The instruction belongs in `prompt/` like the rest
-of the contract, and it must say: for spelling, names, casing and terminology; do not repeat it, do
-not continue it, transcribe only this audio.
-
-It must never block. Take whatever prefix is complete at dispatch, wait at most ~1.5 s for the
-immediate predecessor, then go without it.
-
-**It also introduces a new failure mode that must be stated out loud.** Today segments are
-independent, so a mishearing is isolated. With carried context, an early wrong spelling of a name
-becomes a *consistent* wrong spelling for the rest of the dictation. Consistency is not accuracy.
-Keeping the window to the recent tail rather than the whole session limits how far a bad spelling
-rides, but it does not eliminate this.
-
-Under `incremental`, rolling context is also what launders the accurate model's work into the fast
-model's tail: a term the body model already spelled correctly is available to the tail model as
-prior text.
+**What segmentation is still for** is unchanged and unaffected: past 90 seconds a single request is
+slow enough that splitting on silence and transcribing concurrently is worth the seam. That is a
+latency argument, it was always a latency argument, and it is the only one it can carry.
 
 ## Rejected alternatives
 
@@ -338,6 +326,25 @@ cost someone their words. `dnt doctor` reports that state.
 **Treating a small move in the near-miss suite as evidence.** The suite prints its own per-pass
 spread for a reason. Two runs of the same condition during this work scored 37/48 and 39/47. A
 change smaller than that spread has not been shown to do anything.
+
+**Trusting a suite outside what it measures.** Worse than the above, and the mistake that cost the
+most here: the near-miss suite was read as a verdict on which model to ship, when its cases are
+short clips and the failure that decides the question only happens on long audio. It reported 3.6
+ahead by 4 points, inside its own noise. The real margin was 0 truncations against 6 in 10. Ask
+what a suite *cannot* see before citing it.
+
+**Scoring a Mandarin transcript with a Latin-only tokenizer.** A word-error rate computed with
+`[a-z0-9']+` on a 71%-CJK transcript scores the handful of English words and silently ignores
+everything else. `eval/make-review-sheet.py` and `eval/score-review.py` both split Latin words and
+CJK per character, and any new measurement must do the same.
+
+**A synthetic fixture with less pause than real speech.** The energy floor is the 2nd percentile of
+frame energy, so a test clip whose only quiet is the pause under test estimates its floor from
+speech and then finds no speech at all. Real dictation is 39% to 86% pause.
+
+**Assuming a C# record struct honours its primary constructor's defaults.** `new()` on a record
+*struct* zero-initialises. `AudioChunker.DefaultPolicy` was every field zero on that client, and
+every chunker test passed anyway.
 
 ## Thinking levels, measured — 2026-08-25
 
