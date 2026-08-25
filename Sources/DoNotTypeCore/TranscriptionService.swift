@@ -216,6 +216,36 @@ public struct TranscriptionService: Sendable {
             result.transcript = checked
             result.suppressed = verdict
         }
+
+        // The other end of the same question, and the one nothing used to ask: is
+        // this transcript too *small* for the recording? Screened on the WAV header,
+        // which is free, and only then measured against Silero — so the model runs on
+        // roughly the bottom tenth of transcripts rather than on all of them.
+        //
+        // Nothing is removed. A truncated transcript is part of what was said, and
+        // the remedy belongs to the caller, which can retry on a model that does not
+        // do this. See `TruncationGuard`.
+        if verdict == .kept,
+            TruncationGuard.warrantsInspection(
+                result.transcript.transcript, audioSeconds: audio.durationSeconds)
+        {
+            let speechSeconds = (try? SpeechActivity.measure(wav: audio.data))
+                .map { Double($0.speechMilliseconds) / 1_000 }
+            let truncation = TruncationGuard.inspect(
+                result.transcript.transcript, speechSeconds: speechSeconds)
+            if truncation.isSuspect {
+                // Warning rather than debug for the same reason the guard above is:
+                // the user is about to be handed text with their own words missing
+                // from the middle of it, and nothing else in the pipeline will say so.
+                Self.log.warning(
+                    "transcript is too short for the speech in the recording",
+                    [
+                        "provider": provider.name, "model": model,
+                        "detail": truncation.summary,
+                    ])
+                result.truncation = truncation
+            }
+        }
         return result
     }
 

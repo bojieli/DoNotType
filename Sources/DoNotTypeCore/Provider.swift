@@ -115,15 +115,25 @@ public struct TranscriptionResult: Sendable {
     /// actually returned.
     public var suppressed: HallucinationGuard.Verdict
 
+    /// Whether `transcript` looks too short for the amount of speech in the recording.
+    ///
+    /// Unlike `suppressed`, nothing is removed — a truncated transcript is *some* of what
+    /// was said, and throwing it away would turn a partial answer into no answer. It is
+    /// carried so a caller can retry, warn, or record that the words may be incomplete.
+    /// See `TruncationGuard`.
+    public var truncation: TruncationGuard.Verdict
+
     public init(
         transcript: Transcript, usage: TokenUsage, rawOutput: String, chunkCount: Int = 1,
-        suppressed: HallucinationGuard.Verdict = .kept
+        suppressed: HallucinationGuard.Verdict = .kept,
+        truncation: TruncationGuard.Verdict = .kept
     ) {
         self.transcript = transcript
         self.usage = usage
         self.rawOutput = rawOutput
         self.chunkCount = chunkCount
         self.suppressed = suppressed
+        self.truncation = truncation
     }
 }
 
