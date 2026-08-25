@@ -27,6 +27,7 @@ Everything documented about DoNotType, grouped by audience. The entry point is t
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit, and which decisions were measured. |
 | [EVALUATION.md](EVALUATION.md) | How transcription quality is measured, current numbers, and the experiment log. |
+| [INCREMENTAL.md](INCREMENTAL.md) | Transcribing a long dictation while it is still being spoken: where the boundaries go, and what was rejected. |
 | [MODELS.md](MODELS.md) | Which models and providers can actually do this job, measured. |
 | [GPU-TESTING.md](GPU-TESTING.md) | Running open-weight models locally, and what to measure. |
 | [PLAN.html](PLAN.html) | The original reverse-engineering survey this design came from (historical). |
