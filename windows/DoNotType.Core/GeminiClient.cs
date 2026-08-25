@@ -70,7 +70,16 @@ public sealed record Transcript(string Text, string Language = "", string? Style
     }
 }
 
-public sealed record TokenUsage(int? PromptTokens = null, int? CompletionTokens = null, int? AudioTokens = null)
+/// <param name="ThoughtTokens">
+/// Tokens the model spent thinking, when the provider reports them separately. Kept apart from
+/// <c>CompletionTokens</c> because that is where the API puts it: Gemini returns
+/// <c>total_thought_tokens</c> alongside <c>total_output_tokens</c> rather than inside it, and
+/// <c>total_tokens</c> is the sum of input, output and thought. Measured on a 22-second clip: 0 at
+/// both <c>minimal</c> and <c>low</c> — the same behaviour under two names — and 500 to 700 at
+/// <c>medium</c>, against an 81-token transcript. A zero here is a real measurement, not an
+/// absence. See docs/MODELS.md.
+/// </param>
+public sealed record TokenUsage(int? PromptTokens = null, int? CompletionTokens = null, int? AudioTokens = null, int? ThoughtTokens = null)
 {
     /// <summary>Totals the cost of a dictation that took more than one request.</summary>
     /// <remarks>
@@ -80,7 +89,8 @@ public sealed record TokenUsage(int? PromptTokens = null, int? CompletionTokens 
     public static TokenUsage Add(TokenUsage left, TokenUsage right) => new(
         Sum(left.PromptTokens, right.PromptTokens),
         Sum(left.CompletionTokens, right.CompletionTokens),
-        Sum(left.AudioTokens, right.AudioTokens));
+        Sum(left.AudioTokens, right.AudioTokens),
+        Sum(left.ThoughtTokens, right.ThoughtTokens));
 
     private static int? Sum(int? left, int? right) =>
         left is null && right is null ? null : (left ?? 0) + (right ?? 0);
@@ -308,7 +318,10 @@ public sealed class GeminiProvider(
         return new TokenUsage(
             usage["total_input_tokens"]?.GetValue<int>(),
             usage["total_output_tokens"]?.GetValue<int>(),
-            audio);
+            audio,
+            // Its own field, not part of `total_output_tokens`. Zero is a real reading — it is what
+            // `minimal` and `low` both report — so absence is tested rather than value.
+            usage["total_thought_tokens"]?.GetValue<int>());
     }
 
     private static string Truncate(string value, int max) =>

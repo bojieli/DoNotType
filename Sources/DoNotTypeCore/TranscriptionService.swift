@@ -190,6 +190,7 @@ public struct TranscriptionService: Sendable {
             [
                 "provider": provider.name, "chars": "\(result.transcript.transcript.count)",
                 "audioTokens": result.usage.audioTokens.map(String.init) ?? "unreported",
+                "thoughtTokens": result.usage.thoughtTokens.map(String.init) ?? "unreported",
                 "ms": LogClock.ms(Date().timeIntervalSince(started)),
             ])
 

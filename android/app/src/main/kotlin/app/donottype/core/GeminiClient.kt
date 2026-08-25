@@ -73,6 +73,18 @@ data class TokenUsage(
     val promptTokens: Int? = null,
     val completionTokens: Int? = null,
     val audioTokens: Int? = null,
+    /**
+     * Tokens the model spent thinking, when the provider reports them separately.
+     *
+     * Kept apart from [completionTokens] because that is where the API puts it: Gemini returns
+     * `total_thought_tokens` alongside `total_output_tokens` rather than inside it, and
+     * `total_tokens` is the sum of input, output and thought.
+     *
+     * Measured on a 22-second clip: 0 at both `minimal` and `low` — they are the same behaviour
+     * under two names — and 500 to 700 at `medium`, against an 81-token transcript. A zero here
+     * is a real measurement, not an absence. See docs/MODELS.md.
+     */
+    val thoughtTokens: Int? = null,
 ) {
     companion object {
         /**
@@ -85,6 +97,7 @@ data class TokenUsage(
             sum(left.promptTokens, right.promptTokens),
             sum(left.completionTokens, right.completionTokens),
             sum(left.audioTokens, right.audioTokens),
+            sum(left.thoughtTokens, right.thoughtTokens),
         )
 
         private fun sum(left: Int?, right: Int?): Int? =
@@ -299,6 +312,13 @@ class GeminiClient(
             promptTokens = usage.optInt("total_input_tokens").takeIf { it > 0 },
             completionTokens = usage.optInt("total_output_tokens").takeIf { it > 0 },
             audioTokens = audio,
+            // Its own field, not part of `total_output_tokens`. Zero is a real reading — it is
+            // what `minimal` and `low` both report — so absence is tested rather than value.
+            thoughtTokens = if (usage.has("total_thought_tokens")) {
+                usage.optInt("total_thought_tokens")
+            } else {
+                null
+            },
         )
     }
 }

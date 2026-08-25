@@ -540,6 +540,7 @@ final class DictationController {
                     "language": result.transcript.language,
                     "chunks": "\(result.chunkCount)",
                     "audioTokens": result.usage.audioTokens.map(String.init) ?? "unreported",
+                    "thoughtTokens": result.usage.thoughtTokens.map(String.init) ?? "unreported",
                     "provider": outcome.attribution.provider,
                     "model": outcome.attribution.model,
                     "hedged": outcome.attribution.provider == settings.provider.rawValue
