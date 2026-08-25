@@ -105,17 +105,24 @@ public enum SpeechActivity {
 
     // MARK: - Silero segmentation
 
-    /// The part of upstream `get_speech_timestamps` that decides whether final speech exists.
-    /// Padding and maximum-segment splitting do not affect this gate, which needs duration rather
-    /// than timestamps; preserving the hysteresis and strict minimum-duration comparison does.
-    private static func finalisedSpeechSamples(
-        probabilities: [Float], audioLengthSamples: Int
-    ) -> Int {
+    /// The part of upstream `get_speech_timestamps` that decides where final speech is.
+    ///
+    /// One implementation, used by both the yes/no gate and the boundary finder, because a
+    /// segmenter that disagreed with the gate about what counts as speech would cut in places the
+    /// gate then refused to send. Padding and maximum-segment splitting do not affect either
+    /// caller; preserving the hysteresis and the strict minimum-duration comparison does.
+    ///
+    /// - Parameter includeOpenSegment: whether a run still open at the end counts. True for a
+    ///   finished recording, whose end really is the end. False for a live capture, where the
+    ///   speaker has simply not stopped yet and the run's end is not known.
+    static func finalisedSpeechSegments(
+        probabilities: [Float], audioLengthSamples: Int, includeOpenSegment: Bool = true
+    ) -> [Range<Int>] {
         let minimumSpeechSamples = sampleRate * minimumSpeechMilliseconds / 1_000
         let minimumSilenceSamples = sampleRate * minimumSilenceMilliseconds / 1_000
         var speechStart: Int?
         var possibleEnd: Int?
-        var total = 0
+        var segments: [Range<Int>] = []
 
         for (index, probability) in probabilities.enumerated() {
             let current = windowSamples * index
@@ -130,15 +137,133 @@ public enum SpeechActivity {
             if possibleEnd == nil { possibleEnd = current }
             guard let end = possibleEnd, current - end >= minimumSilenceSamples else { continue }
 
-            if end - start > minimumSpeechSamples { total += end - start }
+            if end - start > minimumSpeechSamples { segments.append(start..<end) }
             speechStart = nil
             possibleEnd = nil
         }
 
-        if let start = speechStart, audioLengthSamples - start > minimumSpeechSamples {
-            total += audioLengthSamples - start
+        if includeOpenSegment, let start = speechStart,
+            audioLengthSamples - start > minimumSpeechSamples
+        {
+            segments.append(start..<audioLengthSamples)
         }
-        return total
+        return segments
+    }
+
+    private static func finalisedSpeechSamples(
+        probabilities: [Float], audioLengthSamples: Int
+    ) -> Int {
+        finalisedSpeechSegments(
+            probabilities: probabilities, audioLengthSamples: audioLengthSamples
+        ).reduce(0) { $0 + $1.count }
+    }
+
+    // MARK: - Streaming
+
+    /// Silero over a capture that is still running, carrying state instead of re-reading the buffer.
+    ///
+    /// The live segmenter asks for a boundary every 200 ms once a minute of audio is pending. Doing
+    /// that by re-running the model over the whole pending buffer costs about 0.19 s of CPU per
+    /// call at 60 seconds pending — roughly a whole core, sustained, for as long as no qualifying
+    /// pause appears. Feeding only the new samples costs about 0.6 ms.
+    ///
+    /// Probabilities are kept for the whole capture rather than trimmed at each cut. One `Float`
+    /// per 512 samples is 31 floats a second, so an hour of dictation is under half a megabyte, and
+    /// keeping absolute indices means a cut never has to re-align the array against the buffer.
+    public final class Stream: @unchecked Sendable {
+        private let model: SileroModel
+        private var carry: SileroModel.Carry
+        /// Samples arrived but not yet a complete 512-sample window.
+        private var leftover = Data()
+        private var probabilities: [Float] = []
+        /// Samples represented by `probabilities`, so callers can index in absolute samples.
+        public private(set) var analysedSamples = 0
+
+        public init() throws {
+            switch SpeechActivity.modelState {
+            case .ready(let loaded): model = loaded
+            case .failed(let detail): throw DetectorError.unavailable(detail)
+            }
+            carry = SileroModel.Carry()
+        }
+
+        /// Feeds 16 kHz mono 16-bit PCM. Safe to call with any size, including a partial window.
+        public func append(pcm: Data) throws {
+            guard !pcm.isEmpty else { return }
+            leftover.append(pcm)
+            let windowBytes = SpeechActivity.windowSamples * 2
+            let complete = leftover.count / windowBytes
+            guard complete > 0 else { return }
+
+            let consumed = complete * windowBytes
+            let block = leftover.prefix(consumed)
+            leftover.removeSubrange(0..<consumed)
+            do {
+                probabilities.append(
+                    contentsOf: try model.probabilities(
+                        pcm: Data(block), sampleCount: complete * SpeechActivity.windowSamples,
+                        carry: &carry))
+            } catch {
+                throw DetectorError.inference(error.localizedDescription)
+            }
+            analysedSamples += complete * SpeechActivity.windowSamples
+        }
+
+        /// Finalised speech runs, in absolute sample offsets.
+        ///
+        /// A run still open at the end of what has been analysed is deliberately excluded: the
+        /// speaker has not stopped, so its end is not known yet and nothing may be inferred from it.
+        /// - Parameter includingOpenRun: true only when the audio is known to have ended, where
+        ///   the last run's end really is its end. False during capture.
+        public func speechSegments(includingOpenRun: Bool = false) -> [Range<Int>] {
+            SpeechActivity.finalisedSpeechSegments(
+                probabilities: probabilities, audioLengthSamples: analysedSamples,
+                includeOpenSegment: includingOpenRun)
+        }
+
+        /// Boundary candidates in the gaps between finalised speech, relative to `originSample`.
+        func pauses(
+            from originSample: Int, format: AudioChunker.Format, includingOpenRun: Bool = false
+        ) -> [AudioChunker.Pause] {
+            SpeechActivity.pauses(
+                segments: speechSegments(includingOpenRun: includingOpenRun),
+                probabilities: probabilities, from: originSample, format: format)
+        }
+    }
+
+    /// The gaps between finalised speech runs, as boundary candidates.
+    ///
+    /// A gap is bounded by two runs that each cleared Silero's 250 ms minimum, so it is flanked by
+    /// real speech by construction — the energy finder has to check that separately with a
+    /// five-frames-in-two-seconds heuristic.
+    ///
+    /// `depth` is the model's own confidence that the gap is not speech, scaled to the 0–20 range
+    /// the energy finder's decibel depth uses, so one scorer can rank candidates from either source.
+    static func pauses(
+        segments: [Range<Int>], probabilities: [Float], from originSample: Int,
+        format: AudioChunker.Format
+    ) -> [AudioChunker.Pause] {
+        var out: [AudioChunker.Pause] = []
+        for (a, b) in zip(segments, segments.dropFirst()) {
+            let gapStart = a.upperBound
+            let gapEnd = b.lowerBound
+            guard gapEnd > gapStart, gapStart >= originSample else { continue }
+
+            let firstWindow = gapStart / windowSamples
+            let lastWindow = max(firstWindow + 1, gapEnd / windowSamples)
+            let slice = probabilities[
+                min(firstWindow, probabilities.count)..<min(lastWindow, probabilities.count)]
+            let meanSpeech = slice.isEmpty ? 0 : Double(slice.reduce(0, +)) / Double(slice.count)
+
+            let middle = (gapStart + gapEnd) / 2 - originSample
+            out.append(
+                AudioChunker.Pause(
+                    cut: middle * 2,
+                    seconds: Double(middle) / Double(sampleRate),
+                    duration: Double(gapEnd - gapStart) / Double(sampleRate),
+                    depth: (1 - meanSpeech) * 20))
+        }
+        return out
     }
 
     // MARK: - Model lifetime
@@ -171,9 +296,28 @@ private final class SileroModel: @unchecked Sendable {
     }
 
     func probabilities(pcm: Data, sampleCount: Int) throws -> [Float] {
+        var carry = Carry()
+        return try probabilities(pcm: pcm, sampleCount: sampleCount, carry: &carry)
+    }
+
+    /// The recurrent state Silero carries from one 512-sample window to the next.
+    ///
+    /// Split out so a live capture can keep feeding the same session instead of re-running the
+    /// model over the whole buffer on every tick. Upstream's own streaming mode is exactly this:
+    /// the state and the 64-sample context are the entire history the model needs.
+    struct Carry {
+        var state = [Float](repeating: 0, count: 2 * 128)
+        var context = [Float](repeating: 0, count: 64)
+    }
+
+    func probabilities(pcm: Data, sampleCount: Int, carry: inout Carry) throws -> [Float] {
         try pcm.withUnsafeBytes { raw in
-            var state = [Float](repeating: 0, count: 2 * 128)
-            var context = [Float](repeating: 0, count: 64)
+            var state = carry.state
+            var context = carry.context
+            defer {
+                carry.state = state
+                carry.context = context
+            }
             var probabilities: [Float] = []
             probabilities.reserveCapacity(
                 (sampleCount + SpeechActivity.windowSamples - 1)

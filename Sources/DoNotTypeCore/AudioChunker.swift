@@ -86,6 +86,15 @@ public enum AudioChunker {
         var chunks: [Chunk] = []
         var start = 0
 
+        // One pass over the whole recording, reused for every boundary decision below. Silero is
+        // sequential, so this is also the only correct way to run it here: analysing each tail
+        // separately would restart the model's state mid-utterance.
+        let speech: SpeechActivity.Stream? = {
+            guard let stream = try? SpeechActivity.Stream() else { return nil }
+            guard (try? stream.append(pcm: body)) != nil else { return nil }
+            return stream.speechSegments(includingOpenRun: true).isEmpty ? nil : stream
+        }()
+
         while start < body.count {
             let remaining = body.count - start
 
@@ -99,7 +108,12 @@ public enum AudioChunker {
             }
 
             let tail = body.subdata(in: start..<body.count)
-            guard let relativeCut = bestBoundary(in: tail, format: format, policy: policy) else {
+            let pauses = speech?.pauses(
+                from: start / 2, format: format, includingOpenRun: true)
+            guard
+                let relativeCut = bestBoundary(
+                    in: tail, format: format, policy: policy, pauses: pauses)
+            else {
                 // No safe pause means no safe boundary. One large request is slower; a cut through
                 // speech is incorrect.
                 chunks.append(
@@ -135,23 +149,36 @@ public enum AudioChunker {
         private var emittedFirst = false
         private var bytesAtLastAnalysis = 0
 
+        /// Silero over the whole capture, carrying state rather than re-reading the buffer.
+        ///
+        /// Nil when the model will not load, which is a real state and not a fatal one — boundary
+        /// placement falls back to frame energy, which needs no model and cannot fail.
+        private let speech: SpeechActivity.Stream?
+
         public let format: Format
         public let policy: BoundaryPolicy
 
-        public init(format: Format = Format(), policy: BoundaryPolicy = defaultPolicy) {
+        public init(
+            format: Format = Format(), policy: BoundaryPolicy = defaultPolicy,
+            useSilero: Bool = true
+        ) {
             self.format = format
             self.policy = policy
+            self.speech = useSilero ? try? SpeechActivity.Stream() : nil
         }
 
         public mutating func append(pcm: Data) -> [Chunk] {
             guard !pcm.isEmpty else { return [] }
             pending.append(pcm)
             totalBytes += pcm.count
+            // Fed every tick, whether or not a boundary is wanted yet, because the model's state
+            // is sequential: skipping audio would leave it reading a discontinuity.
+            try? speech?.append(pcm: pcm)
 
             var ready: [Chunk] = []
             while shouldAnalyse,
                 let cut = AudioChunker.bestBoundary(
-                    in: pending, format: format, policy: policy)
+                    in: pending, format: format, policy: policy, pauses: currentPauses())
             {
                 let samples = pending.subdata(in: 0..<cut)
                 ready.append(makeStreamingChunk(samples))
@@ -176,6 +203,40 @@ public enum AudioChunker {
 
         public var pendingDurationSeconds: Double {
             Double(pending.count) / Double(format.bytesPerSecond)
+        }
+
+        /// Silero's gaps, positioned relative to the start of `pending`.
+        ///
+        /// An empty result is an answer, not a failure: it means Silero finalised no gap in this
+        /// buffer, and the right response is to keep waiting rather than to cut somewhere the
+        /// model does not consider a pause. Falling back to frame energy here would reinstate the
+        /// old behaviour precisely when the two detectors disagree, which is the case this change
+        /// exists to settle.
+        ///
+        /// Nil — a genuine hand-back to the energy finder — is reserved for the stream not being
+        /// usable: the model would not load, or it has fallen behind the buffer because `append`
+        /// threw. Silence about that would grow chunks without bound.
+        private func currentPauses() -> [Pause]? {
+            guard let speech else { return nil }
+            let windowBytes = SpeechActivity.windowSamples * 2
+            let analysedBytes = speech.analysedSamples * 2
+            guard analysedBytes + windowBytes >= startBytes + pending.count else { return nil }
+
+            // No finalised speech at all, in a minute of audio, means the model is not seeing this
+            // recording — an unusual timbre, or something that is not speech. Refusing to cut on
+            // that basis would let one request grow without bound, so the energy finder takes over.
+            // One segment and no gaps is the opposite: Silero *is* reading it and says the speaker
+            // has not paused, which is a reason to wait rather than to overrule it.
+            let segments = speech.speechSegments(includingOpenRun: true)
+            guard segments.count >= 2 else { return nil }
+            // The open run counts here, and it has to. During capture the gap worth cutting at is
+            // always the most recent one, and the run after it has not ended — the speaker is
+            // still going. Only that run's *start* is used to close the gap, and Silero does not
+            // report a start until 250 ms of speech has confirmed it, which is exactly the
+            // evidence that the pause is over. Excluding it made the newest pause invisible and
+            // the segmenter never cut.
+            return speech.pauses(
+                from: startBytes / 2, format: format, includingOpenRun: true)
         }
 
         private var canConsiderBoundary: Bool {
@@ -217,11 +278,25 @@ public enum AudioChunker {
             durationSeconds: Double(samples.count) / Double(format.bytesPerSecond))
     }
 
-    private struct PauseCandidate {
-        let cut: Int
-        let seconds: Double
-        let duration: Double
-        let depth: Double
+    /// A place a cut could go, from whichever detector found it.
+    ///
+    /// Two produce these — the frame-energy finder below and Silero's speech-segment gaps — and one
+    /// scorer ranks them, so the two detectors stay swappable and directly comparable.
+    public struct Pause: Sendable, Equatable {
+        /// Byte offset of the pause's midpoint, relative to the start of the buffer searched.
+        public let cut: Int
+        public let seconds: Double
+        public let duration: Double
+        /// How confidently this is not speech, on a 0–20 scale. Decibels below the speech
+        /// threshold for the energy finder; the model's own confidence for Silero.
+        public let depth: Double
+
+        public init(cut: Int, seconds: Double, duration: Double, depth: Double) {
+            self.cut = cut
+            self.seconds = seconds
+            self.duration = duration
+            self.depth = depth
+        }
     }
 
     /// Returns the best safe boundary, or nil when the audio has no energy-qualified pause.
@@ -233,12 +308,39 @@ public enum AudioChunker {
     /// A run counts as a boundary only when
     /// it is surrounded by speech; uniform noise therefore cannot masquerade as one enormous
     /// pause. The middle leaves acoustic context on both sides without duplicating samples.
+    /// Ranks pauses found by either detector and returns the chosen cut.
+    ///
+    /// `pauses` of nil means "find them yourself, from frame energy" — the behaviour every caller
+    /// had before Silero could supply them, and the fallback when the model will not load.
     static func bestBoundary(
-        in body: Data, format: Format = Format(), policy: BoundaryPolicy = defaultPolicy
+        in body: Data, format: Format = Format(), policy: BoundaryPolicy = defaultPolicy,
+        pauses: [Pause]? = nil
     ) -> Int? {
+        let found = pauses ?? energyPauses(in: body, format: format, policy: policy)
+        let eligible = found.filter { $0.duration >= policy.minimumPause && $0.seconds >= policy.minimum }
+        let preferred = eligible.filter { $0.seconds <= policy.horizon }
+        if !preferred.isEmpty {
+            return preferred.max { boundaryScore($0, policy: policy) < boundaryScore($1, policy: policy) }?.cut
+        }
+        // Past the decision horizon, use the first real pause instead of waiting for a prettier
+        // one. Still no pause, still no cut.
+        return eligible.min { $0.seconds < $1.seconds }?.cut
+    }
+
+    /// Every energy-qualified pause in the buffer.
+    ///
+    /// This is deliberately only a pause finder; Silero makes every decision about whether a chunk
+    /// contains speech. The floor is a low percentile of the recording's own energy so a train and
+    /// a quiet office are judged relative to themselves. The second percentile is intentional:
+    /// ordinary speech can contain less than ten percent pause, while splitting needs only one
+    /// quiet run. A run counts only when it is surrounded by speech, so uniform noise cannot
+    /// masquerade as one enormous pause.
+    static func energyPauses(
+        in body: Data, format: Format = Format(), policy: BoundaryPolicy = defaultPolicy
+    ) -> [Pause] {
         let frameMilliseconds = 20
         let frameBytes = format.bytesPerSecond * frameMilliseconds / 1_000
-        guard frameBytes > 0, body.count >= frameBytes * 3 else { return nil }
+        guard frameBytes > 0, body.count >= frameBytes * 3 else { return [] }
 
         var levels: [Double] = []
         levels.reserveCapacity(body.count / frameBytes)
@@ -263,7 +365,7 @@ public enum AudioChunker {
                 offset += frameBytes
             }
         }
-        guard !levels.isEmpty else { return nil }
+        guard !levels.isEmpty else { return [] }
 
         let sorted = levels.sorted()
         let floor = sorted[min(sorted.count - 1, sorted.count / 50)]
@@ -273,7 +375,7 @@ public enum AudioChunker {
         let evidenceFrames = 5  // 100 ms of speech on each side defeats isolated transients.
         let evidenceWindow = 100  // two seconds
 
-        var candidates: [PauseCandidate] = []
+        var candidates: [Pause] = []
         var frame = 0
         while frame < speaking.count {
             guard !speaking[frame] else {
@@ -297,24 +399,17 @@ public enum AudioChunker {
 
             let gapLevel = levels[runStart..<runEnd].reduce(0, +) / Double(runEnd - runStart)
             candidates.append(
-                PauseCandidate(
+                Pause(
                     cut: middleFrame * frameBytes,
                     seconds: seconds,
                     duration: Double(runEnd - runStart) * 0.02,
                     depth: max(0, speechThreshold - gapLevel)))
         }
 
-        let preferred = candidates.filter { $0.seconds <= policy.horizon }
-        if !preferred.isEmpty {
-            return preferred.max { boundaryScore($0, policy: policy) < boundaryScore($1, policy: policy) }?.cut
-        }
-
-        // Past the decision horizon, use the first real pause instead of waiting for a prettier
-        // one. Still no pause, still no cut.
-        return candidates.min { $0.seconds < $1.seconds }?.cut
+        return candidates
     }
 
-    private static func boundaryScore(_ candidate: PauseCandidate, policy: BoundaryPolicy) -> Double {
+    private static func boundaryScore(_ candidate: Pause, policy: BoundaryPolicy) -> Double {
         let preferredBonus = candidate.duration >= policy.preferredPause ? 3.0 : 0
         let duration = min(2, candidate.duration) * 4
         let depth = min(20, candidate.depth) / 10
