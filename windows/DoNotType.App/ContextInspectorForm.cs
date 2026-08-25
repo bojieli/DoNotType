@@ -57,6 +57,12 @@ public sealed class ContextInspectorForm : Form
         body.Controls.Add(AudioNote());
         AddTranscriptComparison(body);
 
+        // This panel scrolls whenever the context is long, which is exactly when somebody is in
+        // this window collecting evidence. Its bottom padding is outside its own scrollable
+        // extent, so without this the last block — a transcript box up to 240px tall — stops 14px
+        // short of the fold. Which control is last depends on the record, hence the walk.
+        ScrollReach.MakeBottomReachable(body);
+
         var footer = new FlowLayoutPanel
         {
             Dock = DockStyle.Bottom,
