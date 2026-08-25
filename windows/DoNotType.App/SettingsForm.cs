@@ -131,7 +131,10 @@ public sealed class SettingsForm : Form
         // the form there and then and adopts the result as the new baseline, so doing it before the
         // tabs exist scales an empty form and leaves every child that arrives afterwards at its
         // unscaled size — which looks like a fix on a 96 DPI monitor and changes nothing on any
-        // other. This is the order a .Designer.cs emits, for the same reason.
+        // other. A .Designer.cs assigns it before Controls.Add and is still correct, which is not
+        // a counter-example: InitializeComponent runs inside SuspendLayout/ResumeLayout, so the
+        // scaling pass is deferred to the resume, by which point every child exists. There is no
+        // SuspendLayout here, so the assignment is itself the scaling pass and has to come last.
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
 
