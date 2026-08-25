@@ -221,7 +221,7 @@ the **tail**.
 |---|---|---|
 | latency budget | hidden — the user is still talking | the entire user-visible wait |
 | model | the accurate one | the fast one |
-| thinking level | see below | cheapest the model accepts |
+| thinking level | the model's floor | the model's floor |
 | stall hedge | off, or 30 s | 8 s, as today |
 
 Three details carry this:
@@ -303,13 +303,21 @@ recording may alter it.
 Only defensible where the app owns the text buffer. Text injected into another application is gone,
 and reaching back into it is not a transcription feature.
 
-### Raising the thinking level as the first move
+### Raising the thinking level on body segments
 
-See the open question below. The instinct was to buy accuracy with `thinking_level: medium`, but
-the per-request measurements in MODELS.md show **output tokens pinned at exactly 30 across every
-trial of every model** — at their default levels the slow requests were not thinking more, they
-were queued. There is a measured accuracy difference between *models*; there was, at the time this
-was designed, no measured accuracy difference between thinking levels at all.
+The idea the whole investigation started from: since a body segment's latency is hidden, spend it
+on `thinking_level: medium` and get a more careful transcript for free.
+
+Measured and rejected — see [Thinking levels](#thinking-levels-measured--2026-08-25). Medium costs
+accuracy on both models, costs 1.6–2.3× the latency, and on `gemini-3.6-flash` it **quintupled the
+regression count**, which is the one number this project cannot trade.
+
+The warning sign was there beforehand and was read too weakly: MODELS.md's per-request study found
+**output tokens pinned at exactly 30 across every trial of every model**, so at their default levels
+the slow requests were never thinking more — they were queued. "Thinking buys accuracy" was an
+assumption imported from other tasks, not an observation about this one. Transcription is a
+perception task; there is nothing to reason about, and reasoning capacity spent on it goes into
+second-guessing the audio against the screen.
 
 ## Mistakes already made against this code
 
@@ -331,31 +339,64 @@ cost someone their words. `dnt doctor` reports that state.
 spread for a reason. Two runs of the same condition during this work scored 37/48 and 39/47. A
 change smaller than that spread has not been shown to do anything.
 
-## Open question: thinking levels
+## Thinking levels, measured — 2026-08-25
 
-At the time of writing, no measurement in this repository varies `thinking_level` as an independent
-variable. Every table in MODELS.md was produced with "thinking level as the provider picks it per
-family" — `minimal` for 3.5 and 3.6, `low` for 3.7.
+Nothing in this repository had ever varied `thinking_level` as an independent variable. Every table
+in [MODELS.md](MODELS.md) was produced with "thinking level as the provider picks it per family".
+The body/tail split has two independent dials — *which model* and *how much thinking* — so the
+second one needed a number before it could be designed around.
 
-The question matters because the body/tail split has two independent dials — which model, and how
-much thinking — and only the first has evidence behind it.
+Near-miss suite, 16 cases × 3 passes × 2 requests (with and without context) = 96 requests per
+condition, run sequentially so wall clock is comparable:
 
-Method, so the result is comparable when it is re-run:
+| model | thinking | matched | rate | **regressed** | s / request |
+|---|---|---|---|---|---|
+| `gemini-3.5-flash` | minimal | 39 / 47 | 83.0% | 1 | 2.53 |
+| `gemini-3.5-flash` | low | 39 / 48 | 81.2% | 2 | **1.79** |
+| `gemini-3.5-flash` | medium | 37 / 48 | 77.1% | 2 | 4.04 |
+| **`gemini-3.6-flash`** | **minimal** | **41 / 47** | **87.2%** | 1 | 3.21 |
+| `gemini-3.6-flash` | low | 40 / 48 | 83.3% | 2 | 2.40 |
+| `gemini-3.6-flash` | medium | 36 / 48 | 75.0% | **5** | 5.82 |
+
+Two conditions lost one run each to a request timeout; rates are reported over completed runs.
+
+**More thinking is worse, on every axis measured.** It costs accuracy on both models (83.0 → 77.1%
+and 87.2 → 75.0%), and it costs 1.6–2.3× the latency. There is no configuration in which the body
+segments should ask for more thinking than the model's floor. The idea that started this
+investigation — hide a longer think behind the user's own speech — is dead, and it was worth 576
+requests to find out.
+
+**The most important number in the table is the regression column.** `gemini-3.6-flash` at `medium`
+broke a correct baseline **5 times**, against 1 at `minimal`, where the suite's own per-pass range
+is 0–2. Screen context overwriting spoken content is the failure this project exists to prevent,
+and raising the thinking level made it *more* frequent. The mechanism is plausible on its face:
+more thinking is more opportunity to reason that the text on screen is what the speaker must have
+meant. Anyone tempted to raise this dial for some other purpose should treat it as a grounding-safety
+change, not a quality one.
+
+**The model gap is real but much smaller than MODELS.md records.** At `minimal`, 3.6 beats 3.5 by
+41/47 against 39/47 — about 4 points. The historical near-miss result of 43–44 / 48 for 3.6 against
+31–35 / 48 for 3.5 **did not reproduce**; 3.5 scored far better here than that table predicts. The
+corpus and the prompt have both been re-recorded since those numbers were taken, so they are
+measuring a different contract. Do not cite the old gap as the justification for the body model.
+
+Latency has moved too: 3.6 cost 1.3× 3.5 per request here, not the 3.3× implied by the medians in
+MODELS.md's latency table.
+
+**What this means for the design.** The thinking dial is settled — always the model's floor, for
+body and tail alike. The model dial is *not* settled: a 4-point difference on a 47-run suite whose
+own noise floor is 2 runs is suggestive, not conclusive. Since body-segment latency is hidden, the
+cost of being wrong is small and the change is worth making, but the confirmation run is a
+higher-pass comparison of `3.5 @ minimal` against `3.6 @ minimal` and nothing else — the other four
+conditions are eliminated.
+
+Reproduce one cell with:
 
 ```bash
 dnt-eval suite eval/nearmiss --provider google \
-    --model <model> --thinking <minimal|low|medium> \
-    --repeat-count 3 --scorecard <out>.json
+    --model gemini-3.6-flash --thinking minimal \
+    --repeat-count 3 --scorecard out.json
 ```
-
-16 cases × 3 passes × 2 requests (with and without context) = 96 requests per condition. Run the
-conditions sequentially, so wall clock per condition is comparable as an aggregate latency measure.
-
-One early observation that should be checked rather than trusted: a single `gemini-3.5-flash` case
-at `medium` took 5.4 s, against the 1.34–1.95 s MODELS.md records for that model at its default. If
-that holds, medium thinking moves 3.5 into 3.6's latency class — which would mean paying 3.6-like
-latency without 3.6's accuracy, and would settle the dial in favour of switching model rather than
-raising thinking.
 
 ## Reproducing the segmentation measurements
 
