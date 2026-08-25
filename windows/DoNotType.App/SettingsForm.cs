@@ -234,15 +234,15 @@ public sealed class SettingsForm : Form
             "Screen text is sent as-is and remains separate from your explicit personal "
             + "dictionary. It may correct spelling, never the words you said."));
 
-        // The bottom margin is what makes this button reachable, and it is load-bearing. A scrolling
-        // FlowLayoutPanel takes its scrollable extent from the last control's bounds and margin, and
-        // the container's own bottom padding is not part of it — so scrolling all the way down still
-        // left 31 of this button's 48px below the fold at 200%, with nothing further to scroll.
-        // Measured: neither dropping the panel's bottom padding nor AutoScrollMargin changes the
-        // extent; only this does. Being last in the flow is what makes it this control's problem.
-        var save = new Button { Text = "Save", Width = 120, Margin = new Padding(3, 3, 3, 18) };
+        var save = new Button { Text = "Save", Width = 120 };
         save.Click += (_, _) => SaveValues();
         layout.Controls.Add(save);
+
+        // This panel's 18px of bottom padding sits outside its own scrollable extent, so the last
+        // control has to carry it or it cannot be scrolled to — 31 of the Save button's 48px stayed
+        // below the fold at 200%, with nothing further to scroll. Derived from the padding rather
+        // than written on the button, so the two numbers cannot drift apart.
+        ScrollReach.MakeBottomReachable(layout);
 
         page.Controls.Add(layout);
         return page;
