@@ -155,6 +155,36 @@ class DictationService(private val context: Context) {
                 log.content("discarded transcript", LogLevel.TRACE) {
                     outcome.result.transcript.transcript
                 }
+            } else if (TruncationGuard.warrantsInspection(
+                    outcome.result.transcript.transcript,
+                    record.durationSeconds,
+                )
+            ) {
+                // The other end of the same question, and the one nothing used to ask: is this
+                // transcript too *small* for the recording? Screened on the recording length,
+                // which is free, and only then measured against Silero. Nothing is removed — a
+                // truncated transcript is part of what was said.
+                // The process-lifetime Silero session, which already read this recording on the
+                // way out — the measurement is free here.
+                val speechSeconds = runCatching {
+                    measureSpeech(wav).speechMilliseconds / 1000.0
+                }.getOrNull()
+                val truncation = TruncationGuard.inspect(
+                    outcome.result.transcript.transcript,
+                    speechSeconds,
+                )
+                if (truncation.isSuspect) {
+                    // Warning for the same reason the guard above is: the user is about to be
+                    // handed text with their own words missing from the middle of it, and nothing
+                    // else in the pipeline will say so.
+                    log.warn(
+                        mapOf(
+                            "dictation" to id,
+                            "model" to outcome.attribution.model,
+                            "detail" to truncation.summary,
+                        ),
+                    ) { "transcript is too short for the speech in the recording" }
+                }
             }
 
             val text = guarded.transcript

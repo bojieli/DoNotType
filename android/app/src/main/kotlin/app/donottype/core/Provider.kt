@@ -73,7 +73,7 @@ enum class ProviderKind(
     val defaultModel: String,
     val isSpeechRecognition: Boolean,
 ) {
-    GEMINI("gemini", "Gemini", "gemini-3.5-flash", false),
+    GEMINI("gemini", "Gemini", "gemini-3.6-flash", false),
 
     /**
      * Any model through OpenRouter. Verified to forward audio, and the way to reach models Google
@@ -85,7 +85,7 @@ enum class ProviderKind(
     OPENROUTER(
         "openrouter",
         "OpenRouter (gateway — prefer Gemini for Gemini models)",
-        "google/gemini-3.5-flash",
+        "google/gemini-3.6-flash",
         false,
     ),
     DEEPGRAM("deepgram", "Deepgram (transcription only)", "nova-3", true),
@@ -147,10 +147,10 @@ enum class ProviderKind(
     val recommendationNote: String
         get() = when (this) {
             GEMINI ->
-                "Recommended for technical dictation. On seven recent jargon-heavy recordings, " +
-                    "Gemini 3.5 retained names and commands more consistently than 3.6; no human " +
-                    "goldens exist for those clips yet. It reads the screen for spelling context. " +
-                    "The older near-miss goldens still favour 3.6."
+                "Recommended for technical dictation. Gemini 3.6 matched 41 of 47 near-miss " +
+                    "goldens against 39 for 3.5, and never truncated a long recording in " +
+                    "20 runs where 3.5 silently dropped two thirds of one. It answers " +
+                    "about half a second slower. It reads the screen for spelling context."
             XAI ->
                 "Recommended for speed. About 1 s for a short clip, 2.8 s for two minutes of " +
                     "speech, and no tail. It cannot see the screen, so an unfamiliar name or a " +
@@ -185,10 +185,13 @@ enum class ProviderKind(
          * What a fresh install uses.
          *
          * A model rather than a recogniser, because a recogniser cannot see the screen and screen
-         * grounding is the entire point of this project. The current 3.5 recommendation comes
-         * from a seven-clip technical-dictation sweep: it retained the current jargon more
-         * consistently than 3.6 and returned faster, though those clips have no human goldens.
-         * The older adversarial near-miss goldens still favour 3.6.
+         * grounding is the entire point of this project. 3.6 is the recommendation again as of
+         * 2026-08-25: it matched 41 of 47 near-miss goldens against 39 for 3.5, and 3.5 was
+         * measured silently truncating a long recording — returning fluent text missing two
+         * thirds of what was said — on 6 runs in 10, where 3.6 did it 0 times in 20. The reason
+         * 3.6 was demoted in the first place was its latency tail, and that tail is gone: it now
+         * answers a short clip in 1.95 s median against 1.45 s, with nothing over 8 s in 20 runs.
+         * See docs/INCREMENTAL.md.
          *
          * It is bought with latency. On the 100-clip ordinary-dictation corpus a recogniser is
          * far faster — xAI 0.98 s median — while a model is several seconds. The exact figure for

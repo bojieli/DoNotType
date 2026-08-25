@@ -121,21 +121,23 @@ public static class ProviderFactory
 {
     /// <summary>
     /// What a fresh install uses. A model, because a recogniser cannot see the screen and screen
-    /// grounding is the entire point of this project. The current 3.5 recommendation comes from a
-    /// seven-clip technical-dictation sweep: it retained the current jargon more consistently than
-    /// 3.6 and returned faster, though those clips have no human goldens. The older adversarial
-    /// near-miss goldens still favour 3.6. See docs/EVALUATION.md.
+    /// grounding is the entire point of this project. 3.6 is the recommendation again as of
+    /// 2026-08-25: it matched 41 of 47 near-miss goldens against 39 for 3.5, and 3.5 was measured
+    /// silently truncating a long recording — returning fluent text missing two thirds of what was
+    /// said — on 6 runs in 10, where 3.6 did it 0 times in 20. The reason 3.6 was demoted in the
+    /// first place was its latency tail, and that tail is gone: it now answers a short clip in
+    /// 1.95 s median against 1.45 s, with nothing over 8 s in 20 runs. See docs/INCREMENTAL.md.
     /// </summary>
     public const ProviderKind DefaultForNewInstalls = ProviderKind.Gemini;
 
     public static string DefaultModel(this ProviderKind kind) => kind switch
     {
-        ProviderKind.Gemini => "gemini-3.5-flash",
+        ProviderKind.Gemini => "gemini-3.6-flash",
         // nova-3 is the only Deepgram model with keyterm biasing, its sole grounding channel.
         ProviderKind.Deepgram => "nova-3",
         ProviderKind.Mistral => "voxtral-mini-latest",
         ProviderKind.XAI => "grok-stt",
-        _ => "google/gemini-3.5-flash",
+        _ => "google/gemini-3.6-flash",
     };
 
     public static string ApiKeyEnvVar(this ProviderKind kind) => kind switch
@@ -232,10 +234,10 @@ public static class ProviderFactory
     public static string RecommendationNote(this ProviderKind kind) => kind switch
     {
         ProviderKind.Gemini =>
-            "Recommended for technical dictation. On seven recent jargon-heavy recordings, "
-            + "Gemini 3.5 retained names and commands more consistently than 3.6; no human "
-            + "goldens exist for those clips yet. It reads the screen for spelling context. "
-            + "The older near-miss goldens still favour 3.6.",
+            "Recommended for technical dictation. Gemini 3.6 matched 41 of 47 near-miss "
+            + "goldens against 39 for 3.5, and never truncated a long recording in "
+            + "20 runs where 3.5 silently dropped two thirds of one. It answers "
+            + "about half a second slower. It reads the screen for spelling context.",
         ProviderKind.XAI =>
             "Recommended for speed. About 1 s for a short clip, 2.8 s for two minutes of speech, "
             + "and no tail. It cannot see the screen, so an unfamiliar name or a version number "
