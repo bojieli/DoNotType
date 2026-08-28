@@ -61,7 +61,7 @@ public static class DoctorCommand
             problems.Add($"{name}: {value}");
         }
 
-        Out.Line("DoNotType — dnt 0.3.0 (6938aa8, 2026-08-25)");
+        Out.Line("DoNotType — dnt 0.4.0 (9a795fc, 2026-08-28)");
 
         Out.Line("\nEnvironment");
         Row("os", Environment.OSVersion.VersionString);
