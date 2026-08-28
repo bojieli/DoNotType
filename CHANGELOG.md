@@ -8,6 +8,21 @@ repository's local calendar date.
 
 ## Unreleased
 
+### Added
+
+- **A history row can transcribe its recording again, and hand you the recording.** Retry only ever
+  answered "the words never arrived". The more common complaint is that they arrived wrong — a name
+  misheard, a provider that was the wrong one for the accent — and that row is completed, which
+  `canRetry` excludes by definition, so the only recovery was to say the whole thing again. Both new
+  offers are keyed to the recording still being on disk rather than to the status, which for a
+  successful dictation means Keep audio was on when it was made; that setting now says so on all
+  four clients. A redo is not Retry renamed: Retry types the words it recovers, and nothing is owed
+  a cursor when you are reading your own history, so a redo updates the row and leaves Copy one
+  button away. It also drops the rewrite beside the transcript it replaced — the styled text is what
+  a row delivers, so keeping it would have replaced the words and still shown the old ones. Saved
+  recordings are named `donottype-<when it was said>.wav`, because on disk they are named for a
+  UUID. macOS, Windows, Android and iOS.
+
 ## 0.3.0 - 2026-08-25
 
 A model that quietly dropped most of a long dictation, and the three ways that is now caught. The
