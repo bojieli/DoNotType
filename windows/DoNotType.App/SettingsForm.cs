@@ -491,15 +491,15 @@ public sealed class SettingsForm : Form
         toolbar.Controls.Add(deleteAll);
         toolbar.Controls.Add(_historySummary);
 
-        // Per-item: double-clicking a row transcribes its recording again. A retry on a failed
-        // row, a redo on one that succeeded and came back wrong — the same request either way.
+        // Per-item retry: double-clicking a failed row reissues just that dictation. Deliberately
+        // still only a failed one, though a completed row can now be re-transcribed as well: that
+        // row is not broken, a double-click on it is as likely to be exploratory as intended, and
+        // every one of these spends a request. The redo asks for itself, from the menu below.
         _history.DoubleClick += async (_, _) =>
         {
-            if (SelectedRecord() is not { CanRedo: true } record) return;
+            if (SelectedRecord() is not { CanRetry: true } record) return;
 
-            _historySummary.Text = record.Status == DictationStatus.Completed
-                ? "Transcribing again…"
-                : "Retrying…";
+            _historySummary.Text = "Retrying…";
             await _controller.RetryAsync(record).ConfigureAwait(true);
             RefreshHistory();
         };
@@ -665,7 +665,7 @@ public sealed class SettingsForm : Form
 
         _historySummary.Text =
             $"{shown} · {retryable} to retry · {bytes / 1024} KB audio"
-            + "   (double-click to transcribe again · right-click to save the audio"
+            + "   (double-click to retry · right-click to redo one or save its audio"
             + " · Delete key or right-click to remove)"
             + performance;
     }
