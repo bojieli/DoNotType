@@ -406,7 +406,9 @@ class SettingsActivity : AppCompatActivity() {
                 controlRow("Keep for", buildRetentionPicker()),
                 switchRow(
                     "Keep audio for successful dictations",
-                    "Failed dictations always keep theirs until they succeed.",
+                    "Failed dictations always keep theirs until they succeed. Keeping it for the "
+                        + "ones that worked is what lets you redo a transcription or save the "
+                        + "recording.",
                     checked = Settings.keepAudio,
                 ) {
                     Settings.keepAudio = it

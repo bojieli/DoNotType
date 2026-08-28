@@ -21,6 +21,7 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -61,6 +62,40 @@ class HistoryActivity : AppCompatActivity() {
 
     private val service by lazy { DictationService(this) }
     private var query = HistoryQuery()
+
+    /**
+     * The row whose recording the document picker was opened for.
+     *
+     * The id rather than the record or its bytes: the picker is a trip through another app, and a
+     * megabyte of audio held across it is a megabyte held for as long as the user browses. The
+     * store is re-read when the answer comes back, which is also what makes a row deleted in the
+     * meantime say so instead of writing a file from a stale copy.
+     */
+    private var pendingAudioRecordId: String? = null
+
+    private val saveAudio = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("audio/wav"),
+    ) { uri ->
+        val id = pendingAudioRecordId
+        pendingAudioRecordId = null
+        if (uri == null || id == null) return@registerForActivityResult
+
+        val wav = service.history.all().firstOrNull { it.id == id }
+            ?.let { service.history.audioFor(it) }
+        if (wav == null) {
+            summary.text = "The recording for this dictation is no longer on disk."
+            return@registerForActivityResult
+        }
+        runCatching {
+            contentResolver.openOutputStream(uri, "wt")?.use { it.write(wav) }
+                ?: error("Could not open that file for writing.")
+        }.onSuccess {
+            Toast.makeText(this, "Recording saved.", Toast.LENGTH_SHORT).show()
+        }.onFailure {
+            // Uncut: the reason is what tells someone to pick a different folder.
+            summary.text = it.message ?: "Could not save the recording."
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -337,8 +372,66 @@ class HistoryActivity : AppCompatActivity() {
                 contentDescription = "Delete this transcript"
             },
         )
-        return row
+
+        // Nothing more to offer unless the recording is still here, which for a dictation that
+        // succeeded means the keep-audio setting was on when it was made — so on most rows this
+        // second line does not exist at all rather than sitting there disabled.
+        if (!record.canRedo) return row
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(row)
+            addView(audioActions(record))
+        }
     }
+
+    /**
+     * What the kept recording makes possible, under the row it belongs to.
+     *
+     * A line of its own rather than more buttons beside the transcript: four actions on one line
+     * leave the transcript a column too narrow to read, which is the thing the row is for.
+     */
+    private fun audioActions(record: DictationRecord): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        val padding = resources.getDimensionPixelSize(R.dimen.space_m)
+        setPadding(padding, 0, padding, resources.getDimensionPixelSize(R.dimen.space_s))
+
+        // Only where Retry is not already the same button. On a failed row the words never
+        // arrived and Retry above transcribes the very same recording; offering "redo" beside it
+        // would be two names for one action.
+        if (record.status == DictationRecord.Status.COMPLETED) {
+            addView(
+                textButton("Redo transcription") {}.apply {
+                    layoutParams = shareWidth()
+                    setOnClickListener {
+                        isEnabled = false
+                        summary.text = "Transcribing again…"
+                        lifecycleScope.launch {
+                            service.retry(record)
+                            refresh()
+                        }
+                    }
+                },
+            )
+        }
+
+        // The recording is the evidence behind the row: what a wrong transcript should be judged
+        // against, and the one thing here that cannot be reconstructed. A copy — the history keeps
+        // its own file, so saving it does not cost the ability to redo it.
+        addView(
+            textButton("Save audio") {
+                pendingAudioRecordId = record.id
+                saveAudio.launch(record.audioExportName)
+            }.apply { layoutParams = shareWidth() },
+        )
+    }
+
+    /** Even shares of the row, so a long label ellipsizes rather than pushing the next one off. */
+    private fun shareWidth() = LinearLayout.LayoutParams(
+        0,
+        ViewGroup.LayoutParams.WRAP_CONTENT,
+        1f,
+    )
 
     private fun wrapContent() = LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.WRAP_CONTENT,
