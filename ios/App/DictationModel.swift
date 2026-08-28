@@ -3,6 +3,7 @@ import DoNotTypeCore
 import Foundation
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// Records, transcribes, and hands the result to the keyboard through the App Group.
 ///
@@ -50,6 +51,8 @@ final class DictationModel {
     /// and a silent one should not look different.
     private(set) var levels = DictationModel.silentMeter
     private(set) var retryingIDs: Set<UUID> = []
+    /// The recording waiting for the user to say where to put it. Nil unless the picker is open.
+    var audioExport: AudioExport?
     private(set) var audioBytes: Int64 = 0
     private(set) var connectionStatus: String?
     private(set) var isCheckingConnection = false
@@ -1477,6 +1480,38 @@ final class DictationModel {
         await refresh()
     }
 
+    /// Transcribes a stored recording again, for a dictation that arrived and arrived wrong.
+    ///
+    /// The same request Retry makes, and deliberately not the same ending: a retry is recovering
+    /// words that never reached the keyboard, so it delivers them. Nothing is waiting on these —
+    /// the user is reading their own history — and putting them on the clipboard would quietly
+    /// replace whatever is there. The row updates; Copy is one button away.
+    func redo(_ record: DictationRecord) async {
+        guard let coordinator = makeCoordinator() else {
+            state = .failed("Add your API key in Settings.")
+            return
+        }
+        retryingIDs.insert(record.id)
+        defer { retryingIDs.remove(record.id) }
+
+        _ = await coordinator.retry(record)
+        await refresh()
+    }
+
+    /// Loads a recording for the export sheet, which is what asks the user where it goes.
+    ///
+    /// Read here rather than handed to the sheet as a file URL: the store's copy lives in the app
+    /// container under a UUID, and a share sheet offering `A1B2….wav` names the file after an
+    /// implementation detail.
+    func prepareAudioExport(_ record: DictationRecord) async {
+        do {
+            let audio = try await history.audioFile(for: record)
+            audioExport = AudioExport(data: audio.data, name: record.audioExportName)
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
     func retryAll() async {
         guard let coordinator = makeCoordinator() else { return }
         let pending = await history.retryable()
@@ -1601,6 +1636,31 @@ final class DictationModel {
         wav.append(Data(repeating: 0, count: dataBytes))
         return wav
     }()
+}
+
+/// A recording on its way out of the history, named for when it was said.
+///
+/// Write-only. The history is written by dictating, not by importing a file, so there is no
+/// direction in which this document is ever read back.
+struct AudioExport: FileDocument, Identifiable {
+    static var readableContentTypes: [UTType] { [.wav] }
+
+    let id = UUID()
+    let data: Data
+    let name: String
+
+    init(data: Data, name: String) {
+        self.data = data
+        self.name = name
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        throw CocoaError(.fileReadUnsupportedScheme)
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
 }
 
 /// Keychain wrapper. The key never goes in `UserDefaults` — this is a bring-your-own-key app, so

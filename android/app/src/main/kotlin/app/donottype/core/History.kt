@@ -10,6 +10,9 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -118,6 +121,29 @@ data class DictationRecord(
     }
 
     val canRetry: Boolean get() = status.isRetryable && audioFileName != null
+
+    /**
+     * Whether the transcription can be run again, and the recording saved out of the history.
+     *
+     * A superset of [canRetry], and a different question. Retry is about words that never arrived;
+     * redoing is about words that arrived wrong — a name misheard, a provider that was the wrong
+     * one for the accent — and that case is a *completed* dictation, which keeps its audio only
+     * when the keep-audio setting was on when it was made.
+     */
+    val canRedo: Boolean get() = audioFileName != null
+
+    /**
+     * What to call the recording when it is saved somewhere the user chose.
+     *
+     * Named for when it was said. On disk it is the record's UUID, which is the right name for a
+     * file the store owns and a useless one in a downloads folder next to twenty others. The
+     * format is fixed rather than locale-dependent: a filename with a slash in it is not a
+     * filename.
+     */
+    val audioExportName: String
+        get() = "donottype-" +
+            SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date(createdAt)) +
+            ".wav"
 
     /** True when this came from a recording on disk rather than the microphone. */
     val isFromFile: Boolean get() = sourceFileName != null

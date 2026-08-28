@@ -156,6 +156,31 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
     /// Retryable only while the recording still exists.
     public var canRetry: Bool { status.isRetryable && audioFileName != nil }
 
+    /// Whether the transcription can be run again, and the recording saved out of the history.
+    ///
+    /// A superset of `canRetry`, and a different question. Retry is about words that never
+    /// arrived; redoing is about words that arrived wrong — a name misheard, a provider that was
+    /// the wrong one for the accent — and that case is a *completed* dictation, which keeps its
+    /// audio only when the keep-audio setting was on when it was made.
+    public var canRedo: Bool { audioFileName != nil }
+
+    /// What to call the recording when it is saved somewhere the user chose.
+    ///
+    /// Named for when it was said. On disk it is the record's UUID, which is the right name for a
+    /// file the store owns and a useless one in a downloads folder next to twenty others.
+    public var audioExportName: String {
+        "donottype-\(Self.exportStamp.string(from: createdAt)).wav"
+    }
+
+    private static let exportStamp: DateFormatter = {
+        let formatter = DateFormatter()
+        // Fixed format, so the name does not change shape with the user's region — a filename
+        // with a slash in it is not a filename.
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
+
     /// What gets inserted: the styled version when one exists, otherwise the transcript.
     public var deliveredText: String { styledText ?? text }
 

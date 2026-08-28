@@ -315,7 +315,8 @@ struct SettingsView: View {
         } footer: {
             Text(
                 "Failed dictations always keep their audio until they succeed, whatever this is "
-                    + "set to — otherwise Retry could not work."
+                    + "set to — otherwise Retry could not work. Keeping it for the ones that "
+                    + "worked is what lets you redo a transcription or save the recording."
             )
         }
     }
@@ -775,6 +776,18 @@ struct HistoryView: View {
         .navigationTitle("History")
         // Searching is the point of keeping history at all; a log you cannot search is storage.
         .searchable(text: $model.query.text, prompt: "Transcripts, errors, apps")
+        // Files rather than a share sheet: the recording is evidence somebody wants to keep, and
+        // Save to Files is the ending that leaves it somewhere they can find again.
+        .fileExporter(
+            isPresented: Binding(
+                get: { model.audioExport != nil },
+                set: { if !$0 { model.audioExport = nil } }),
+            document: model.audioExport,
+            contentType: .wav,
+            defaultFilename: model.audioExport?.name
+        ) { _ in
+            model.audioExport = nil
+        }
         .overlay {
             if model.records.isEmpty {
                 ContentUnavailableView(
@@ -816,6 +829,10 @@ private struct HistoryRow: View {
 
             Spacer()
 
+            // One circular arrow per row, doing the thing that row needs. On a failed dictation
+            // that is Retry — the words never reached the keyboard, so they are delivered. On a
+            // completed one it is a redo: the words arrived and arrived wrong, and re-running the
+            // transcription is the only fix that does not mean saying it all again.
             if model.retryingIDs.contains(record.id) {
                 ProgressView()
             } else if record.canRetry {
@@ -825,13 +842,38 @@ private struct HistoryRow: View {
                     Image(systemName: "arrow.clockwise")
                 }
                 .buttonStyle(.borderless)
-            } else if record.status == .completed {
+                .accessibilityLabel("Retry this dictation")
+            } else if record.canRedo {
+                Button {
+                    Task { await model.redo(record) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Redo the transcription")
+            }
+
+            if record.status == .completed {
                 Button {
                     UIPasteboard.general.string = record.text
                 } label: {
                     Image(systemName: "doc.on.doc")
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Copy transcript")
+            }
+
+            // The recording is the evidence behind the row: it is what a wrong transcript should
+            // be judged against, and the one thing here that cannot be reconstructed. Offered
+            // wherever it still exists.
+            if record.canRedo {
+                Button {
+                    Task { await model.prepareAudioExport(record) }
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Save the original audio")
             }
         }
     }

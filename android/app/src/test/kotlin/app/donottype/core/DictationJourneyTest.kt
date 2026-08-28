@@ -130,6 +130,52 @@ class DictationJourneyTest {
         assertNull("completed and retention is off, so it goes", completed.audioFileName)
     }
 
+    // ---- Redoing a transcript that arrived wrong ---------------------------------------------
+
+    /**
+     * The other reason to keep a recording: a dictation that *succeeded* and still came back
+     * wrong. Retry cannot reach it — the row is completed — so the offer is keyed to the audio
+     * being there rather than to the status.
+     */
+    @Test
+    fun `a completed dictation can be redone while its audio is kept`() {
+        store.configure(RetentionPolicy.FOREVER, keepAudioForCompleted = true)
+        val entry = record(DictationRecord.Status.COMPLETED)
+            .apply { text = "meet Bo Jelly at four" }
+
+        val stored = store.insert(entry, wav())
+
+        assertFalse("a completed dictation has nothing to retry", stored.canRetry)
+        assertTrue("but its recording is still there to transcribe again", stored.canRedo)
+        assertNotNull(store.audioFor(stored))
+    }
+
+    /**
+     * Without the audio there is nothing to send, so nothing is offered — the default for a
+     * completed dictation, which discards its recording.
+     */
+    @Test
+    fun `a discarded recording cannot be redone`() {
+        val stored = store.insert(record(DictationRecord.Status.COMPLETED), wav())
+
+        assertNull(stored.audioFileName)
+        assertFalse(stored.canRedo)
+    }
+
+    /** The recording is saved under the time it was said, not the UUID it has on disk. */
+    @Test
+    fun `a saved recording is named for when it was said`() {
+        val calendar = java.util.Calendar.getInstance()
+        calendar.set(2026, java.util.Calendar.AUGUST, 28, 14, 32, 5)
+        val entry = DictationRecord(
+            createdAt = calendar.timeInMillis,
+            status = DictationRecord.Status.COMPLETED,
+            model = "stub-model",
+        )
+
+        assertEquals("donottype-20260828-143205.wav", entry.audioExportName)
+    }
+
     // ---- Provider behaviour ------------------------------------------------------------------
 
     @Test

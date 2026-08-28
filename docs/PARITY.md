@@ -140,6 +140,8 @@ dictate into, so the fallback has not been needed; it is a gap rather than an im
 | History with search and filters | ✅ | ✅ | ✅ | ✅ |
 | Retry a failed dictation | ✅ | ✅ | ✅ | ✅ |
 | …with the context it originally had | ✅ | ✅ | ✅ | n/a ⁷ |
+| Redo a transcription that came back wrong | ✅ | ✅ | ✅ | ✅ |
+| Save the recording out of History | ✅ | ✅ | ✅ | ✅ |
 | Retention policy and keep-audio | ✅ | ✅ | ✅ | ✅ |
 | Edit the prompt | ✅ | ✅ | ✅ | ✅ |
 | Log viewer, level, content toggle | ✅ | ✅ | ✅ | ✅ |
@@ -154,6 +156,14 @@ dictate into, so the fallback has not been needed; it is a gap rather than an im
 | Open the connection while recording | ✅ | ✅ | ✅ | ✅ |
 | Hedge and retry on their own connection | ✅ | ✅ | — ¹¹ | ✅ |
 | Only type where the dictation started | ✅ | ✅ | ✅ | n/a ¹² |
+
+Both new rows depend on the recording still being on disk, which for a dictation that *succeeded*
+means keep-audio was on when it was made — so on all four clients the two offers appear per row
+rather than as controls that are always there and usually disabled. Redo is not a rename of Retry:
+Retry recovers words that never reached a cursor and so types them, while a redo is read in the
+history and delivers nothing. macOS, Windows and iOS give the two one control between them, since
+a row can only ever want one of them; Android puts the redo on a line of its own beneath the row,
+because a fourth control beside the transcript leaves the transcript too narrow to read.
 
 ⁹ Windows has no permission prompt for the microphone at all — access is a Settings toggle — so
 what it does instead is open the privacy page when recording is refused.
@@ -249,7 +259,9 @@ one screen further in on two of them.
   punctuation without rephrasing.
 - **Grounding.** On/off, screenshot fallback, and two blocklists evaluated before capture.
 - **History.** Search, filters, per-item retry and delete, retention policy, per-dictation
-  timings, and a Context Inspector showing exactly what was sent with any dictation.
+  timings, and a Context Inspector showing exactly what was sent with any dictation. While a
+  recording is kept, its row can transcribe it again — the fix for a transcript that arrived and
+  arrived wrong — and save the recording itself to a file.
 - **Stats.** Median and p95 wait, wait per second spoken, success rate, retries, and a per-model
   breakdown measured on the microphone and network in use rather than on a vendor's benchmark.
 - **Prompt.** The contract is editable in place on any platform, validated before saving, and

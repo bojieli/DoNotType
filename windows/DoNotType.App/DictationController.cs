@@ -1097,7 +1097,11 @@ public sealed class DictationController : IDisposable
 
     // ---- Retry -------------------------------------------------------------------------------
 
-    /// <summary>Reissues one stored dictation.</summary>
+    /// <summary>Transcribes one stored recording again.</summary>
+    /// <remarks>
+    /// Both the retry of a dictation that failed and the redo of one the user thinks came back
+    /// wrong: the request is the same either way.
+    /// </remarks>
     public async Task<bool> RetryAsync(DictationRecord record)
     {
         var key = _settings.ResolvedApiKey();
@@ -1135,6 +1139,13 @@ public sealed class DictationController : IDisposable
             record.Status = DictationStatus.Completed;
             record.Text = result.Transcript.Text.Trim();
             record.ErrorMessage = null;
+            record.ErrorDetail = null;
+            // The rewrite beside it was derived from the transcript that has just been replaced,
+            // so it goes with it. Keeping it would be worse than losing it: DeliveredText prefers
+            // the styled version, so a redo of a rewritten dictation would replace the words and
+            // still show the old ones -- a button that appears to do nothing.
+            record.StyledText = null;
+            record.Mode = TranscriptMode.Verbatim.Id;
             _history.Update(record);
             HistoryChanged?.Invoke();
             return true;

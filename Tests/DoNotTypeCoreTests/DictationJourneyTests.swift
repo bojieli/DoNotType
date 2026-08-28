@@ -178,6 +178,87 @@ final class DictationJourneyTests: XCTestCase {
             ProviderError.missingAPIKey(envVar: "STUB_KEY")))
     }
 
+    // MARK: - Redoing a transcript that arrived wrong
+
+    /// The other reason to keep a recording: a dictation that *succeeded* and still came back
+    /// wrong. Retry cannot reach it — the row is completed — so the offer is keyed to the audio
+    /// being there rather than to the status.
+    func testACompletedDictationCanBeRedoneWhileItsAudioIsKept() async throws {
+        await store.configure(retention: .forever, keepAudioForCompleted: true)
+        var record = DictationRecord(
+            status: .completed, provider: "stub", model: "stub-model", fidelity: .light,
+            durationSeconds: 1)
+        record.text = "meet Bo Jelly at four"
+        let stored = await store.insert(record, audio: wav().data)
+
+        XCTAssertFalse(stored.canRetry, "a completed dictation has nothing to retry")
+        XCTAssertTrue(stored.canRedo, "but its recording is still there to transcribe again")
+
+        let outcome = await RetryCoordinator(
+            service: service(text: "meet Bojie at four"), store: store).retry(stored)
+
+        guard case .success = outcome else { return XCTFail("expected the redo to succeed") }
+        let after = await store.record(id: stored.id)
+        XCTAssertEqual(after?.text, "meet Bojie at four")
+        XCTAssertTrue(after?.canRedo ?? false, "keep-audio is on, so it can be redone again")
+    }
+
+    /// Without the audio there is nothing to send, so nothing is offered — the default for a
+    /// completed dictation, which discards its recording.
+    func testADiscardedRecordingCannotBeRedone() async {
+        var record = DictationRecord(
+            status: .completed, provider: "stub", model: "stub-model", fidelity: .light)
+        record.text = "already delivered"
+        let stored = await store.insert(record, audio: wav().data)
+
+        XCTAssertNil(stored.audioFileName)
+        XCTAssertFalse(stored.canRedo)
+    }
+
+    /// A redo replaces the transcript, so the rewrite derived from the *old* one cannot stay:
+    /// `deliveredText` prefers the styled version, and leaving it would show the old words under
+    /// a button that had just replaced them.
+    func testARedoDropsTheRewriteDerivedFromTheReplacedTranscript() async throws {
+        await store.configure(retention: .forever, keepAudioForCompleted: true)
+        var record = DictationRecord(
+            status: .completed, provider: "stub", model: "stub-model", fidelity: .light,
+            durationSeconds: 1)
+        record.text = "so basically we should just ship it"
+        record.styledText = "We should proceed with the release."
+        record.style = .formal
+        record.mode = .rewrite(.formal)
+        let stored = await store.insert(record, audio: wav().data)
+
+        _ = await RetryCoordinator(
+            service: service(text: "so basically we should just ship it today"), store: store)
+            .retry(stored)
+
+        let after = await store.record(id: stored.id)
+        XCTAssertEqual(after?.text, "so basically we should just ship it today")
+        XCTAssertNil(after?.styledText, "the rewrite described a transcript that is now gone")
+        XCTAssertEqual(
+            after?.deliveredText, "so basically we should just ship it today",
+            "the row must show the words the redo produced")
+        XCTAssertEqual(after?.resolvedMode, .verbatim)
+    }
+
+    /// The recording is saved under the time it was said, not under the UUID it has on disk.
+    func testASavedRecordingIsNamedForWhenItWasSaid() {
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 8
+        components.day = 28
+        components.hour = 14
+        components.minute = 32
+        components.second = 5
+        let created = Calendar.current.date(from: components)!
+        let record = DictationRecord(
+            id: UUID(), createdAt: created, status: .completed, provider: "stub",
+            model: "stub-model", fidelity: .light)
+
+        XCTAssertEqual(record.audioExportName, "donottype-20260828-143205.wav")
+    }
+
     // MARK: - Rewriting never costs the verbatim transcript
 
     /// The claim the whole product rests on: a rewrite is stored *beside* what was said, never
