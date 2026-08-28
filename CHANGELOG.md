@@ -8,6 +8,14 @@ repository's local calendar date.
 
 ## Unreleased
 
+## 0.4.0 - 2026-08-29
+
+The recording behind a dictation becomes something you can act on. A history row whose audio is
+still kept can transcribe it again — the fix for a transcript that arrived and arrived *wrong*,
+which Retry could never reach because that row is completed — and hand you the recording itself as
+a file. Minor rather than patch: it is a new capability on all four clients, and nothing about how
+a dictation is captured, sent or transcribed changes.
+
 ### Added
 
 - **A history row can transcribe its recording again, and hand you the recording.** Retry only ever
