@@ -126,6 +126,50 @@ public sealed class DictationJourneyTests : IDisposable
         Assert.Null(completed.AudioFileName);
     }
 
+    // ---- Redoing a transcript that arrived wrong ---------------------------------------------
+
+    /// <summary>
+    /// The other reason to keep a recording: a dictation that <em>succeeded</em> and still came
+    /// back wrong. Retry cannot reach it -- the row is completed -- so the offer is keyed to the
+    /// audio being there rather than to the status.
+    /// </summary>
+    [Fact]
+    public void ACompletedDictationCanBeRedoneWhileItsAudioIsKept()
+    {
+        _store.Configure(RetentionPolicy.Forever, keepAudioForCompleted: true);
+        var entry = Record(DictationStatus.Completed);
+        entry.Text = "meet Bo Jelly at four";
+
+        var stored = _store.Insert(entry, Wav());
+
+        Assert.False(stored.CanRetry, "a completed dictation has nothing to retry");
+        Assert.True(stored.CanRedo, "but its recording is still there to transcribe again");
+        Assert.NotNull(_store.AudioFor(stored));
+    }
+
+    /// <summary>
+    /// Without the audio there is nothing to send, so nothing is offered -- the default for a
+    /// completed dictation, which discards its recording.
+    /// </summary>
+    [Fact]
+    public void ADiscardedRecordingCannotBeRedone()
+    {
+        var stored = _store.Insert(Record(DictationStatus.Completed), Wav());
+
+        Assert.Null(stored.AudioFileName);
+        Assert.False(stored.CanRedo);
+    }
+
+    /// <summary>The recording is saved under the time it was said, not the GUID it has on disk.</summary>
+    [Fact]
+    public void ASavedRecordingIsNamedForWhenItWasSaid()
+    {
+        var entry = Record(DictationStatus.Completed);
+        entry.CreatedAt = new DateTimeOffset(2026, 8, 28, 14, 32, 5, TimeSpan.Zero);
+
+        Assert.Equal("donottype-20260828-143205.wav", entry.AudioExportName);
+    }
+
     // ---- The fallback is recorded honestly ---------------------------------------------------
 
     /// <summary>A hedged dictation must name the backend that answered, not the one asked.</summary>

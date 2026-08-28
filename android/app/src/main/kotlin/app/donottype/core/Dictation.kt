@@ -485,7 +485,12 @@ class DictationService(private val context: Context) {
         }
     }
 
-    /** Reissues a stored dictation. */
+    /**
+     * Transcribes a stored recording again.
+     *
+     * Both the retry of a dictation that failed and the redo of one the user thinks came back
+     * wrong: the request is the same either way.
+     */
     suspend fun retry(record: DictationRecord): Result<DictationRecord> {
         val key = Settings.apiKey
         if (key.isNullOrBlank()) {
@@ -534,6 +539,14 @@ class DictationService(private val context: Context) {
             record.status = DictationRecord.Status.COMPLETED
             record.text = result.transcript.transcript.trim()
             record.errorMessage = null
+            record.errorDetail = null
+            // The rewrite beside it was derived from the transcript that has just been replaced,
+            // so it goes with it. Keeping it would be worse than losing it: deliveredText prefers
+            // the styled version, so a redo of a rewritten dictation would replace the words and
+            // still show the old ones — a button that appears to do nothing.
+            record.styledText = null
+            record.mode = TranscriptMode.Verbatim.id
+            record.rewriteFailed = false
             history.update(record)
             Result.success(record)
         } catch (error: Exception) {

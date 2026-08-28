@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -127,6 +128,28 @@ public sealed class DictationRecord
 
     [JsonIgnore]
     public bool CanRetry => IsRetryable && AudioFileName is not null;
+
+    /// <summary>
+    /// Whether the transcription can be run again, and the recording saved out of the history.
+    /// </summary>
+    /// <remarks>
+    /// A superset of <see cref="CanRetry"/>, and a different question. Retry is about words that
+    /// never arrived; redoing is about words that arrived wrong -- a name misheard, a provider
+    /// that was the wrong one for the accent -- and that case is a <em>completed</em> dictation,
+    /// which keeps its audio only when the keep-audio setting was on when it was made.
+    /// </remarks>
+    [JsonIgnore]
+    public bool CanRedo => AudioFileName is not null;
+
+    /// <summary>What to call the recording when it is saved somewhere the user chose.</summary>
+    /// <remarks>
+    /// Named for when it was said. On disk it is the record's GUID, which is the right name for a
+    /// file the store owns and a useless one in a downloads folder next to twenty others. The
+    /// format is fixed rather than cultural: a filename with a slash in it is not a filename.
+    /// </remarks>
+    [JsonIgnore]
+    public string AudioExportName =>
+        $"donottype-{CreatedAt.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.wav";
 
     [JsonIgnore]
     public string Summary => Status switch

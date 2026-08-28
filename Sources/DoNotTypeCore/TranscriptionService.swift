@@ -510,7 +510,11 @@ public struct RetryCoordinator: Sendable {
         self.store = store
     }
 
-    /// Retries a single record and writes the result back to the store.
+    /// Transcribes a stored recording again and writes the result back to the store.
+    ///
+    /// Both the retry of a dictation that failed and the redo of one the user thinks came back
+    /// wrong: the request is the same either way, and only the caller knows whether the text is
+    /// owed to a cursor somewhere.
     @discardableResult
     public func retry(_ record: DictationRecord) async -> Result<String, any Error> {
         var updated = record
@@ -525,6 +529,15 @@ public struct RetryCoordinator: Sendable {
             updated.status = .completed
             updated.text = text
             updated.errorMessage = nil
+            updated.errorDetail = nil
+            // The rewrite beside it was derived from the transcript that has just been replaced,
+            // so it goes with it. Keeping it would be worse than losing it: `deliveredText`
+            // prefers the styled version, so a redo of a rewritten dictation would replace the
+            // words and still show the old ones — a button that appears to do nothing.
+            updated.styledText = nil
+            updated.style = nil
+            updated.mode = .verbatim
+            updated.rewriteFailed = nil
             await store.update(updated)
             return .success(text)
         } catch {
