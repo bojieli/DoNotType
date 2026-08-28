@@ -830,7 +830,9 @@ private struct HistoryTab: View {
 
             Toggle("Keep audio", isOn: $model.keepAudio)
                 .help(
-                    "Failed dictations always keep their audio until they succeed, so Retry works.")
+                    "Failed dictations always keep their audio until they succeed, so Retry works."
+                        + " Keeping it for the ones that succeeded is what lets you redo a"
+                        + " transcription or save the recording.")
 
             Spacer()
 
@@ -925,6 +927,10 @@ private struct HistoryRow: View {
             .buttonStyle(.borderless)
             .help("Show exactly what was sent")
 
+            // One circular arrow per row, doing the thing that row needs. On a failed dictation
+            // that is Retry — the words never reached a cursor, so they are typed. On a completed
+            // one it is a redo: the words arrived and arrived wrong, and re-running the
+            // transcription is the only fix that does not mean saying it all again.
             if model.retryingIDs.contains(record.id) {
                 ProgressView().controlSize(.small)
             } else if record.canRetry {
@@ -935,7 +941,17 @@ private struct HistoryRow: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Retry this dictation")
-            } else if record.status == .completed {
+            } else if record.canRedo {
+                Button {
+                    Task { await model.redo(record) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .help("Redo the transcription")
+            }
+
+            if record.status == .completed {
                 Button {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(record.text, forType: .string)
@@ -944,6 +960,19 @@ private struct HistoryRow: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Copy transcript")
+            }
+
+            // The recording is the evidence behind the row: it is what a wrong transcript should
+            // be judged against, and the one thing here that cannot be reconstructed. Offered
+            // wherever it still exists.
+            if record.canRedo {
+                Button {
+                    Task { await model.saveAudio(record) }
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                }
+                .buttonStyle(.borderless)
+                .help("Save the original audio")
             }
 
             // A failed row's summary *is* its error, and it is the thing worth pasting into an

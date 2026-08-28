@@ -1,6 +1,8 @@
+import AppKit
 import DoNotTypeCore
 import Foundation
 import Observation
+import UniformTypeIdentifiers
 
 /// Observable façade over `Settings` and `HistoryStore` for the settings window.
 ///
@@ -1012,6 +1014,57 @@ final class SettingsModel {
             lastRetrySummary = error.localizedDescription
         }
         await refresh()
+    }
+
+    /// Transcribes a stored recording again, for a dictation that arrived and arrived wrong.
+    ///
+    /// The same request Retry makes, and deliberately not the same ending: a retry is recovering
+    /// words that never reached a cursor, so it types them. Nothing is owed a cursor here — the
+    /// user is reading the history — and typing into whatever is behind this window would be a
+    /// surprise. The row updates, and Copy is one button away.
+    func redo(_ record: DictationRecord) async {
+        guard let coordinator = makeCoordinator() else {
+            lastRetrySummary = "No API key set."
+            return
+        }
+        retryingIDs.insert(record.id)
+        defer { retryingIDs.remove(record.id) }
+
+        switch await coordinator.retry(record) {
+        case .success(let text):
+            lastRetrySummary = "Transcribed again: \(text.prefix(60))"
+        case .failure(let error):
+            lastRetrySummary = error.localizedDescription
+        }
+        await refresh()
+    }
+
+    /// Copies the recording out of the history to somewhere the user chose.
+    ///
+    /// A copy rather than a move: the history keeps its own file, so saving a recording is not a
+    /// way to lose the ability to redo it.
+    func saveAudio(_ record: DictationRecord) async {
+        guard let source = await store.audioURL(for: record) else {
+            lastRetrySummary = HistoryStore.StoreError.audioMissing(record.id).localizedDescription
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = record.audioExportName
+        panel.allowedContentTypes = [.wav]
+        guard panel.runModal() == .OK, let target = panel.url else { return }
+
+        do {
+            // Overwriting is the user's answer to the panel's own "replace?" prompt, so the
+            // existing file goes rather than the copy failing on it.
+            if FileManager.default.fileExists(atPath: target.path) {
+                try FileManager.default.removeItem(at: target)
+            }
+            try FileManager.default.copyItem(at: source, to: target)
+            lastRetrySummary = "Saved \(target.lastPathComponent)."
+        } catch {
+            lastRetrySummary = error.localizedDescription
+        }
     }
 
     func retryAll() async {
