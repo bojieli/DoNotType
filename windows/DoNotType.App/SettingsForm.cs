@@ -491,12 +491,15 @@ public sealed class SettingsForm : Form
         toolbar.Controls.Add(deleteAll);
         toolbar.Controls.Add(_historySummary);
 
-        // Per-item retry: double-clicking a failed row reissues just that dictation.
+        // Per-item: double-clicking a row transcribes its recording again. A retry on a failed
+        // row, a redo on one that succeeded and came back wrong — the same request either way.
         _history.DoubleClick += async (_, _) =>
         {
-            if (SelectedRecord() is not { CanRetry: true } record) return;
+            if (SelectedRecord() is not { CanRedo: true } record) return;
 
-            _historySummary.Text = "Retrying…";
+            _historySummary.Text = record.Status == DictationStatus.Completed
+                ? "Transcribing again…"
+                : "Retrying…";
             await _controller.RetryAsync(record).ConfigureAwait(true);
             RefreshHistory();
         };
@@ -506,13 +509,22 @@ public sealed class SettingsForm : Form
         var rowMenu = new ContextMenuStrip();
         var deleteOne = new ToolStripMenuItem("Delete this transcript");
         deleteOne.Click += (_, _) => DeleteSelected();
+        // One item rather than two, renamed for the row it is opened on. The request is identical;
+        // what differs is what the user is asking for. On a failed row it is Retry — the words
+        // never arrived. On a completed one it is a redo — they arrived wrong, and re-running the
+        // transcription is the only fix that does not mean saying it all again.
         var retryOne = new ToolStripMenuItem("Retry this dictation");
         retryOne.Click += async (_, _) =>
         {
-            if (SelectedRecord() is not { CanRetry: true } record) return;
+            if (SelectedRecord() is not { CanRedo: true } record) return;
             await _controller.RetryAsync(record).ConfigureAwait(true);
             RefreshHistory();
         };
+
+        // The recording is the evidence behind the row: what a wrong transcript should be judged
+        // against, and the one thing here that cannot be reconstructed.
+        var saveAudioOne = new ToolStripMenuItem("Save the original audio…");
+        saveAudioOne.Click += (_, _) => SaveSelectedAudio();
         // The point of the whole grounding argument: if the app reads your screen, you can read
         // what it read. One click from the row it belongs to, rather than a separate screen you
         // have to know exists.
@@ -532,12 +544,16 @@ public sealed class SettingsForm : Form
         rowMenu.Opening += (_, _) =>
         {
             var record = SelectedRecord();
-            retryOne.Enabled = record?.CanRetry == true;
+            retryOne.Text = record?.Status == DictationStatus.Completed
+                ? "Redo the transcription"
+                : "Retry this dictation";
+            retryOne.Enabled = record?.CanRedo == true;
+            saveAudioOne.Enabled = record?.CanRedo == true;
             copyOne.Enabled = record?.Text.Length > 0;
             deleteOne.Enabled = record is not null;
         };
         rowMenu.Items.AddRange(
-            [inspectOne, retryOne, copyOne, new ToolStripSeparator(), deleteOne]);
+            [inspectOne, retryOne, saveAudioOne, copyOne, new ToolStripSeparator(), deleteOne]);
         _history.ContextMenuStrip = rowMenu;
 
         _history.KeyDown += (_, e) =>
@@ -557,6 +573,42 @@ public sealed class SettingsForm : Form
         _history.SelectedItems.Count == 0
             ? null
             : _history.SelectedItems[0].Tag as DictationRecord;
+
+    /// <summary>
+    /// Writes the selected row's recording somewhere the user chose. A copy rather than a move:
+    /// the history keeps its own file, so saving a recording does not cost the ability to redo it.
+    /// </summary>
+    private void SaveSelectedAudio()
+    {
+        if (SelectedRecord() is not { CanRedo: true } record) return;
+
+        var wav = _controller.History.AudioFor(record);
+        if (wav is null)
+        {
+            _historySummary.Text = "The recording for this dictation is no longer on disk.";
+            return;
+        }
+
+        using var dialog = new SaveFileDialog
+        {
+            FileName = record.AudioExportName,
+            Filter = "WAV audio (*.wav)|*.wav",
+            DefaultExt = "wav",
+            AddExtension = true,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        try
+        {
+            File.WriteAllBytes(dialog.FileName, wav);
+            _historySummary.Text = $"Saved {Path.GetFileName(dialog.FileName)}.";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Uncut: the path and the reason are what the user needs to pick a different folder.
+            _historySummary.Text = error.Message;
+        }
+    }
 
     private void DeleteSelected()
     {
@@ -613,7 +665,8 @@ public sealed class SettingsForm : Form
 
         _historySummary.Text =
             $"{shown} · {retryable} to retry · {bytes / 1024} KB audio"
-            + "   (double-click to retry · Delete key or right-click to remove)"
+            + "   (double-click to transcribe again · right-click to save the audio"
+            + " · Delete key or right-click to remove)"
             + performance;
     }
 
