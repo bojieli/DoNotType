@@ -37,8 +37,7 @@ data class PromptPart(
      *
      * The one transform in the whole loader: a clause is written as a wrapped paragraph and joined
      * into a single line on load, so source wrapping never changes the instruction.
-     */
-    /**
+     *
      * Stated against the group rather than derived from `placeholder == null`, which is what it used
      * to be. [Companion.SAMPLE] broke that shortcut: it is a block with a placeholder that no clause
      * file fills, because what goes in there is the user's own text.

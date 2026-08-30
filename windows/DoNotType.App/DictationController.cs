@@ -606,7 +606,7 @@ public sealed class DictationController : IDisposable
             var service = new TranscriptionService(
                 ProviderFactory.Create(_settings.Provider, key, _settings.Model),
                 Prompt(promptPath).SystemInstruction(
-                    _settings.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
+                _settings.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
             {
                 Fidelity = _settings.Fidelity,
                 Typography = _settings.TypographySpacing,
@@ -665,7 +665,7 @@ public sealed class DictationController : IDisposable
         var secondary = new TranscriptionService(
             ProviderFactory.Create(kind.Value, key, _settings.ModelFor(kind.Value)),
             Prompt(promptPath).SystemInstruction(
-                    _settings.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
+                _settings.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
         {
             Fidelity = _settings.Fidelity,
             Typography = _settings.TypographySpacing,
@@ -747,8 +747,9 @@ public sealed class DictationController : IDisposable
         }
 
         var service = new TranscriptionService(
-            provider, Prompt(promptPath).SystemInstruction(
-                    _settings.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
+            provider,
+            Prompt(promptPath).SystemInstruction(
+                _settings.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
         {
             // Carried separately as well as baked into the prompt, because a recognition backend
             // has no system instruction to read it out of.
@@ -789,10 +790,9 @@ public sealed class DictationController : IDisposable
             var requestStart = Stopwatch.GetTimestamp();
             // A target language replaces the second stage rather than joining it. Two jobs in
             // one request is exactly the combination this project has already measured as worse,
-            // and the settings window says so beside the rewrite picker.
-            var stage = _settings.TranslateTo.Length > 0
-                ? TranscriptMode.Translate(_settings.TranslateTo)
-                : style.IsRewrite() ? TranscriptMode.Rewrite(style) : TranscriptMode.Verbatim;
+            // and the settings window says so beside the rewrite picker. Resolved by AppSettings
+            // so the tray's "Translating…" label cannot disagree with what was requested.
+            var stage = _settings.SecondStageFor(style);
             StyledRequest? folded = stage switch
             {
                 TranscriptMode.RewriteMode rewriteStage =>
