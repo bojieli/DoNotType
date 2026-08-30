@@ -585,6 +585,39 @@ private struct GeneralTab: View {
                 .foregroundStyle(.secondary)
             }
 
+            // Between Fidelity and Rewrite because it is the same kind of dial as Fidelity —
+            // how the words are written down, never which words — and Rewrite is the first
+            // setting below it that may change them.
+            Section("Typography") {
+                Picker("Chinese and Latin", selection: $model.typographySpacing) {
+                    ForEach(TypographySpacing.allCases, id: \.self) { spacing in
+                        Text(spacing.label).tag(spacing)
+                    }
+                }
+                Picker("Chinese script", selection: $model.chineseScript) {
+                    ForEach(ChineseScript.allCases, id: \.self) { script in
+                        Text(script.label).tag(script)
+                    }
+                }
+                LabeledContent("Formatting example") {
+                    TextField(
+                        "Optional — a sentence written the way you want yours written",
+                        text: $model.formattingSample, axis: .vertical
+                    )
+                    .lineLimit(2...5)
+                    .textFieldStyle(.roundedBorder)
+                }
+                Text(
+                    "Spacing is applied to the finished transcript on this Mac, so it is the same "
+                        + "on every dictation, in history and at the cursor. The script and the "
+                        + "example are asked of the model — a request rather than a guarantee — "
+                        + "and nothing here is allowed to change a word. The example is trimmed to "
+                        + "\(Typography.maxSampleCharacters) characters."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
             RewriteSection(model: model)
 
             Section("Shortcuts") {

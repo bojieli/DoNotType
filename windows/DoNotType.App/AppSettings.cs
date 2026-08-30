@@ -21,6 +21,18 @@ public sealed class AppSettings
     public ProviderKind Provider { get; set; } = ProviderFactory.DefaultForNewInstalls;
     public string Model { get; set; } = ProviderFactory.DefaultForNewInstalls.DefaultModel();
     public Fidelity Fidelity { get; set; } = Fidelity.Light;
+
+    /// <summary>
+    /// What happens where Chinese meets Latin in a finished transcript. Deterministic — see
+    /// <see cref="Typography"/>. The other three clients spell the stored values the same way.
+    /// </summary>
+    public TypographySpacing TypographySpacing { get; set; } = Typography.DefaultSpacing;
+
+    /// <summary>Which characters Chinese is written in. Asked of the model.</summary>
+    public ChineseScript ChineseScript { get; set; } = ChineseScript.Spoken;
+
+    /// <summary>A sentence written the way this user wants their transcripts written.</summary>
+    public string FormattingSample { get; set; } = string.Empty;
     public HotkeyMonitor.Trigger Trigger { get; set; } = HotkeyMonitor.Trigger.RightControl;
     public HotkeyMonitor.Mode HotkeyMode { get; set; } = HotkeyMonitor.Mode.Automatic;
     public CancelShortcut CancelShortcut { get; set; } = DoNotType.Core.CancelShortcut.Escape;

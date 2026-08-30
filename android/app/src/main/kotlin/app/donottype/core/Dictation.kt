@@ -187,7 +187,10 @@ class DictationService(private val context: Context) {
                 }
             }
 
-            val text = guarded.transcript
+            // After the guards, never before. Both of them measure the transcript against the
+            // audio, and a space typography added or removed is not something either is entitled
+            // to see. See [Typography].
+            val text = Typography.normalize(guarded.transcript, Settings.typographySpacing)
             log.info(
                 mapOf(
                     "dictation" to id,
@@ -216,6 +219,7 @@ class DictationService(private val context: Context) {
             // backends and older responses fall through to the existing text-only stage.
             var delivered = text
             val styledInResponse = outcome.result.transcript.styled?.trim()
+                ?.let { Typography.normalize(it, Settings.typographySpacing) }
             if (style.isRewrite && !styledInResponse.isNullOrBlank()) {
                 val mode = TranscriptMode.Rewrite(style)
                 record.styledText = styledInResponse
@@ -254,6 +258,7 @@ class DictationService(private val context: Context) {
                         val styled = rewriter.transcribe(
                             instruction, listOf(InputPart.Text(text)), Settings.fidelity,
                         ).transcript.transcript.trim()
+                            .let { Typography.normalize(it, Settings.typographySpacing) }
                         if (styled.isNotEmpty()) {
                             record.styledText = styled
                             record.mode = mode.id
@@ -363,7 +368,8 @@ class DictationService(private val context: Context) {
     ): FallbackTranscriber.Outcome {
         val key = Settings.apiKey?.takeIf { it.isNotBlank() }
             ?: throw ProviderException("No API key. Open DoNotType to add one.")
-        val instruction = PromptAssets.systemInstruction(context, Settings.fidelity)
+        val instruction = PromptAssets.systemInstruction(
+            context, Settings.fidelity, Settings.chineseScript, Settings.formattingSample)
         val client = ProviderFactory.create(Settings.provider, key, Settings.model)
 
         fun requestInputs(backend: TranscriptionProvider): Pair<List<InputPart>, List<String>> {
@@ -457,7 +463,13 @@ class DictationService(private val context: Context) {
         return FallbackTranscriber.Outcome(
             TranscriptionResult(
                 Transcript(
-                    AudioChunker.stitch(results.map { it.transcript.transcript }),
+                    // Again over the join: each chunk was normalised on its own and the stitch
+                    // adds one space between them, which after a full stop is exactly the stray
+                    // space this removes. Normalising twice is normalising once.
+                    Typography.normalize(
+                        AudioChunker.stitch(results.map { it.transcript.transcript }),
+                        Settings.typographySpacing,
+                    ),
                     results.firstOrNull()?.transcript?.language.orEmpty(),
                 ),
                 results.fold(TokenUsage()) { total, piece -> TokenUsage.add(total, piece.usage) },
@@ -531,7 +543,10 @@ class DictationService(private val context: Context) {
             }
 
             val result = client.transcribe(
-                PromptAssets.systemInstruction(context, record.fidelity),
+                PromptAssets.systemInstruction(
+                    context, record.fidelity, Settings.chineseScript,
+                    Settings.formattingSample,
+                ),
                 contextParts + InputPart.Audio(wav, "audio/wav"),
                 record.fidelity,
                 keyterms,

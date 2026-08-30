@@ -273,6 +273,14 @@ one screen further in on two of them.
   verbatim transcript is always kept. Not `Ctrl+Z`, which belongs to whatever is being typed into.
 - **Audio.** Pin a microphone rather than following the system default; start/stop tones are on by
   default and can be disabled.
+- **Typography.** Three settings on all four clients, in one section between Fidelity and
+  Rewrite, because they are the same kind of dial as Fidelity — how the words are written down,
+  never which words. *Chinese and Latin* is deterministic and applied locally to the finished
+  transcript, so it is the same on every dictation, in history and at the cursor: one space at the
+  boundary (the default), none, or whatever the model wrote. *Chinese script* and a free-text
+  *formatting example* are asked of the model, and are sent only when set — the default request is
+  byte-identical to the one this feature did not exist for. The example is capped at 500 characters
+  and the field says so. All three cross devices in the settings-transfer profile.
 - **Fidelity.** `raw` keeps every filler and correction; `light` (default) removes empty fillers,
   repetitions, false starts, and superseded corrections; `tidy` also applies standard casing and
   punctuation without rephrasing.

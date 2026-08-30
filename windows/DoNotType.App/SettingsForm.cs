@@ -67,6 +67,11 @@ public sealed class SettingsForm : Form
     };
     private readonly ComboBox _mode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _fidelity = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _typographySpacing =
+        new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _chineseScript =
+        new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly TextBox _formattingSample = new() { Multiline = true, Height = 60 };
     private readonly CheckBox _grounding = new() { Text = "Ground transcription in screen text", AutoSize = true };
     private readonly ComboBox _retention = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly CheckBox _keepAudio = new() { Text = "Keep audio for successful dictations", AutoSize = true };
@@ -227,6 +232,20 @@ public sealed class SettingsForm : Form
             + "remains untouched at all other times. Even Tidy only "
             + "changes typography — none "
             + "of the fidelity settings reword you."));
+
+        // Between Fidelity and Rewrite because it is the same kind of dial as Fidelity — how the
+        // words are written down, never which words — and Rewrite is the first section below it
+        // that may change them.
+        layout.Controls.Add(Heading("Typography"));
+        layout.Controls.Add(Labelled("Chinese and Latin", _typographySpacing));
+        layout.Controls.Add(Labelled("Chinese script", _chineseScript));
+        layout.Controls.Add(Labelled("Formatting example", _formattingSample));
+        layout.Controls.Add(Caption(
+            "Spacing is applied to the finished transcript on this PC, so it is the same on every "
+            + "dictation, in history and at the cursor. The script and the example are asked of "
+            + "the model — a request rather than a guarantee — and nothing here is allowed to "
+            + $"change a word. The example is trimmed to {Typography.MaxSampleCharacters} "
+            + "characters."));
 
         // Its own heading, not two more rows under Dictation. "Second key" names the mechanism and
         // never the feature, so somebody looking for rewriting had no reason to read it — and on a
@@ -1068,6 +1087,18 @@ public sealed class SettingsForm : Form
         foreach (var fidelity in Enum.GetValues<Fidelity>()) _fidelity.Items.Add(fidelity.Describe());
         _fidelity.SelectedIndex = (int)_settings.Fidelity;
 
+        foreach (var spacing in Enum.GetValues<TypographySpacing>())
+        {
+            _typographySpacing.Items.Add(Typography.Label(spacing));
+        }
+        _typographySpacing.SelectedIndex = (int)_settings.TypographySpacing;
+        foreach (var script in Enum.GetValues<ChineseScript>())
+        {
+            _chineseScript.Items.Add(script.Label());
+        }
+        _chineseScript.SelectedIndex = (int)_settings.ChineseScript;
+        _formattingSample.Text = _settings.FormattingSample;
+
         _grounding.Checked = _settings.GroundingEnabled;
 
         foreach (var device in AudioDevices.Available()) _microphone.Items.Add(device.Name);
@@ -1141,6 +1172,12 @@ public sealed class SettingsForm : Form
             _ => HotkeyMonitor.Mode.Automatic,
         };
         _settings.Fidelity = (Fidelity)_fidelity.SelectedIndex;
+        _settings.TypographySpacing = (TypographySpacing)_typographySpacing.SelectedIndex;
+        _settings.ChineseScript = (ChineseScript)_chineseScript.SelectedIndex;
+        // Cleaned on the way in, and written back to the box, so what the window shows is what a
+        // request would carry rather than what was pasted into it.
+        _settings.FormattingSample = Typography.SanitizedSample(_formattingSample.Text);
+        _formattingSample.Text = _settings.FormattingSample;
         _settings.GroundingEnabled = _grounding.Checked;
         // Index 0 is "System default", which is stored as null rather than as its label.
         _settings.MicrophoneName = _microphone.SelectedIndex > 0
@@ -1182,6 +1219,9 @@ public sealed class SettingsForm : Form
             _ => 0,
         };
         _fidelity.SelectedIndex = (int)_settings.Fidelity;
+        _typographySpacing.SelectedIndex = (int)_settings.TypographySpacing;
+        _chineseScript.SelectedIndex = (int)_settings.ChineseScript;
+        _formattingSample.Text = _settings.FormattingSample;
         _grounding.Checked = _settings.GroundingEnabled;
         _sounds.Checked = _settings.InteractionSounds;
         _retention.SelectedIndex = (int)_settings.Retention;

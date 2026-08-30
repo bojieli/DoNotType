@@ -109,10 +109,40 @@ The guard lives on the provider protocol, not in an allowlist, because any backe
 | `TranscriptDiff` | classify what grounding changed | Digits compare exactly; vowels fold rather than drop, so a false "spelling-fixed" cannot hide a substitution. |
 | `AudioChunker` | split long recordings on silence | Cuts land in the middle of the quietest span, and every chunk carries identical context so a name is spelled the same on both sides of a seam. |
 | `PerformanceStats` | what the app actually cost | Median and p95, never a mean; absence stays absent, because 0/0 is not a 0% success rate. |
+| `Typography` | space at a Chinese/Latin boundary | The only transform applied to a finished transcript, and it may only add or remove horizontal space. A rule that could insert a comma would be inventing a pause the speaker did not take; that half of the same complaint is asked of the model instead, in `prompt/typography.md`. |
 | `AudioDecoder` | any recording → 16 kHz mono WAV | The live path never needed it; a file does. Without it the chunker cannot split a compressed recording, the duration reads as zero, and the upload is not compressed. |
 | `FileTranscriber` | decode → transcribe → second stage | Shared by the GUI window and `dnt transcribe`, so the two cannot drift on what a mode means or on which backend runs the second stage. |
 | `TranscriptMode` | verbatim, rewrite, summary | Ordering is the point: the verbatim transcript is stored before any styled text is delivered, whether the style came back in the same request or from a second one. |
 | `LogRouter` / `Log` | levels, sinks, redaction | A lock rather than an actor, because logging has to be callable from an audio callback without an `await` — a logger you cannot call from the hot path is one nobody calls. |
+
+## Typography
+
+The transcript a user reads is the model's words in the model's layout, and the layout was not
+stable: the same sentence came back with a space between Chinese and Latin on one dictation and
+without it on the next, and sometimes with a stray space after a full-width full stop. Every
+individual output was defensible; the set of them was not.
+
+`Typography` fixes the half of that which is arithmetic. It runs in `TranscriptionService`, after
+both audio guards and before the result leaves — the same choke point and the same argument as
+`HallucinationGuard`: dictation, file transcription, retry, redo and both CLIs come through it, and
+a transform that some callers applied would be missing from the one that mattered. It is
+idempotent, because a split recording is normalised per chunk and again over the stitch.
+
+Three constraints keep it safe to run on everything:
+
+- **It only ever adds or removes horizontal space.** The suites assert that the input and the
+  output are identical once whitespace is dropped. A rule that inserted a comma would be inventing
+  a pause; that request is made of the model in `prompt/typography.md` instead.
+- **Newlines are not horizontal space,** so it cannot join two lines, and leading or trailing space
+  is left alone — an indent belongs to the speaker and the stitch's own space belongs to the
+  chunker.
+- **Hangul is not in the CJK class.** Korean separates its own words, so a "no space" setting would
+  take out a space the language requires. Kana is in, so Japanese is treated consistently within
+  itself rather than spacing `Web開発` and not `Webかいはつ`.
+
+The measurement harness turns it off explicitly, which is the second deliberate divergence in this
+document. A suite scores a transcript against ground truth transcribed from what the backend
+produced; leaving typography on would score this app's own transform.
 
 ## Rewrite and summary
 

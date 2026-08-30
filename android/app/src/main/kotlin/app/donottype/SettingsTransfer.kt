@@ -1,11 +1,13 @@
 package app.donottype
 
+import app.donottype.core.ChineseScript
 import app.donottype.core.Fidelity
 import app.donottype.core.LogLevel
 import app.donottype.core.ProviderKind
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.RewriteStyle
 import app.donottype.core.TranscriptMode
+import app.donottype.core.TypographySpacing
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -32,6 +34,8 @@ object SettingsTransfer {
         val fallbackAfterSeconds: Int,
         val retention: RetentionPolicy,
         val liveStyle: RewriteStyle?,
+        /** Null when the document predates the typography block; the settings then stay as they are. */
+        val typography: Triple<TypographySpacing, ChineseScript, String>?,
     )
 
     fun export(pretty: Boolean = true): String {
@@ -58,6 +62,16 @@ object SettingsTransfer {
             .put("fallback", fallback ?: JSONObject.NULL)
             .put("retention", Settings.retention.id)
             .put("keepAudio", Settings.keepAudio)
+            // Shared rather than inside the "android" block: typography is not a platform concept,
+            // and a transcript spaced one way on a phone and another on the laptop reading the same
+            // profile is the drift this block prevents.
+            .put(
+                "typography",
+                JSONObject()
+                    .put("spacing", Settings.typographySpacing.id)
+                    .put("chineseScript", Settings.chineseScript.id)
+                    .put("formattingSample", Settings.formattingSample),
+            )
             .put(
                 "dictionary",
                 JSONObject()
@@ -152,7 +166,20 @@ object SettingsTransfer {
         readStrings(dictionary.optJSONArray("manual"))
         readStrings(dictionary.optJSONArray("learned"))
 
-        return Parsed(root, selected, fidelity, fallback, delay, retention, style)
+        // Optional, so a profile exported before this existed still imports; but a value that is
+        // present and unreadable fails the whole document rather than being silently defaulted,
+        // which is how every other typed field here behaves.
+        val typography = root.optJSONObject("typography")?.let { block ->
+            val spacingRaw = block.optString("spacing")
+            val spacing = TypographySpacing.entries.firstOrNull { it.id == spacingRaw }
+                ?: throw IllegalArgumentException("Unsupported typography spacing “$spacingRaw”.")
+            val scriptRaw = block.optString("chineseScript")
+            val script = ChineseScript.entries.firstOrNull { it.id == scriptRaw }
+                ?: throw IllegalArgumentException("Unsupported Chinese script “$scriptRaw”.")
+            Triple(spacing, script, block.optString("formattingSample"))
+        }
+
+        return Parsed(root, selected, fidelity, fallback, delay, retention, style, typography)
     }
 
     /** Applies only after [parse] has validated every typed value, preventing partial imports. */
@@ -177,6 +204,11 @@ object SettingsTransfer {
         Settings.fallbackAfterSeconds = parsed.fallbackAfterSeconds
         Settings.retention = parsed.retention
         Settings.keepAudio = root.optBoolean("keepAudio", false)
+        parsed.typography?.let { (spacing, script, sample) ->
+            Settings.typographySpacing = spacing
+            Settings.chineseScript = script
+            Settings.formattingSample = sample
+        }
 
         val dictionary = root.getJSONObject("dictionary")
         Settings.dictionaryTerms = readStrings(dictionary.optJSONArray("manual"))

@@ -56,7 +56,7 @@ public sealed class TranscriptionService(
                 new Dictionary<string, string> { ["provider"] = Provider.Name });
             return transcript;
         }
-        return rewritten;
+        return DoNotType.Core.Typography.Normalize(rewritten, Typography);
     }
 
     /// <summary>
@@ -88,6 +88,18 @@ public sealed class TranscriptionService(
     /// draws is not reporting the backend's latency.</para>
     /// </summary>
     public bool HedgeStalledRequests { get; init; } = true;
+
+    /// <summary>
+    /// What to do where Chinese or Japanese meets Latin in whatever comes back. See
+    /// <see cref="Typography"/>.
+    /// </summary>
+    /// <remarks>
+    /// It lives here, on the object every path goes through — dictation, file transcription, retry,
+    /// redo, the CLI — for the same reason the hallucination guard does: a transform some callers
+    /// apply is a transform that will be missing from the one that matters. A history row and a
+    /// live insertion of the same words must not be spaced differently.
+    /// </remarks>
+    public TypographySpacing Typography { get; init; } = DoNotType.Core.Typography.DefaultSpacing;
 
     public async Task<TranscriptionResult> TranscribeAsync(
         byte[] wav,
@@ -192,11 +204,11 @@ public sealed class TranscriptionService(
                             ["provider"] = Provider.Name,
                             ["detail"] = truncation.Summary,
                         });
-                    return result with { Truncation = truncation };
+                    return WithTypography(result with { Truncation = truncation });
                 }
             }
 
-            return result;
+            return WithTypography(result);
         }
 
         // Warning, not debug: text the user never said was about to be typed into whatever they had
@@ -208,7 +220,29 @@ public sealed class TranscriptionService(
                 ["provider"] = Provider.Name,
                 ["reason"] = verdict.Summary,
             });
-        return result with { Transcript = checkedTranscript };
+        return WithTypography(result with { Transcript = checkedTranscript });
+    }
+
+    /// <summary>
+    /// Applies the user's typography to a finished result.
+    /// </summary>
+    /// <remarks>
+    /// After the guards, never before. Both of them measure the transcript against the audio, and a
+    /// space this added or removed is not something either is entitled to see.
+    /// </remarks>
+    private TranscriptionResult WithTypography(TranscriptionResult result)
+    {
+        if (Typography == TypographySpacing.Unchanged) return result;
+        return result with
+        {
+            Transcript = result.Transcript with
+            {
+                Text = DoNotType.Core.Typography.Normalize(result.Transcript.Text, Typography),
+                Styled = result.Transcript.Styled is null
+                    ? null
+                    : DoNotType.Core.Typography.Normalize(result.Transcript.Styled, Typography),
+            },
+        };
     }
 
     private static string StyledInstructionSuffix(string styleClause) => """
@@ -394,7 +428,12 @@ public sealed class TranscriptionService(
         var results = await Task.WhenAll(tasks).ConfigureAwait(false);
         return new TranscriptionResult(
             new Transcript(
-                AudioChunker.Stitch(results.Select(result => result.Transcript.Text)),
+                // Again, over the join this time. Each chunk was normalised on its own and the
+                // stitch adds one space between them, which after a full stop is exactly the stray
+                // space this removes. Normalising twice is normalising once.
+                DoNotType.Core.Typography.Normalize(
+                    AudioChunker.Stitch(results.Select(result => result.Transcript.Text)),
+                    Typography),
                 results.FirstOrDefault()?.Transcript.Language ?? string.Empty),
             results.Aggregate(new TokenUsage(), (total, result) => TokenUsage.Add(total, result.Usage)),
             string.Join("\n", results.Select(result => result.RawOutput)),

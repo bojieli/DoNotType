@@ -844,7 +844,9 @@ final class DictationController {
             // out.
             let instruction = try? PromptStore(directory: HistoryStore.defaultDirectory())
                 .builder(bundled: promptURL)
-                .systemInstruction(fidelity: settings.fidelity)
+                .systemInstruction(
+                    fidelity: settings.fidelity, script: settings.chineseScript,
+                    sample: settings.formattingSample)
         else {
             return FallbackTranscriber(primary: primary)
         }
@@ -855,7 +857,8 @@ final class DictationController {
                 provider: backend, model: settings.model(for: kind),
                 systemInstruction: instruction, fidelity: settings.fidelity,
                 keytermBiasing: settings.keytermBiasing,
-                personalDictionary: settings.personalDictionaryTerms),
+                personalDictionary: settings.personalDictionaryTerms,
+                typography: settings.typographySpacing),
             hedgeAfter: .seconds(settings.fallbackAfterSeconds))
     }
 
@@ -885,14 +888,17 @@ final class DictationController {
             // request built from a different prompt is not the same request.
             let instruction = try? PromptStore(directory: HistoryStore.defaultDirectory())
                 .builder(bundled: promptURL)
-                .systemInstruction(fidelity: settings.fidelity)
+                .systemInstruction(
+                    fidelity: settings.fidelity, script: settings.chineseScript,
+                    sample: settings.formattingSample)
         else { return nil }
 
         return RetryCoordinator(
             service: TranscriptionService(
                 provider: provider, model: settings.model, systemInstruction: instruction,
                 fidelity: settings.fidelity, keytermBiasing: settings.keytermBiasing,
-                personalDictionary: settings.personalDictionaryTerms),
+                personalDictionary: settings.personalDictionaryTerms,
+                typography: settings.typographySpacing),
             store: store)
     }
 

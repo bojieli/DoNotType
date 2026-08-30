@@ -31,6 +31,22 @@ struct SettingsTransferTests {
         #expect(expected.containsSecrets)
     }
 
+    /// A profile written before the typography block existed still imports, and one that carries
+    /// it survives the round trip. Both halves matter: the block is optional in the format, and
+    /// optional plus silently dropped is how a setting stops crossing devices.
+    @Test func typographySurvivesTheRoundTripAndIsOptional() throws {
+        var withTypography = document()
+        withTypography.typography = .init(
+            spacing: TypographySpacing.tight.rawValue,
+            chineseScript: ChineseScript.traditional.rawValue,
+            formattingSample: "中文 English。")
+        #expect(try SettingsTransferDocument.decode(withTypography.encoded()) == withTypography)
+
+        let older = document()
+        #expect(older.typography == nil)
+        #expect(try SettingsTransferDocument.decode(older.encoded()).typography == nil)
+    }
+
     @Test func rejectsWrongFormatAndUnknownVersion() throws {
         var wrongFormat = document()
         wrongFormat.format = "some.other.application"

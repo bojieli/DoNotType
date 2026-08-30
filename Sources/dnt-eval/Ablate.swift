@@ -138,7 +138,9 @@ struct Ablate: AsyncParsableCommand {
                 + "number, name and identifier exactly as transcribed:\n"
                 + builder.styleClause(.formal)
             let service = TranscriptionService(
-                provider: runner.provider, model: runner.model, systemInstruction: combined)
+                provider: runner.provider, model: runner.model, systemInstruction: combined,
+                // Measured output is the backend's. See `EvalCase`.
+                typography: .unchanged)
             return try await service.transcribe(audio: audio, context: context)
                 .transcript.transcript
 
@@ -148,7 +150,9 @@ struct Ablate: AsyncParsableCommand {
             // survives it. Scored on the styled text, which is what the user is given.
             let service = TranscriptionService(
                 provider: runner.provider, model: runner.model,
-                systemInstruction: try builder.systemInstruction(fidelity: .light))
+                systemInstruction: try builder.systemInstruction(fidelity: .light),
+                // Measured output is the backend's. See `EvalCase`.
+                typography: .unchanged)
             return try await service.transcribeStyled(
                 audio: audio, context: context,
                 styleClause: try builder.styleClause(.formal),

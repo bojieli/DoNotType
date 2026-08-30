@@ -62,7 +62,9 @@ struct Silence: AsyncParsableCommand {
             provider: try ProviderFactory.make(kind),
             model: model ?? kind.defaultModel,
             systemInstruction: instruction,
-            fidelity: .default)
+            fidelity: .default,
+            // The harness measures the backend, not this app's typography. See `EvalCase`.
+            typography: .unchanged)
 
         let recordings = try FileManager.default
             .contentsOfDirectory(atPath: corpus)

@@ -204,9 +204,12 @@ struct BackendOptions: ParsableArguments {
             provider: provider,
             model: overrideModel ?? resolveModel(for: kind),
             systemInstruction: try promptBuilder().systemInstruction(
-                fidelity: try resolveFidelity()),
+                fidelity: try resolveFidelity(),
+                script: AppPreferences.chineseScript,
+                sample: AppPreferences.formattingSample),
             fidelity: try resolveFidelity(),
-            keytermBiasing: keyterms)
+            keytermBiasing: keyterms,
+            typography: AppPreferences.typographySpacing)
         return (service, resolved.source)
     }
 
@@ -234,8 +237,11 @@ struct BackendOptions: ParsableArguments {
             provider: provider,
             model: overrideModel ?? kind.defaultTextModel ?? resolveModel(for: kind),
             systemInstruction: try promptBuilder().systemInstruction(
-                fidelity: try resolveFidelity()),
-            fidelity: try resolveFidelity())
+                fidelity: try resolveFidelity(),
+                script: AppPreferences.chineseScript,
+                sample: AppPreferences.formattingSample),
+            fidelity: try resolveFidelity(),
+            typography: AppPreferences.typographySpacing)
         return (service, resolved.source)
     }
 }
@@ -292,6 +298,27 @@ enum AppPreferences {
             return legacy
         }
         return kind.defaultModel
+    }
+
+    /// The three typography preferences, read for the same reason every other one here is: the
+    /// CLI and the app are the same product, and a transcript that came out of `dnt` should not be
+    /// spaced differently from one the hotkey produced a minute earlier.
+    static var typographySpacing: TypographySpacing {
+        guard let raw = defaults?.string(forKey: "typographySpacing"),
+            let value = TypographySpacing(rawValue: raw)
+        else { return .default }
+        return value
+    }
+
+    static var chineseScript: ChineseScript {
+        guard let raw = defaults?.string(forKey: "chineseScript"),
+            let value = ChineseScript(rawValue: raw)
+        else { return .default }
+        return value
+    }
+
+    static var formattingSample: String {
+        defaults?.string(forKey: "formattingSample") ?? ""
     }
 
     static var fidelity: Fidelity {

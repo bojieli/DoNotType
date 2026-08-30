@@ -288,7 +288,9 @@ struct HistoryBenchmark: AsyncParsableCommand {
                 fidelity: fidelity,
                 keytermBiasing: false,
                 personalDictionary: [],
-                hedgeStalledRequests: false)
+                hedgeStalledRequests: false,
+                // Measured output is the backend's. See `EvalCase`.
+                typography: .unchanged)
         }
         return services
     }

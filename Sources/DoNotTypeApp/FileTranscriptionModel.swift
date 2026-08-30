@@ -252,13 +252,16 @@ final class FileTranscriptionModel {
 
         let builder = PromptStore(directory: HistoryStore.defaultDirectory())
             .builder(bundled: promptURL)
-        guard let instruction = try? builder.systemInstruction(fidelity: settings.fidelity)
+        guard let instruction = try? builder.systemInstruction(
+            fidelity: settings.fidelity, script: settings.chineseScript,
+            sample: settings.formattingSample)
         else { return nil }
 
         let service = TranscriptionService(
             provider: provider, model: settings.model, systemInstruction: instruction,
             fidelity: settings.fidelity, keytermBiasing: settings.keytermBiasing,
-            personalDictionary: settings.personalDictionaryTerms)
+            personalDictionary: settings.personalDictionaryTerms,
+            typography: settings.typographySpacing)
 
         return FileTranscriber(
             service: service, prompt: builder, fidelity: settings.fidelity,

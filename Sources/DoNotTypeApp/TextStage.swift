@@ -29,7 +29,7 @@ enum TextStage {
         {
             return TranscriptionService(
                 provider: backend, model: model, systemInstruction: instruction,
-                fidelity: settings.fidelity)
+                fidelity: settings.fidelity, typography: settings.typographySpacing)
         }
 
         for kind in ProviderKind.allCases where !kind.isSpeechRecognition {
@@ -38,7 +38,8 @@ enum TextStage {
             else { continue }
             return TranscriptionService(
                 provider: backend, model: settings.model(for: kind),
-                systemInstruction: instruction, fidelity: settings.fidelity)
+                systemInstruction: instruction, fidelity: settings.fidelity,
+                typography: settings.typographySpacing)
         }
         return nil
     }

@@ -159,9 +159,11 @@ internal sealed class FileTranscriptionTab
         var builder = new PromptStore(HistoryStore.DefaultDirectory()).Builder(promptPath);
         var service = new TranscriptionService(
             ProviderFactory.Create(_settings.Provider, key, _settings.Model),
-            builder.SystemInstruction(_settings.Fidelity))
+            builder.SystemInstruction(
+                    _settings.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
         {
             Fidelity = _settings.Fidelity,
+            Typography = _settings.TypographySpacing,
             KeytermBiasing = _settings.KeytermBiasing,
             PersonalDictionary = _settings.PersonalDictionaryTerms(),
         };
@@ -222,9 +224,11 @@ internal sealed class FileTranscriptionTab
             if (string.IsNullOrEmpty(key)) continue;
             return new TranscriptionService(
                 ProviderFactory.Create(kind, key, _settings.ModelFor(kind)),
-                builder.SystemInstruction(_settings.Fidelity))
+                builder.SystemInstruction(
+                    _settings.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
             {
                 Fidelity = _settings.Fidelity,
+                Typography = _settings.TypographySpacing,
                 PersonalDictionary = _settings.PersonalDictionaryTerms(),
             };
         }

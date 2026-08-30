@@ -101,7 +101,9 @@ struct Dictation: AsyncParsableCommand {
             }
             let service = TranscriptionService(
                 provider: provider, model: model ?? kind.defaultModel,
-                systemInstruction: instruction, fidelity: requested)
+                systemInstruction: instruction, fidelity: requested,
+                // The harness measures the backend, not this app's typography. See `EvalCase`.
+                typography: .unchanged)
 
             print("\(kind.rawValue) …", terminator: "")
             fflush(stdout)

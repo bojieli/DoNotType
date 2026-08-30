@@ -1,9 +1,11 @@
 package app.donottype
 
+import app.donottype.core.ChineseScript
 import app.donottype.core.Fidelity
 import app.donottype.core.ProviderKind
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.RewriteStyle
+import app.donottype.core.TypographySpacing
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
@@ -39,6 +41,30 @@ class SettingsTransferTest {
             RewriteStyle.VERBATIM,
             SettingsTransfer.parse(valid.replace("\"iOS\"", "\"android\"")).liveStyle,
         )
+    }
+
+    /// A profile written before the typography block existed still imports; one that carries an
+    /// unreadable value fails the whole document rather than being silently defaulted.
+    @Test fun typographyIsOptionalButNeverSilentlyWrong() {
+        assertEquals(null, SettingsTransfer.parse(valid).typography)
+
+        val withBlock = valid.replace(
+            "\"keepAudio\":false,",
+            "\"keepAudio\":false," +
+                "\"typography\":{\"spacing\":\"tight\",\"chineseScript\":\"traditional\"," +
+                "\"formattingSample\":\"中文 English。\"},",
+        )
+        val parsed = SettingsTransfer.parse(withBlock)
+        assertEquals(TypographySpacing.TIGHT, parsed.typography?.first)
+        assertEquals(ChineseScript.TRADITIONAL, parsed.typography?.second)
+        assertEquals("中文 English。", parsed.typography?.third)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            SettingsTransfer.parse(withBlock.replace("\"tight\"", "\"nonsense\""))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            SettingsTransfer.parse(withBlock.replace("\"traditional\"", "\"cursive\""))
+        }
     }
 
     @Test fun rejectsWrongFormatAndMissingProvider() {

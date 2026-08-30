@@ -23,6 +23,7 @@ struct SettingsView: View {
             setupSection
             providerSection
             dictationSection
+            typographySection
             rewriteSection
             dictionarySection
             historySection
@@ -248,6 +249,49 @@ struct SettingsView: View {
             Text("Dictation")
         } footer: {
             Text("Even Tidy only changes typography. None of these reword you.")
+        }
+    }
+
+    /// Beneath Fidelity because it is the same kind of dial — how the words are written down,
+    /// never which words — and above Rewrite, which is the first setting that may change them.
+    private var typographySection: some View {
+        Section {
+            Picker("Chinese and Latin", selection: $model.typographySpacing) {
+                ForEach(TypographySpacing.allCases, id: \.self) { spacing in
+                    Text(spacing.label).tag(spacing)
+                }
+            }
+            .accessibilityIdentifier("typography-spacing")
+
+            Picker("Chinese script", selection: $model.chineseScript) {
+                ForEach(ChineseScript.allCases, id: \.self) { script in
+                    Text(script.label).tag(script)
+                }
+            }
+            .accessibilityIdentifier("chinese-script")
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Formatting example").font(.subheadline)
+                TextField(
+                    "Optional — a sentence written the way you want yours written",
+                    text: $model.formattingSample, axis: .vertical
+                )
+                .lineLimit(2...5)
+                .accessibilityIdentifier("formatting-sample")
+                // No silent caps: the field trims, so it says where.
+                Text("Up to \(Typography.maxSampleCharacters) characters.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Typography")
+        } footer: {
+            Text(
+                "Spacing is applied to the finished transcript on this phone, so it is the same "
+                    + "on every dictation. The script and the example are asked of the model, "
+                    + "which is why they are a request rather than a guarantee — and why nothing "
+                    + "here is allowed to change a word."
+            )
         }
     }
 

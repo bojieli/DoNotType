@@ -126,7 +126,8 @@ class FileTranscriber(
                 throw NoSpeechException()
             }
 
-            val instruction = PromptAssets.systemInstruction(context, Settings.fidelity)
+            val instruction = PromptAssets.systemInstruction(
+                context, Settings.fidelity, Settings.chineseScript, Settings.formattingSample)
             val client = ProviderFactory.create(Settings.provider, key, Settings.model)
 
             val transcribeStart = System.currentTimeMillis()
@@ -136,7 +137,8 @@ class FileTranscriber(
                 client, instruction, wav, onProgress, styleClause,
             )
             val transcriptionMillis = System.currentTimeMillis() - transcribeStart
-            val verbatim = result.transcript.transcript.trim()
+            val verbatim = Typography.normalize(
+                result.transcript.transcript.trim(), Settings.typographySpacing)
 
             log.info(
                 mapOf(
@@ -152,7 +154,8 @@ class FileTranscriber(
             var secondStageProvider: String? = null
 
             if (mode is TranscriptMode.Rewrite && !result.transcript.styled.isNullOrBlank()) {
-                delivered = result.transcript.styled.trim()
+                delivered = Typography.normalize(
+                    result.transcript.styled.trim(), Settings.typographySpacing)
             }
 
             // An empty transcript means silence, and there is nothing to rewrite or summarise.
@@ -171,6 +174,7 @@ class FileTranscriber(
                         listOf(InputPart.Text(verbatim)),
                         Settings.fidelity,
                     ).transcript.transcript.trim()
+                        .let { Typography.normalize(it, Settings.typographySpacing) }
                     secondStageMillis = System.currentTimeMillis() - start
                     // A second stage that comes back empty is a failure of the second stage, not
                     // of the transcription: the words survive either way.
@@ -279,7 +283,12 @@ class FileTranscriber(
         return Transcribed(
             TranscriptionResult(
                 Transcript(
-                    AudioChunker.stitch(pieces.map { it.transcript.transcript }),
+                    // See the same call in Dictation.combine: the stitch's own space is normalised
+                    // along with everything else, and doing it twice changes nothing.
+                    Typography.normalize(
+                        AudioChunker.stitch(pieces.map { it.transcript.transcript }),
+                        Settings.typographySpacing,
+                    ),
                     pieces.firstOrNull()?.transcript?.language.orEmpty(),
                 ),
                 TokenUsage(audioTokens = pieces.sumOf { it.usage.audioTokens ?: 0 }.takeIf { it > 0 }),

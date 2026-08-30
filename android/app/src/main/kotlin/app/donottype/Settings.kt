@@ -2,6 +2,7 @@ package app.donottype
 
 import android.content.Context
 import android.content.SharedPreferences
+import app.donottype.core.ChineseScript
 import app.donottype.core.Fidelity
 import app.donottype.core.Log
 import app.donottype.core.LogLevel
@@ -11,6 +12,8 @@ import app.donottype.core.PersonalDictionary
 import app.donottype.core.RewriteStyle
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.TranscriptMode
+import app.donottype.core.Typography
+import app.donottype.core.TypographySpacing
 import org.json.JSONArray
 
 /**
@@ -31,6 +34,9 @@ object Settings {
     private const val KEY_FALLBACK = "fallbackProvider"
     private const val KEY_FALLBACK_AFTER = "fallbackAfterSeconds"
     private const val KEY_FIDELITY = "fidelity"
+    private const val KEY_TYPOGRAPHY_SPACING = "typographySpacing"
+    private const val KEY_CHINESE_SCRIPT = "chineseScript"
+    private const val KEY_FORMATTING_SAMPLE = "formattingSample"
     private const val KEY_GROUNDING = "grounding"
     private const val KEY_BLOCKED = "blockedPackages"
     private const val KEY_RETENTION = "retention"
@@ -296,6 +302,45 @@ object Settings {
     var fidelity: Fidelity
         get() = if (ready) Fidelity.from(prefs.getString(KEY_FIDELITY, null)) else Fidelity.DEFAULT
         set(value) { if (ready) prefs.edit().putString(KEY_FIDELITY, value.id).apply() }
+
+    /**
+     * What happens where Chinese meets Latin in a finished transcript. Deterministic — see
+     * [Typography]. The other three clients spell the stored values the same way.
+     */
+    var typographySpacing: TypographySpacing
+        get() = if (ready) {
+            TypographySpacing.from(prefs.getString(KEY_TYPOGRAPHY_SPACING, null))
+        } else {
+            TypographySpacing.DEFAULT
+        }
+        set(value) {
+            if (ready) prefs.edit().putString(KEY_TYPOGRAPHY_SPACING, value.id).apply()
+        }
+
+    /** Which characters Chinese is written in. Asked of the model; see [ChineseScript]. */
+    var chineseScript: ChineseScript
+        get() = if (ready) {
+            ChineseScript.from(prefs.getString(KEY_CHINESE_SCRIPT, null))
+        } else {
+            ChineseScript.DEFAULT
+        }
+        set(value) { if (ready) prefs.edit().putString(KEY_CHINESE_SCRIPT, value.id).apply() }
+
+    /**
+     * A sentence written the way this user wants their transcripts written.
+     *
+     * Sanitised on the way in rather than on the way out, so what the settings screen shows is what
+     * a request would carry.
+     */
+    var formattingSample: String
+        get() = if (ready) prefs.getString(KEY_FORMATTING_SAMPLE, null).orEmpty() else ""
+        set(value) {
+            if (ready) {
+                prefs.edit()
+                    .putString(KEY_FORMATTING_SAMPLE, Typography.sanitizedSample(value))
+                    .apply()
+            }
+        }
 
     var groundingEnabled: Boolean
         get() = !ready || prefs.getBoolean(KEY_GROUNDING, true)

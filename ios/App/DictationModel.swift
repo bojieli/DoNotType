@@ -279,6 +279,31 @@ final class DictationModel {
     var fidelity: Fidelity {
         didSet { UserDefaults.standard.set(fidelity.rawValue, forKey: "fidelity") }
     }
+    /// What happens where Chinese meets Latin in a finished transcript. Deterministic — see
+    /// `Typography`. The other three clients spell the stored values the same way.
+    var typographySpacing: TypographySpacing {
+        didSet {
+            UserDefaults.standard.set(typographySpacing.rawValue, forKey: "typographySpacing")
+        }
+    }
+    /// Which characters Chinese is written in. Asked of the model; see `ChineseScript`.
+    var chineseScript: ChineseScript {
+        didSet { UserDefaults.standard.set(chineseScript.rawValue, forKey: "chineseScript") }
+    }
+    /// A sentence written the way this user wants their transcripts written.
+    ///
+    /// Sanitised on the way in rather than on the way out, so what the settings screen shows is
+    /// what a request would carry.
+    var formattingSample: String {
+        didSet {
+            let cleaned = Typography.sanitizedSample(formattingSample)
+            if cleaned != formattingSample {
+                formattingSample = cleaned
+                return
+            }
+            UserDefaults.standard.set(cleaned, forKey: "formattingSample")
+        }
+    }
     var retention: RetentionPolicy {
         didSet {
             UserDefaults.standard.set(retention.rawValue, forKey: "retention")
@@ -359,6 +384,12 @@ final class DictationModel {
         fallbackEndpoint = fallbackKind.map { Self.storedEndpoint(for: $0) } ?? ""
         fallbackAfterSeconds = Self.storedFallbackSeconds()
         fidelity = Fidelity(rawValue: defaults.string(forKey: "fidelity") ?? "") ?? .default
+        typographySpacing =
+            TypographySpacing(rawValue: defaults.string(forKey: "typographySpacing") ?? "")
+            ?? .default
+        chineseScript =
+            ChineseScript(rawValue: defaults.string(forKey: "chineseScript") ?? "") ?? .default
+        formattingSample = defaults.string(forKey: "formattingSample") ?? ""
         let storedLiveStyle =
             RewriteStyle(rawValue: defaults.string(forKey: "liveStyle") ?? "") ?? .verbatim
         liveStyle = storedLiveStyle
@@ -478,6 +509,10 @@ final class DictationModel {
                 manual: dictionaryTerms,
                 learned: learnedDictionaryTerms,
                 learnsFromEdits: learnDictionaryFromEdits),
+            typography: .init(
+                spacing: typographySpacing.rawValue,
+                chineseScript: chineseScript.rawValue,
+                formattingSample: formattingSample),
             iOS: .init(liveStyle: liveStyle.rawValue))
     }
 
@@ -494,6 +529,18 @@ final class DictationModel {
         guard let importedRetention = RetentionPolicy(rawValue: document.retention) else {
             throw SettingsTransferApplyError.unsupportedValue(
                 field: "retention", value: document.retention)
+        }
+        var importedTypography: (TypographySpacing, ChineseScript, String)?
+        if let typography = document.typography {
+            guard let spacing = TypographySpacing(rawValue: typography.spacing) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "typography.spacing", value: typography.spacing)
+            }
+            guard let script = ChineseScript(rawValue: typography.chineseScript) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "typography.chineseScript", value: typography.chineseScript)
+            }
+            importedTypography = (spacing, script, typography.formattingSample)
         }
         let importedFallback: ProviderKind? = try document.fallback.map { fallback in
             guard let kind = ProviderKind(persistedValue: fallback.provider) else {
@@ -533,6 +580,12 @@ final class DictationModel {
             forKey: "fallbackAfterSeconds")
         defaults.set(importedRetention.rawValue, forKey: "retention")
         defaults.set(document.keepAudio, forKey: "keepAudio")
+        if let typography = importedTypography {
+            defaults.set(typography.0.rawValue, forKey: "typographySpacing")
+            defaults.set(typography.1.rawValue, forKey: "chineseScript")
+            defaults.set(
+                Typography.sanitizedSample(typography.2), forKey: "formattingSample")
+        }
         if let importedStyle {
             defaults.set(importedStyle.rawValue, forKey: "liveStyle")
             if importedStyle.isRewrite {
@@ -545,6 +598,11 @@ final class DictationModel {
             learned: document.dictionary.learned,
             learnsFromEdits: document.dictionary.learnsFromEdits))
 
+        if let typography = importedTypography {
+            typographySpacing = typography.0
+            chineseScript = typography.1
+            formattingSample = typography.2
+        }
         provider = selected
         apiKey = Self.storedKey(for: selected) ?? ""
         model = Self.storedModel(for: selected)
@@ -579,12 +637,13 @@ final class DictationModel {
         else { return nil }
 
         let builder = prompts.builder(bundled: promptURL)
-        guard let instruction = try? builder.systemInstruction(fidelity: fidelity)
+        guard let instruction = try? builder.systemInstruction(
+            fidelity: fidelity, script: chineseScript, sample: formattingSample)
         else { return nil }
 
         let service = TranscriptionService(
             provider: backend, model: model, systemInstruction: instruction, fidelity: fidelity,
-            personalDictionary: personalDictionaryTerms)
+            personalDictionary: personalDictionaryTerms, typography: typographySpacing)
 
         var helper: TranscriptionService?
         if let secondStage, let key = KeychainStore.read(account: secondStage.rawValue),
@@ -595,7 +654,7 @@ final class DictationModel {
             helper = TranscriptionService(
                 provider: backend, model: Self.storedModel(for: secondStage),
                 systemInstruction: instruction, fidelity: fidelity,
-                personalDictionary: personalDictionaryTerms)
+                personalDictionary: personalDictionaryTerms, typography: typographySpacing)
         }
 
         return FileTranscriber(
@@ -1261,7 +1320,7 @@ final class DictationModel {
         return TranscriptionService(
             provider: backend, model: Self.storedModel(for: kind),
             systemInstruction: "", fidelity: fidelity,
-            personalDictionary: personalDictionaryTerms)
+            personalDictionary: personalDictionaryTerms, typography: typographySpacing)
     }
 
     /// The rewrite block from the prompt in force — the user's edited copy when there is one.
@@ -1594,7 +1653,8 @@ final class DictationModel {
                 kind, apiKey: key, endpoint: Self.storedEndpoint(for: kind)),
             let promptURL = Self.bundledPromptURL,
             let instruction = try? prompts.builder(bundled: promptURL)
-                .systemInstruction(fidelity: fidelity)
+                .systemInstruction(
+                    fidelity: fidelity, script: chineseScript, sample: formattingSample)
         else { return FallbackTranscriber(primary: primary) }
 
         return FallbackTranscriber(
@@ -1602,7 +1662,7 @@ final class DictationModel {
             secondary: TranscriptionService(
                 provider: backend, model: Self.storedModel(for: kind),
                 systemInstruction: instruction, fidelity: fidelity,
-                personalDictionary: personalDictionaryTerms),
+                personalDictionary: personalDictionaryTerms, typography: typographySpacing),
             hedgeAfter: .seconds(fallbackAfterSeconds))
     }
 
@@ -1610,7 +1670,8 @@ final class DictationModel {
         guard hasAPIKey,
             let promptURL = Self.bundledPromptURL,
             let instruction = try? prompts.builder(bundled: promptURL)
-                .systemInstruction(fidelity: fidelity)
+                .systemInstruction(
+                    fidelity: fidelity, script: chineseScript, sample: formattingSample)
         else { return nil }
 
         guard let backend = try? ProviderFactory.make(
@@ -1621,7 +1682,7 @@ final class DictationModel {
             service: TranscriptionService(
                 provider: backend, model: model,
                 systemInstruction: instruction, fidelity: fidelity,
-                personalDictionary: personalDictionaryTerms),
+                personalDictionary: personalDictionaryTerms, typography: typographySpacing),
             store: history)
     }
 
