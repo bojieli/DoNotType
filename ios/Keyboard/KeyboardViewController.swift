@@ -111,7 +111,9 @@ final class KeyboardViewController: UIInputViewController {
         modeButton.accessibilityIdentifier = "kb-dictation-mode"
         modeButton.titleLabel?.numberOfLines = 1
         modeButton.titleLabel?.lineBreakMode = .byClipping
-        modeButton.addTarget(self, action: #selector(toggleMode), for: .touchUpInside)
+        // A menu rather than a tap target: three modes do not fit a toggle, and the menu is
+        // where a mode that cannot run can say so instead of silently refusing.
+        modeButton.showsMenuAsPrimaryAction = true
         modeButton.translatesAutoresizingMaskIntoConstraints = false
 
         dictateButton.accessibilityIdentifier = "kb-dictate"
@@ -324,52 +326,87 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Dictation gesture
 
     private var idleCallToAction: String {
-        voiceBridge.rewriteModeEnabled == true
-            ? "Tap Speak to rewrite, or hold to talk"
-            : "Tap Speak to dictate, or hold to talk"
+        switch voiceBridge.liveMode ?? .default {
+        case .dictate: "Tap Speak to dictate, or hold to talk"
+        case .rewrite: "Tap Speak to rewrite, or hold to talk"
+        case .translate: "Tap Speak to translate, or hold to talk"
+        }
     }
 
     private func renderModeButton(canChange: Bool) {
-        // A target language set in the app is what the dictation will actually do, so the chip
-        // says so — and stops being a toggle, because the keyboard cannot clear a setting it does
-        // not own. A chip reading "Rewrite" over a dictation coming back in another language would
-        // be worse than no chip at all.
-        let translating = !voiceBridge.translationTarget.isEmpty
-        let rewrite = !translating && voiceBridge.rewriteModeEnabled == true
+        let mode = voiceBridge.liveMode ?? .default
+        let target = voiceBridge.translationTarget
         var configuration = UIButton.Configuration.filled()
         configuration.cornerStyle = .capsule
-        configuration.image = UIImage(
-            systemName: translating
-                ? "character.bubble" : (rewrite ? "wand.and.sparkles" : "mic.fill"))
+        configuration.image = UIImage(systemName: Self.symbol(for: mode))
         configuration.preferredSymbolConfigurationForImage = .init(
             pointSize: 11, weight: .semibold)
         configuration.imagePadding = 3
         configuration.contentInsets = .init(top: 5, leading: 6, bottom: 5, trailing: 6)
-        configuration.title = translating ? "Translate" : (rewrite ? "Rewrite" : "Dictate")
+        configuration.title = mode.label
         configuration.titleTextAttributesTransformer = .init { attributes in
             var attributes = attributes
             attributes.font = .systemFont(ofSize: 12, weight: .semibold)
             return attributes
         }
-        configuration.baseBackgroundColor =
-            translating ? .systemTeal : (rewrite ? .systemPurple : .systemBlue)
+        configuration.baseBackgroundColor = Self.tint(for: mode)
         configuration.baseForegroundColor = .white
         modeButton.configuration = configuration
-        modeButton.isEnabled = canChange && !translating
-        modeButton.accessibilityLabel = translating
-            ? "Translating into \(voiceBridge.translationTarget)"
-            : (rewrite ? "Rewrite mode" : "Dictate mode")
+        modeButton.isEnabled = canChange
+        modeButton.menu = modeMenu(current: mode)
+        modeButton.accessibilityLabel = mode == .translate && !target.isEmpty
+            ? "Translate into \(target)"
+            : "\(mode.label) mode"
         modeButton.accessibilityValue = "Selected"
-        modeButton.accessibilityHint = translating
-            ? "Clear the target language in DoNotType to change this."
-            : (rewrite ? "Switches to Dictate mode." : "Switches to Rewrite mode.")
+        modeButton.accessibilityHint = "Chooses dictate, rewrite or translate."
     }
 
-    @objc private func toggleMode() {
-        guard voiceBridge.translationTarget.isEmpty else { return }
-        voiceBridge.setRewriteModeEnabled(voiceBridge.rewriteModeEnabled != true)
-        transientStatus = nil
-        reload()
+    private static func symbol(for mode: LiveMode) -> String {
+        switch mode {
+        case .dictate: "mic.fill"
+        case .rewrite: "wand.and.sparkles"
+        case .translate: "character.bubble"
+        }
+    }
+
+    private static func tint(for mode: LiveMode) -> UIColor {
+        switch mode {
+        case .dictate: .systemBlue
+        case .rewrite: .systemPurple
+        case .translate: .systemTeal
+        }
+    }
+
+    /// The three modes, in one flat list.
+    ///
+    /// Deliberately flat: the target language belongs to Settings, not to a submenu here. A
+    /// keyboard cannot type into its own popup, so any language list offered here would be a fixed
+    /// handful quietly disagreeing with the free-text target the app already stores.
+    private func modeMenu(current: LiveMode) -> UIMenu {
+        let target = voiceBridge.translationTarget
+        let blocker = voiceBridge.secondStageBlocker
+        let actions = LiveMode.allCases.map { mode -> UIAction in
+            let availability = blocker.availability(for: mode, translationTarget: target)
+            // Named for what it will produce, so the chip and the menu agree about what choosing
+            // it does.
+            let title = mode == .translate && !target.isEmpty
+                ? "\(mode.label) into \(target)"
+                : mode.label
+            let action = UIAction(
+                title: title,
+                subtitle: availability.reason,
+                image: UIImage(systemName: Self.symbol(for: mode)),
+                attributes: availability.isAvailable ? [] : .disabled,
+                state: mode == current ? .on : .off
+            ) { [weak self] _ in
+                guard let self else { return }
+                self.voiceBridge.setLiveMode(mode)
+                self.transientStatus = nil
+                self.reload()
+            }
+            return action
+        }
+        return UIMenu(options: .displayInline, children: actions)
     }
 
     @objc private func dictateTouchDown() {

@@ -1,4 +1,5 @@
 import CoreFoundation
+import DoNotTypeCore
 import Foundation
 
 /// Rejects UIKit's placeholder values before they cross the App Group as return targets.
@@ -91,8 +92,11 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
         static let keyboardLastSeen = "voiceKeyboard.keyboardLastSeen"
         static let keyboardHasFullAccess = "voiceKeyboard.keyboardHasFullAccess"
         static let returnHostBundleIdentifier = "voiceKeyboard.returnHostBundleIdentifier"
+        static let liveMode = "voiceKeyboard.liveMode"
+        /// Written by builds before the mode picker. Read once, to migrate; never written.
         static let rewriteModeEnabled = "voiceKeyboard.rewriteModeEnabled"
         static let translationTarget = "voiceKeyboard.translationTarget"
+        static let secondStageBlocker = "voiceKeyboard.secondStageBlocker"
     }
 
     private enum NotificationName {
@@ -144,12 +148,17 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
             .flatMap(KeyboardHostIdentifier.normalized)
     }
 
-    /// The small Dictate/Rewrite switch belongs to the keyboard, while the selected rewrite style
-    /// belongs to Settings. Optional distinguishes an existing install that has never made the
-    /// new choice from somebody who explicitly selected Dictate.
-    public var rewriteModeEnabled: Bool? {
+    /// The mode chip belongs to the keyboard, while the style and the target language belong to
+    /// Settings. Optional distinguishes an existing install that has never made the choice from
+    /// somebody who explicitly selected Dictate.
+    public var liveMode: LiveMode? {
+        if let raw = defaults?.string(forKey: Key.liveMode), let mode = LiveMode(rawValue: raw) {
+            return mode
+        }
+        // A build with the two-state switch keeps whichever half of it the user had chosen. It
+        // could not express Translate, so there is nothing to lose in that direction.
         guard defaults?.object(forKey: Key.rewriteModeEnabled) != nil else { return nil }
-        return defaults?.bool(forKey: Key.rewriteModeEnabled)
+        return defaults?.bool(forKey: Key.rewriteModeEnabled) == true ? .rewrite : .dictate
     }
 
     /// The configured target language, or empty.
@@ -167,8 +176,24 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
         Self.post(NotificationName.update)
     }
 
-    public func setRewriteModeEnabled(_ enabled: Bool) {
-        defaults?.set(enabled, forKey: Key.rewriteModeEnabled)
+    public func setLiveMode(_ mode: LiveMode) {
+        defaults?.set(mode.rawValue, forKey: Key.liveMode)
+        defaults?.synchronize()
+        Self.post(NotificationName.update)
+    }
+
+    /// Why the second stage cannot run, as the containing app resolved it.
+    ///
+    /// The keyboard cannot answer this itself: the keys are in the app's Keychain and the extension
+    /// has no business reading them. So the app resolves the shared rule and publishes only which
+    /// case it landed on, and the keyboard builds the same sentence from it. Publishing the
+    /// sentence instead would put the wording in two places and let it drift.
+    public var secondStageBlocker: SecondStageBlocker {
+        SecondStageBlocker(persisted: defaults?.string(forKey: Key.secondStageBlocker))
+    }
+
+    public func publishSecondStageBlocker(_ blocker: SecondStageBlocker) {
+        defaults?.set(blocker.persistedValue, forKey: Key.secondStageBlocker)
         defaults?.synchronize()
         Self.post(NotificationName.update)
     }
@@ -292,5 +317,75 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
                 Unmanaged<Box>.fromOpaque(observer).takeUnretainedValue().handler()
             },
             name as CFString, nil, .deliverImmediately)
+    }
+}
+
+/// What the containing app found when it asked whether a second stage can run.
+///
+/// A three-value summary of `RewriteAvailability` minus the job, because the job is whichever mode
+/// the keyboard is asking about and the requirements are the same for both. The keyboard turns it
+/// back into the shared type — and therefore the shared sentence — rather than carrying text over
+/// the bridge.
+public enum SecondStageBlocker: Equatable, Sendable {
+    /// A configured backend can take text and give text back.
+    case none
+    /// No key for the selected backend, so nothing runs at all.
+    case noKey
+    /// The selected backend only transcribes, and no other configured one can do more.
+    case backend(ProviderKind)
+
+    public init(persisted: String?) {
+        switch persisted {
+        case .some(Self.noKeyValue): self = .noKey
+        case .some(let raw) where !raw.isEmpty:
+            self = ProviderKind(rawValue: raw).map(Self.backend) ?? .none
+        default: self = .none
+        }
+    }
+
+    /// Resolved by the app, published for the keyboard.
+    public init(_ availability: RewriteAvailability) {
+        switch availability {
+        // `.translating` is a desktop answer — there a target language replaces what the second
+        // key produces. The phones have a mode for that, so it never reaches here, and it is not a
+        // backend problem in any case.
+        case .available, .noTargetLanguage, .translating: self = .none
+        case .noKey: self = .noKey
+        case .backendCannotRewrite(let kind, _): self = .backend(kind)
+        }
+    }
+
+    private static let noKeyValue = "no-key"
+
+    var persistedValue: String {
+        switch self {
+        case .none: ""
+        case .noKey: Self.noKeyValue
+        case .backend(let kind): kind.rawValue
+        }
+    }
+
+    /// Whether the given mode can run, and what to say when it cannot — the same answer
+    /// `LiveMode.availability` gives on Android, reached without the keys the extension cannot see.
+    public func availability(for mode: LiveMode, translationTarget: String) -> RewriteAvailability {
+        switch mode {
+        case .dictate:
+            return .available
+        case .rewrite:
+            return availability(for: .rewriting)
+        case .translate:
+            guard !TranslationTarget.sanitized(translationTarget).isEmpty else {
+                return .noTargetLanguage
+            }
+            return availability(for: .translating)
+        }
+    }
+
+    private func availability(for job: SecondStageJob) -> RewriteAvailability {
+        switch self {
+        case .none: .available
+        case .noKey: .noKey(job)
+        case .backend(let kind): .backendCannotRewrite(kind, job)
+        }
     }
 }

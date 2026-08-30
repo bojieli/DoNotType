@@ -73,6 +73,8 @@ final class DictationModel {
             apiKey = KeychainStore.read(account: provider.rawValue) ?? ""
             model = Self.storedModel(for: provider)
             endpoint = Self.storedEndpoint(for: provider)
+            publishSecondStageAvailability()
+            correctUnrunnableMode()
         }
     }
 
@@ -84,6 +86,8 @@ final class DictationModel {
             if apiKey.isEmpty, let renamed = provider.legacyPersistedValue {
                 KeychainStore.write("", account: renamed)
             }
+            publishSecondStageAvailability()
+            correctUnrunnableMode()
         }
     }
     var model: String {
@@ -103,19 +107,25 @@ final class DictationModel {
         didSet { UserDefaults.standard.set(endpoint, forKey: "endpoint-\(provider.rawValue)") }
     }
 
-    /// What the next dictation produces. Mobile exposes this as a two-state Dictate/Rewrite badge;
-    /// the particular rewrite style is configured separately in Settings.
-    var liveStyle: RewriteStyle {
-        didSet { UserDefaults.standard.set(liveStyle.rawValue, forKey: "liveStyle") }
+    /// What the next dictation produces. Both phones expose this as a three-way chip; what Rewrite
+    /// and Translate each produce is configured separately in Settings.
+    ///
+    /// One setting rather than two that could disagree. It used to be a rewrite style doubling as a
+    /// toggle, with a target language in Settings silently overriding it — so the chip could read
+    /// Rewrite over a dictation that was going to come back translated.
+    var liveMode: LiveMode {
+        didSet {
+            UserDefaults.standard.set(liveMode.rawValue, forKey: "liveMode")
+            voiceKeyboardBridge.setLiveMode(liveMode)
+        }
     }
 
-    /// The style used whenever the Dictate/Rewrite badge is on Rewrite. Keeping it separate means
-    /// selecting Dictate does not forget whether Rewrite was configured as Formal or Concise.
+    /// The style used whenever the chip is on Rewrite. Keeping it separate means selecting Dictate
+    /// does not forget whether Rewrite was configured as Formal or Concise.
     var preferredRewriteStyle: RewriteStyle {
         didSet {
             guard preferredRewriteStyle.isRewrite else { return }
             UserDefaults.standard.set(preferredRewriteStyle.rawValue, forKey: "rewriteStyle")
-            if liveStyle.isRewrite { liveStyle = preferredRewriteStyle }
         }
     }
 
@@ -128,12 +138,17 @@ final class DictationModel {
     /// went true on a fresh install and the picker appeared on a phone that could not transcribe at
     /// all, let alone rewrite.
     var rewriteAvailability: RewriteAvailability {
-        RewriteAvailability.resolve(provider: provider, translatingInto: translateTo) { kind in
-            !(KeychainStore.read(account: kind.rawValue) ?? "").isEmpty
-        }
+        availability(of: .rewrite)
     }
 
     var canRewrite: Bool { rewriteAvailability.isAvailable }
+
+    /// Whether a given mode can run right now, and what to say when it cannot.
+    func availability(of mode: LiveMode) -> RewriteAvailability {
+        mode.availability(provider: provider, language: translateTo) { kind in
+            !(KeychainStore.read(account: kind.rawValue) ?? "").isEmpty
+        }
+    }
 
     /// The first configured model backend, for the second stage a recogniser cannot run.
     var secondStageBackend: ProviderKind? {
@@ -304,6 +319,7 @@ final class DictationModel {
             }
             UserDefaults.standard.set(cleaned, forKey: "translateTo")
             voiceKeyboardBridge.setTranslationTarget(cleaned)
+            correctUnrunnableMode()
         }
     }
 
@@ -433,7 +449,15 @@ final class DictationModel {
         translateTo = TranslationTarget.sanitized(defaults.string(forKey: "translateTo") ?? "")
         let storedLiveStyle =
             RewriteStyle(rawValue: defaults.string(forKey: "liveStyle") ?? "") ?? .verbatim
-        liveStyle = storedLiveStyle
+        if let stored = LiveMode(rawValue: defaults.string(forKey: "liveMode") ?? "") {
+            liveMode = stored
+        } else {
+            // Migrated from the two-state switch, and from the target language that used to
+            // override it — which is what an older build actually did with these two settings.
+            let translating = !TranslationTarget.sanitized(
+                defaults.string(forKey: "translateTo") ?? "").isEmpty
+            liveMode = translating ? .translate : (storedLiveStyle.isRewrite ? .rewrite : .dictate)
+        }
         let storedRewriteStyle =
             RewriteStyle(rawValue: defaults.string(forKey: "rewriteStyle") ?? "")
         if let storedRewriteStyle, storedRewriteStyle.isRewrite {
@@ -471,18 +495,19 @@ final class DictationModel {
         VoiceKeyboardBridge.observeUpdates { [weak self] in
             Task { @MainActor in
                 self?.refreshKeyboardSetupStatus()
-                self?.syncRewriteModeFromKeyboard()
+                self?.syncLiveModeFromKeyboard()
             }
         }
         refreshKeyboardSetupStatus()
 
-        // Migrate the old four-way picker into the shared two-state keyboard switch. If the
-        // keyboard already wrote a choice before cold-launching this process, its choice wins.
-        if let enabled = voiceKeyboardBridge.rewriteModeEnabled {
-            liveStyle = enabled ? preferredRewriteStyle : .verbatim
+        // If the keyboard already wrote a choice before cold-launching this process, its choice
+        // wins; otherwise the app's stored mode is what the keyboard should be showing.
+        if let chosen = voiceKeyboardBridge.liveMode {
+            liveMode = chosen
         } else {
-            voiceKeyboardBridge.setRewriteModeEnabled(liveStyle.isRewrite)
+            voiceKeyboardBridge.setLiveMode(liveMode)
         }
+        publishSecondStageAvailability()
 
         // A process restart destroys the recording and request tasks but leaves App Group state
         // intact. Do not strand the keyboard on a recording/transcribing screen that no task can
@@ -557,7 +582,8 @@ final class DictationModel {
                 customDictationStyle: customDictationStyle,
                 customRewriteStyle: customRewriteStyle,
                 translateTo: translateTo),
-            iOS: .init(liveStyle: liveStyle.rawValue))
+            iOS: .init(liveStyle: (liveMode == .rewrite ? preferredRewriteStyle : .verbatim)
+                .rawValue))
     }
 
     func importSettingsTransfer(_ document: SettingsTransferDocument) async throws {
@@ -685,7 +711,11 @@ final class DictationModel {
         keepAudio = document.keepAudio
         if let importedStyle {
             if importedStyle.isRewrite { preferredRewriteStyle = importedStyle }
-            setRewriteModeEnabled(importedStyle.isRewrite)
+            // The document predates the mode picker and carries a style, not a mode. A target
+            // language in the same document is what the exporting build would have done with it.
+            liveMode = !translateTo.isEmpty
+                ? .translate
+                : (importedStyle.isRewrite ? .rewrite : .dictate)
         }
         applyDictionary(snapshot)
         await refresh()
@@ -884,7 +914,7 @@ final class DictationModel {
         // already know that the keyboard remains the recording's visible surface at that point.
         guard !isStartingRecording, state != .recording, state != .transcribing else { return }
         currentDictationIsFromKeyboard = true
-        syncRewriteModeFromKeyboard()
+        syncLiveModeFromKeyboard()
         isReturnToHostPresented = true
         Task { await beginRecording(fromKeyboard: true) }
     }
@@ -898,7 +928,7 @@ final class DictationModel {
         case .start:
             guard !isStartingRecording, state != .recording, state != .transcribing else { return }
             currentDictationIsFromKeyboard = true
-            syncRewriteModeFromKeyboard()
+            syncLiveModeFromKeyboard()
             Task { await beginRecording(fromKeyboard: true) }
         case .stop:
             if state == .recording, currentDictationIsFromKeyboard { finishRecording() }
@@ -925,16 +955,44 @@ final class DictationModel {
         }
     }
 
-    /// Changes only the stage used by the next live dictation. The style behind Rewrite remains a
-    /// Settings preference and is shared with the keyboard through the bridge.
-    func setRewriteModeEnabled(_ enabled: Bool) {
-        liveStyle = enabled ? preferredRewriteStyle : .verbatim
-        voiceKeyboardBridge.setRewriteModeEnabled(enabled)
+    /// Changes only the stage used by the next live dictation. What Rewrite and Translate each
+    /// produce remains a Settings preference, shared with the keyboard through the bridge.
+    ///
+    /// A mode that cannot run is refused rather than stored: the chip would otherwise promise
+    /// something the next dictation will not do.
+    @discardableResult
+    func setLiveMode(_ mode: LiveMode) -> String? {
+        let availability = availability(of: mode)
+        if let reason = availability.reason {
+            // Said where the tap happened, in the sentence the other three clients use, rather
+            // than leaving a control that does nothing when pressed.
+            showNotice(reason)
+            return reason
+        }
+        liveMode = mode
+        return nil
     }
 
-    private func syncRewriteModeFromKeyboard() {
-        guard let enabled = voiceKeyboardBridge.rewriteModeEnabled else { return }
-        liveStyle = enabled ? preferredRewriteStyle : .verbatim
+    private func syncLiveModeFromKeyboard() {
+        guard let chosen = voiceKeyboardBridge.liveMode, chosen != liveMode else { return }
+        liveMode = chosen
+    }
+
+    /// Drops back to Dictate when the chosen mode stopped being runnable — a cleared key, a
+    /// backend that only transcribes, a target language emptied out. Leaving it selected would
+    /// promise something the next dictation will not do.
+    private func correctUnrunnableMode() {
+        guard !availability(of: liveMode).isAvailable else { return }
+        liveMode = .dictate
+    }
+
+    /// Tells the keyboard what it cannot work out for itself: the keys live in this app's Keychain.
+    func publishSecondStageAvailability() {
+        voiceKeyboardBridge.publishSecondStageBlocker(
+            SecondStageBlocker(
+                RewriteAvailability.resolve(provider: provider) { kind in
+                    !(KeychainStore.read(account: kind.rawValue) ?? "").isEmpty
+                }))
     }
 
     /// How long a press must last before releasing it ends the recording.
@@ -1392,15 +1450,12 @@ final class DictationModel {
             personalDictionary: personalDictionaryTerms, typography: typographySpacing)
     }
 
-    /// What this dictation's second stage is, resolved from the two settings that can ask for one.
+    /// What this dictation's second stage is: whichever one the chip was showing.
     ///
-    /// A target language replaces the rewrite rather than joining it: two jobs in one request is
-    /// the combination this project has already measured as worse, and the settings screen says so
-    /// through `RewriteAvailability`.
-    var liveMode: TranscriptMode {
-        translateTo.isEmpty
-            ? (liveStyle.isRewrite ? .rewrite(liveStyle) : .verbatim)
-            : .translate(translateTo)
+    /// Exclusive by construction rather than by a settings flag overriding a toggle — two jobs in
+    /// one request is the combination this project has already measured as worse.
+    var liveStage: TranscriptMode {
+        liveMode.stage(style: preferredRewriteStyle, language: translateTo)
     }
 
     /// The second-stage instruction for whichever stage this dictation asked for, routed through
@@ -1464,8 +1519,8 @@ final class DictationModel {
 
         // Read once, here. Moving the picker while a transcription is in flight must not change
         // what the recording already made becomes.
-        let style = liveStyle
-        let stage = liveMode
+        let style = liveMode == .rewrite ? preferredRewriteStyle : .verbatim
+        let stage = liveStage
 
         guard let coordinator = makeCoordinator() else {
             finishKeyboardRequestWithFailure("Add your API key in Settings.")
