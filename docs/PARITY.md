@@ -20,10 +20,10 @@ is reachable by a user of that client, not merely present in its core library.
 | Cancel recording or transcription | ✅ Escape / None ¹⁴ | ✅ Escape / None ¹⁴ | ✅ button ²⁰ | ✅ button ²⁰ |
 | Finish recording, insert, and submit | ✅ Return / ⌘Return / Off ¹⁵ | ✅ Enter / Ctrl+Enter / Off ¹⁵ | — ¹⁵ | — ¹⁵ |
 | Push-to-talk / hands-free as a *setting* | ✅ | ✅ | — ¹ | — ¹ |
-| Rewrite a dictation | ✅ second hotkey | ✅ second hotkey | ✅ style chips | ✅ style picker |
+| Rewrite a dictation | ✅ second hotkey | ✅ second hotkey | ✅ mode chip ²² | ✅ mode chip ²² |
 | Preset or custom writing style, per stage | ✅ | ✅ | ✅ | ✅ |
-| Translate a dictation | ✅ ²¹ | ✅ ²¹ | ✅ ²¹ | ✅ ²¹ |
-| Says why a rewrite is unavailable | ✅ | ✅ | ✅ | ✅ |
+| Translate a dictation | ✅ ²¹ | ✅ ²¹ | ✅ ²¹ ²² | ✅ ²¹ ²² |
+| Says why a mode cannot run | ✅ | ✅ | ✅ | ✅ |
 | Summarise a dictation live | — ⁶ | — ⁶ | — ⁶ | — ⁶ |
 | Undo the last insertion | ✅ ⌘⇧Z | ✅ Ctrl+Shift+Z | — ² | — ² |
 | Revert a rewrite to verbatim | ✅ ⌘⌥Z | ✅ Ctrl+Alt+Z | — ² | — ² |
@@ -117,12 +117,29 @@ selection to remove instead.
 control deliver something other than what was said. What it does not change is the promise
 underneath: the verbatim transcript is produced first, stored first, and recoverable — `⌘⌥Z` on
 macOS, `Ctrl+Alt+Z` on Windows, the History row on both phones. It **replaces** the rewrite stage
-rather than joining it, on all four, and each client says so where the rewrite control is: two jobs
-in one request is the combination this project measured as worse, and "formal French" is a feature
-request rather than a fix for the one that was asked for. The field is free text with a shape
+rather than joining it, on all four: two jobs in one request is the combination this project
+measured as worse, and "formal French" is a feature request rather than a fix for the one that was
+asked for. Where the clients differ is in how that exclusivity is expressed. The phones make it a
+choice — see ²² — while the desktops, which pick the operation by *which key is held*, let a target
+language override the second key and say so beside the rewrite picker. The field is free text with a shape
 check, exactly like Model — the model is the authority on which languages it can write — with a
 list of common ones as a shortcut rather than a whitelist. `dnt transcribe --mode translate:English`
 is the same stage from a shell.
+
+²² The phones choose the operation from one three-way chip — Dictate, Rewrite, Translate — before
+speaking: on the keyboard it opens a menu, on the app's own screen it is three segments. The
+desktops have no equivalent because they already answer the question with the keyboard: the main
+key is verbatim and the second key rewrites, so a persistent chip would be a second answer to a
+question already asked.
+
+The chip replaced a two-state Dictate/Rewrite toggle that a target language in Settings silently
+overrode, so it could read `Rewrite` over a dictation that came back translated. All three
+possibilities were already in `TranscriptMode`; the control now has the same three. A mode that
+cannot run is offered but disabled with the sentence saying why, from the shared rule — the phones'
+keyboards cannot read the Keychain, so on iOS the containing app publishes which case the rule
+landed on and the extension rebuilds the sentence from it. The target language stays in Settings on
+both: a keyboard cannot type into its own popup, so a language list there would be a fixed handful
+quietly disagreeing with the free-text target the app already stores.
 
 ²⁰ A visible control, on the phone's keyboard and on its dictation screen, in both halves of a
 dictation: `Discard recording` while the microphone is open, `Cancel transcription` once the
