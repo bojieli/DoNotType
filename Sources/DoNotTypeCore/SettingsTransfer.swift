@@ -104,11 +104,18 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
         public var spacing: String
         public var chineseScript: String
         public var formattingSample: String
+        /// Empty, or absent altogether in a profile written before translation existed, means the
+        /// dictation stays in the language that was spoken.
+        public var translateTo: String?
 
-        public init(spacing: String, chineseScript: String, formattingSample: String) {
+        public init(
+            spacing: String, chineseScript: String, formattingSample: String,
+            translateTo: String? = nil
+        ) {
             self.spacing = spacing
             self.chineseScript = chineseScript
             self.formattingSample = formattingSample
+            self.translateTo = translateTo
         }
     }
 

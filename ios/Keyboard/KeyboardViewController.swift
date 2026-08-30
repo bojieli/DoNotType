@@ -330,32 +330,43 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func renderModeButton(canChange: Bool) {
-        let rewrite = voiceBridge.rewriteModeEnabled == true
+        // A target language set in the app is what the dictation will actually do, so the chip
+        // says so — and stops being a toggle, because the keyboard cannot clear a setting it does
+        // not own. A chip reading "Rewrite" over a dictation coming back in another language would
+        // be worse than no chip at all.
+        let translating = !voiceBridge.translationTarget.isEmpty
+        let rewrite = !translating && voiceBridge.rewriteModeEnabled == true
         var configuration = UIButton.Configuration.filled()
         configuration.cornerStyle = .capsule
-        configuration.image = UIImage(systemName: rewrite ? "wand.and.sparkles" : "mic.fill")
+        configuration.image = UIImage(
+            systemName: translating
+                ? "character.bubble" : (rewrite ? "wand.and.sparkles" : "mic.fill"))
         configuration.preferredSymbolConfigurationForImage = .init(
             pointSize: 11, weight: .semibold)
         configuration.imagePadding = 3
         configuration.contentInsets = .init(top: 5, leading: 6, bottom: 5, trailing: 6)
-        configuration.title = rewrite ? "Rewrite" : "Dictate"
+        configuration.title = translating ? "Translate" : (rewrite ? "Rewrite" : "Dictate")
         configuration.titleTextAttributesTransformer = .init { attributes in
             var attributes = attributes
             attributes.font = .systemFont(ofSize: 12, weight: .semibold)
             return attributes
         }
-        configuration.baseBackgroundColor = rewrite ? .systemPurple : .systemBlue
+        configuration.baseBackgroundColor =
+            translating ? .systemTeal : (rewrite ? .systemPurple : .systemBlue)
         configuration.baseForegroundColor = .white
         modeButton.configuration = configuration
-        modeButton.isEnabled = canChange
-        modeButton.accessibilityLabel = rewrite ? "Rewrite mode" : "Dictate mode"
+        modeButton.isEnabled = canChange && !translating
+        modeButton.accessibilityLabel = translating
+            ? "Translating into \(voiceBridge.translationTarget)"
+            : (rewrite ? "Rewrite mode" : "Dictate mode")
         modeButton.accessibilityValue = "Selected"
-        modeButton.accessibilityHint = rewrite
-            ? "Switches to Dictate mode."
-            : "Switches to Rewrite mode."
+        modeButton.accessibilityHint = translating
+            ? "Clear the target language in DoNotType to change this."
+            : (rewrite ? "Switches to Dictate mode." : "Switches to Rewrite mode.")
     }
 
     @objc private func toggleMode() {
+        guard voiceBridge.translationTarget.isEmpty else { return }
         voiceBridge.setRewriteModeEnabled(voiceBridge.rewriteModeEnabled != true)
         transientStatus = nil
         reload()

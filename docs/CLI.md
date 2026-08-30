@@ -73,6 +73,7 @@ dnt transcribe memo.m4a                          # verbatim, to stdout
 dnt transcribe talk.wav --mode summary:bullets   # summary, verbatim kept
 dnt transcribe *.m4a --output notes/ --save-history
 dnt transcribe call.mp3 --json | jq -r .[0].verbatim
+dnt transcribe standup.m4a --mode translate:English  # spoken Mandarin, written English
 ```
 
 ### Modes
@@ -82,8 +83,19 @@ dnt transcribe call.mp3 --json | jq -r .[0].verbatim
 | `verbatim` (default) | word for word, at the chosen fidelity | 1 |
 | `rewrite:formal` \| `concise` \| `casual` | verbatim, then rewritten — never loses a fact | 2 |
 | `summary:brief` \| `bullets` \| `actions` | verbatim, then summarised — this one is allowed to | 2 |
+| `translate:<language>` | verbatim, then written again in that language | 1–2 ¹ |
 
-`rewrite` and `summary` alone mean `rewrite:casual` and `summary:brief`.
+`rewrite` and `summary` alone mean `rewrite:casual` and `summary:brief`. A bare `translate` is
+rejected: every other stage has an obvious default, and "into what?" has none — picking English
+would be this project choosing a language on somebody's behalf.
+
+The language is free text, spelled however you would say it — `translate:English`,
+`translate:简体中文`, `translate:"Brazilian Portuguese"`. It is not enumerated for the same reason a
+model ID is not: the model is the authority on which languages it can write, and a list here would
+be a list of the ones we happened to think of.
+
+¹ One request on a model backend, which returns the verbatim transcript and the translation
+together; two on a speech recogniser, which cannot.
 
 **The verbatim transcript is always produced.** `--json` carries both; `--output` writes the derived
 text to `name.txt` and the transcript to `name.verbatim.txt` beside it. Rationale: a summary that
@@ -201,6 +213,7 @@ the migration" should not depend on remembering how it was captured.
 ```bash
 dnt prompt show --section system --fidelity tidy    # the exact text a request will carry
 dnt prompt show --section summary --summary actions
+dnt prompt show --section translate --language English
 dnt prompt validate                                 # every block and placeholder resolves
 dnt prompt path                                     # shipped, or your edited copy
 ```

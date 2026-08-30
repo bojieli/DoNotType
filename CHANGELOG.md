@@ -10,6 +10,26 @@ repository's local calendar date.
 
 ### Added
 
+- **Speak one language, type another.** A target language in Settings, off by default, and every
+  dictation arrives in it — on all four clients, and from `dnt transcribe --mode translate:English`.
+  It is the one setting in the product that makes the main control deliver something other than what
+  was said, so it is worth being exact about what it does not change: the verbatim transcript is
+  still produced first, still stored first, and still recoverable with `⌘⌥Z`, `Ctrl+Alt+Z` or the
+  History row. A translation you cannot expand back into the words that produced it is the failure
+  this project was built against; one you can is a convenience beside them. It is folded into the
+  request that transcribes wherever the backend can answer the wider schema — that request is the
+  only one holding the audio, and a translator working from text alone "corrects" a version number
+  it believes is stale, which is measured and is why the rewrite block restates its preservation
+  rule. Recognisers, split recordings and the live pipeline keep the second pass. Translation
+  **replaces** the rewrite stage rather than stacking with it, and every client says so where the
+  rewrite control is rather than leaving a picker that quietly does nothing: one request doing two
+  jobs is the combination this project measured as twice as bad, and "formal French" is a feature
+  request rather than a fix for what was asked for. The language is free text with a shape check
+  and a list of common ones as a shortcut, exactly like the Model field and for exactly the same
+  reason — languages are not ours to enumerate, and the model is the authority on which it can
+  write. `prompt/translate.md` is its own part rather than a rewrite style, because the rewrite
+  block's first rule is *keep the speaker's language*.
+
 - **Typography, on all four clients: a rule instead of a coin flip.** The space between Chinese and
   Latin was whatever the model felt like on the request — the same sentence came back spaced once
   and tight the next time, sometimes with a stray space after a full-width full stop, which no

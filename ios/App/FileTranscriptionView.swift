@@ -42,6 +42,10 @@ final class FileTranscriptionModel {
         didSet { UserDefaults.standard.set(mode.rawValue, forKey: "fileMode") }
     }
 
+    /// The configured target language, so the mode picker can offer a translation. Read from the
+    /// dictation model rather than stored twice: there is one setting and it belongs there.
+    var translateTo: String { dictation.translateTo }
+
     private let dictation: DictationModel
     private let log = Log("filescreen")
     private var task: Task<Void, Never>?
@@ -206,7 +210,10 @@ struct FileTranscriptionView: View {
                 .accessibilityIdentifier("choose-recording")
 
                 Picker("Produce", selection: $model.mode) {
-                    ForEach(TranscriptMode.allChoices, id: \.self) { mode in
+                    ForEach(
+                        TranscriptMode.allChoices(translatingInto: model.translateTo),
+                        id: \.self
+                    ) { mode in
                         Text(mode.label).tag(mode)
                     }
                 }

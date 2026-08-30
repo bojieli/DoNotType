@@ -472,7 +472,7 @@ class DoNotTypeIME : InputMethodService() {
         setPadding(dp(9), 0, dp(9), 0)
         setOnClickListener {
             val rewrite = !Settings.rewriteModeEnabled
-            val availability = RewriteAvailability.resolve(Settings.provider) {
+            val availability = RewriteAvailability.resolve(Settings.provider, Settings.translateTo) {
                 !Settings.keyFor(it).isNullOrBlank()
             }
             if (rewrite && !availability.isAvailable) {
@@ -741,7 +741,7 @@ class DoNotTypeIME : InputMethodService() {
 
     private fun refreshModeButton() {
         if (!::modeButton.isInitialized) return
-        val availability = RewriteAvailability.resolve(Settings.provider) {
+        val availability = RewriteAvailability.resolve(Settings.provider, Settings.translateTo) {
             !Settings.keyFor(it).isNullOrBlank()
         }
         if (!availability.isAvailable && Settings.rewriteModeEnabled) {
@@ -750,9 +750,13 @@ class DoNotTypeIME : InputMethodService() {
         // finishRecording reads the style after capture stops, so the current recording may be
         // corrected from Dictate to Rewrite (or back) without interrupting the speaker.
         val canChange = state != State.TRANSCRIBING
-        val rewrite = Settings.rewriteModeEnabled
-        val canSwitch = canChange && (rewrite || availability.isAvailable)
-        val current = if (rewrite) "Rewrite" else "Dictate"
+        // A target language set in the app is what the dictation will actually do, so the chip says
+        // so — and stops being a toggle, since clearing it belongs to the settings screen. A chip
+        // reading "Dictate" over a dictation coming back in another language would be a lie.
+        val translating = Settings.translateTo.isNotEmpty()
+        val rewrite = !translating && Settings.rewriteModeEnabled
+        val canSwitch = !translating && canChange && (rewrite || availability.isAvailable)
+        val current = if (translating) "Translate" else if (rewrite) "Rewrite" else "Dictate"
         val next = if (rewrite) "Dictate" else "Rewrite"
         modeButton.text = current
         modeButton.isEnabled = canSwitch
@@ -779,6 +783,9 @@ class DoNotTypeIME : InputMethodService() {
             ),
         )
         modeButton.contentDescription = when {
+            translating ->
+                "Current mode: Translate into ${Settings.translateTo}. Clear the target " +
+                    "language in Settings to change this"
             canSwitch -> "Current mode: $current. Tap to switch to $next"
             !canChange -> "Current mode: $current. Mode is fixed while transcribing"
             else -> "Current mode: $current. Rewrite is unavailable"

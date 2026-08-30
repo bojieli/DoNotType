@@ -63,12 +63,22 @@ sealed class TranscriptMode {
     data class Rewrite(val style: RewriteStyle) : TranscriptMode()
     data class Summary(val style: SummaryStyle) : TranscriptMode()
 
+    /**
+     * Verbatim, then written again in another language. The words change; nothing else may.
+     *
+     * The language is free text rather than an enum for the same reason a model ID is: languages
+     * are not ours to enumerate, and the model is the authority on which it can write. See
+     * [TranslationTarget].
+     */
+    data class Translate(val language: String) : TranscriptMode()
+
     /** `verbatim`, `rewrite:formal`, `summary:actions` — what a history row records. */
     val id: String
         get() = when (this) {
             is Verbatim -> "verbatim"
             is Rewrite -> "rewrite:${style.id}"
             is Summary -> "summary:${style.id}"
+            is Translate -> "translate:$language"
         }
 
     val label: String
@@ -76,6 +86,7 @@ sealed class TranscriptMode {
             is Verbatim -> "Verbatim — word for word"
             is Rewrite -> "Rewrite — ${style.label}"
             is Summary -> "Summary — ${style.label}"
+            is Translate -> "Translate — into $language"
         }
 
     /**
@@ -103,6 +114,7 @@ sealed class TranscriptMode {
                 SummaryStyle.BULLETS -> "Summarising into bullets…"
                 SummaryStyle.ACTIONS -> "Picking out the actions…"
             }
+            is Translate -> "Translating…"
         }
 
     /**
@@ -130,6 +142,18 @@ sealed class TranscriptMode {
         }
 
         /**
+         * The same list with a translation into [language] in it, for the screens that have a
+         * target to offer.
+         *
+         * Absent from [ALL] because a translation without a language is not a mode: there is
+         * nothing to put in the picker until the user has named one.
+         */
+        fun allTranslatingInto(language: String?): List<TranscriptMode> {
+            val target = TranslationTarget.sanitized(language)
+            return if (target.isEmpty()) ALL else ALL + Translate(target)
+        }
+
+        /**
          * Parses the stored or typed spelling. A bare `rewrite` or `summary` takes that stage's
          * default, so it is a complete instruction rather than an error.
          */
@@ -149,6 +173,20 @@ sealed class TranscriptMode {
                 "summary", "summarise", "summarize" -> {
                     if (tail == null) return Summary(SummaryStyle.DEFAULT)
                     SummaryStyle.from(tail)?.let { Summary(it) }
+                }
+                "translate" -> {
+                    // No default language, so a bare `translate` is rejected rather than guessing
+                    // one. Every other stage has an obvious default; "into what?" has none, and
+                    // picking English would be this project choosing a language on someone's
+                    // behalf.
+                    if (tail == null) return null
+                    // Taken from the original spelling rather than the lowercased one: a language
+                    // is a name, and `translate:Français` must not deliver `français`.
+                    val original = id.trim()
+                    val colon = original.indexOf(':')
+                    if (colon < 0) return null
+                    val language = TranslationTarget.sanitized(original.substring(colon + 1))
+                    if (language.isEmpty()) null else Translate(language)
                 }
                 else -> null
             }

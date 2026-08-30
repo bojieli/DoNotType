@@ -214,7 +214,7 @@ internal sealed class TrayApplication : ApplicationContext
                     _levelTimer.Stop();
                     SetOverlayPhase(
                         RecordingOverlay.Phase.Deriving,
-                        TranscriptMode.Rewrite(_settings.SecondaryStyle).ProgressLabel,
+                        _settings.SecondStageFor(_settings.SecondaryStyle).ProgressLabel,
                         _controller.WillSubmit ? "Will send" : null);
                     break;
                 case DictationController.State.Failed:
@@ -299,7 +299,7 @@ internal sealed class TrayApplication : ApplicationContext
             DictationController.State.Recording => "Recording… release to transcribe",
             DictationController.State.Transcribing => "Transcribing…",
             DictationController.State.Deriving =>
-                TranscriptMode.Rewrite(_settings.SecondaryStyle).ProgressLabel,
+                _settings.SecondStageFor(_settings.SecondaryStyle).ProgressLabel,
             DictationController.State.Failed => Truncate(_controller.LastError ?? "Failed", 60),
             _ => $"Hold {HotkeyMonitor.Label(_settings.Trigger)} to dictate",
         };

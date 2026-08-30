@@ -74,8 +74,8 @@ final class SinglePassRewriteTests: XCTestCase {
     func testStyledArrivesInOneRequestAndKeepsTheVerbatimText() async throws {
         let provider = StyleAwareProvider()
         let outcome = try await service(provider).transcribeStyled(
-            audio: audio, context: nil, styleClause: "Formal.",
-            rewriteInstruction: "Rewrite formally.")
+            audio: audio, context: nil, styled: .style(clause: "Formal."),
+            secondPassInstruction: "Rewrite formally.")
 
         XCTAssertTrue(outcome.wasSinglePass)
         XCTAssertEqual(outcome.styled, provider.styled)
@@ -90,8 +90,8 @@ final class SinglePassRewriteTests: XCTestCase {
     func testFallsBackToASecondPassWhenTheModelDropsTheField() async throws {
         let provider = StyleAwareProvider(honoursStyledSchema: false)
         let outcome = try await service(provider).transcribeStyled(
-            audio: audio, context: nil, styleClause: "Formal.",
-            rewriteInstruction: "Rewrite formally.")
+            audio: audio, context: nil, styled: .style(clause: "Formal."),
+            secondPassInstruction: "Rewrite formally.")
 
         XCTAssertFalse(outcome.wasSinglePass)
         XCTAssertEqual(outcome.styled, provider.secondStage)
@@ -104,8 +104,8 @@ final class SinglePassRewriteTests: XCTestCase {
         let provider = StyleAwareProvider(
             grounding: .keyterms(maxTerms: 50, maxCharsPerTerm: 40))
         let outcome = try await service(provider).transcribeStyled(
-            audio: audio, context: nil, styleClause: "Formal.",
-            rewriteInstruction: "Rewrite formally.")
+            audio: audio, context: nil, styled: .style(clause: "Formal."),
+            secondPassInstruction: "Rewrite formally.")
 
         XCTAssertFalse(outcome.wasSinglePass)
         let audioRequest = try XCTUnwrap(provider.audioRequests.first)
@@ -128,8 +128,8 @@ final class SinglePassRewriteTests: XCTestCase {
     func testFoldedInstructionCarriesTheStyleAndThePreservationRule() async throws {
         let provider = StyleAwareProvider()
         _ = try await service(provider).transcribeStyled(
-            audio: audio, context: nil, styleClause: "Formal, no contractions.",
-            rewriteInstruction: "Rewrite formally.")
+            audio: audio, context: nil, styled: .style(clause: "Formal, no contractions."),
+            secondPassInstruction: "Rewrite formally.")
 
         let request = try XCTUnwrap(provider.audioRequests.first)
         XCTAssertTrue(request.wantsStyledOutput)

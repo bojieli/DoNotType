@@ -105,7 +105,10 @@ struct FileTranscriptionView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Picker("Produce", selection: $model.mode) {
-                    ForEach(TranscriptMode.allChoices, id: \.self) { mode in
+                    ForEach(
+                        TranscriptMode.allChoices(translatingInto: Settings.shared.translateTo),
+                        id: \.self
+                    ) { mode in
                         Text(mode.label).tag(mode)
                     }
                 }

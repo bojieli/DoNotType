@@ -224,6 +224,14 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
         new("summary", "summary.md", "{{SUMMARY_RULE}}", "Blocks", "Summary");
 
     /// <summary>
+    /// The second-stage translation block. Separate from <see cref="Rewrite"/> for the same reason
+    /// <see cref="Summary"/> is: their rules differ. A rewrite keeps the speaker's language and may
+    /// reshape the prose; a translation changes the language and may not reshape anything.
+    /// </summary>
+    public static readonly PromptPart Translate =
+        new("translate", "translate.md", "{{TARGET_LANGUAGE}}", "Blocks", "Translate");
+
+    /// <summary>
     /// How the transcript is written down. Appended to the transcription contract, and only when
     /// the user has asked for a script — so the shipped default request is unchanged by its
     /// existence, and the measured numbers in docs/PROMPT.md still describe it.
@@ -256,7 +264,10 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
 
     private static PromptPart[] BuildAll()
     {
-        var parts = new List<PromptPart> { System, Rewrite, Summary, Typography, Sample };
+        var parts = new List<PromptPart>
+        {
+            System, Rewrite, Summary, Translate, Typography, Sample,
+        };
         parts.AddRange(Enum.GetValues<Fidelity>().Select(Of));
         parts.AddRange(Enum.GetValues<RewriteStyle>().Where(s => s != RewriteStyle.Verbatim).Select(Of));
         parts.AddRange(Enum.GetValues<SummaryStyle>().Select(Of));
@@ -289,6 +300,7 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
         "system" => "Sent on every request. Must contain {{FIDELITY_RULE}}.",
         "rewrite" => "Sent only when a rewrite style is chosen.",
         "summary" => "Sent only when a summary style is chosen.",
+        "translate" => "Sent only when a target language is set. Must contain {{TARGET_LANGUAGE}}.",
         "typography" => "Sent only when a Chinese script is chosen. Must contain {{SCRIPT_RULE}}.",
         "sample" => "Sent only when a formatting example is set. Must contain {{SAMPLE}}.",
         _ when Group == "Fidelity" => "Substituted into the transcription block.",
@@ -440,8 +452,22 @@ public sealed class PromptBuilder(PromptSource source)
             Assemble(PromptPart.Rewrite, PromptPart.Of(rewrite.Style)),
         TranscriptMode.SummaryMode summary =>
             Assemble(PromptPart.Summary, PromptPart.Of(summary.Style)),
+        TranscriptMode.TranslateMode translate => TranslateInstruction(translate.Language),
         _ => null,
     };
+
+    /// <summary>System instruction for the second-stage translation.</summary>
+    /// <remarks>
+    /// Its own part rather than a rewrite style, on the same reasoning that keeps the summary
+    /// separate: the blocks' rules differ. A rewrite keeps the speaker's language and may reshape
+    /// the prose; a translation changes the language and may reshape nothing.
+    /// </remarks>
+    public string TranslateInstruction(string language)
+    {
+        var target = TranslationTarget.Sanitized(language);
+        if (target.Length == 0) return string.Empty;
+        return Source.TextFor(PromptPart.Translate).Replace("{{TARGET_LANGUAGE}}", target);
+    }
 
     /// <summary>Whether the prompt in force can run a mode's second stage at all.</summary>
     public bool SupportsSecondStage(TranscriptMode mode)

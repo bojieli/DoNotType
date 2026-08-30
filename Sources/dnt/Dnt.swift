@@ -321,6 +321,11 @@ enum AppPreferences {
         defaults?.string(forKey: "formattingSample") ?? ""
     }
 
+    /// The language dictations are written in, or empty for the one that was spoken.
+    static var translateTo: String {
+        TranslationTarget.sanitized(defaults?.string(forKey: "translateTo") ?? "")
+    }
+
     static var fidelity: Fidelity {
         guard let raw = defaults?.string(forKey: "fidelity"), let value = Fidelity(rawValue: raw)
         else { return .default }

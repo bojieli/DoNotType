@@ -97,6 +97,7 @@ final class FileTranscriptionModel {
         switch mode {
         case .summary: "summary"
         case .rewrite: "rewrite"
+        case .translate: "translation"
         case .verbatim: "transcript"
         }
     }
@@ -105,6 +106,7 @@ final class FileTranscriptionModel {
         switch mode {
         case .summary: "summarise"
         case .rewrite: "rewrite"
+        case .translate: "translate"
         case .verbatim: "transcribe"
         }
     }

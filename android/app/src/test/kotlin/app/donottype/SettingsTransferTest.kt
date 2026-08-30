@@ -55,9 +55,9 @@ class SettingsTransferTest {
                 "\"formattingSample\":\"中文 English。\"},",
         )
         val parsed = SettingsTransfer.parse(withBlock)
-        assertEquals(TypographySpacing.TIGHT, parsed.typography?.first)
-        assertEquals(ChineseScript.TRADITIONAL, parsed.typography?.second)
-        assertEquals("中文 English。", parsed.typography?.third)
+        assertEquals(TypographySpacing.TIGHT, parsed.typography?.spacing)
+        assertEquals(ChineseScript.TRADITIONAL, parsed.typography?.script)
+        assertEquals("中文 English。", parsed.typography?.sample)
 
         assertThrows(IllegalArgumentException::class.java) {
             SettingsTransfer.parse(withBlock.replace("\"tight\"", "\"nonsense\""))

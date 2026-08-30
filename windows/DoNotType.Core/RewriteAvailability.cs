@@ -28,6 +28,12 @@ public abstract record RewriteAvailability
     /// </summary>
     public sealed record BackendCannotRewrite(ProviderKind Kind) : RewriteAvailability;
 
+    /// <summary>
+    /// A target language is set, so the second stage is a translation. Not a failure and not a
+    /// missing backend — the user asked for one job rather than the other.
+    /// </summary>
+    public sealed record Translating(string Language) : RewriteAvailability;
+
     public bool IsAvailable => this is Available;
 
     /// <summary>
@@ -43,6 +49,9 @@ public abstract record RewriteAvailability
         BackendCannotRewrite cannot =>
             $"{cannot.Kind.PlainName()} only transcribes audio and cannot rewrite text. Add a key "
             + "for a backend that can, and rewriting will use it.",
+        Translating translating =>
+            $"Dictations are being translated into {translating.Language}, which is the second "
+            + "stage. Clear the target language to rewrite instead.",
         _ => string.Empty,
     };
 
@@ -52,8 +61,18 @@ public abstract record RewriteAvailability
     /// Whether a usable key exists for a backend. Passed in rather than read here so the Keychain,
     /// DPAPI and SharedPreferences all answer the same question.
     /// </param>
-    public static RewriteAvailability Resolve(ProviderKind provider, Func<ProviderKind, bool> hasKey)
+    /// <param name="translatingInto">
+    /// The configured target language, or empty. Checked before the backend questions on purpose:
+    /// with a target set the rewrite stage is not going to run whatever the backends can do, and
+    /// reporting a key problem for a control that is unavailable for an unrelated reason sends the
+    /// user to fix the wrong thing.
+    /// </param>
+    public static RewriteAvailability Resolve(
+        ProviderKind provider, Func<ProviderKind, bool> hasKey, string translatingInto = "")
     {
+        var target = TranslationTarget.Sanitized(translatingInto);
+        if (target.Length > 0) return new Translating(target);
+
         // Asked first, and about the selected backend: with no key the dictation itself fails, so a
         // message about rewriting would answer the second question while the first is still wrong.
         if (!hasKey(provider)) return new NoKey();

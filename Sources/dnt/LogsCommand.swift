@@ -168,7 +168,7 @@ struct PromptCommand: ParsableCommand {
         @OptionGroup var backend: BackendOptions
         @OptionGroup var logging: LoggingOptions
 
-        @Option(name: .long, help: "Which block: system, rewrite or summary.")
+        @Option(name: .long, help: "Which block: system, rewrite, summary or translate.")
         var section = "system"
 
         @Option(name: .long, help: "Rewrite style, for --section rewrite.")
@@ -177,14 +177,26 @@ struct PromptCommand: ParsableCommand {
         @Option(name: .long, help: "Summary style, for --section summary.")
         var summary = SummaryStyle.default.rawValue
 
+        @Option(
+            name: .long,
+            help: "Target language for the translate section. Defaults to the app's setting.")
+        var language = ""
+
         mutating func run() throws {
             logging.start()
             let builder = try backend.promptBuilder()
 
             switch section.lowercased() {
             case "system", "transcribe":
+                // The instruction a dictation would actually send, formatting blocks and all.
+                // Showing the bare contract here while the app appends two more paragraphs would
+                // make this command useless for the one job it has: telling somebody what is
+                // being sent.
                 Out.stdout(
-                    try builder.systemInstruction(fidelity: try backend.resolveFidelity()))
+                    try builder.systemInstruction(
+                        fidelity: try backend.resolveFidelity(),
+                        script: AppPreferences.chineseScript,
+                        sample: AppPreferences.formattingSample))
             case "rewrite":
                 guard let parsed = RewriteStyle(rawValue: style), parsed.isRewrite else {
                     throw ValidationError(
@@ -200,9 +212,16 @@ struct PromptCommand: ParsableCommand {
                             + SummaryStyle.allCases.map(\.rawValue).joined(separator: ", "))
                 }
                 Out.stdout(try builder.summaryInstruction(style: parsed))
+            case "translate":
+                let target = language.isEmpty ? AppPreferences.translateTo : language
+                guard !TranslationTarget.sanitized(target).isEmpty else {
+                    throw ValidationError(
+                        "No target language. Pass --language, or set one in the app's Settings.")
+                }
+                Out.stdout(try builder.translateInstruction(language: target))
             default:
                 throw ValidationError(
-                    "Unknown section '\(section)'. Options: system, rewrite, summary.")
+                    "Unknown section '\(section)'. Options: system, rewrite, summary, translate.")
             }
         }
     }

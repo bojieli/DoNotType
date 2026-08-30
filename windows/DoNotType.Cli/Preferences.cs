@@ -81,6 +81,8 @@ public static class Preferences
 
     public static string FormattingSample => String("FormattingSample") ?? string.Empty;
 
+    public static string TranslateTo => String("TranslateTo") ?? string.Empty;
+
     public static string Model(ProviderKind kind)
     {
         if (Root?.TryGetProperty("Models", out var models) == true &&

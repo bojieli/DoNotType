@@ -20,6 +20,7 @@ mis-match.
 | Transcription contract | [`prompt/system.md`](../prompt/system.md) | `{{FIDELITY_RULE}}` |
 | Rewrite stage | [`prompt/rewrite.md`](../prompt/rewrite.md) | `{{STYLE_RULE}}` |
 | Summary stage | [`prompt/summary.md`](../prompt/summary.md) | `{{SUMMARY_RULE}}` |
+| Translation stage | [`prompt/translate.md`](../prompt/translate.md) | `{{TARGET_LANGUAGE}}` |
 | Formatting block | [`prompt/typography.md`](../prompt/typography.md) | `{{SCRIPT_RULE}}` |
 | Formatting example | [`prompt/sample.md`](../prompt/sample.md) | `{{SAMPLE}}` |
 | Fidelity clauses | [`prompt/fidelity/`](../prompt/fidelity/) — `raw`, `light`, `tidy` | — |
@@ -155,6 +156,34 @@ Two consequences follow, and both are deliberate:
   under screen context. Summarisation is a text-to-text pass with no audio and no screen, so it
   neither affects nor is described by them.
 
+## The translation stage
+
+Also optional, also off by default, and — like the summary — deliberately **not** a rewrite style.
+
+The rewrite block's first rule is *keep the speaker's language*. A translation is defined by
+changing it. Putting translation in `prompt/style/` beside `formal` and `concise` would mean one
+file there exempt from the block's own first rule, and the exemption would be invisible at the call
+site. It therefore gets its own part, its own placeholder, and its own case in `TranscriptMode`,
+and nothing that asks for a rewrite can reach it.
+
+What the block is allowed to change is one thing and one thing only: which language the words are
+in. Everything else it is told to leave alone, and the list is specific because generic
+instructions are the ones models negotiate with — facts, names, numbers, dates, identifiers,
+commitments, qualifiers, uncertainty, units, currencies and date formats, and proper names,
+product names, identifiers, commands, file paths and code, which stay in their original form while
+the words around them move. The register goes across too: a hedge stays a hedge.
+
+It is folded into the transcribing request wherever the backend can answer the wider schema, for
+the reason the rewrite is: **the translating request is the only one that has the audio**. A
+translator handed "Gemini 1.5" as text alone applies world knowledge and corrects a version number
+it believes is stale — measured, and the reason `prompt/rewrite.md` restates the preservation rule
+at all. The second pass still exists for the three paths that cannot fold: speech recognisers,
+split recordings, and the live segmented pipeline.
+
+The verbatim transcript is produced first and stored first, as with every other stage. That is
+what makes this safe to offer as a default output at all: a translation you cannot expand back into
+the words that produced it is precisely the failure this project was built against.
+
 ## Fidelity clauses
 
 Exactly one of [`prompt/fidelity/`](../prompt/fidelity/) is substituted into `{{FIDELITY_RULE}}`
@@ -214,6 +243,7 @@ screen context broke it. That is the failure this contract exists to prevent, an
 
 | Date | Change | Provider / model | runs | matched | improved | regressed |
 |------|--------|------------------|------|---------|----------|-----------|
+| 2026-08-30 | Translation stage added; transcription request untouched (control) | **gemini** · gemini-3.5-flash | 48 | 36 | 9 | **3** |
 | 2026-08-30 | Formatting blocks added; default request byte-identical (control) | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
 | 2026-08-19 | Casual rewrite style replaces bullets; default rewrite style | **gemini** · gemini-3.5-flash | 48 | 37 | 11 | **2** |
 | 2026-08-19 | Light vocal fillers made unconditional | **gemini** · gemini-3.5-flash | 48 | 36 | 10 | **2** |
@@ -222,6 +252,23 @@ screen context broke it. That is the failure this contract exists to prevent, an
 | 2026-08-17 | Pre-change 972-word control | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
 | 2026-08-09 | Initial contract | **gemini** · gemini-3.6-flash | 15 | 15 | 0 | **0** |
 | 2026-08-09 | Initial contract | openrouter · google/gemini-3.6-flash | 15 | 12 | 0 | 1 |
+
+### 2026-08-30 — the translation stage, and a second control run
+
+`prompt/translate.md` was added. It is a **second-stage** part: it is never appended to the
+transcription instruction, and the request that carries the audio is untouched whether or not a
+target language is set. The suite measures that request, so it was run as a control again: 36
+matched, 9 improved, 3 regressed over 48 runs.
+
+The regressed count moved from 2 to 3, and the honest reading is that it did not move. The runner
+prints its own per-pass range beside each figure — `REGRESSED 3 (0–2 per pass)` — and named
+`real-version-number` and `benefit-novel-repo` as giving different answers across passes in this
+very run. `real-version-number` is the third regression and is one of the two. Nothing in the
+request changed, so there is nothing for a change to have caused; what this records is the size of
+the suite's noise, which is the reason the range is printed at all.
+
+`benefit-novel-repo` remains the standing failure it has been since before either of today's
+entries.
 
 ### 2026-08-30 — the formatting blocks, and a control run rather than a measurement
 

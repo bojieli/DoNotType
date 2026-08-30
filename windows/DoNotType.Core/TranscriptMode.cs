@@ -89,17 +89,31 @@ public abstract record TranscriptMode
 
     public sealed record SummaryMode(SummaryStyle Style) : TranscriptMode;
 
+    /// <summary>
+    /// Verbatim, then written again in another language. The words change; nothing else may.
+    /// </summary>
+    /// <remarks>
+    /// The language is free text rather than an enum for the same reason a model ID is: languages
+    /// are not ours to enumerate, and the model is the authority on which it can write. See
+    /// <see cref="TranslationTarget"/>.
+    /// </remarks>
+    public sealed record TranslateMode(string Language) : TranscriptMode;
+
     public static readonly TranscriptMode Verbatim = new VerbatimMode();
 
     public static TranscriptMode Rewrite(RewriteStyle style) => new RewriteMode(style);
 
     public static TranscriptMode Summary(SummaryStyle style) => new SummaryMode(style);
 
+    public static TranscriptMode Translate(string language) =>
+        new TranslateMode(TranslationTarget.Sanitized(language));
+
     /// <summary>`verbatim`, `rewrite:formal`, `summary:actions` -- the CLI and history spelling.</summary>
     public string Id => this switch
     {
         RewriteMode rewrite => $"rewrite:{rewrite.Style.Id()}",
         SummaryMode summary => $"summary:{summary.Style.Id()}",
+        TranslateMode translate => $"translate:{translate.Language}",
         _ => "verbatim",
     };
 
@@ -107,6 +121,7 @@ public abstract record TranscriptMode
     {
         RewriteMode rewrite => $"Rewrite — {rewrite.Style.Label()}",
         SummaryMode summary => $"Summary — {summary.Style.Label()}",
+        TranslateMode translate => $"Translate — into {translate.Language}",
         _ => "Verbatim — word for word",
     };
 
@@ -135,6 +150,7 @@ public abstract record TranscriptMode
             SummaryStyle.Actions => "Picking out the actions…",
             _ => "Summarising…",
         },
+        TranslateMode => "Translating…",
         _ => "Finishing…",
     };
 
@@ -164,6 +180,20 @@ public abstract record TranscriptMode
         Summary(SummaryStyle.Bullets),
         Summary(SummaryStyle.Actions),
     ];
+
+    /// <summary>
+    /// The same list with a translation into <paramref name="language"/> in it, for the screens
+    /// that have a target to offer.
+    /// </summary>
+    /// <remarks>
+    /// Absent from <see cref="All"/> because a translation without a language is not a mode: there
+    /// is nothing to put in the picker until the user has named one.
+    /// </remarks>
+    public static IReadOnlyList<TranscriptMode> AllTranslatingInto(string? language)
+    {
+        var target = TranslationTarget.Sanitized(language);
+        return target.Length == 0 ? All : [.. All, Translate(target)];
+    }
 
     /// <summary>
     /// Parses the CLI or stored spelling. A bare `rewrite` or `summary` takes that stage's default,
@@ -200,11 +230,29 @@ public abstract record TranscriptMode
                     "actions" => Summary(SummaryStyle.Actions),
                     _ => null,
                 };
+            case "translate":
+                // No default language, so a bare `translate` is rejected rather than guessing one.
+                // Every other stage has an obvious default; "into what?" has none, and picking
+                // English would be this project choosing a language on someone's behalf.
+                if (tail is null) return null;
+                // Taken from the original spelling rather than the lowercased one: a language is a
+                // name, and `--mode translate:Français` must not deliver `français`.
+                var original = (id ?? string.Empty).Trim();
+                var colon = original.IndexOf(':');
+                if (colon < 0) return null;
+                var language = TranslationTarget.Sanitized(original[(colon + 1)..]);
+                return language.Length == 0 ? null : Translate(language);
             default:
                 return null;
         }
     }
 
     /// <summary>Every accepted spelling, for a --help string that lists them.</summary>
-    public static IReadOnlyList<string> AcceptedSpellings { get; } = All.Select(mode => mode.Id).ToList();
+    /// <remarks>
+    /// The translation is a concrete example rather than a placeholder: the language is free text,
+    /// so there is no list to enumerate, and --help showing something that cannot be typed is worse
+    /// than showing one thing that can.
+    /// </remarks>
+    public static IReadOnlyList<string> AcceptedSpellings { get; } =
+        [.. All.Select(mode => mode.Id), "translate:English"];
 }

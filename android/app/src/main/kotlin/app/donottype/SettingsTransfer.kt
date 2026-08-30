@@ -7,6 +7,7 @@ import app.donottype.core.ProviderKind
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.RewriteStyle
 import app.donottype.core.TranscriptMode
+import app.donottype.core.TranslationTarget
 import app.donottype.core.TypographySpacing
 import org.json.JSONArray
 import org.json.JSONObject
@@ -35,7 +36,18 @@ object SettingsTransfer {
         val retention: RetentionPolicy,
         val liveStyle: RewriteStyle?,
         /** Null when the document predates the typography block; the settings then stay as they are. */
-        val typography: Triple<TypographySpacing, ChineseScript, String>?,
+        val typography: TypographyValues?,
+    )
+
+    /**
+     * The shared typography block. A data class rather than a wider tuple: four positional values
+     * read at the call site as `.first`, `.third`, and nobody can tell which is which.
+     */
+    data class TypographyValues(
+        val spacing: TypographySpacing,
+        val script: ChineseScript,
+        val sample: String,
+        val translateTo: String,
     )
 
     fun export(pretty: Boolean = true): String {
@@ -70,7 +82,8 @@ object SettingsTransfer {
                 JSONObject()
                     .put("spacing", Settings.typographySpacing.id)
                     .put("chineseScript", Settings.chineseScript.id)
-                    .put("formattingSample", Settings.formattingSample),
+                    .put("formattingSample", Settings.formattingSample)
+                    .put("translateTo", Settings.translateTo),
             )
             .put(
                 "dictionary",
@@ -176,7 +189,12 @@ object SettingsTransfer {
             val scriptRaw = block.optString("chineseScript")
             val script = ChineseScript.entries.firstOrNull { it.id == scriptRaw }
                 ?: throw IllegalArgumentException("Unsupported Chinese script “$scriptRaw”.")
-            Triple(spacing, script, block.optString("formattingSample"))
+            TypographyValues(
+                spacing,
+                script,
+                block.optString("formattingSample"),
+                TranslationTarget.sanitized(block.optString("translateTo")),
+            )
         }
 
         return Parsed(root, selected, fidelity, fallback, delay, retention, style, typography)
@@ -204,10 +222,11 @@ object SettingsTransfer {
         Settings.fallbackAfterSeconds = parsed.fallbackAfterSeconds
         Settings.retention = parsed.retention
         Settings.keepAudio = root.optBoolean("keepAudio", false)
-        parsed.typography?.let { (spacing, script, sample) ->
-            Settings.typographySpacing = spacing
-            Settings.chineseScript = script
-            Settings.formattingSample = sample
+        parsed.typography?.let { typography ->
+            Settings.typographySpacing = typography.spacing
+            Settings.chineseScript = typography.script
+            Settings.formattingSample = typography.sample
+            Settings.translateTo = typography.translateTo
         }
 
         val dictionary = root.getJSONObject("dictionary")

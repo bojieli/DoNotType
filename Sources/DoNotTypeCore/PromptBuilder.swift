@@ -177,6 +177,17 @@ public struct PromptBuilder: Sendable {
         style.isRewrite ? try source.text(for: .style(style)) : ""
     }
 
+    /// System instruction for the second-stage translation.
+    ///
+    /// Its own part rather than a rewrite style, on the same reasoning that keeps `summary`
+    /// separate: the blocks' rules differ. A rewrite keeps the speaker's language and may reshape
+    /// the prose; a translation changes the language and may reshape nothing.
+    public func translateInstruction(language: String) throws -> String {
+        let target = TranslationTarget.sanitized(language)
+        guard !target.isEmpty else { return "" }
+        return try assemble(.translate, replacing: ["{{TARGET_LANGUAGE}}": target])
+    }
+
     /// System instruction for the summary stage.
     ///
     /// A separate part from `rewriteInstruction` rather than another style inside it, because the
@@ -195,6 +206,7 @@ public struct PromptBuilder: Sendable {
         case .verbatim: nil
         case .rewrite(let style): try rewriteInstruction(style: style)
         case .summary(let style): try summaryInstruction(style: style)
+        case .translate(let language): try translateInstruction(language: language)
         }
     }
 
