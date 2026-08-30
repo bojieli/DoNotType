@@ -1424,6 +1424,9 @@ private struct RewriteSection: View {
                     .textFieldStyle(.roundedBorder)
                 }
                 .disabled(!availability.isAvailable)
+                Text("Leaving this empty means no rewrite: you get the transcript as it is.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             if let reason = availability.reason {

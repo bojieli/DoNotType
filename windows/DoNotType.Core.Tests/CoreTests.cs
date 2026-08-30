@@ -209,10 +209,29 @@ public class PromptBuilderTests
         builder.Validate();
         foreach (var mode in TranscriptMode.All.Where(m => m.NeedsSecondPass))
         {
-            var instruction = builder.SecondStageInstruction(mode);
+            // The custom style's clause is the user's own text, so "resolves" for it means
+            // resolving once there is some. With none it deliberately resolves to nothing at all —
+            // see AnEmptyCustomStyleLeavesTheTranscriptAlone.
+            var instruction = builder.SecondStageInstruction(mode, "Warm, but brief.");
             Assert.NotNull(instruction);
             Assert.DoesNotContain("{{", instruction);
         }
+    }
+
+    /// <summary>
+    /// Choosing Custom and typing nothing is not an error, and not a rewrite either: the verbatim
+    /// transcript is delivered untouched.
+    /// </summary>
+    /// <remarks>
+    /// The alternative — sending prompt/rewrite.md with a blank style clause — is a model asked to
+    /// rewrite in no particular way, and it would do something. Each client's settings screen says
+    /// this next to the field.
+    /// </remarks>
+    [Fact]
+    public void AnEmptyCustomStyleLeavesTheTranscriptAlone()
+    {
+        if (Shipped() is not { } builder) return;
+        Assert.Null(builder.SecondStageInstruction(TranscriptMode.Rewrite(RewriteStyle.Custom)));
     }
 
     /// <summary>

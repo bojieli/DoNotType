@@ -8,6 +8,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ScrollView
 import android.widget.Spinner
+import app.donottype.core.DictationStyle
 import app.donottype.core.Fidelity
 import app.donottype.core.LogRouter
 import app.donottype.core.ProviderKind
@@ -124,6 +125,9 @@ class SettingsActivityTest {
                         RewriteStyle.FORMAL.label,
                         RewriteStyle.CONCISE.label,
                         RewriteStyle.CASUAL.label,
+                        // The fourth is the user's own text rather than a shipped clause, but it
+                        // is a rewrite style like the rest and belongs in the same picker.
+                        RewriteStyle.CUSTOM.label,
                     ),
                     labels,
                 )
@@ -138,6 +142,37 @@ class SettingsActivityTest {
                     "changing rewrite formatting must not silently turn Rewrite on",
                     RewriteStyle.VERBATIM,
                     Settings.liveStyle,
+                )
+            }
+        }
+    }
+
+    /**
+     * The other half of the same control, on the other stage.
+     *
+     * Two assertions, and the second is the one worth having: choosing a preset must not wipe the
+     * custom text, or somebody who tries Chat and comes back finds their own sentence gone.
+     */
+    @Test
+    fun theDictationStylePickerOffersEveryStyleAndKeepsCustomText() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                Settings.customDictationStyle = "短句。每句一行。"
+                val root = activity.findViewById<ViewGroup>(android.R.id.content)
+                val picker = root.firstDescendant(Spinner::class.java) {
+                    it.contentDescription == "dictation-style"
+                }
+                val labels = (0 until picker.adapter.count)
+                    .map { picker.adapter.getItem(it).toString() }
+                assertEquals(DictationStyle.entries.map { it.label }, labels)
+
+                val chat = labels.indexOf(DictationStyle.CHAT.label)
+                picker.onItemSelectedListener!!.onItemSelected(picker, null, chat, chat.toLong())
+                assertEquals(DictationStyle.CHAT, Settings.dictationStyle)
+                assertEquals(
+                    "picking a preset must not throw away what the user wrote",
+                    "短句。每句一行。",
+                    Settings.customDictationStyle,
                 )
             }
         }

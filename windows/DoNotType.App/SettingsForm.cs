@@ -280,6 +280,9 @@ public sealed class SettingsForm : Form
         layout.Controls.Add(Heading("Rewrite"));
         layout.Controls.Add(Labelled("Second key", _secondTrigger));
         layout.Controls.Add(Labelled("Your style", _customRewriteStyle));
+        layout.Controls.Add(Caption(
+            "Used when Custom is selected. Empty means no rewrite — you get the transcript as it "
+            + "is."));
         layout.Controls.Add(Labelled("It produces", _secondStyle));
         layout.Controls.Add(_secondKeyNote);
         layout.Controls.Add(Caption(

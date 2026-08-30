@@ -242,12 +242,17 @@ public struct PromptBuilder: Sendable {
     public func secondStageInstruction(
         for mode: TranscriptMode, customStyle: String = ""
     ) throws -> String? {
-        switch mode {
-        case .verbatim: nil
+        let instruction: String = switch mode {
+        case .verbatim: ""
         case .rewrite(let style): try rewriteInstruction(style: style, custom: customStyle)
         case .summary(let style): try summaryInstruction(style: style)
         case .translate(let language): try translateInstruction(language: language)
         }
+        // Empty is nil here rather than at four call sites. A custom style with nothing in it, and
+        // a translation with no language, both assemble to nothing — and a second stage sent with
+        // an empty system instruction is a model asked to do something unspecified to a transcript,
+        // which it would.
+        return instruction.isEmpty ? nil : instruction
     }
 
     /// Reads a part without substituting anything into it.

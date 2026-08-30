@@ -273,6 +273,7 @@ screen context broke it. That is the failure this contract exists to prevent, an
 
 | Date | Change | Provider / model | runs | matched | improved | regressed |
 |------|--------|------------------|------|---------|----------|-----------|
+| 2026-08-30 | Writing styles added; default request byte-identical (control) | **gemini** · gemini-3.5-flash | 48 | 38 | 8 | **2** |
 | 2026-08-30 | Translation stage added; transcription request untouched (control) | **gemini** · gemini-3.5-flash | 48 | 36 | 9 | **3** |
 | 2026-08-30 | Formatting blocks added; default request byte-identical (control) | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
 | 2026-08-19 | Casual rewrite style replaces bullets; default rewrite style | **gemini** · gemini-3.5-flash | 48 | 37 | 11 | **2** |
@@ -282,6 +283,17 @@ screen context broke it. That is the failure this contract exists to prevent, an
 | 2026-08-17 | Pre-change 972-word control | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
 | 2026-08-09 | Initial contract | **gemini** · gemini-3.6-flash | 15 | 15 | 0 | **0** |
 | 2026-08-09 | Initial contract | openrouter · google/gemini-3.6-flash | 15 | 12 | 0 | 1 |
+
+### 2026-08-30 — the writing styles, and a third control run
+
+`prompt/dictation-style.md` (the renamed `sample.md`) and `prompt/dictation-style/` were added, and
+`RewriteStyle` gained a `custom` case whose clause is a setting rather than a file. None of it
+reaches a default request: `spoken` sends nothing, and the equality is asserted on all three
+platforms that can read `prompt/` from a unit test.
+
+The control run came back to the same figures as the first one — 38 matched, 8 improved, 2
+regressed over 48 runs — which is what an unchanged request is supposed to look like, and which
+also puts the previous entry's 36/9/3 where it belongs: inside the noise.
 
 ### 2026-08-30 — the translation stage, and a second control run
 

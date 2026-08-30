@@ -483,14 +483,22 @@ public sealed class PromptBuilder(PromptSource source)
     /// <param name="customStyle">
     /// The user's own rewrite style text, for <see cref="RewriteStyle.Custom"/>.
     /// </param>
-    public string? SecondStageInstruction(TranscriptMode mode, string customStyle = "") => mode switch
+    public string? SecondStageInstruction(TranscriptMode mode, string customStyle = "")
     {
-        TranscriptMode.RewriteMode rewrite => RewriteInstruction(rewrite.Style, customStyle),
-        TranscriptMode.SummaryMode summary =>
-            Assemble(PromptPart.Summary, PromptPart.Of(summary.Style)),
-        TranscriptMode.TranslateMode translate => TranslateInstruction(translate.Language),
-        _ => null,
-    };
+        var instruction = mode switch
+        {
+            TranscriptMode.RewriteMode rewrite => RewriteInstruction(rewrite.Style, customStyle),
+            TranscriptMode.SummaryMode summary =>
+                Assemble(PromptPart.Summary, PromptPart.Of(summary.Style)),
+            TranscriptMode.TranslateMode translate => TranslateInstruction(translate.Language),
+            _ => null,
+        };
+        // Empty is null here rather than at four call sites. A custom style with nothing in it, and
+        // a translation with no language, both assemble to nothing — and a second stage sent with an
+        // empty system instruction is a model asked to do something unspecified to a transcript,
+        // which it would.
+        return string.IsNullOrEmpty(instruction) ? null : instruction;
+    }
 
     /// <summary>System instruction for the second-stage rewrite.</summary>
     /// <remarks>

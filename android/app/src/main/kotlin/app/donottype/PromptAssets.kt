@@ -353,6 +353,12 @@ object PromptAssets {
         }
         is TranscriptMode.Summary -> assemble(context, PromptPart.SUMMARY, PromptPart.of(mode.style))
         is TranscriptMode.Translate -> translateInstruction(context, mode.language)
+    }?.ifEmpty {
+        // Empty is null here rather than at four call sites. A custom style with nothing in it, and
+        // a translation with no language, both assemble to nothing — and a second stage sent with
+        // an empty system instruction is a model asked to do something unspecified to a transcript,
+        // which it would.
+        null
     }
 
     /**

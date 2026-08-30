@@ -375,6 +375,9 @@ struct SettingsView: View {
                 .lineLimit(3...8)
                 .disabled(!model.canRewrite)
                 .accessibilityIdentifier("custom-rewrite-style")
+                Text("Leaving this empty means no rewrite: you get the transcript as it is.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             if let reason = model.rewriteAvailability.reason {

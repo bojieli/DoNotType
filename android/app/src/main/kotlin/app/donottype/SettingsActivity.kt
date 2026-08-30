@@ -466,7 +466,8 @@ class SettingsActivity : AppCompatActivity() {
             fieldContainer(
                 "Your style",
                 customRewriteStyleField,
-                helper = "Used when Custom is selected.",
+                helper = "Used when Custom is selected. Empty means no rewrite — you get the "
+                    + "transcript as it is.",
             )
         )
         column.addView(
