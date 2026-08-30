@@ -10,6 +10,19 @@ repository's local calendar date.
 
 ### Fixed
 
+- **The Android keyboard's bottom row is reachable again.** Settings, the mode chip, Return and
+  Backspace were 38dp tall — iOS's number, and the right one on a phone whose system keeps the
+  bottom of the keyboard clear. Android does not: from API 35 an `InputMethodService` window is
+  laid out *behind* the navigation bar, so a three-button bar covered the lower half of that row
+  and every key on it had to be aimed at. There was already an inset listener, and it was not
+  enough on its own: a listener installed on a view that is added to a window which is already laid
+  out is not guaranteed to be called, and one that never ran left the padding at zero with nothing
+  on screen to say so. The keyboard now asks for a dispatch on every show, takes the display's own
+  navigation inset as a floor while the window is edge to edge — and only there, or every phone
+  below API 35 would gain a dead strip instead — and the row itself is 48dp, which is Android's
+  minimum touch target and the one place in this product where that minimum is not advice. The mode
+  chip keeps its smaller pill and gains the full row height to be pressed by; a 28dp control on the
+  bottom row of a keyboard is a control most people press twice.
 - **Settings no longer opens with the caret in a field, and the Model box checks what it is given.**
   Both desktop toolkits hand the focus to the first control when a settings window is shown. On
   macOS that is the Model field, which saves as you type — so opening the panel and typing anything
