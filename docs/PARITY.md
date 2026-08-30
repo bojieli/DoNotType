@@ -17,7 +17,7 @@ is reachable by a user of that client, not merely present in its core library.
 | Tap to toggle, hold to talk | ✅ | ✅ | ✅ | ✅ |
 | Dictate from the app itself | n/a ¹⁷ | n/a ¹⁷ | ✅ record button | ✅ record button |
 | Return and backspace on the keyboard | n/a ¹⁸ | n/a ¹⁸ | ✅ | ✅ |
-| Cancel recording or transcription | ✅ Escape / None | ✅ Escape / None | ✅ drag off the button ¹⁴ | ✅ ¹⁴ |
+| Cancel recording or transcription | ✅ Escape / None ¹⁴ | ✅ Escape / None ¹⁴ | ✅ button ²⁰ | ✅ button ²⁰ |
 | Finish recording, insert, and submit | ✅ Return / ⌘Return / Off ¹⁵ | ✅ Enter / Ctrl+Enter / Off ¹⁵ | — ¹⁵ | — ¹⁵ |
 | Push-to-talk / hands-free as a *setting* | ✅ | ✅ | — ¹ | — ¹ |
 | Rewrite a dictation | ✅ second hotkey | ✅ second hotkey | ✅ style chips | ✅ style picker |
@@ -56,9 +56,11 @@ enough for one to mean something: the file transcription screen and `dnt transcr
 summary:brief`. The wall is in the type system rather than in a convention — the live path is
 typed `RewriteStyle`, which has no summary case, so no client can reach one by accident.
 
-¹⁴ The mobile gesture cancels capture before it is sent. Desktop Escape also cancels an in-flight
-request or rewrite, and is intercepted only during that active dictation; at idle it remains the
-foreground application's key.
+¹⁴ Escape cancels an in-flight request or rewrite as well as the recording, and is intercepted
+only during that active dictation; at idle it remains the foreground application's key. The
+overlay names it — `Esc to cancel`, beside the send hint when there is one — because the pill is
+the only thing the user is looking at while a dictation is under way, and a shortcut nothing
+mentions is a shortcut nobody has.
 
 ¹⁵ Desktop Return/Enter finishes capture only while recording and inserts the transcript. Sending
 an additional Return/Enter is opt-in: the app latches that request before transcription and emits
@@ -98,6 +100,14 @@ A keyboard that ignored that would turn every search box into one that grows a b
 searching. Backspace sends `KEYCODE_DEL` rather than deleting a character count, because only the
 editor knows whether the character before the cursor is one `char` or two, or whether there is a
 selection to remove instead.
+
+²⁰ A visible control, on the phone's keyboard and on its dictation screen, in both halves of a
+dictation: `Discard recording` while the microphone is open, `Cancel transcription` once the
+request has gone. Both phones also cancelled capture by dragging off the talk button, which
+nothing said and nobody found — so in practice the only way out of a recording you did not mean
+was to let it finish, pay for it, and delete what it typed. The desktops keep a key rather than a
+button because their overlay deliberately ignores the mouse: it hangs over whatever the user is
+typing into, and a pill that swallowed clicks would take them from the application underneath.
 
 ## Screen grounding
 

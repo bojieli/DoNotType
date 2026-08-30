@@ -301,7 +301,11 @@ final class DictationController {
 
     private func recordingHints(isTriggerHeld: Bool) -> (primary: String, secondary: String) {
         let primary = Settings.shared.hotkeyMode.overlayHint(isTriggerHeld: isTriggerHeld)
-        let secondary = Settings.shared.finishAndSendAction == .disabled ? "" : "Return to send"
+        // Escape has cancelled a recording since the shortcut existed, and nothing on screen said
+        // so; the overlay is the only surface a user is looking at while one is under way.
+        let secondary = RecordingHint.secondary(
+            finish: Settings.shared.finishAndSendAction == .disabled ? "" : "Return to send",
+            cancel: Settings.shared.cancelShortcut)
         return (primary, secondary)
     }
 
@@ -392,9 +396,13 @@ final class DictationController {
         let submitTarget = pendingFocusIdentity
         let target = pendingTarget
         let dictationID = pendingID
+        // Escape cancels the request as well as the recording, and the wait for a request is the
+        // longer of the two — so this is the phase where knowing there is a way out matters most.
         overlay.update(
             phase: .transcribing,
-            hint: finishAndSend == .disabled ? "" : "Will send")
+            hint: RecordingHint.secondary(
+                finish: finishAndSend == .disabled ? "" : "Will send",
+                cancel: Settings.shared.cancelShortcut))
         // Started here, not at the request: the wait the user experiences includes the screen
         // context read and any fallback, and a figure that skipped those would flatter the app.
         let releasedAt = Date()

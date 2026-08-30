@@ -222,9 +222,15 @@ class DictationActivity : AppCompatActivity() {
         }
         column.addView(statusLabel)
 
-        cancelButton = tonalButton("Cancel transcription") {
-            dictation.cancelTranscription()
-            say("Cancelled")
+        // Offered while recording as well as while transcribing. Dragging off the record button
+        // already abandoned capture, and a gesture nobody is told about is not a feature: the one
+        // report this came from described holding a recording it did not want and having nothing
+        // to press. Its label follows the state, because "Cancel transcription" underneath a live
+        // microphone names the wrong thing.
+        cancelButton = tonalButton(getString(R.string.cancel_transcription)) {
+            val discarding = dictation.state == DictationController.State.RECORDING
+            if (!dictation.cancelActive()) return@tonalButton
+            say(if (discarding) "Recording discarded" else "Cancelled")
             dictation.notice()
         }.apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -625,8 +631,17 @@ class DictationActivity : AppCompatActivity() {
         )
         statusLabel.visibility = if (line.isEmpty()) View.GONE else View.VISIBLE
 
+        val recording = state == DictationController.State.RECORDING
+        cancelButton.text = getString(
+            if (recording) R.string.discard_recording else R.string.cancel_transcription)
+        cancelButton.contentDescription =
+            if (recording) "discard-recording" else "cancel-transcription"
         cancelButton.visibility =
-            if (state == DictationController.State.TRANSCRIBING) View.VISIBLE else View.GONE
+            if (recording || state == DictationController.State.TRANSCRIBING) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
         // Shown in place of the idle sentence, which is the sentence it replaces: with no key
         // "tap to dictate" is an instruction that cannot be followed.
         settingsLink.visibility = if (hasAPIKey) View.GONE else View.VISIBLE

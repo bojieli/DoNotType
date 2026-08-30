@@ -268,6 +268,29 @@ class DictationController(
      *
      * The host writes whatever it wants to say afterwards; this only stops the work.
      */
+    /**
+     * Abandons whatever is in flight, whichever half of a dictation that is.
+     *
+     * One entry point rather than two, because the two hosts — the keyboard and the app's own
+     * screen — both offer a single control and the state can change under the finger: a request
+     * starts the moment the recording ends, and a Discard that became inert at exactly that
+     * boundary would be a button that works except when it is most wanted.
+     *
+     * @return whether there was anything to abandon.
+     */
+    fun cancelActive(): Boolean {
+        when (state) {
+            State.RECORDING -> {
+                discard()
+                log.info { "recording discarded" }
+                state = State.IDLE
+            }
+            State.TRANSCRIBING -> cancelTranscription()
+            else -> return false
+        }
+        return true
+    }
+
     fun cancelTranscription() {
         if (state != State.TRANSCRIBING) return
         transcribeJob?.cancel()

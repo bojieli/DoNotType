@@ -294,7 +294,14 @@ final class KeyboardViewController: UIInputViewController {
         dictateButton.backgroundColor = background
         renderModeButton(
             canChange: phase == .idle || phase == .failed || phase == .recording)
-        cancelButton.isHidden = phase != .waiting && phase != .transcribing
+        // Also while recording. Stop and Discard are different things — one pays for the words
+        // and one throws them away — and until now the second was reachable only by letting the
+        // recording finish and deleting what it typed.
+        cancelButton.isHidden = phase == .idle || phase == .failed
+        // The button is 58pt wide and says "Cancel" in every state; which of the two it is lives
+        // in the accessibility label, in the same words the app's own screen prints on its button.
+        cancelButton.accessibilityLabel =
+            phase == .recording ? "Discard recording" : "Cancel transcription"
         switch phase {
         case .waiting:
             dictateButton.accessibilityLabel = "Starting dictation"
@@ -304,7 +311,8 @@ final class KeyboardViewController: UIInputViewController {
             dictateButton.accessibilityHint = "Use the separate Cancel button to stop."
         case .recording:
             dictateButton.accessibilityLabel = "Stop dictating"
-            dictateButton.accessibilityHint = "Stops recording and starts transcription."
+            dictateButton.accessibilityHint =
+                "Stops recording and starts transcription. Cancel discards it instead."
         case .idle, .failed:
             dictateButton.accessibilityLabel = "Dictate"
             dictateButton.accessibilityHint = sessionWarm
@@ -528,8 +536,9 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     @objc private func cancelDictation() {
+        let discarding = voiceBridge.snapshot.phase == .recording
         voiceBridge.requestCancel()
-        transientStatus = "Cancelled"
+        transientStatus = discarding ? "Recording discarded" : "Cancelled"
         reload()
     }
 

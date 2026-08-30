@@ -74,8 +74,7 @@ internal sealed class TrayApplication : ApplicationContext
         {
             var progress = total > 1 ? $"part {Math.Min(done + 1, total)} of {total}" : null;
             SetOverlayPhase(
-                RecordingOverlay.Phase.Transcribing, progress,
-                _controller.WillSubmit ? "Will send" : null);
+                RecordingOverlay.Phase.Transcribing, progress, TranscribingHint());
         });
         _controller.HistoryChanged += () => BeginInvokeOnTray(RebuildMenu);
         _controller.DictionaryLearned += terms => BeginInvokeOnTray(() =>
@@ -207,8 +206,7 @@ internal sealed class TrayApplication : ApplicationContext
                 case DictationController.State.Transcribing:
                     _levelTimer.Stop();
                     SetOverlayPhase(
-                        RecordingOverlay.Phase.Transcribing,
-                        string.Empty, _controller.WillSubmit ? "Will send" : string.Empty);
+                        RecordingOverlay.Phase.Transcribing, string.Empty, TranscribingHint());
                     break;
                 case DictationController.State.Deriving:
                     // The style's own word — "Tightening…", "Loosening…" — because somebody
@@ -237,6 +235,17 @@ internal sealed class TrayApplication : ApplicationContext
         });
     }
 
+    /// <summary>
+    /// The overlay's second row while a request is in flight.
+    /// </summary>
+    /// <remarks>
+    /// Escape cancels the request as well as the recording, and the wait for a request is the
+    /// longer of the two — so this is the phase where knowing there is a way out matters most.
+    /// </remarks>
+    private string TranscribingHint() =>
+        RecordingHint.Secondary(
+            _controller.WillSubmit ? "Will send" : string.Empty, _settings.CancelShortcut);
+
     private (string Primary, string Secondary) RecordingHints(bool isTriggerHeld)
     {
         var primary = _settings.HotkeyMode switch
@@ -245,8 +254,12 @@ internal sealed class TrayApplication : ApplicationContext
             HotkeyMonitor.Mode.HandsFree => "Tap to transcribe",
             _ => isTriggerHeld ? "Release to transcribe" : "Tap to transcribe",
         };
-        var secondary = _settings.FinishAndSendAction == FinishAndSendAction.Disabled
-            ? string.Empty : "Enter to send";
+        // Escape has cancelled a recording since the shortcut existed, and nothing on screen said
+        // so; the overlay is the only surface a user is looking at while one is under way.
+        var secondary = RecordingHint.Secondary(
+            _settings.FinishAndSendAction == FinishAndSendAction.Disabled
+                ? string.Empty : "Enter to send",
+            _settings.CancelShortcut);
         return (primary, secondary);
     }
 
