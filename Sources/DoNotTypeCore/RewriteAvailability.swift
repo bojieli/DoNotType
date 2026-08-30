@@ -1,6 +1,33 @@
 import Foundation
 
-/// Whether the rewrite stage can run at all, and what to say when it cannot.
+/// Which of the two second-stage jobs is being asked about.
+///
+/// Rewriting and translating have exactly the same requirements — both take the transcript and hand
+/// it back to a model as text — so they share one rule and differ only in the noun the sentence
+/// uses. Telling a user that a backend "cannot rewrite text" when they asked it to translate sends
+/// them to look for the wrong setting.
+public enum SecondStageJob: Sendable, Equatable {
+    case rewriting
+    case translating
+
+    /// "rewriting" / "translating".
+    var gerund: String {
+        switch self {
+        case .rewriting: "rewriting"
+        case .translating: "translating"
+        }
+    }
+
+    /// "rewrite" / "translate".
+    var verb: String {
+        switch self {
+        case .rewriting: "rewrite"
+        case .translating: "translate"
+        }
+    }
+}
+
+/// Whether the second stage can run at all, and what to say when it cannot.
 ///
 /// Every client asked this question separately and got a different answer. macOS never asked and
 /// offered the control regardless; Windows warned but left it enabled; iOS and Android asked
@@ -15,12 +42,15 @@ import Foundation
 public enum RewriteAvailability: Sendable, Equatable {
     case available
     /// No key for the selected backend, so nothing can run — not a rewrite, not a transcript.
-    case noKey
+    case noKey(SecondStageJob)
     /// The selected backend turns audio into text and cannot turn text into text, and no other
     /// configured backend can either.
-    case backendCannotRewrite(ProviderKind)
-    /// A target language is set, so the second stage is a translation. Not a failure and not a
-    /// missing backend — the user asked for one job rather than the other.
+    case backendCannotRewrite(ProviderKind, SecondStageJob)
+    /// Translate was chosen with no target language configured. Not a backend problem: the mode is
+    /// runnable as soon as Settings says which language to write in.
+    case noTargetLanguage
+    /// A target language is set on a desktop, where it replaces whatever the second key would
+    /// otherwise have produced. Not a failure and not a missing backend — see `forSecondKey`.
     case translating(String)
 
     public var isAvailable: Bool { self == .available }
@@ -33,11 +63,13 @@ public enum RewriteAvailability: Sendable, Equatable {
         switch self {
         case .available:
             nil
-        case .noKey:
-            "Add an API key first — without one nothing can run, rewriting included."
-        case .backendCannotRewrite(let kind):
-            "\(kind.displayName) only transcribes audio and cannot rewrite text. Add a key for a "
-                + "backend that can, and rewriting will use it."
+        case .noKey(let job):
+            "Add an API key first — without one nothing can run, \(job.gerund) included."
+        case .backendCannotRewrite(let kind, let job):
+            "\(kind.displayName) only transcribes audio and cannot \(job.verb) text. Add a key for "
+                + "a backend that can, and \(job.gerund) will use it."
+        case .noTargetLanguage:
+            "Set a target language in Settings first, and Translate will write in it."
         case .translating(let language):
             "Dictations are being translated into \(language), which is the second stage. Clear "
                 + "the target language to rewrite instead."
@@ -48,21 +80,16 @@ public enum RewriteAvailability: Sendable, Equatable {
     ///
     /// - Parameters:
     ///   - provider: the selected backend.
+    ///   - job: which second stage is being asked about. Only the wording depends on it.
     ///   - hasKey: whether a usable key exists for a backend. Passed in rather than read here so
     ///     the Keychain, DPAPI and SharedPreferences all answer the same question.
-    /// - Parameter translatingInto: the configured target language, or empty. Checked before the
-    ///   backend questions on purpose: with a target set the rewrite stage is not going to run
-    ///   whatever the backends can do, and reporting a key problem for a control that is unavailable
-    ///   for an unrelated reason sends the user to fix the wrong thing.
     public static func resolve(
-        provider: ProviderKind, translatingInto: String = "", hasKey: (ProviderKind) -> Bool
+        provider: ProviderKind, job: SecondStageJob = .rewriting, hasKey: (ProviderKind) -> Bool
     ) -> RewriteAvailability {
-        let target = TranslationTarget.sanitized(translatingInto)
-        if !target.isEmpty { return .translating(target) }
         // Asked first, and about the *selected* backend: with no key the dictation itself fails, so
         // a message about rewriting would be answering the second question while the first is still
         // wrong.
-        guard hasKey(provider) else { return .noKey }
+        guard hasKey(provider) else { return .noKey(job) }
 
         // Covers model providers and xAI alike. `supportsTextGeneration` is deliberately not the
         // negation of `isSpeechRecognition` — xAI is a recogniser that also sells chat, and the
@@ -72,6 +99,24 @@ public enum RewriteAvailability: Sendable, Equatable {
         // A recogniser with no text endpoint borrows a second stage from another configured
         // backend, which is the behaviour file transcription already had.
         let borrowed = ProviderKind.allCases.first { $0.supportsTextGeneration && hasKey($0) }
-        return borrowed == nil ? .backendCannotRewrite(provider) : .available
+        return borrowed == nil ? .backendCannotRewrite(provider, job) : .available
+    }
+
+    /// What a desktop's second hot key can do.
+    ///
+    /// The desktops choose the operation by *which key is held*, so they have no mode chip and no
+    /// way to show that a target language has replaced what the second key produces — on those two
+    /// clients a target language still overrides both keys. The phones do not use this: there the
+    /// picker makes the three modes exclusive by construction, which is what it is for.
+    ///
+    /// Checked before the backend questions on purpose: with a target set the rewrite stage is not
+    /// going to run whatever the backends can do, and reporting a key problem for a control that is
+    /// unavailable for an unrelated reason sends the user to fix the wrong thing.
+    public static func forSecondKey(
+        provider: ProviderKind, translatingInto: String, hasKey: (ProviderKind) -> Bool
+    ) -> RewriteAvailability {
+        let target = TranslationTarget.sanitized(translatingInto)
+        if !target.isEmpty { return .translating(target) }
+        return resolve(provider: provider, job: .rewriting, hasKey: hasKey)
     }
 }

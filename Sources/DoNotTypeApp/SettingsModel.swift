@@ -331,7 +331,7 @@ final class SettingsModel {
     /// Read from the same rule every client uses, rather than asked locally — this window used to
     /// not ask at all, and offered the binding whatever was configured.
     var rewriteAvailability: RewriteAvailability {
-        RewriteAvailability.resolve(provider: provider, translatingInto: translateTo) { kind in
+        RewriteAvailability.forSecondKey(provider: provider, translatingInto: translateTo) { kind in
             !(Settings.shared.resolvedAPIKey(for: kind) ?? "").isEmpty
         }
     }
