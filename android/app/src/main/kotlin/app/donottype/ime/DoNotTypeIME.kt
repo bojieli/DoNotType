@@ -10,10 +10,11 @@ import app.donottype.core.DictationController.State
 import app.donottype.core.DictationRecord
 import app.donottype.core.DictationService
 import app.donottype.core.FailureAdvice
+import app.donottype.core.LiveMode
 import app.donottype.core.NoSpeechException
 import app.donottype.core.Log as DntLog
-import app.donottype.core.RewriteAvailability
 import app.donottype.core.PersonalDictionary
+import app.donottype.core.ProviderKind
 import app.donottype.ui.themeColor
 import android.content.Context
 import android.content.Intent
@@ -484,22 +485,68 @@ class DoNotTypeIME : InputMethodService() {
         minHeight = 0
         minimumHeight = 0
         setPadding(dp(9), 0, dp(9), 0)
-        setOnClickListener {
-            val rewrite = !Settings.rewriteModeEnabled
-            val availability = RewriteAvailability.resolve(Settings.provider, Settings.translateTo) {
-                !Settings.keyFor(it).isNullOrBlank()
+        setOnClickListener { showModeMenu(it) }
+    }
+
+    /**
+     * The three things the next dictation can be, and the language when it is a translation.
+     *
+     * A menu rather than the toggle this used to be, because the second stage has three answers and
+     * a two-state chip could only show two: translation was a setting in the app that silently
+     * overrode the chip, so the control displayed a state it could not offer and changing it meant
+     * leaving the field.
+     *
+     * The languages are a fixed list plus whatever custom one is configured, and that is a real
+     * constraint rather than an omission: free text cannot be entered from inside a keyboard,
+     * because the keyboard is the thing you would type it with. Settings keeps the free-text field.
+     */
+    /**
+     * The three modes, in one flat list.
+     *
+     * Deliberately flat: the language belongs to Settings, not to a submenu here. A keyboard cannot
+     * be used to type into its own popup, so any list offered here would be a fixed handful that
+     * quietly disagrees with the free-text target the app already stores — and the menu's job is to
+     * answer one question, which of the three.
+     */
+    private fun showModeMenu(anchor: View) {
+        val hasKey: (ProviderKind) -> Boolean = { !Settings.keyFor(it).isNullOrBlank() }
+        val menu = android.widget.PopupMenu(ui, anchor)
+        LiveMode.entries.forEachIndexed { index, mode ->
+            val availability = mode.availability(Settings.provider, Settings.translateTo, hasKey)
+            // Translate reads as the language it will produce, so the chip and the menu agree
+            // about what choosing it does.
+            val title = if (mode == LiveMode.TRANSLATE && Settings.translateTo.isNotEmpty()) {
+                "${mode.label} into ${Settings.translateTo}"
+            } else {
+                mode.label
             }
-            if (rewrite && !availability.isAvailable) {
-                availability.reason?.let { statusLabel.text = it }
-                log.info { "rewrite mode unavailable" }
-                return@setOnClickListener
+            val item = menu.menu.add(0, index, index, title)
+            item.isCheckable = true
+            item.isChecked = mode == Settings.liveMode
+            // Offered but explaining itself, rather than silently absent: a mode that is missing
+            // is how the rewrite feature came to look as though it did not exist.
+            item.isEnabled = availability.isAvailable
+            item.setOnMenuItemClickListener {
+                val reason = availability.reason
+                if (reason != null) {
+                    statusLabel.text = reason
+                    log.info(mapOf("mode" to mode.id)) { "mode unavailable" }
+                } else {
+                    chooseMode(mode)
+                }
+                true
             }
-            Settings.rewriteModeEnabled = rewrite
-            log.info(mapOf("mode" to if (rewrite) "rewrite" else "dictate")) {
-                "live mode chosen"
-            }
-            refreshModeButton()
         }
+        // A disabled item swallows its own click, so the reason above would never be seen. This is
+        // the one way to keep both: the item stays greyed, and the menu answers instead.
+        menu.setOnMenuItemClickListener { true }
+        menu.show()
+    }
+
+    private fun chooseMode(mode: LiveMode) {
+        Settings.liveMode = mode
+        log.info(mapOf("mode" to mode.id)) { "live mode chosen" }
+        refreshModeButton()
     }
 
     /** The keyboard's own route to its settings, always available beside the mode switcher. */
@@ -755,32 +802,28 @@ class DoNotTypeIME : InputMethodService() {
 
     private fun refreshModeButton() {
         if (!::modeButton.isInitialized) return
-        val availability = RewriteAvailability.resolve(Settings.provider, Settings.translateTo) {
+        // A mode that cannot run is corrected rather than left showing: a chip reading Rewrite over
+        // a backend that cannot rewrite, or Translate with no language, promises something the next
+        // dictation will not do.
+        val stored = Settings.liveMode
+        val runnable = stored.availability(Settings.provider, Settings.translateTo) {
             !Settings.keyFor(it).isNullOrBlank()
-        }
-        if (!availability.isAvailable && Settings.rewriteModeEnabled) {
-            Settings.rewriteModeEnabled = false
-        }
-        // finishRecording reads the style after capture stops, so the current recording may be
+        }.isAvailable
+        if (!runnable) Settings.liveMode = LiveMode.DICTATE
+        val current = Settings.liveMode
+        // finishRecording reads the mode after capture stops, so the current recording may be
         // corrected from Dictate to Rewrite (or back) without interrupting the speaker.
         val canChange = state != State.TRANSCRIBING
-        // A target language set in the app is what the dictation will actually do, so the chip says
-        // so — and stops being a toggle, since clearing it belongs to the settings screen. A chip
-        // reading "Dictate" over a dictation coming back in another language would be a lie.
-        val translating = Settings.translateTo.isNotEmpty()
-        val rewrite = !translating && Settings.rewriteModeEnabled
-        val canSwitch = !translating && canChange && (rewrite || availability.isAvailable)
-        val current = if (translating) "Translate" else if (rewrite) "Rewrite" else "Dictate"
-        val next = if (rewrite) "Dictate" else "Rewrite"
-        modeButton.text = current
-        modeButton.isEnabled = canSwitch
-        modeButton.alpha = if (canSwitch) 1f else 0.55f
-        // Rewrite is the container pair rather than a second saturated fill: two equally loud
-        // chips beside the talk button would compete with it, and the mode is a label more often
-        // than it is a control.
+        modeButton.text = current.label
+        modeButton.isEnabled = canChange
+        modeButton.alpha = if (canChange) 1f else 0.55f
+        // Anything but Dictate is the container pair rather than a second saturated fill: two
+        // equally loud chips beside the talk button would compete with it, and the mode is a label
+        // more often than it is a control.
+        val styled = current != LiveMode.DICTATE
         modeButton.setTextColor(
             ui.themeColor(
-                if (rewrite) {
+                if (styled) {
                     com.google.android.material.R.attr.colorOnTertiaryContainer
                 } else {
                     com.google.android.material.R.attr.colorOnPrimary
@@ -789,7 +832,7 @@ class DoNotTypeIME : InputMethodService() {
         )
         modeButton.background = modeChip(
             ui.themeColor(
-                if (rewrite) {
+                if (styled) {
                     com.google.android.material.R.attr.colorTertiaryContainer
                 } else {
                     androidx.appcompat.R.attr.colorPrimary
@@ -797,12 +840,10 @@ class DoNotTypeIME : InputMethodService() {
             ),
         )
         modeButton.contentDescription = when {
-            translating ->
-                "Current mode: Translate into ${Settings.translateTo}. Clear the target " +
-                    "language in Settings to change this"
-            canSwitch -> "Current mode: $current. Tap to switch to $next"
-            !canChange -> "Current mode: $current. Mode is fixed while transcribing"
-            else -> "Current mode: $current. Rewrite is unavailable"
+            !canChange -> "Current mode: ${current.label}. Mode is fixed while transcribing"
+            current == LiveMode.TRANSLATE ->
+                "Current mode: Translate into ${Settings.translateTo}. Tap to change"
+            else -> "Current mode: ${current.label}. Tap to choose dictate, rewrite or translate"
         }
     }
 

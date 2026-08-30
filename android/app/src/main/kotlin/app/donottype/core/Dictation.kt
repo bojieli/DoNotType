@@ -119,16 +119,10 @@ class DictationService(private val context: Context) {
             ),
         ) { "transcribing" }
 
-        // A target language replaces the second stage rather than joining it. Two jobs in one
-        // request is exactly the combination this project has already measured as worse, and the
-        // settings screen says so beside the rewrite chip, through RewriteAvailability.
-        val stage: TranscriptMode = if (Settings.translateTo.isNotEmpty()) {
-            TranscriptMode.Translate(Settings.translateTo)
-        } else if (style.isRewrite) {
-            TranscriptMode.Rewrite(style)
-        } else {
-            TranscriptMode.Verbatim
-        }
+        // What the mode chip was showing when the recording started, resolved in one place. The
+        // three answers are exclusive by construction now rather than by a settings flag silently
+        // overriding a toggle — see [LiveMode].
+        val stage: TranscriptMode = Settings.liveMode.stage(style, Settings.translateTo)
 
         return try {
             val requestStart = System.currentTimeMillis()

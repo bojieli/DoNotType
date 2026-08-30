@@ -27,9 +27,10 @@ import app.donottype.core.DictationController
 import app.donottype.core.DictationRecord
 import app.donottype.core.DictationService
 import app.donottype.core.FailureAdvice
+import app.donottype.core.LiveMode
+import app.donottype.core.ProviderKind
 import app.donottype.core.Log
 import app.donottype.core.NoSpeechException
-import app.donottype.core.RewriteAvailability
 import app.donottype.ui.LevelMeterView
 import app.donottype.ui.RecordButtonView
 import app.donottype.ui.caption
@@ -69,6 +70,7 @@ class DictationActivity : AppCompatActivity() {
 
     private lateinit var modeDictate: TextView
     private lateinit var modeRewrite: TextView
+    private lateinit var modeTranslate: TextView
     private lateinit var recordButton: RecordButtonView
     private lateinit var meter: LevelMeterView
     private lateinit var statusLabel: TextView
@@ -320,8 +322,11 @@ class DictationActivity : AppCompatActivity() {
      * choice of operation is what made this control unreadable on the keyboard bar.
      */
     private fun buildModeBadge(): View {
-        modeDictate = modeSegment("Dictate") { choose(rewrite = false) }
-        modeRewrite = modeSegment("Rewrite") { choose(rewrite = true) }
+        modeDictate = modeSegment(LiveMode.DICTATE.label) { choose(LiveMode.DICTATE) }
+        modeRewrite = modeSegment(LiveMode.REWRITE.label) { choose(LiveMode.REWRITE) }
+        // The third segment the keyboard's menu also grew. The language it writes in belongs to
+        // Settings on both, so this control answers one question: which of the three.
+        modeTranslate = modeSegment(LiveMode.TRANSLATE.label) { choose(LiveMode.TRANSLATE) }
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             val inset = dp(3)
@@ -335,6 +340,7 @@ class DictationActivity : AppCompatActivity() {
             }
             addView(modeDictate)
             addView(modeRewrite)
+            addView(modeTranslate)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -517,12 +523,12 @@ class DictationActivity : AppCompatActivity() {
 
     // MARK: - Mode
 
-    private fun choose(rewrite: Boolean) {
+    private fun choose(mode: LiveMode) {
         if (dictation.state == DictationController.State.TRANSCRIBING) return
-        val availability = RewriteAvailability.resolve(Settings.provider, Settings.translateTo) {
+        val availability = mode.availability(Settings.provider, Settings.translateTo) {
             !Settings.keyFor(it).isNullOrBlank()
         }
-        if (rewrite && !availability.isAvailable) {
+        if (!availability.isAvailable) {
             // Ordinarily unreachable: refreshMode() disables the segment, which is what iOS's badge
             // does too, and Settings is where the reason is spelled out on both. This is the guard
             // for a key that disappeared since the last refresh -- saying why beats a segment that
@@ -531,34 +537,40 @@ class DictationActivity : AppCompatActivity() {
             availability.reason?.let { say(it, isError = true) }
             return
         }
-        Settings.rewriteModeEnabled = rewrite
-        log.info(mapOf("mode" to if (rewrite) "rewrite" else "dictate")) { "live mode chosen" }
+        Settings.liveMode = mode
+        log.info(mapOf("mode" to mode.id)) { "live mode chosen" }
         refreshMode()
     }
 
     private fun refreshMode() {
-        val availability = RewriteAvailability.resolve(Settings.provider, Settings.translateTo) {
-            !Settings.keyFor(it).isNullOrBlank()
+        val hasKey: (ProviderKind) -> Boolean = { !Settings.keyFor(it).isNullOrBlank() }
+        // A mode that cannot run is corrected rather than left selected: a segment reading Rewrite
+        // over a backend that cannot rewrite promises something the next dictation will not do.
+        if (!Settings.liveMode.availability(Settings.provider, Settings.translateTo, hasKey)
+                .isAvailable
+        ) {
+            Settings.liveMode = LiveMode.DICTATE
         }
-        if (!availability.isAvailable && Settings.rewriteModeEnabled) {
-            Settings.rewriteModeEnabled = false
-        }
-        // A target language is what the dictation will actually do, so neither segment is the
-        // answer and neither is selected. Clearing it belongs to Settings, which is where the
-        // sentence explaining it lives.
-        val translating = Settings.translateTo.isNotEmpty()
-        val rewrite = !translating && Settings.rewriteModeEnabled
-        paintSegment(modeDictate, selected = !translating && !rewrite)
-        paintSegment(modeRewrite, selected = rewrite)
-        // finish() reads the style after capture stops, so a recording in progress may be corrected
+        val mode = Settings.liveMode
+        paintSegment(modeDictate, selected = mode == LiveMode.DICTATE)
+        paintSegment(modeRewrite, selected = mode == LiveMode.REWRITE)
+        paintSegment(modeTranslate, selected = mode == LiveMode.TRANSLATE)
+        // finish() reads the mode after capture stops, so a recording in progress may be corrected
         // from Dictate to Rewrite without interrupting the speaker; a request already out may not.
-        val canChange = !translating && dictation.state != DictationController.State.TRANSCRIBING
+        val canChange = dictation.state != DictationController.State.TRANSCRIBING
         modeDictate.isEnabled = canChange
-        modeRewrite.isEnabled = canChange && (rewrite || availability.isAvailable)
+        modeRewrite.isEnabled = canChange &&
+            LiveMode.REWRITE.availability(Settings.provider, Settings.translateTo, hasKey)
+                .isAvailable
+        modeTranslate.isEnabled = canChange &&
+            LiveMode.TRANSLATE.availability(Settings.provider, Settings.translateTo, hasKey)
+                .isAvailable
         modeDictate.alpha = if (modeDictate.isEnabled) 1f else 0.55f
         modeRewrite.alpha = if (modeRewrite.isEnabled) 1f else 0.55f
+        modeTranslate.alpha = if (modeTranslate.isEnabled) 1f else 0.55f
         modeDictate.contentDescription = "mode-dictate"
         modeRewrite.contentDescription = "mode-rewrite"
+        modeTranslate.contentDescription = "mode-translate"
     }
 
     private fun paintSegment(segment: TextView, selected: Boolean) {
