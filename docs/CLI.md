@@ -213,6 +213,7 @@ the migration" should not depend on remembering how it was captured.
 ```bash
 dnt prompt show --section system --fidelity tidy    # the exact text a request will carry
 dnt prompt show --section summary --summary actions
+dnt prompt show --section translate --language English
 dnt prompt validate                                 # every block and placeholder resolves
 dnt prompt path                                     # shipped, or your edited copy
 ```
