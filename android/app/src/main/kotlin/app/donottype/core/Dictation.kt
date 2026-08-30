@@ -244,8 +244,9 @@ class DictationService(private val context: Context) {
                 ) { "styled in one request" }
             } else if (stage.needsSecondPass && text.isNotBlank()) {
                 val rewriteStart = System.currentTimeMillis()
-                val mode = stage
-                val instruction = PromptAssets.secondStageInstruction(context, mode, Settings.customRewriteStyle)
+                val instruction = PromptAssets.secondStageInstruction(
+                    context, stage, Settings.customRewriteStyle,
+                )
                 val kind = secondStageBackendFor(key)
                 log.info(
                     mapOf("dictation" to id, "mode" to stage.id, "chars" to text.length.toString()),
@@ -270,7 +271,7 @@ class DictationService(private val context: Context) {
                             .let { Typography.normalize(it, Settings.typographySpacing) }
                         if (styled.isNotEmpty()) {
                             record.styledText = styled
-                            record.mode = mode.id
+                            record.mode = stage.id
                             delivered = styled
                         }
                         log.info(
