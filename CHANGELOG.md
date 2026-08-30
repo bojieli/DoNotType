@@ -8,6 +8,21 @@ repository's local calendar date.
 
 ## Unreleased
 
+### Added
+
+- **A way out of a recording, on every client, that does not involve paying for it.** Abandoning a
+  dictation already worked everywhere; on three of the four clients nothing said so. The desktops
+  bound Escape and never printed it, and both phones cancelled capture by dragging off the talk
+  button before letting go — a gesture with nowhere to be documented, which in practice left one
+  route out of a recording you did not mean: let it finish, send it, and delete what it typed. The
+  phones now show a control while there is something to abandon, named for which half it is
+  (`Discard recording` while the microphone is open, `Cancel transcription` once the request has
+  gone) on the keyboard and on the app's own dictation screen. The desktops name the key in the
+  overlay instead — `Esc to cancel`, beside `Return to send` when that is on, in both the recording
+  and the transcribing phase, since the wait for a request is the longer of the two. Their pill
+  keeps ignoring the mouse on purpose: it hangs over whatever is being typed into, and one that
+  swallowed clicks would take them from the application underneath.
+
 ### Fixed
 
 - **The Android keyboard's bottom row is reachable again.** Settings, the mode chip, Return and

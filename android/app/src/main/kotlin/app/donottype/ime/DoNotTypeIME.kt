@@ -83,6 +83,7 @@ class DoNotTypeIME : InputMethodService() {
     private lateinit var talkButton: Button
     private lateinit var returnButton: Button
     private lateinit var backspaceButton: ImageButton
+    private lateinit var cancelButton: ImageButton
     private lateinit var indicator: DictationIndicatorView
 
     /**
@@ -275,6 +276,7 @@ class DoNotTypeIME : InputMethodService() {
         indicator = DictationIndicatorView(ui)
 
         talkButton = buildTalkButton()
+        cancelButton = buildCancelButton()
         returnButton = buildReturnButton()
         backspaceButton = buildBackspaceButton()
 
@@ -287,12 +289,21 @@ class DoNotTypeIME : InputMethodService() {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(METER_DP)),
         )
 
+        // Cancel shares the talk button's row, at the far end from the thumb that just pressed
+        // it. Not on the utility row below: that row is always there, and a control that throws a
+        // recording away must not be a permanent neighbour of Backspace.
         root.addView(
             FrameLayout(ui).apply {
                 addView(
                     talkButton,
                     FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, dp(TALK_H_DP), Gravity.CENTER,
+                    ),
+                )
+                addView(
+                    cancelButton,
+                    FrameLayout.LayoutParams(
+                        dp(KEY_H_DP), dp(KEY_H_DP), Gravity.END or Gravity.CENTER_VERTICAL,
                     ),
                 )
             },
@@ -513,6 +524,38 @@ class DoNotTypeIME : InputMethodService() {
         gravity = Gravity.CENTER
         compoundDrawablePadding = 0
         setOnClickListener { insertReturn() }
+    }
+
+    /**
+     * Throws away whatever is under way — the recording, or the request that followed it.
+     *
+     * The gesture for this was already here: drag off the talk button before letting go. Nobody
+     * knows that, and a keyboard has nowhere to say it, so in practice the only way out of a
+     * recording you did not mean was to let it finish, pay for it, and delete what it typed.
+     *
+     * Shown only while there is something to abandon. A cross sitting beside an idle Speak button
+     * would be a control that does nothing most of the time, next to the one control that does.
+     */
+    private fun buildCancelButton(): ImageButton = ImageButton(ui).apply {
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        val inset = (dp(KEY_H_DP) - dp(CANCEL_ICON_DP)) / 2
+        setPadding(inset, inset, inset, inset)
+        visibility = View.GONE
+        setImageDrawable(
+            AppCompatResources.getDrawable(ui, R.drawable.ic_close)?.mutate()?.apply {
+                setTint(ui.themeColor(com.google.android.material.R.attr.colorOnSurface))
+            },
+        )
+        background = keyBackground(dp(KEY_H_DP) / 2f)
+        setOnClickListener {
+            val discarding = state == State.RECORDING
+            if (!dictation.cancelActive()) return@setOnClickListener
+            pendingTarget = null
+            showStatus(
+                if (discarding) "Recording discarded" else "Cancelled",
+            )
+            dictation.notice()
+        }
     }
 
     private fun buildBackspaceButton(): ImageButton = ImageButton(ui).apply {
@@ -961,6 +1004,7 @@ class DoNotTypeIME : InputMethodService() {
     private fun render() {
         if (!::statusLabel.isInitialized) return
         val hasAPIKey = !Settings.apiKey.isNullOrBlank()
+        renderCancelButton()
         when (state) {
             State.IDLE -> {
                 if (!hasAPIKey) {
@@ -1011,6 +1055,21 @@ class DoNotTypeIME : InputMethodService() {
             }
         }
         refreshModeButton()
+    }
+
+    /**
+     * Cancel appears exactly while there is something to cancel, and names which of the two it is.
+     *
+     * The keyboard has no room for the words, so they are the accessibility label: the same two
+     * sentences the app's dictation screen prints on its own button, out of the same strings.
+     */
+    private fun renderCancelButton() {
+        if (!::cancelButton.isInitialized) return
+        val recording = state == State.RECORDING
+        cancelButton.visibility =
+            if (recording || state == State.TRANSCRIBING) View.VISIBLE else View.GONE
+        cancelButton.contentDescription = getString(
+            if (recording) R.string.discard_recording else R.string.cancel_transcription)
     }
 
     /**
@@ -1121,6 +1180,7 @@ class DoNotTypeIME : InputMethodService() {
         const val RETURN_ICON_DP = 20
         const val BACKSPACE_W_DP = 56
         const val BACKSPACE_ICON_DP = 22
+        const val CANCEL_ICON_DP = 20
 
         /** iOS's key-repeat timings, so a held backspace runs on at the same speed on both. */
         const val BACKSPACE_FIRST_REPEAT_MS = 380L

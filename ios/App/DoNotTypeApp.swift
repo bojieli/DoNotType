@@ -262,7 +262,18 @@ struct ContentView: View {
                     }
                     .accessibilityIdentifier("configure-api-key")
                 }
-            case .recording: Text("Listening… tap to stop").foregroundStyle(.secondary)
+            case .recording:
+                // Discard is offered here for the same reason Cancel is offered below: stopping
+                // pays for the words. Until now the only way out of a recording you did not mean
+                // was to let it finish and delete what it produced.
+                VStack(spacing: 10) {
+                    Text("Listening… tap to stop").foregroundStyle(.secondary)
+                    Button("Discard recording", role: .destructive) {
+                        model.cancelCurrentOperation()
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("discard-recording")
+                }
             case .transcribing:
                 // Named, not a bare spinner: after you stop talking the wait is dead time, and the
                 // user needs to know what is consuming it and retain a way out if the provider
@@ -361,7 +372,7 @@ private struct KeyboardReturnToHostView: View {
 
                 if state == .recording || state == .transcribing {
                     Button(
-                        state == .transcribing ? "Cancel transcription" : "Cancel dictation",
+                        state == .transcribing ? "Cancel transcription" : "Discard recording",
                         role: .cancel,
                         action: cancel
                     )

@@ -4,4 +4,12 @@
     <string name="ime_name">DoNotType Voice</string>
     <string name="accessibility_name">DoNotType screen grounding</string>
     <string name="accessibility_description">Lets DoNotType read the text on your current screen so it can spell names, product names and technical terms the way they appear there. Text is read only while you are dictating, is never stored, and is sent only to the model you configured with your own API key.</string>
+
+    <!--
+      Abandoning a dictation. Two names, because the two halves lose different things: one throws
+      away a recording that was never sent, the other a request that has been. Shared by the app's
+      dictation screen and the keyboard so the same control cannot be called two things.
+    -->
+    <string name="discard_recording">Discard recording</string>
+    <string name="cancel_transcription">Cancel transcription</string>
 </resources>

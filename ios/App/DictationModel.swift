@@ -1150,6 +1150,10 @@ final class DictationModel {
 
     private func cancelCurrentOperationLocally() {
         let keepSessionWarm = currentDictationIsFromKeyboard
+        // Read before anything is torn down. The two halves of a dictation lose different things,
+        // and a notice saying "Cancelled" over a recording that was never sent tells the user
+        // less than one that says what was thrown away.
+        let wasRecording = state == .recording
         transcriptionTask?.cancel()
         transcriptionTask = nil
         transcribingPipeline?.cancel()
@@ -1164,7 +1168,7 @@ final class DictationModel {
         pressStartedAt = nil
         levels = Self.silentMeter
         if !keepSessionWarm { deactivateAudioSession() }
-        state = .notice("Cancelled")
+        state = .notice(wasRecording ? "Recording discarded" : "Cancelled")
         currentDictationIsFromKeyboard = false
         isReturnToHostPresented = false
         log.info("dictation cancelled", ["dictation": Self.short(pendingID)])

@@ -98,6 +98,19 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["cancel-keyboard-dictation"].exists)
     }
 
+    /// Stopping a recording pays for it. Discarding is the other half, and it was reachable on
+    /// this screen only by letting the words arrive and then deleting them.
+    func testARecordingCanBeDiscardedWithoutBeingSent() {
+        let app = launch(arguments: ["-ui-testing-recording-state"])
+        let discard = app.buttons["discard-recording"]
+
+        XCTAssertTrue(discard.waitForExistence(timeout: 10))
+        discard.tap()
+
+        XCTAssertTrue(app.staticTexts["Recording discarded"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["record"].isEnabled)
+    }
+
     /// A recording must not outlive the only surface that tells the user the microphone is on.
     func testLeavingTheForegroundStopsRecordingAndExplainsWhy() {
         let app = launch(arguments: ["-ui-testing-recording-state"])
