@@ -62,7 +62,8 @@ public static class SettingsTransfer
     {
         [JsonPropertyName("spacing")] public string Spacing { get; set; } = "spaced";
         [JsonPropertyName("chineseScript")] public string ChineseScript { get; set; } = "spoken";
-        [JsonPropertyName("formattingSample")] public string FormattingSample { get; set; } =
+        [JsonPropertyName("formattingSample")]
+        public string FormattingSample { get; set; } =
             string.Empty;
     }
 
