@@ -280,8 +280,13 @@ private struct DictionaryEditSheet: View {
 
 private struct GeneralTab: View {
     @Bindable var model: SettingsModel
+
+    /// Which field holds the caret. Optional so that *nothing* is a value this can hold, which is
+    /// what the panel opens on — see `defaultFocus` at the bottom of the form.
+    private enum Field: Hashable { case key }
+
     /// The window opens itself when there is no key, so the caret starts where the fix is.
-    @FocusState private var keyFieldFocused: Bool
+    @FocusState private var focus: Field?
 
     var body: some View {
         Form {
@@ -299,10 +304,14 @@ private struct GeneralTab: View {
                     }
                 }
                 TextField("Model", text: $model.model)
+                    .autocorrectionDisabled()
+                modelProblem(model.modelProblem)
                 // Shown only where transcription and rewriting are genuinely different models,
                 // rather than as a second field that repeats the first one everywhere else.
                 if model.provider.defaultTextModel != nil {
                     TextField("Rewrite model", text: $model.textModel)
+                        .autocorrectionDisabled()
+                    modelProblem(model.textModelProblem)
                 }
                 // No `.textContentType(.password)`: it makes macOS offer saved website logins in
                 // a panel that lands directly on top of the explanation below — which is the one
@@ -318,17 +327,17 @@ private struct GeneralTab: View {
                     .autocorrectionDisabled()
 
                 SecureField("API key", text: $model.apiKey)
-                    .focused($keyFieldFocused)
+                    .focused($focus, equals: .key)
                     // Not `initial: true`. This panel is rebuilt every time the sidebar returns to
                     // it, and an initial fire would re-steal the caret on each visit — the intent
                     // is the window opening on a missing key, not every look at General.
                     .onChange(of: model.keyStatus) {
-                        if model.keyStatus == .missing { keyFieldFocused = true }
+                        if model.keyStatus == .missing { focus = .key }
                     }
                     .task {
                         if !model.hasFocusedEmptyKeyField, model.keyStatus == .missing {
                             model.hasFocusedEmptyKeyField = true
-                            keyFieldFocused = true
+                            focus = .key
                         }
                     }
 
@@ -423,6 +432,7 @@ private struct GeneralTab: View {
                         prompt: Text(fallbackKind.defaultModel)
                     )
                     .autocorrectionDisabled()
+                    modelProblem(model.fallbackModelProblem)
 
                     TextField(
                         "Second provider endpoint", text: $model.fallbackEndpoint,
@@ -589,6 +599,30 @@ private struct GeneralTab: View {
             }
         }
         .formStyle(.grouped)
+        // Nothing, deliberately. Left to itself AppKit hands the caret to the first text field in
+        // the window, which is Model — so opening Settings and typing put arbitrary text into the
+        // model ID, and the field saves as you type. `.userInitiated` because the value being
+        // asked for here is "no default", which the automatic evaluation would otherwise treat as
+        // no preference at all and fall back to that same first field. A missing key still takes
+        // the caret, from the `.task` on the key field above: that is a placement with a reason,
+        // and this one never had one.
+        .defaultFocus($focus, nil, priority: .userInitiated)
+    }
+
+    /// The sentence under a Model field when what is in it could not be a model ID.
+    ///
+    /// Orange rather than red, and phrased as what the field takes rather than as a rejection:
+    /// nothing has been lost at this point. The previous value is still stored and still running
+    /// dictations — see `SettingsModel.model` — and this says why the box in front of you has not
+    /// replaced it.
+    @ViewBuilder
+    private func modelProblem(_ message: String?) -> some View {
+        if let message {
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var dictationHelp: String {
