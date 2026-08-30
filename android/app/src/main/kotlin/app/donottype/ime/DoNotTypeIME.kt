@@ -86,6 +86,15 @@ class DoNotTypeIME : InputMethodService() {
     private lateinit var indicator: DictationIndicatorView
 
     /**
+     * The bar itself, kept so a later show can ask the window for its insets again.
+     *
+     * `onCreateInputView` runs once; every show after that reuses this view, and the padding it
+     * needs can change between two of them — a phone rotated into landscape moves a three-button
+     * bar to the side, and the keyboard must give the room back.
+     */
+    private var inputBar: View? = null
+
+    /**
      * The context every view on the bar is built from, and every colour on it resolved against.
      *
      * An `InputMethodService` is a service, and a service's theme is whatever the platform picked
@@ -186,6 +195,10 @@ class DoNotTypeIME : InputMethodService() {
         refreshModeButton()
         // The field being typed into has just changed, and with it what its Enter key is for.
         refreshReturnKey()
+        // A view added to an already-laid-out window is not guaranteed a dispatch of its own, and
+        // the one thing worse than the wrong padding is no padding: the utility row ends up under
+        // the navigation bar. Cheap, and it also catches a rotation between two shows.
+        inputBar?.let { ViewCompat.requestApplyInsets(it) }
         render()
         pendingLifecycleNotice?.let { message ->
             pendingLifecycleNotice = null
@@ -222,14 +235,19 @@ class DoNotTypeIME : InputMethodService() {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
             )
 
-            // The keyboard window extends behind the navigation bar. A gesture pill is thin enough
-            // to miss the button below it; a three-button bar is not, and covered the bottom half
-            // of "Tap to talk" -- the only control this keyboard has.
+            // The keyboard window extends behind the navigation bar from API 35. A gesture pill is
+            // thin enough to miss the button below it; a three-button bar is not, and covered the
+            // bottom half of the utility row -- Settings, the mode chip, Return and Backspace.
+            //
+            // The listener alone was not enough, and the reason is in [KeyboardInsets]: it is not
+            // guaranteed to run for a view added to a window that is already laid out, and a
+            // listener that never ran leaves the padding at zero with nothing to show for it.
             ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
-                val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
-                view.setPadding(padSide, padTop, padSide, padBottom + nav.bottom)
+                applyBottomInset(
+                    view, insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom)
                 insets
             }
+            applyBottomInset(this, 0)
         }
 
         statusLabel = TextView(ui).apply {
@@ -299,9 +317,14 @@ class DoNotTypeIME : InputMethodService() {
                         )
                         addView(
                             modeButton,
+                            // The chip is drawn at MODE_H_DP and laid out at the row's height:
+                            // its pill stays smaller than the talk button it sits beside, while
+                            // the thing a thumb has to hit is as tall as every other key. A
+                            // control that is 28dp tall on the bottom row of a keyboard is a
+                            // control most people press twice.
                             LinearLayout.LayoutParams(
                                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                                dp(MODE_H_DP),
+                                dp(KEY_H_DP),
                             ),
                         )
                     },
@@ -332,7 +355,45 @@ class DoNotTypeIME : InputMethodService() {
         refreshModeButton()
         refreshReturnKey()
         render()
+        inputBar = root
         return root
+    }
+
+    /**
+     * Bottom padding for the bar, from whichever measurement of the navigation bar is available.
+     *
+     * See [KeyboardInsets] for why the dispatched inset is a floor rather than the answer.
+     */
+    private fun applyBottomInset(view: View, dispatchedNavigationInset: Int) {
+        view.setPadding(
+            padSide,
+            padTop,
+            padSide,
+            KeyboardInsets.bottomPadding(
+                basePadding = padBottom,
+                dispatchedNavigationInset = dispatchedNavigationInset,
+                windowNavigationInset = displayNavigationInset(),
+            ),
+        )
+    }
+
+    /**
+     * The navigation bar the display reports for this window, or 0 where it cannot be asked.
+     *
+     * Read from the window manager rather than from the view, so it is an answer even when no
+     * inset has been dispatched to the bar yet. Only consulted on the API levels where the
+     * keyboard window is actually laid out behind the bar — see [KeyboardInsets.bottomPadding].
+     */
+    private fun displayNavigationInset(): Int {
+        if (android.os.Build.VERSION.SDK_INT < KeyboardInsets.EDGE_TO_EDGE_SDK) return 0
+        return runCatching {
+            getSystemService(android.view.WindowManager::class.java)
+                ?.currentWindowMetrics
+                ?.windowInsets
+                ?.getInsets(android.view.WindowInsets.Type.navigationBars())
+                ?.bottom
+                ?: 0
+        }.getOrDefault(0)
     }
 
     /**
@@ -608,6 +669,21 @@ class DoNotTypeIME : InputMethodService() {
         return RippleDrawable(ColorStateList.valueOf(rippleColor()), fill, null)
     }
 
+    /**
+     * The mode chip: a MODE_H_DP pill inset inside a key-height view.
+     *
+     * The view is as tall as the rest of the row so that it can be pressed like the rest of the
+     * row; the fill is inset so that it still reads as the smaller of the two controls beside the
+     * talk button. Drawing a full-height fill instead would give the bar two things competing for
+     * the eye, which is the reason the chip was made small in the first place.
+     */
+    private fun modeChip(color: Int): Drawable {
+        val inset = (dp(KEY_H_DP) - dp(MODE_H_DP)) / 2
+        return android.graphics.drawable.InsetDrawable(
+            filled(color, dp(MODE_H_DP) / 2f), 0, inset, 0, inset,
+        )
+    }
+
     /** Visible against both a light and a dark fill without becoming a second colour. */
     private fun rippleColor(): Int = ColorUtils.setAlphaComponent(
         ui.themeColor(com.google.android.material.R.attr.colorOnSurface),
@@ -650,7 +726,7 @@ class DoNotTypeIME : InputMethodService() {
                 },
             ),
         )
-        modeButton.background = filled(
+        modeButton.background = modeChip(
             ui.themeColor(
                 if (rewrite) {
                     com.google.android.material.R.attr.colorTertiaryContainer
@@ -658,7 +734,6 @@ class DoNotTypeIME : InputMethodService() {
                     androidx.appcompat.R.attr.colorPrimary
                 },
             ),
-            dp(MODE_H_DP) / 2f,
         )
         modeButton.contentDescription = when {
             canSwitch -> "Current mode: $current. Tap to switch to $next"
@@ -1006,7 +1081,12 @@ class DoNotTypeIME : InputMethodService() {
 
         const val PAD_SIDE_DP = 12
         const val PAD_TOP_DP = 6
-        const val PAD_BOTTOM_DP = 8
+        /**
+         * Trailing room under the last row. Kept whatever the navigation bar does, because a key
+         * flush against the bottom of the screen is awkward to hit even with nothing drawn over it
+         * — a thumb arriving from below lands on the edge of the display first.
+         */
+        const val PAD_BOTTOM_DP = 10
 
         const val STATUS_DP = 34
         const val METER_DP = 26
@@ -1019,17 +1099,27 @@ class DoNotTypeIME : InputMethodService() {
         const val MODE_W_DP = 68
         const val MODE_H_DP = 28
 
-        /** The flat keys, at iOS's 38dp height and 10pt corner. */
-        const val ROW_GAP_DP = 6
+        /**
+         * The flat keys. 48dp square is Android's minimum touch target, and this row is the one
+         * place in the product where that minimum is not advice.
+         *
+         * They used to be iOS's 38dp, which is the right number on a phone whose home indicator
+         * the system keeps clear for the app. Android draws a three-button navigation bar over the
+         * bottom of the keyboard window, so a short row at the bottom edge of the bar is a row
+         * whose lower half belongs to the system — and 38dp with the last few taken away is not a
+         * key, it is a target you have to aim at. The bar keeps its distance from the navigation
+         * bar in [KeyboardInsets]; the height here is what makes the remainder comfortable.
+         */
+        const val ROW_GAP_DP = 8
         const val UTILITY_GAP_DP = 6
-        const val KEY_H_DP = 38
-        const val KEY_CORNER_DP = 10
+        const val KEY_H_DP = 48
+        const val KEY_CORNER_DP = 12
         const val KEY_PAD_DP = 10
-        const val SETTINGS_W_DP = 38
+        const val SETTINGS_W_DP = 48
         const val SETTINGS_ICON_DP = 20
         const val RETURN_W_DP = 84
         const val RETURN_ICON_DP = 20
-        const val BACKSPACE_W_DP = 52
+        const val BACKSPACE_W_DP = 56
         const val BACKSPACE_ICON_DP = 22
 
         /** iOS's key-repeat timings, so a held backspace runs on at the same speed on both. */

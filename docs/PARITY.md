@@ -225,6 +225,15 @@ one screen further in on two of them.
   Deepgram, Mistral Voxtral), with a live connection test. Keys and models are stored per
   provider, so switching backends to compare them is one dropdown rather than a re-typing
   exercise. Keys live in the Keychain / DPAPI / Android Keystore, never in a config file.
+- **The Model field checks its own shape, on all four.** Model IDs are not ours to enumerate —
+  providers add models faster than releases ship — so the field stays free text and the check is
+  about shape, never existence: letters, digits and `. _ - : / + @`, no spaces, 200 characters.
+  What passes is still sent to the provider, which remains the authority on whether the model is
+  real. The wording is identical on every client, and a value that fails it is not stored: the
+  desktops save as you type, so the previous model stays in effect and keeps running dictations
+  while the field explains itself. Settings also opens with the caret in no field at all, on all
+  four — the two desktop toolkits each hand it to the first control otherwise, which is a dropdown
+  or the Model box, and neither is something a window that was merely opened should be typing into.
 - **Recognition services are a different trade.** They return a transcript in around 1.2 s against
   6.5 s for a model, and cannot read the screen. xAI can still rewrite, on a Grok chat model
   behind the same key; Deepgram and Voxtral cannot. Selecting one states that under the picker

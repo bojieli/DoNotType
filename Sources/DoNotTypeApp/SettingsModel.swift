@@ -44,19 +44,32 @@ final class SettingsModel {
     /// key — at the end of a dictation, with a 404.
     var model: String {
         didSet {
+            // Not stored while it could not be a model ID at all. This field saves as you type,
+            // so without the guard a stray keystroke — the panel is one ⌘, away, and a window
+            // that has focus takes whatever is typed at it — would overwrite a working
+            // configuration before anyone could read the warning underneath it. What is typed
+            // stays in the field; only the store is protected.
+            guard ModelIdentifier.isValid(model) else { return }
             Settings.shared.model = model
             scheduleKeyCheck()
         }
     }
 
+    /// Why the Model field cannot be stored, or nil while there is nothing wrong with it.
+    var modelProblem: String? { ModelIdentifier.validationMessage(for: model) }
+
     /// Only shown for a backend that rewrites on a different model than it transcribes with —
     /// xAI, so far. Empty everywhere else, where one model does both.
     var textModel: String {
         didSet {
+            guard ModelIdentifier.isValid(textModel) else { return }
             let trimmed = textModel.trimmed
             Settings.shared.textModel = trimmed.isEmpty ? nil : trimmed
         }
     }
+
+    /// See `modelProblem` — the same check, for the model the second stage runs on.
+    var textModelProblem: String? { ModelIdentifier.validationMessage(for: textModel) }
 
     var fidelity: Fidelity {
         didSet { Settings.shared.fidelity = fidelity }
@@ -98,10 +111,15 @@ final class SettingsModel {
     /// looks configured and is not.
     var fallbackModel: String = "" {
         didSet {
+            // Guarded like the primary's, and for the same reason — see `model`.
+            guard ModelIdentifier.isValid(fallbackModel) else { return }
             guard let kind = fallbackProvider, !fallbackModel.trimmed.isEmpty else { return }
             Settings.shared.setModel(fallbackModel, for: kind)
         }
     }
+
+    /// See `modelProblem` — the same check, for the second backend's model.
+    var fallbackModelProblem: String? { ModelIdentifier.validationMessage(for: fallbackModel) }
 
     /// The fallback's endpoint override. Empty means the backend's own.
     var fallbackEndpoint: String = "" {
@@ -149,9 +167,23 @@ final class SettingsModel {
     /// The provider alone is not an answer — OpenRouter serves hundreds of models — and this line
     /// is the one place the pair is stated, including the second model where there is one.
     var configurationSummary: String {
-        let base = provider.label(forModel: model)
-        guard provider.defaultTextModel != nil, !textModel.trimmed.isEmpty else { return base }
-        return "\(base) · rewrites on \(textModel)"
+        let base = provider.label(forModel: effectiveModel)
+        guard provider.defaultTextModel != nil, !effectiveTextModel.trimmed.isEmpty else {
+            return base
+        }
+        return "\(base) · rewrites on \(effectiveTextModel)"
+    }
+
+    /// What the next dictation actually runs on. While a Model field holds something that cannot
+    /// be a model ID, nothing was stored, so this line has to name the value still in effect
+    /// rather than the one being typed over it — a summary that reported the unsaved text would
+    /// be the one place claiming the mistake had taken.
+    private var effectiveModel: String {
+        ModelIdentifier.isValid(model) ? model : Settings.shared.model
+    }
+
+    private var effectiveTextModel: String {
+        ModelIdentifier.isValid(textModel) ? textModel : (Settings.shared.textModel ?? "")
     }
 
     /// What the selected backend is recommended for, or nil for the four that are not.

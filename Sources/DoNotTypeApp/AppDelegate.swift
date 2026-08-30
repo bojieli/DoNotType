@@ -292,6 +292,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openSettings() {
         if let settingsWindow {
             settingsWindow.makeKeyAndOrderFront(nil)
+            // The window is cached rather than released on close, which is what keeps the sidebar
+            // where it was left — and AppKit restores the first responder along with it. So one
+            // click in the Model field, weeks ago, made every later ⌘, put the caret back there,
+            // in a field that saves as you type. Reopening a settings window is not typing into
+            // it, so it starts with the caret nowhere.
+            settingsWindow.makeFirstResponder(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }

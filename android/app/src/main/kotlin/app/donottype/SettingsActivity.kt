@@ -3,6 +3,7 @@ package app.donottype
 import app.donottype.accessibility.ScreenReaderService
 import app.donottype.core.DictationService
 import app.donottype.core.Fidelity
+import app.donottype.core.ModelIdentifier
 import app.donottype.core.PerformanceStats
 import app.donottype.core.PersonalDictionary
 import app.donottype.core.ProviderKind
@@ -38,6 +39,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
@@ -231,6 +233,12 @@ class SettingsActivity : AppCompatActivity() {
 
         modelField = TextInputEditText(this).apply { setText(Settings.model) }
         modelLayout = fieldContainer("Model", modelField)
+        // As it is typed rather than only when Save is pressed. The check is about the shape of
+        // what is in the box, so it can answer immediately, and a field that only objects after
+        // you have committed it makes you find the mistake twice.
+        modelField.doAfterTextChanged {
+            modelLayout.error = ModelIdentifier.validationMessage(it?.toString())
+        }
 
         column.addView(
             card(
@@ -251,6 +259,18 @@ class SettingsActivity : AppCompatActivity() {
 
         column.addView(
             primaryButton("Save") {
+                // Refused rather than stored. The rest of the form saves around it otherwise, so
+                // a user would be told "Saved" while the one field they had just edited was the
+                // one thing that had not been — and the previous model would keep running
+                // dictations with nothing on screen saying so.
+                val modelProblem = ModelIdentifier.validationMessage(modelField.text.toString())
+                if (modelProblem != null) {
+                    modelLayout.error = modelProblem
+                    modelField.requestFocus()
+                    Toast.makeText(this, modelProblem, Toast.LENGTH_LONG).show()
+                    return@primaryButton
+                }
+
                 // Keys and models are stored per provider, so this writes to whichever one is
                 // selected rather than to a single shared slot.
                 val keySaved = Settings.setKey(

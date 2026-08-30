@@ -1,6 +1,6 @@
 # Manual release checks
 
-Almost everything in this project is tested automatically. Seven things are not, and the first four
+Almost everything in this project is tested automatically. Eight things are not, and the first four
 are what a user meets first. This document is the checklist of those checks, run by a person, once
 per release. Fifteen minutes for all four platforms.
 
@@ -170,6 +170,27 @@ long — this is what half-second buffers looked like on Windows), and amber at 
 voice, which is a real finding rather than a bug: the input gain is set high enough to be damaging
 the recording before any backend sees it. Say which it was in the notes.
 
+## 7. Settings opens with the caret nowhere
+
+Ten seconds per desktop client, and it is here rather than in a test because the settings window's
+own accessibility tree is not readable from outside it: System Events reports a SwiftUI window with
+zero children, so nothing outside the app can ask which field has the caret. What *can* be checked
+from outside is the consequence, which is what this does.
+
+On macOS and Windows, open Settings and — without clicking anything — type `zzz`.
+
+**Passes if** nothing changes: no characters in the Model box, and on Windows no jump in the Service
+dropdown. Then click into the Model field, close the window, and open it again. Type `zzz` a second
+time. Still nothing: a reopened window does not restore the caret to where it was left, which is the
+half of this that survived the first fix on macOS and needed AppKit to be told directly.
+
+Then check the placement that *is* wanted. With no API key configured, opening the macOS panel puts
+the caret in the API key field — that one has a reason, and the fix above must not have taken it
+away.
+
+Android and iOS need no check here: Android's `screenScaffold` takes the initial focus itself for
+unrelated scrolling reasons, and SwiftUI on iOS focuses nothing on its own.
+
 ## Recording the result
 
 Paste this into the release notes, filled in:
@@ -183,6 +204,7 @@ Manual checks for vX.Y.Z
   silence         gemini ✓   deepgram ✓
   file transcription  macOS ✓   Windows ✓
   level meter     macOS ✓   Windows ✓   Android ✓ (both surfaces)   iOS ✓
+  settings focus  macOS ✓ (fresh + reopened)   Windows ✓
   not checked     Android permissions — no device this cycle
 ```
 

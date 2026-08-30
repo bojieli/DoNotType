@@ -87,8 +87,18 @@ final class DictationModel {
         }
     }
     var model: String {
-        didSet { UserDefaults.standard.set(model, forKey: "model-\(provider.rawValue)") }
+        didSet {
+            // Not stored while it could not be a model ID at all. This field saves as you type, so
+            // without the guard a stray keystroke would replace a working configuration before
+            // anybody could read the warning under the field. What was typed stays in the field;
+            // only the store is protected. Matches the macOS panel — see `SettingsModel.model`.
+            guard ModelIdentifier.isValid(model) else { return }
+            UserDefaults.standard.set(model, forKey: "model-\(provider.rawValue)")
+        }
     }
+
+    /// Why the Model field cannot be stored, or nil while there is nothing wrong with it.
+    var modelProblem: String? { ModelIdentifier.validationMessage(for: model) }
     var endpoint: String {
         didSet { UserDefaults.standard.set(endpoint, forKey: "endpoint-\(provider.rawValue)") }
     }
@@ -201,10 +211,15 @@ final class DictationModel {
 
     var fallbackModel: String = "" {
         didSet {
+            // Guarded like the primary's, and for the same reason — see `model`.
+            guard ModelIdentifier.isValid(fallbackModel) else { return }
             guard let kind = fallbackProvider, !fallbackModel.trimmed.isEmpty else { return }
             UserDefaults.standard.set(fallbackModel.trimmed, forKey: "model-\(kind.rawValue)")
         }
     }
+
+    /// See `modelProblem` — the same check, for the second backend's model.
+    var fallbackModelProblem: String? { ModelIdentifier.validationMessage(for: fallbackModel) }
 
     var fallbackEndpoint: String = "" {
         didSet {

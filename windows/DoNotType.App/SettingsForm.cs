@@ -28,6 +28,23 @@ public sealed class SettingsForm : Form
     /// <summary>What the selected backend gives up. Empty and hidden for a model provider.</summary>
     private readonly Label _providerNote = new() { AutoSize = true, MaximumSize = new Size(430, 0) };
 
+    /// <summary>
+    /// Why what is in the Model box could not be a model ID. Hidden while there is nothing wrong
+    /// with it, which is almost always.
+    /// </summary>
+    /// <remarks>
+    /// The same amber as <c>_secondKeyNote</c> rather than red: nothing has been lost at this
+    /// point. The stored model is untouched and still running dictations, and this says why Save
+    /// will not replace it.
+    /// </remarks>
+    private readonly Label _modelProblem = new()
+    {
+        AutoSize = true,
+        MaximumSize = new Size(430, 0),
+        ForeColor = Color.FromArgb(190, 140, 60),
+        Visible = false,
+    };
+
     private readonly Label _connection = new() { AutoSize = true, MaximumSize = new Size(420, 0) };
 
     private readonly ComboBox _fallback = new() { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -143,6 +160,20 @@ public sealed class SettingsForm : Form
         RefreshHistory();
     }
 
+    /// <summary>Opens with the caret nowhere.</summary>
+    /// <remarks>
+    /// WinForms gives the focus to the first control in tab order when a form is shown, which on
+    /// the General tab is the Service dropdown with Model directly behind it. Both take keystrokes
+    /// aimed at neither: a DropDownList jumps its selection to whatever letter is typed at it, and
+    /// the Model box simply keeps the characters. Opening a settings window is not typing into it,
+    /// so nothing starts focused. Tab still reaches every control, in the same order as before.
+    /// </remarks>
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        ActiveControl = null;
+    }
+
     // ---- General -----------------------------------------------------------------------------
 
     private TabPage BuildGeneralTab()
@@ -162,6 +193,7 @@ public sealed class SettingsForm : Form
         layout.Controls.Add(_recommendationNote);
         layout.Controls.Add(_providerNote);
         layout.Controls.Add(Labelled("Model", _model));
+        layout.Controls.Add(_modelProblem);
         layout.Controls.Add(Labelled("API key", _apiKey));
 
         var test = new Button { Text = "Test connection", Width = 140 };
@@ -989,6 +1021,11 @@ public sealed class SettingsForm : Form
         // while the user looks at the key they just entered.
         _apiKey.TextChanged += (_, _) => RefreshProviderNotes();
 
+        // As it is typed rather than only when Save is pressed. The check is about the shape of
+        // what is in the box, so it can answer immediately, and a field that objects only after
+        // you commit it makes you find the mistake twice.
+        _model.TextChanged += (_, _) => RefreshModelProblem();
+
         foreach (var trigger in Enum.GetValues<HotkeyMonitor.Trigger>())
         {
             _trigger.Items.Add(HotkeyMonitor.Label(trigger));
@@ -1058,8 +1095,28 @@ public sealed class SettingsForm : Form
         };
     }
 
+    /// <summary>Shows or hides the sentence under the Model box. See <c>_modelProblem</c>.</summary>
+    private void RefreshModelProblem()
+    {
+        var problem = ModelIdentifier.ValidationMessage(_model.Text);
+        _modelProblem.Text = problem ?? string.Empty;
+        _modelProblem.Visible = problem is not null;
+    }
+
     private void SaveValues()
     {
+        // Refused rather than stored, and before anything else is written. The rest of this method
+        // saves the whole form, so without the guard the window would report "Saved." while the one
+        // field just edited was the one thing that had not been — and the previous model would go
+        // on running dictations with nothing on screen saying so.
+        RefreshModelProblem();
+        if (!ModelIdentifier.IsValid(_model.Text))
+        {
+            _model.Focus();
+            _connection.Text = "Not saved.";
+            return;
+        }
+
         _settings.Provider = SelectedProvider();
         _settings.SetModelFor(_settings.Provider, _model.Text);
         _settings.SetKeyFor(_settings.Provider, _apiKey.Text.Trim());
