@@ -382,6 +382,7 @@ class DoNotTypeIME : InputMethodService() {
             padSide,
             KeyboardInsets.bottomPadding(
                 basePadding = padBottom,
+                minimumClearance = dp(MIN_BOTTOM_CLEARANCE_DP),
                 dispatchedNavigationInset = dispatchedNavigationInset,
                 windowNavigationInset = displayNavigationInset(),
             ),
@@ -1147,12 +1148,23 @@ class DoNotTypeIME : InputMethodService() {
 
         const val PAD_SIDE_DP = 12
         const val PAD_TOP_DP = 6
-        /**
-         * Trailing room under the last row. Kept whatever the navigation bar does, because a key
-         * flush against the bottom of the screen is awkward to hit even with nothing drawn over it
-         * — a thumb arriving from below lands on the edge of the display first.
-         */
+        /** The gap kept between the last row and the navigation bar itself. */
         const val PAD_BOTTOM_DP = 10
+
+        /**
+         * The least room allowed between the last row and the bottom of the screen.
+         *
+         * Measured rather than picked. Gesture navigation reports a 24dp inset and three-button
+         * navigation 48dp, so inset-plus-gap left the gesture case at 34dp — reported as still too
+         * low to hit — and the three-button case, which nobody complained about, at 58dp. A thumb
+         * needs the same room in both.
+         *
+         * 60dp is Gboard's, measured on the same screen: its bottom key row ends 62dp above the
+         * bottom edge. That is the right target because it is the keyboard the complaint is
+         * implicitly comparing against — whatever number this project reasons its way to, the hand
+         * holding the phone is calibrated on Gboard.
+         */
+        const val MIN_BOTTOM_CLEARANCE_DP = 60
 
         const val STATUS_DP = 34
         const val METER_DP = 26
