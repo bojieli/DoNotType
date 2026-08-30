@@ -20,7 +20,8 @@ public sealed class FileTranscriber(
     TranscriptionService service,
     PromptBuilder prompt,
     Fidelity fidelity = Fidelity.Light,
-    TranscriptionService? secondStage = null)
+    TranscriptionService? secondStage = null,
+    string customRewriteStyle = "")
 {
     private static readonly Log Log = new("file");
 
@@ -157,7 +158,10 @@ public sealed class FileTranscriber(
                 ? mode switch
                 {
                     TranscriptMode.RewriteMode rewrite =>
-                        new StyledRequest.Style(prompt.StyleClause(rewrite.Style)),
+                        prompt.StyleClause(rewrite.Style, customRewriteStyle)
+                            is { Length: > 0 } clause
+                            ? new StyledRequest.Style(clause)
+                            : null,
                     TranscriptMode.TranslateMode translate =>
                         new StyledRequest.Translation(translate.Language),
                     _ => null,
@@ -213,7 +217,7 @@ public sealed class FileTranscriber(
         // way this pipeline could invent words outright.
         if (!mode.NeedsSecondPass || verbatim.Length == 0) return outcome;
 
-        var instruction = prompt.SecondStageInstruction(mode);
+        var instruction = prompt.SecondStageInstruction(mode, customRewriteStyle);
         var deriver = TextCapableService;
         if (instruction is null || deriver is null) return outcome;
 

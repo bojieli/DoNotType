@@ -30,26 +30,41 @@ object KeyboardInsets {
     /**
      * Bottom padding for the keyboard's root view.
      *
-     * @param basePadding the bar's own trailing padding, which is kept whatever the bars do — a row
-     *   of keys flush against the bottom of the screen is unpleasant to hit even with nothing
-     *   drawn over it.
+     * The navigation inset alone is not enough, and measuring said so. Gesture navigation reports
+     * about 24dp — the home pill's strip — while three-button navigation reports about 48dp, so
+     * padding by the inset plus a small gap left the gesture case at roughly 34dp and the
+     * three-button case at 58dp. The ergonomic requirement does not vary like that: a thumb needs
+     * the same room away from the bottom of the screen either way, and at 34dp the bottom row was
+     * reported as still too low to hit comfortably. Gboard, measured on the same screen, leaves
+     * about 62dp below its bottom key row, and that is what the floor is set from.
+     *
+     * So the answer is a floor rather than a sum: never closer to the bottom of the screen than
+     * [minimumClearance], and never closer to the navigation bar than [basePadding].
+     *
+     * @param basePadding the gap kept above the navigation bar itself.
+     * @param minimumClearance the least room allowed between the last row and the bottom of the
+     *   screen, which is what the gesture-navigation case needs.
      * @param dispatchedNavigationInset the navigation-bar inset delivered to the input view.
      * @param windowNavigationInset the navigation-bar inset the display reports for this window,
      *   which is available whether or not a dispatch has happened.
      */
     fun bottomPadding(
         basePadding: Int,
+        minimumClearance: Int,
         dispatchedNavigationInset: Int,
         windowNavigationInset: Int,
         sdkInt: Int = Build.VERSION.SDK_INT,
     ): Int {
-        val navigationBar = if (sdkInt >= EDGE_TO_EDGE_SDK) {
-            maxOf(dispatchedNavigationInset, windowNavigationInset)
-        } else {
-            // The window sits above the bar here. Honour a dispatched inset if one arrives — a
-            // device that reports one is telling us it does overlap — but never invent one.
-            dispatchedNavigationInset
+        val base = maxOf(basePadding, 0)
+        if (sdkInt < EDGE_TO_EDGE_SDK) {
+            // The window sits above the bar here, so the strip this clearance protects against is
+            // outside it entirely and a floor would be that many dp of dead keyboard. Honour a
+            // dispatched inset if one arrives — a device that reports one is telling us it does
+            // overlap — but never invent one.
+            return base + maxOf(dispatchedNavigationInset, 0)
         }
-        return maxOf(basePadding, 0) + maxOf(navigationBar, 0)
+        val navigationBar =
+            maxOf(maxOf(dispatchedNavigationInset, windowNavigationInset), 0)
+        return maxOf(base + navigationBar, maxOf(minimumClearance, 0))
     }
 }

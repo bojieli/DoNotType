@@ -95,7 +95,8 @@ final class PromptBuilderTests: XCTestCase {
         try shipped().validate()
 
         let builder = try shipped()
-        for style in RewriteStyle.allCases where style.isRewrite {
+        // Only the file-backed styles: `custom` has no shipped clause to check placeholders in.
+        for style in RewriteStyle.allCases where style.hasClauseFile {
             let instruction = try builder.rewriteInstruction(style: style)
             XCTAssertFalse(instruction.contains("{{"), "\(style.rawValue) left a placeholder")
         }
@@ -295,7 +296,9 @@ final class PromptStoreTests: XCTestCase {
         for fidelity in Fidelity.allCases {
             text += try fenced(fidelity.rawValue, .fidelity(fidelity)) + "\n"
         }
-        for style in RewriteStyle.allCases where style.isRewrite {
+        // Only the file-backed styles. `custom` has no shipped file — its clause is the user's
+        // own text — so a legacy single-file prompt never carried one.
+        for style in RewriteStyle.allCases where style.hasClauseFile {
             text += try fenced("style: \(style.rawValue)", .style(style)) + "\n"
         }
         for style in SummaryStyle.allCases {

@@ -280,15 +280,20 @@ class DoNotTypeIME : InputMethodService() {
         returnButton = buildReturnButton()
         backspaceButton = buildBackspaceButton()
 
-        root.addView(
-            statusLabel,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(STATUS_DP)),
-        )
-        root.addView(
-            indicator,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(METER_DP)),
-        )
-
+        // The talk button first, and this is the one place the bar deliberately does not match
+        // iOS's order.
+        //
+        // The keyboard is anchored to the bottom of the screen, so where a control sits *within*
+        // the bar is where it sits under the thumb. With the status line and the meter above it,
+        // the one control this keyboard exists for was the second-lowest thing on the screen —
+        // reported twice as too low to reach on a large phone, and correctly. Moving it to the top
+        // lifts it about 60dp without making the keyboard any taller, because the two rows it
+        // swaps with are the two nobody presses: one is a label and the other is a readout.
+        //
+        // The meter follows it rather than leading it for the same reason it was ever adjacent —
+        // it reports on what the button is doing — and the status line goes under both, where a
+        // sentence belongs.
+        //
         // Cancel shares the talk button's row, at the far end from the thumb that just pressed
         // it. Not on the utility row below: that row is always there, and a control that throws a
         // recording away must not be a permanent neighbour of Backspace.
@@ -308,6 +313,14 @@ class DoNotTypeIME : InputMethodService() {
                 )
             },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(TALK_H_DP)),
+        )
+        root.addView(
+            indicator,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(METER_DP)),
+        )
+        root.addView(
+            statusLabel,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(STATUS_DP)),
         )
 
         // The utility row, in iOS's order: settings and mode on the left, return under the thumb
@@ -382,6 +395,7 @@ class DoNotTypeIME : InputMethodService() {
             padSide,
             KeyboardInsets.bottomPadding(
                 basePadding = padBottom,
+                minimumClearance = dp(MIN_BOTTOM_CLEARANCE_DP),
                 dispatchedNavigationInset = dispatchedNavigationInset,
                 windowNavigationInset = displayNavigationInset(),
             ),
@@ -1146,13 +1160,31 @@ class DoNotTypeIME : InputMethodService() {
         const val TAG = "DoNotTypeIME"
 
         const val PAD_SIDE_DP = 12
-        const val PAD_TOP_DP = 6
+
         /**
-         * Trailing room under the last row. Kept whatever the navigation bar does, because a key
-         * flush against the bottom of the screen is awkward to hit even with nothing drawn over it
-         * — a thumb arriving from below lands on the edge of the display first.
+         * Room above the talk button, which is now the first thing in the bar.
+         *
+         * 6dp was right above a line of text and is not right above a 58dp capsule: the button
+         * would sit flush against the top edge of the keyboard.
          */
+        const val PAD_TOP_DP = 12
+        /** The gap kept between the last row and the navigation bar itself. */
         const val PAD_BOTTOM_DP = 10
+
+        /**
+         * The least room allowed between the last row and the bottom of the screen.
+         *
+         * Measured rather than picked. Gesture navigation reports a 24dp inset and three-button
+         * navigation 48dp, so inset-plus-gap left the gesture case at 34dp — reported as still too
+         * low to hit — and the three-button case, which nobody complained about, at 58dp. A thumb
+         * needs the same room in both.
+         *
+         * 60dp is Gboard's, measured on the same screen: its bottom key row ends 62dp above the
+         * bottom edge. That is the right target because it is the keyboard the complaint is
+         * implicitly comparing against — whatever number this project reasons its way to, the hand
+         * holding the phone is calibrated on Gboard.
+         */
+        const val MIN_BOTTOM_CLEARANCE_DP = 60
 
         const val STATUS_DP = 34
         const val METER_DP = 26

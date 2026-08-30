@@ -83,13 +83,25 @@ final class SettingsModel {
         didSet { Settings.shared.chineseScript = chineseScript }
     }
 
+    var dictationStyle: DictationStyle {
+        didSet { Settings.shared.dictationStyle = dictationStyle }
+    }
+
     /// Saved as typed, like every other field in this window, and cleaned by the setter — so the
     /// box shows the text a request would carry rather than the text that was pasted into it.
-    var formattingSample: String {
+    var customDictationStyle: String {
         didSet {
-            Settings.shared.formattingSample = formattingSample
-            let cleaned = Settings.shared.formattingSample
-            if cleaned != formattingSample { formattingSample = cleaned }
+            Settings.shared.customDictationStyle = customDictationStyle
+            let cleaned = Settings.shared.customDictationStyle
+            if cleaned != customDictationStyle { customDictationStyle = cleaned }
+        }
+    }
+
+    var customRewriteStyle: String {
+        didSet {
+            Settings.shared.customRewriteStyle = customRewriteStyle
+            let cleaned = Settings.shared.customRewriteStyle
+            if cleaned != customRewriteStyle { customRewriteStyle = cleaned }
         }
     }
 
@@ -644,7 +656,9 @@ final class SettingsModel {
         fidelity = settings.fidelity
         typographySpacing = settings.typographySpacing
         chineseScript = settings.chineseScript
-        formattingSample = settings.formattingSample
+        dictationStyle = settings.dictationStyle
+        customDictationStyle = settings.customDictationStyle
+        customRewriteStyle = settings.customRewriteStyle
         translateTo = settings.translateTo
         keytermBiasing = settings.keytermBiasing
         fallbackProvider = settings.fallbackProvider
@@ -720,7 +734,9 @@ final class SettingsModel {
             typography: .init(
                 spacing: settings.typographySpacing.rawValue,
                 chineseScript: settings.chineseScript.rawValue,
-                formattingSample: settings.formattingSample,
+                dictationStyle: settings.dictationStyle.rawValue,
+                customDictationStyle: settings.customDictationStyle,
+                customRewriteStyle: settings.customRewriteStyle,
                 translateTo: settings.translateTo),
             desktop: .init(
                 trigger: settings.trigger.rawValue,
@@ -754,7 +770,7 @@ final class SettingsModel {
                 guard let kind = ProviderKind(persistedValue: raw) else { return nil }
                 return (kind, value)
             }
-        var importedTypography: (TypographySpacing, ChineseScript, String, String)?
+        var importedTypography: ImportedTypography?
         if let typography = document.typography {
             guard let spacing = TypographySpacing(rawValue: typography.spacing) else {
                 throw SettingsTransferApplyError.unsupportedValue(
@@ -764,8 +780,24 @@ final class SettingsModel {
                 throw SettingsTransferApplyError.unsupportedValue(
                     field: "typography.chineseScript", value: typography.chineseScript)
             }
-            importedTypography = (
-                spacing, script, typography.formattingSample, typography.translateTo ?? "")
+            // Absent is "the profile predates styles", which keeps what this device has; present
+            // and unreadable is a document this client cannot honour, and fails the whole import
+            // rather than being silently defaulted.
+            var style = Settings.shared.dictationStyle
+            if let raw = typography.dictationStyle {
+                guard let parsed = DictationStyle(rawValue: raw) else {
+                    throw SettingsTransferApplyError.unsupportedValue(
+                        field: "typography.dictationStyle", value: raw)
+                }
+                style = parsed
+            }
+            importedTypography = ImportedTypography(
+                spacing: spacing, script: script, style: style,
+                customDictation: typography.customDictationStyle
+                    ?? Settings.shared.customDictationStyle,
+                customRewrite: typography.customRewriteStyle
+                    ?? Settings.shared.customRewriteStyle,
+                translateTo: typography.translateTo ?? "")
         }
 
         guard let importedFidelity = Fidelity(rawValue: document.fidelity) else {
@@ -850,10 +882,12 @@ final class SettingsModel {
         settings.learnedDictionaryTerms = document.dictionary.learned
         settings.learnDictionaryFromEdits = document.dictionary.learnsFromEdits
         if let typography = importedTypography {
-            settings.typographySpacing = typography.0
-            settings.chineseScript = typography.1
-            settings.formattingSample = typography.2
-            settings.translateTo = typography.3
+            settings.typographySpacing = typography.spacing
+            settings.chineseScript = typography.script
+            settings.dictationStyle = typography.style
+            settings.customDictationStyle = typography.customDictation
+            settings.customRewriteStyle = typography.customRewrite
+            settings.translateTo = typography.translateTo
         }
 
         if let desktop = document.desktop, let values = desktopValues {
@@ -891,7 +925,9 @@ final class SettingsModel {
         fidelity = settings.fidelity
         typographySpacing = settings.typographySpacing
         chineseScript = settings.chineseScript
-        formattingSample = settings.formattingSample
+        dictationStyle = settings.dictationStyle
+        customDictationStyle = settings.customDictationStyle
+        customRewriteStyle = settings.customRewriteStyle
         translateTo = settings.translateTo
         keytermBiasing = settings.keytermBiasing
         fallbackProvider = settings.fallbackProvider
@@ -1187,7 +1223,9 @@ final class SettingsModel {
             let promptURL = Self.bundledPromptURL(),
             let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(
-                    fidelity: fidelity, script: chineseScript, sample: formattingSample)
+                    fidelity: fidelity, script: chineseScript,
+                    dictationStyle: dictationStyle,
+                    customDictationStyle: customDictationStyle)
         else { return nil }
 
         return RetryCoordinator(

@@ -24,6 +24,7 @@ struct SettingsView: View {
             providerSection
             dictationSection
             typographySection
+            dictationStyleSection
             translationSection
             rewriteSection
             dictionarySection
@@ -271,27 +272,54 @@ struct SettingsView: View {
             }
             .accessibilityIdentifier("chinese-script")
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Formatting example").font(.subheadline)
-                TextField(
-                    "Optional — a sentence written the way you want yours written",
-                    text: $model.formattingSample, axis: .vertical
-                )
-                .lineLimit(2...5)
-                .accessibilityIdentifier("formatting-sample")
-                // No silent caps: the field trims, so it says where.
-                Text("Up to \(Typography.maxSampleCharacters) characters.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         } header: {
             Text("Typography")
         } footer: {
             Text(
                 "Spacing is applied to the finished transcript on this phone, so it is the same "
-                    + "on every dictation. The script and the example are asked of the model, "
-                    + "which is why they are a request rather than a guarantee — and why nothing "
-                    + "here is allowed to change a word."
+                    + "on every dictation. The script is asked of the model, which is why it is a "
+                    + "request rather than a guarantee — and why nothing here is allowed to change "
+                    + "a word."
+            )
+        }
+    }
+
+    /// Two sections rather than one control with a mode switch, because the two stages are
+    /// different jobs and get different answers: the dictation style may not reword, and the
+    /// rewrite style is there to.
+    private var dictationStyleSection: some View {
+        Section {
+            Picker("Write it as", selection: $model.dictationStyle) {
+                ForEach(DictationStyle.allCases, id: \.self) { style in
+                    Text(style.label).tag(style)
+                }
+            }
+            .accessibilityIdentifier("dictation-style")
+
+            if model.dictationStyle == .custom {
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField(
+                        "Describe it, or paste a sentence written the way you want yours",
+                        text: $model.customDictationStyle, axis: .vertical
+                    )
+                    .lineLimit(3...8)
+                    .accessibilityIdentifier("custom-dictation-style")
+                    // No silent caps: the field trims, so it says where.
+                    Text("Up to \(Typography.maxSampleCharacters) characters.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Dictation style")
+        } footer: {
+            Text(
+                "How a dictation is written down — line breaks, punctuation, whether it reads "
+                    + "like a chat message or a paragraph. Not what it says: none of these may "
+                    + "add, remove or reword anything, and Fidelity above is the separate dial "
+                    + "for how much of your own “um” survives. As spoken sends nothing extra, "
+                    + "which is why it is the default. Custom text is kept when you switch to a "
+                    + "preset and back."
             )
         }
     }
@@ -338,6 +366,19 @@ struct SettingsView: View {
             }
             .disabled(!model.canRewrite)
             .accessibilityIdentifier("rewrite-style")
+
+            if model.preferredRewriteStyle == .custom {
+                TextField(
+                    "Describe it, or paste a sentence written the way you want yours",
+                    text: $model.customRewriteStyle, axis: .vertical
+                )
+                .lineLimit(3...8)
+                .disabled(!model.canRewrite)
+                .accessibilityIdentifier("custom-rewrite-style")
+                Text("Leaving this empty means no rewrite: you get the transcript as it is.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             if let reason = model.rewriteAvailability.reason {
                 Label(reason, systemImage: "exclamationmark.triangle")

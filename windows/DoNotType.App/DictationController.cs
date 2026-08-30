@@ -606,7 +606,8 @@ public sealed class DictationController : IDisposable
             var service = new TranscriptionService(
                 ProviderFactory.Create(_settings.Provider, key, _settings.Model),
                 Prompt(promptPath).SystemInstruction(
-                _settings.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
+                _settings.Fidelity, _settings.ChineseScript, _settings.DictationStyle,
+                _settings.CustomDictationStyle))
             {
                 Fidelity = _settings.Fidelity,
                 Typography = _settings.TypographySpacing,
@@ -665,7 +666,8 @@ public sealed class DictationController : IDisposable
         var secondary = new TranscriptionService(
             ProviderFactory.Create(kind.Value, key, _settings.ModelFor(kind.Value)),
             Prompt(promptPath).SystemInstruction(
-                _settings.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
+                _settings.Fidelity, _settings.ChineseScript, _settings.DictationStyle,
+                _settings.CustomDictationStyle))
         {
             Fidelity = _settings.Fidelity,
             Typography = _settings.TypographySpacing,
@@ -749,7 +751,8 @@ public sealed class DictationController : IDisposable
         var service = new TranscriptionService(
             provider,
             Prompt(promptPath).SystemInstruction(
-                _settings.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
+                _settings.Fidelity, _settings.ChineseScript, _settings.DictationStyle,
+                _settings.CustomDictationStyle))
         {
             // Carried separately as well as baked into the prompt, because a recognition backend
             // has no system instruction to read it out of.
@@ -796,7 +799,11 @@ public sealed class DictationController : IDisposable
             StyledRequest? folded = stage switch
             {
                 TranscriptMode.RewriteMode rewriteStage =>
-                    new StyledRequest.Style(Prompt(promptPath).StyleClause(rewriteStage.Style)),
+                    Prompt(promptPath)
+                        .StyleClause(rewriteStage.Style, _settings.CustomRewriteStyle)
+                        is { Length: > 0 } clause
+                        ? new StyledRequest.Style(clause)
+                        : null,
                 TranscriptMode.TranslateMode translateStage =>
                     new StyledRequest.Translation(translateStage.Language),
                 _ => null,
@@ -854,7 +861,8 @@ public sealed class DictationController : IDisposable
             if (stage.NeedsSecondPass)
             {
                 var mode = stage;
-                var instruction = Prompt(promptPath).SecondStageInstruction(mode);
+                var instruction = Prompt(promptPath)
+                    .SecondStageInstruction(mode, _settings.CustomRewriteStyle);
                 var styledInResponse = result.Transcript.Styled?.Trim();
                 if (!string.IsNullOrWhiteSpace(styledInResponse))
                 {
@@ -1139,7 +1147,8 @@ public sealed class DictationController : IDisposable
         var service = new TranscriptionService(
             ProviderFactory.Create(_settings.Provider, key, _settings.Model),
             Prompt(promptPath).SystemInstruction(
-                record.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
+                record.Fidelity, _settings.ChineseScript, _settings.DictationStyle,
+                _settings.CustomDictationStyle))
         {
             Fidelity = record.Fidelity,
             Typography = _settings.TypographySpacing,

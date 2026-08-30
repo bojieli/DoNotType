@@ -15,6 +15,17 @@ public enum RewriteStyle
     Formal,
     Concise,
     Casual,
+
+    /// <summary>
+    /// The user's own description or example, from settings rather than from a file.
+    /// </summary>
+    /// <remarks>
+    /// Three shipped styles are three guesses at what somebody wants their email to sound like.
+    /// This is the fourth answer — the one we did not think of — and it goes through the same
+    /// prompt/rewrite.md host block as the presets, so the never-remove-a-fact rule applies to it
+    /// exactly as it applies to Formal.
+    /// </remarks>
+    Custom,
 }
 
 /// <summary>
@@ -41,16 +52,25 @@ public static class StyleExtensions
         RewriteStyle.Formal => "formal",
         RewriteStyle.Concise => "concise",
         RewriteStyle.Casual => "casual",
+        RewriteStyle.Custom => "custom",
         _ => "verbatim",
     };
 
     public static bool IsRewrite(this RewriteStyle style) => style != RewriteStyle.Verbatim;
+
+    /// <summary>
+    /// Whether the clause comes from a file in prompt/style/. False for Custom, whose clause is the
+    /// user's own text, and for Verbatim, which is the absence of a rewrite.
+    /// </summary>
+    public static bool HasClauseFile(this RewriteStyle style) =>
+        style.IsRewrite() && style != RewriteStyle.Custom;
 
     public static string Label(this RewriteStyle style) => style switch
     {
         RewriteStyle.Formal => "Formal — professional prose",
         RewriteStyle.Concise => "Concise — same voice, fewer words",
         RewriteStyle.Casual => "Casual — relaxed, as if typed",
+        RewriteStyle.Custom => "Custom — your own description or example",
         _ => "Verbatim — exactly what you said",
     };
 
@@ -142,6 +162,9 @@ public abstract record TranscriptMode
             RewriteStyle.Formal => "Rewriting…",
             RewriteStyle.Concise => "Tightening…",
             RewriteStyle.Casual => "Loosening…",
+            // Deliberately the plain word. The other three are named after what that style does to
+            // the prose, and nothing here knows what the user asked for.
+            RewriteStyle.Custom => "Rewriting…",
             _ => "Finishing…",
         },
         SummaryMode summary => summary.Style switch
@@ -176,6 +199,7 @@ public abstract record TranscriptMode
         Rewrite(RewriteStyle.Formal),
         Rewrite(RewriteStyle.Concise),
         Rewrite(RewriteStyle.Casual),
+        Rewrite(RewriteStyle.Custom),
         Summary(SummaryStyle.Brief),
         Summary(SummaryStyle.Bullets),
         Summary(SummaryStyle.Actions),
@@ -219,6 +243,7 @@ public abstract record TranscriptMode
                     "formal" => Rewrite(RewriteStyle.Formal),
                     "concise" => Rewrite(RewriteStyle.Concise),
                     "casual" => Rewrite(RewriteStyle.Casual),
+                    "custom" => Rewrite(RewriteStyle.Custom),
                     _ => null,
                 };
             case "summary" or "summarise" or "summarize":

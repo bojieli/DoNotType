@@ -22,11 +22,12 @@ mis-match.
 | Summary stage | [`prompt/summary.md`](../prompt/summary.md) | `{{SUMMARY_RULE}}` |
 | Translation stage | [`prompt/translate.md`](../prompt/translate.md) | `{{TARGET_LANGUAGE}}` |
 | Formatting block | [`prompt/typography.md`](../prompt/typography.md) | `{{SCRIPT_RULE}}` |
-| Formatting example | [`prompt/sample.md`](../prompt/sample.md) | `{{SAMPLE}}` |
+| Dictation style | [`prompt/dictation-style.md`](../prompt/dictation-style.md) | `{{DICTATION_STYLE_RULE}}` |
 | Fidelity clauses | [`prompt/fidelity/`](../prompt/fidelity/) — `raw`, `light`, `tidy` | — |
 | Rewrite styles | [`prompt/style/`](../prompt/style/) — `formal`, `concise`, `casual` | — |
 | Summary styles | [`prompt/summary-style/`](../prompt/summary-style/) — `brief`, `bullets`, `actions` | — |
 | Chinese script clauses | [`prompt/script/`](../prompt/script/) — `simplified`, `traditional` | — |
+| Dictation style clauses | [`prompt/dictation-style/`](../prompt/dictation-style/) — `chat`, `notes`, `prose` | — |
 
 Two rules govern the whole directory:
 
@@ -205,13 +206,42 @@ speaker got Simplified on one dictation and Traditional on the next. A user who 
 settled picks a script in Typography, and `prompt/script/simplified.md` or
 `prompt/script/traditional.md` is substituted into the formatting block below.
 
+## Writing style
+
+One control, two ways to fill it, and one of those for each stage.
+
+**Presets or your own.** A dropdown of a few answers covers most people in one tap; a text box
+covers everybody else. Neither alone is enough — three shipped rewrite styles are three guesses at
+what somebody wants their email to sound like, and a blank box in a settings screen is a question
+most people will not answer. So both, on both stages.
+
+**Two stages, two settings.** The dictation style is how the words are *written down*; the rewrite
+style is how they are *said again*. They are separate settings because they are separate jobs with
+opposite permissions: the dictation style may not change a word, and the rewrite style exists to.
+Selecting Chat for dictation and Formal for rewriting is a legitimate combination and neither one
+implies the other.
+
+**Both halves go through the same host block.** `prompt/dictation-style.md` opens with the rule the
+clause could otherwise be read as relaxing — formatting governs how it is written, never what it
+says — and then frames what follows as a style rather than as speech: not to be transcribed,
+answered, continued, or borrowed from. A preset lands there and so does the user's own sentence.
+The same is true on the rewrite side: `RewriteStyle.custom` substitutes the user's text into
+`prompt/rewrite.md`, so *never remove a fact* applies to it exactly as it applies to `formal`.
+A custom style that bypassed its block would be user-authored text sitting unframed in a system
+instruction, which is the one thing this directory's own rules exist to prevent.
+
+**`spoken` is the default and sends nothing.** As with the formatting blocks below, that is
+load-bearing rather than tidy: it is what keeps the measured changelog describing the request the
+default install actually sends. An empty Custom sends nothing either — a rewrite instruction whose
+style clause is blank asks the model to write in no particular way, and it would do something.
+
 ## The formatting blocks
 
 Two parts that are **absent from the default request**, and that is the whole design.
 
 [`prompt/typography.md`](../prompt/typography.md) is appended to the transcription instruction only
-when the user has chosen a Chinese script; [`prompt/sample.md`](../prompt/sample.md) only when they
-have supplied a formatting example. Choosing neither — the default — sends the same bytes this
+when the user has chosen a Chinese script; [`prompt/dictation-style.md`](../prompt/dictation-style.md) only
+when they have chosen a dictation style. Choosing neither — the default — sends the same bytes this
 project sent before either file existed, which is asserted directly in the suites
 (`testTheDefaultRequestIsUnchangedByThisFeatureExisting`) rather than argued for here.
 
@@ -243,6 +273,7 @@ screen context broke it. That is the failure this contract exists to prevent, an
 
 | Date | Change | Provider / model | runs | matched | improved | regressed |
 |------|--------|------------------|------|---------|----------|-----------|
+| 2026-08-30 | Writing styles added; default request byte-identical (control) | **gemini** · gemini-3.5-flash | 48 | 38 | 8 | **2** |
 | 2026-08-30 | Translation stage added; transcription request untouched (control) | **gemini** · gemini-3.5-flash | 48 | 36 | 9 | **3** |
 | 2026-08-30 | Formatting blocks added; default request byte-identical (control) | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
 | 2026-08-19 | Casual rewrite style replaces bullets; default rewrite style | **gemini** · gemini-3.5-flash | 48 | 37 | 11 | **2** |
@@ -252,6 +283,17 @@ screen context broke it. That is the failure this contract exists to prevent, an
 | 2026-08-17 | Pre-change 972-word control | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
 | 2026-08-09 | Initial contract | **gemini** · gemini-3.6-flash | 15 | 15 | 0 | **0** |
 | 2026-08-09 | Initial contract | openrouter · google/gemini-3.6-flash | 15 | 12 | 0 | 1 |
+
+### 2026-08-30 — the writing styles, and a third control run
+
+`prompt/dictation-style.md` (the renamed `sample.md`) and `prompt/dictation-style/` were added, and
+`RewriteStyle` gained a `custom` case whose clause is a setting rather than a file. None of it
+reaches a default request: `spoken` sends nothing, and the equality is asserted on all three
+platforms that can read `prompt/` from a unit test.
+
+The control run came back to the same figures as the first one — 38 matched, 8 improved, 2
+regressed over 48 runs — which is what an unchanged request is supposed to look like, and which
+also puts the previous entry's 36/9/3 where it belongs: inside the noise.
 
 ### 2026-08-30 — the translation stage, and a second control run
 
@@ -272,10 +314,10 @@ entries.
 
 ### 2026-08-30 — the formatting blocks, and a control run rather than a measurement
 
-`prompt/typography.md`, `prompt/sample.md` and `prompt/script/` were added. None of them reaches a
-default request: the first is sent only when a Chinese script is chosen, the second only when a
-formatting example is set, and choosing neither leaves the instruction byte-identical to the one
-before these files existed. That equality is a test rather than a claim
+`prompt/typography.md`, `prompt/dictation-style.md` (added as `prompt/sample.md` and generalised in
+the same series) and `prompt/script/` were added. None of them reaches a default request: the first
+is sent only when a Chinese script is chosen, the second only when a dictation style is chosen, and
+choosing neither leaves the instruction byte-identical to the one before these files existed. That equality is a test rather than a claim
 (`testTheDefaultRequestIsUnchangedByThisFeatureExisting`, and its ports).
 
 The suite was therefore run as a **control**, not as a before/after: 38 matched, 7 improved, 2

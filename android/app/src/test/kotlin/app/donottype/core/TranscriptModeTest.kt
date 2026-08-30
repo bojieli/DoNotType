@@ -122,6 +122,9 @@ class TranscriptModeTest {
             "rewrite:formal" to "rewrite:formal",
             "rewrite:concise" to "rewrite:concise",
             "rewrite:casual" to "rewrite:casual",
+            // The fourth style has no shipped clause — its text is the user's — but it is a style
+            // like any other as far as the grammar is concerned.
+            "rewrite:custom" to "rewrite:custom",
             "rewrite:" to "rewrite:casual",
             "rewrite:verbatim" to null,
             "summary" to "summary:brief",
@@ -170,6 +173,7 @@ class TranscriptModeTest {
             "rewrite:formal" to "Rewriting…",
             "rewrite:concise" to "Tightening…",
             "rewrite:casual" to "Loosening…",
+            "rewrite:custom" to "Rewriting…",
             "summary:brief" to "Summarising…",
             "summary:bullets" to "Summarising into bullets…",
             "summary:actions" to "Picking out the actions…",

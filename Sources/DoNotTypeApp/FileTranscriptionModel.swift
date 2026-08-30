@@ -256,7 +256,8 @@ final class FileTranscriptionModel {
             .builder(bundled: promptURL)
         guard let instruction = try? builder.systemInstruction(
             fidelity: settings.fidelity, script: settings.chineseScript,
-            sample: settings.formattingSample)
+            dictationStyle: settings.dictationStyle,
+            customDictationStyle: settings.customDictationStyle)
         else { return nil }
 
         let service = TranscriptionService(

@@ -3,6 +3,7 @@ package app.donottype
 import android.content.Context
 import android.content.SharedPreferences
 import app.donottype.core.ChineseScript
+import app.donottype.core.DictationStyle
 import app.donottype.core.Fidelity
 import app.donottype.core.Log
 import app.donottype.core.LogLevel
@@ -37,7 +38,9 @@ object Settings {
     private const val KEY_FIDELITY = "fidelity"
     private const val KEY_TYPOGRAPHY_SPACING = "typographySpacing"
     private const val KEY_CHINESE_SCRIPT = "chineseScript"
-    private const val KEY_FORMATTING_SAMPLE = "formattingSample"
+    private const val KEY_DICTATION_STYLE = "dictationStyle"
+    private const val KEY_CUSTOM_DICTATION_STYLE = "customDictationStyle"
+    private const val KEY_CUSTOM_REWRITE_STYLE = "customRewriteStyle"
     private const val KEY_TRANSLATE_TO = "translateTo"
     private const val KEY_GROUNDING = "grounding"
     private const val KEY_BLOCKED = "blockedPackages"
@@ -328,18 +331,43 @@ object Settings {
         }
         set(value) { if (ready) prefs.edit().putString(KEY_CHINESE_SCRIPT, value.id).apply() }
 
+    /** How a dictation is written down: one of a few presets, or the user's own text below. */
+    var dictationStyle: DictationStyle
+        get() = if (ready) {
+            DictationStyle.from(prefs.getString(KEY_DICTATION_STYLE, null))
+        } else {
+            DictationStyle.DEFAULT
+        }
+        set(value) { if (ready) prefs.edit().putString(KEY_DICTATION_STYLE, value.id).apply() }
+
     /**
-     * A sentence written the way this user wants their transcripts written.
+     * The user's own dictation style — a description, or a sentence written the way they want
+     * theirs written.
      *
      * Sanitised on the way in rather than on the way out, so what the settings screen shows is what
-     * a request would carry.
+     * a request would carry. Kept even while a preset is selected: switching to Chat and back
+     * should not silently delete something somebody wrote.
      */
-    var formattingSample: String
-        get() = if (ready) prefs.getString(KEY_FORMATTING_SAMPLE, null).orEmpty() else ""
+    var customDictationStyle: String
+        get() = if (ready) prefs.getString(KEY_CUSTOM_DICTATION_STYLE, null).orEmpty() else ""
         set(value) {
             if (ready) {
                 prefs.edit()
-                    .putString(KEY_FORMATTING_SAMPLE, Typography.sanitizedSample(value))
+                    .putString(KEY_CUSTOM_DICTATION_STYLE, Typography.sanitizedSample(value))
+                    .apply()
+            }
+        }
+
+    /**
+     * The same, for the rewrite stage. Its own setting because the two are different jobs — this
+     * one may reword, and the dictation style may not.
+     */
+    var customRewriteStyle: String
+        get() = if (ready) prefs.getString(KEY_CUSTOM_REWRITE_STYLE, null).orEmpty() else ""
+        set(value) {
+            if (ready) {
+                prefs.edit()
+                    .putString(KEY_CUSTOM_REWRITE_STYLE, Typography.sanitizedSample(value))
                     .apply()
             }
         }

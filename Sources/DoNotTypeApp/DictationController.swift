@@ -829,7 +829,7 @@ final class DictationController {
         guard let promptURL = SettingsModel.bundledPromptURL() else { return nil }
         let instruction = try? PromptStore(directory: HistoryStore.defaultDirectory())
             .builder(bundled: promptURL)
-            .secondStageInstruction(for: mode)
+            .secondStageInstruction(for: mode, customStyle: Settings.shared.customRewriteStyle)
         return (instruction ?? nil).flatMap { $0.isEmpty ? nil : $0 }
     }
 
@@ -847,7 +847,8 @@ final class DictationController {
             guard let promptURL = SettingsModel.bundledPromptURL() else { return nil }
             return (try? PromptStore(directory: HistoryStore.defaultDirectory())
                 .builder(bundled: promptURL)
-                .styleClause(style)).map { StyledRequest.style(clause: $0) }
+                .styleClause(style, custom: Settings.shared.customRewriteStyle))
+                .flatMap { $0.isEmpty ? nil : StyledRequest.style(clause: $0) }
         }
     }
 
@@ -869,7 +870,8 @@ final class DictationController {
                 .builder(bundled: promptURL)
                 .systemInstruction(
                     fidelity: settings.fidelity, script: settings.chineseScript,
-                    sample: settings.formattingSample)
+                    dictationStyle: settings.dictationStyle,
+                    customDictationStyle: settings.customDictationStyle)
         else {
             return FallbackTranscriber(primary: primary)
         }
@@ -913,7 +915,8 @@ final class DictationController {
                 .builder(bundled: promptURL)
                 .systemInstruction(
                     fidelity: settings.fidelity, script: settings.chineseScript,
-                    sample: settings.formattingSample)
+                    dictationStyle: settings.dictationStyle,
+                    customDictationStyle: settings.customDictationStyle)
         else { return nil }
 
         return RetryCoordinator(

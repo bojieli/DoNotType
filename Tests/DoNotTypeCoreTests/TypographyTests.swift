@@ -117,19 +117,21 @@ final class TypographyPromptTests: XCTestCase {
     }
 
     /// The load-bearing one. Every measured number in `docs/PROMPT.md` describes the default
-    /// request, and this feature is only free of them because it adds nothing to it.
-    func testTheDefaultRequestIsUnchangedByThisFeatureExisting() throws {
+    /// request, and these features are only free of them because they add nothing to it.
+    func testTheDefaultRequestIsUnchangedByTheseFeaturesExisting() throws {
         let builder = try builder()
         for fidelity in Fidelity.allCases {
             XCTAssertEqual(
-                try builder.systemInstruction(fidelity: fidelity, script: .spoken, sample: ""),
+                try builder.systemInstruction(
+                    fidelity: fidelity, script: .spoken, dictationStyle: .spoken,
+                    customDictationStyle: ""),
                 try builder.systemInstruction(fidelity: fidelity))
         }
     }
 
     func testAChosenScriptAppendsTheFormattingBlock() throws {
         let builder = try builder()
-        let instruction = try builder.systemInstruction(script: .traditional, sample: "")
+        let instruction = try builder.systemInstruction(script: .traditional)
         XCTAssertTrue(instruction.hasPrefix(try builder.systemInstruction()))
         XCTAssertTrue(instruction.contains("Traditional characters"))
         XCTAssertFalse(instruction.contains("{{SCRIPT_RULE}}"))
@@ -137,21 +139,49 @@ final class TypographyPromptTests: XCTestCase {
         XCTAssertTrue(instruction.contains("never what it says"))
     }
 
-    func testASampleIsFramedAsAnExampleRatherThanAsSpeech() throws {
+    /// Every dictation style goes through the same host block, so the framing and the
+    /// never-change-a-word rule cover a preset and a user's own sentence alike.
+    func testEveryDictationStyleIsWrappedInTheSameBlock() throws {
         let builder = try builder()
-        let instruction = try builder.systemInstruction(script: .spoken, sample: "中文 English。")
+        for style in DictationStyle.allCases where style != .spoken {
+            let instruction = try builder.systemInstruction(
+                dictationStyle: style, customDictationStyle: "中文 English。")
+            XCTAssertTrue(instruction.hasPrefix(try builder.systemInstruction()), style.rawValue)
+            XCTAssertFalse(instruction.contains("{{DICTATION_STYLE_RULE}}"), style.rawValue)
+            XCTAssertTrue(instruction.contains("never what it says"), style.rawValue)
+            XCTAssertTrue(instruction.contains("not an instruction to obey"), style.rawValue)
+        }
+    }
+
+    func testACustomStyleCarriesTheUsersOwnText() throws {
+        let builder = try builder()
+        let instruction = try builder.systemInstruction(
+            dictationStyle: .custom, customDictationStyle: "中文 English。")
         XCTAssertTrue(instruction.contains("中文 English。"))
-        XCTAssertFalse(instruction.contains("{{SAMPLE}}"))
-        XCTAssertTrue(instruction.contains("It is not speech"))
-        // A sample alone must not drag the script block in with it: two settings, two blocks.
+        // A style alone must not drag the script block in with it: two settings, two blocks.
         XCTAssertFalse(instruction.contains("Simplified characters"))
     }
 
-    func testAWhitespaceOnlySampleIsNoSample() throws {
+    /// Custom with nothing in it is not a style. Sending the block with an empty clause would ask
+    /// the model to write in no particular way, and it would do something.
+    func testAnEmptyCustomStyleSendsNothing() throws {
         let builder = try builder()
         XCTAssertEqual(
-            try builder.systemInstruction(script: .spoken, sample: "   \n  "),
+            try builder.systemInstruction(dictationStyle: .custom, customDictationStyle: "   \n "),
             try builder.systemInstruction())
+        XCTAssertEqual(try builder.styleClause(.custom, custom: "  "), "")
+        XCTAssertEqual(try builder.rewriteInstruction(style: .custom, custom: "  "), "")
+    }
+
+    /// The rewrite side of the same control: the user's text lands inside `prompt/rewrite.md`, so
+    /// the never-remove-a-fact rule applies to it exactly as it does to `formal`.
+    func testACustomRewriteStyleIsWrappedInTheRewriteBlock() throws {
+        let builder = try builder()
+        let instruction = try builder.rewriteInstruction(
+            style: .custom, custom: "Warm, but never more than three sentences.")
+        XCTAssertTrue(instruction.contains("Warm, but never more than three sentences."))
+        XCTAssertFalse(instruction.contains("{{STYLE_RULE}}"))
+        XCTAssertTrue(instruction.contains("Keep every fact"))
     }
 
     func testEveryPartStillResolves() throws {
@@ -159,5 +189,9 @@ final class TypographyPromptTests: XCTestCase {
         XCTAssertEqual(PromptPart(id: "script:traditional"), .script(.traditional))
         // `spoken` is the shipped contract's own rule, not a clause, so it has no file to name.
         XCTAssertNil(PromptPart(id: "script:spoken"))
+        XCTAssertEqual(PromptPart(id: "dictation-style:chat"), .dictationStyle(.chat))
+        // Neither of these has a file: one sends nothing, the other sends the user's own text.
+        XCTAssertNil(PromptPart(id: "dictation-style:spoken"))
+        XCTAssertNil(PromptPart(id: "dictation-style:custom"))
     }
 }

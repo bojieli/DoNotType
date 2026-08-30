@@ -21,6 +21,7 @@ is reachable by a user of that client, not merely present in its core library.
 | Finish recording, insert, and submit | ✅ Return / ⌘Return / Off ¹⁵ | ✅ Enter / Ctrl+Enter / Off ¹⁵ | — ¹⁵ | — ¹⁵ |
 | Push-to-talk / hands-free as a *setting* | ✅ | ✅ | — ¹ | — ¹ |
 | Rewrite a dictation | ✅ second hotkey | ✅ second hotkey | ✅ style chips | ✅ style picker |
+| Preset or custom writing style, per stage | ✅ | ✅ | ✅ | ✅ |
 | Translate a dictation | ✅ ²¹ | ✅ ²¹ | ✅ ²¹ | ✅ ²¹ |
 | Says why a rewrite is unavailable | ✅ | ✅ | ✅ | ✅ |
 | Summarise a dictation live | — ⁶ | — ⁶ | — ⁶ | — ⁶ |
@@ -93,6 +94,16 @@ rather than into a field, because an app in the foreground has no field to type 
 still the ones under the user's fingers. A phone keyboard *does* replace it, so whatever it does not
 offer cannot be done without switching keyboards first — and speaking a message and then swapping
 keyboards to send it is most of the cost of using this one.
+
+Android's keyboard puts the talk button at the top of its bar, where iOS puts it under the status
+line. That is the one deliberate divergence in the two bars' layout, and it is about where the
+screen ends rather than about taste: an Android IME is anchored to the bottom of the display with
+the navigation bar below it, so a control's position *within* the bar is its position under the
+thumb — and with a label and a level meter above it, the one control the keyboard exists for was
+the second-lowest thing on the screen. Putting it first lifts it about 60dp without making the
+keyboard taller, because the two rows it swaps with are the two nobody presses. iOS pins its
+keyboard to a fixed height that the system already keeps clear of the home indicator, so the same
+move would buy it nothing.
 
 Android's Return differs from iOS's on purpose. iOS inserts a newline; Android fields declare what
 their Enter key is for — Search, Send, Go, Next, Done — so the declared action wins where there is
@@ -293,6 +304,14 @@ one screen further in on two of them.
   *formatting example* are asked of the model, and are sent only when set — the default request is
   byte-identical to the one this feature did not exist for. The example is capped at 500 characters
   and the field says so. All three cross devices in the settings-transfer profile.
+- **Writing style.** One control on each stage, filled either way. *Dictation style* — As spoken
+  (the default, which sends nothing), Chat, Notes, Prose, or Custom — decides how the words are
+  written down and may not change one of them. *Rewrite style* — Formal, Concise, Casual, or
+  Custom — decides how they are said again, and is the stage allowed to reword. Two settings
+  because they are two jobs with opposite permissions, and Custom on each because three presets are
+  three guesses. A custom style is substituted into the same host block as a preset, so the
+  framing and the preservation rules cover the user's own text too. Both cross devices in the
+  transfer profile.
 - **Translation.** Off by default. Set a target language and every dictation arrives in it, with
   the verbatim transcript still first in History. See footnote ²¹ for why it replaces the rewrite
   stage rather than stacking with it.
@@ -325,6 +344,7 @@ platform's test suite to keep parsing behavior aligned across clients.
 | `rewrite:formal` | rewrite, formal | |
 | `rewrite:concise` | rewrite, concise | |
 | `rewrite:casual` | rewrite, casual | |
+| `rewrite:custom` | rewrite, the user's own style | the clause is a setting, not a file |
 | `rewrite:` | rewrite, casual | an unfinished colon is not a style |
 | `rewrite:verbatim` | rejected | verbatim is not a rewrite; `--mode verbatim` says it |
 | `summary` | summary, brief | |

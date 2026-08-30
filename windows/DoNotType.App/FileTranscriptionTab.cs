@@ -164,7 +164,8 @@ internal sealed class FileTranscriptionTab
         var service = new TranscriptionService(
             ProviderFactory.Create(_settings.Provider, key, _settings.Model),
             builder.SystemInstruction(
-                    _settings.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
+                    _settings.Fidelity, _settings.ChineseScript, _settings.DictationStyle,
+                _settings.CustomDictationStyle))
         {
             Fidelity = _settings.Fidelity,
             Typography = _settings.TypographySpacing,
@@ -172,7 +173,9 @@ internal sealed class FileTranscriptionTab
             PersonalDictionary = _settings.PersonalDictionaryTerms(),
         };
 
-        var transcriber = new FileTranscriber(service, builder, _settings.Fidelity, SecondStage(builder));
+        var transcriber = new FileTranscriber(
+            service, builder, _settings.Fidelity, SecondStage(builder),
+            _settings.CustomRewriteStyle);
         if (!transcriber.Supports(mode))
         {
             _status.Text =
@@ -229,7 +232,8 @@ internal sealed class FileTranscriptionTab
             return new TranscriptionService(
                 ProviderFactory.Create(kind, key, _settings.ModelFor(kind)),
                 builder.SystemInstruction(
-                    _settings.Fidelity, _settings.ChineseScript, _settings.FormattingSample))
+                    _settings.Fidelity, _settings.ChineseScript, _settings.DictationStyle,
+                _settings.CustomDictationStyle))
             {
                 Fidelity = _settings.Fidelity,
                 Typography = _settings.TypographySpacing,

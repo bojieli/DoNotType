@@ -384,6 +384,27 @@ final class DoNotTypeUITests: XCTestCase {
     /// an iPhone 16 and below the fold on a 17, which is a fact about the device rather than about
     /// the app. `waitForExistence` cannot fix that, because a row a lazy `List` has not built does
     /// not exist to wait for.
+    /// The dictation style is the setting this app's whole formatting story now hangs off, and it
+    /// is two controls rather than one: a preset picker, and a box that only matters for Custom.
+    /// Both have to survive leaving the screen, which is where a setting that saves on change but
+    /// never reloads would look fine and be lost.
+    func testDictationStyleSelectionPersists() {
+        let app = launch()
+        app.buttons["open-settings"].tap()
+
+        let picker = app.buttons["dictation-style"]
+        XCTAssertTrue(reveal(picker, in: app), "the dictation style picker should be reachable")
+        picker.tap()
+        app.buttons["Chat — short lines, light punctuation"].tap()
+
+        app.navigationBars["Settings"].buttons.firstMatch.tap()
+        app.buttons["open-settings"].tap()
+        XCTAssertTrue(reveal(picker, in: app), "and still reachable after coming back")
+        XCTAssertTrue(
+            picker.label.contains("Chat"),
+            "the dictation style should still read Chat, was \(picker.label)")
+    }
+
     func testFidelitySelectionPersists() {
         let app = launch()
         app.buttons["open-settings"].tap()

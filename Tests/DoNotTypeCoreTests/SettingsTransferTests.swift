@@ -39,7 +39,10 @@ struct SettingsTransferTests {
         withTypography.typography = .init(
             spacing: TypographySpacing.tight.rawValue,
             chineseScript: ChineseScript.traditional.rawValue,
-            formattingSample: "中文 English。")
+            dictationStyle: DictationStyle.custom.rawValue,
+            customDictationStyle: "中文 English。",
+            customRewriteStyle: "Warm but brief.",
+            translateTo: "English")
         #expect(try SettingsTransferDocument.decode(withTypography.encoded()) == withTypography)
 
         let older = document()

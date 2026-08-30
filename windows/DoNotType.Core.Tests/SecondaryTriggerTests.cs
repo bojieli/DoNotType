@@ -21,7 +21,7 @@ public sealed class SecondaryTriggerTests
     /// same thing is a setting with no effect.
     /// </summary>
     private static readonly RewriteStyle[] Offered =
-        [RewriteStyle.Formal, RewriteStyle.Concise, RewriteStyle.Casual];
+        [RewriteStyle.Formal, RewriteStyle.Concise, RewriteStyle.Casual, RewriteStyle.Custom];
 
     [Fact]
     public void TheListOffersEveryRewriteAndNothingElse()

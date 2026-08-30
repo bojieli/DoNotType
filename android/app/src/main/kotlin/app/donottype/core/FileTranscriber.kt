@@ -127,7 +127,8 @@ class FileTranscriber(
             }
 
             val instruction = PromptAssets.systemInstruction(
-                context, Settings.fidelity, Settings.chineseScript, Settings.formattingSample)
+                context, Settings.fidelity, Settings.chineseScript, Settings.dictationStyle,
+                Settings.customDictationStyle)
             val client = ProviderFactory.create(Settings.provider, key, Settings.model)
 
             val transcribeStart = System.currentTimeMillis()
@@ -136,7 +137,7 @@ class FileTranscriber(
             // combination this project will not make.
             val folded: StyledRequest? = when (mode) {
                 is TranscriptMode.Rewrite ->
-                    StyledRequest.Style(PromptAssets.styleClause(context, mode.style))
+                    StyledRequest.Style(PromptAssets.styleClause(context, mode.style, Settings.customRewriteStyle))
                 is TranscriptMode.Translate -> StyledRequest.Translation(mode.language)
                 else -> null
             }
@@ -171,7 +172,7 @@ class FileTranscriber(
             if (mode.needsSecondPass && verbatim.isNotEmpty() && delivered == verbatim) {
                 val kind = secondStageBackend()
                 val stageKey = kind?.let { Settings.keyFor(it) }
-                val stageInstruction = PromptAssets.secondStageInstruction(context, mode)
+                val stageInstruction = PromptAssets.secondStageInstruction(context, mode, Settings.customRewriteStyle)
                 if (kind != null && !stageKey.isNullOrBlank() && stageInstruction != null) {
                     onProgress(Progress.Deriving(mode))
                     val start = System.currentTimeMillis()

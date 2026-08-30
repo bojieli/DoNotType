@@ -599,20 +599,43 @@ private struct GeneralTab: View {
                         Text(script.label).tag(script)
                     }
                 }
-                LabeledContent("Formatting example") {
-                    TextField(
-                        "Optional — a sentence written the way you want yours written",
-                        text: $model.formattingSample, axis: .vertical
-                    )
-                    .lineLimit(2...5)
-                    .textFieldStyle(.roundedBorder)
-                }
                 Text(
                     "Spacing is applied to the finished transcript on this Mac, so it is the same "
-                        + "on every dictation, in history and at the cursor. The script and the "
-                        + "example are asked of the model — a request rather than a guarantee — "
-                        + "and nothing here is allowed to change a word. The example is trimmed to "
-                        + "\(Typography.maxSampleCharacters) characters."
+                        + "on every dictation, in history and at the cursor. The script is asked "
+                        + "of the model — a request rather than a guarantee — and nothing here is "
+                        + "allowed to change a word."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
+            // Two sections rather than one control with a mode switch, because the two stages are
+            // different jobs and get different answers: the dictation style may not reword, and
+            // the rewrite style is there to.
+            Section("Dictation style") {
+                Picker("Write it as", selection: $model.dictationStyle) {
+                    ForEach(DictationStyle.allCases, id: \.self) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                if model.dictationStyle == .custom {
+                    LabeledContent("Your style") {
+                        TextField(
+                            "Describe it, or paste a sentence written the way you want yours",
+                            text: $model.customDictationStyle, axis: .vertical
+                        )
+                        .lineLimit(3...8)
+                        .textFieldStyle(.roundedBorder)
+                    }
+                }
+                Text(
+                    "How a dictation is written down — line breaks, punctuation, whether it reads "
+                        + "like a chat message or a paragraph. Not what it says: none of these may "
+                        + "add, remove or reword anything, and Fidelity above is the separate dial "
+                        + "for how much of your own \"um\" survives. *As spoken* sends nothing "
+                        + "extra, which is why it is the default. Custom text is trimmed to "
+                        + "\(Typography.maxSampleCharacters) characters and is kept when you "
+                        + "switch to a preset and back."
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -1390,6 +1413,21 @@ private struct RewriteSection: View {
                 }
             }
             .disabled(!availability.isAvailable || model.secondaryTrigger == nil)
+
+            if model.secondaryStyle == .custom {
+                LabeledContent("Your style") {
+                    TextField(
+                        "Describe it, or paste a sentence written the way you want yours",
+                        text: $model.customRewriteStyle, axis: .vertical
+                    )
+                    .lineLimit(3...8)
+                    .textFieldStyle(.roundedBorder)
+                }
+                .disabled(!availability.isAvailable)
+                Text("Leaving this empty means no rewrite: you get the transcript as it is.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
 
             if let reason = availability.reason {
                 Label(reason, systemImage: "exclamationmark.triangle")

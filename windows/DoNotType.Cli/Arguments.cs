@@ -108,7 +108,8 @@ public sealed class Arguments : CommandLine
         var service = new TranscriptionService(
             provider,
             ResolvePrompt().SystemInstruction(
-                ResolveFidelity(), Preferences.ChineseScript, Preferences.FormattingSample),
+                ResolveFidelity(), Preferences.ChineseScript, Preferences.DictationStyle,
+                Preferences.CustomDictationStyle),
             new ContextEncoder())
         {
             Fidelity = ResolveFidelity(),

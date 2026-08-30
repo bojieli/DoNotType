@@ -6,16 +6,25 @@ import org.junit.Test
 /**
  * The keyboard's bottom padding.
  *
- * These are the cases that produced the bug and the cases that would produce its opposite. A
- * device that reports nothing must not gain a dead strip, and a device whose window is behind the
+ * These are the cases that produced the two bugs and the cases that would produce their opposites.
+ * A device that reports nothing must not gain a dead strip; a device whose window is behind the
  * navigation bar must not lose its bottom row to it — including when nothing was dispatched to the
- * view, which is the state the old listener could sit in indefinitely.
+ * view, which is the state the old listener could sit in indefinitely; and gesture navigation,
+ * whose inset is half of three-button's, must not end up with half the room for a thumb.
  */
 class KeyboardInsetsTest {
 
-    private val base = 10
+    /** The gap kept above the navigation bar itself, in pixels at 2.625x. */
+    private val base = 26
+
+    /** 48dp of least clearance from the bottom of the screen, at the same density. */
+    private val floor = 126
+
     /** A three-button navigation bar, at the density the complaint came from. */
     private val threeButtonBar = 126
+
+    /** Gesture navigation's home-pill strip: half the three-button bar. */
+    private val gesturePill = 63
 
     @Test
     fun edgeToEdgeKeepsTheBarClearOfAThreeButtonNavigation() {
@@ -23,8 +32,28 @@ class KeyboardInsetsTest {
             base + threeButtonBar,
             KeyboardInsets.bottomPadding(
                 basePadding = base,
+                minimumClearance = floor,
                 dispatchedNavigationInset = threeButtonBar,
                 windowNavigationInset = threeButtonBar,
+                sdkInt = 36,
+            ),
+        )
+    }
+
+    /**
+     * The second bug, and the reason the floor exists. The pill's own inset plus a gap is 89px —
+     * 34dp — which measured as still too low to hit; the floor lifts it to the 48dp a
+     * three-button phone was already getting.
+     */
+    @Test
+    fun gestureNavigationGetsTheSameRoomAsThreeButton() {
+        assertEquals(
+            floor,
+            KeyboardInsets.bottomPadding(
+                basePadding = base,
+                minimumClearance = floor,
+                dispatchedNavigationInset = gesturePill,
+                windowNavigationInset = gesturePill,
                 sdkInt = 36,
             ),
         )
@@ -36,6 +65,7 @@ class KeyboardInsetsTest {
             base + threeButtonBar,
             KeyboardInsets.bottomPadding(
                 basePadding = base,
+                minimumClearance = floor,
                 dispatchedNavigationInset = 0,
                 windowNavigationInset = threeButtonBar,
                 sdkInt = KeyboardInsets.EDGE_TO_EDGE_SDK,
@@ -49,24 +79,26 @@ class KeyboardInsetsTest {
             base + threeButtonBar,
             KeyboardInsets.bottomPadding(
                 basePadding = base,
+                minimumClearance = floor,
                 dispatchedNavigationInset = threeButtonBar,
-                windowNavigationInset = 63,
+                windowNavigationInset = gesturePill,
                 sdkInt = 36,
             ),
         )
     }
 
     /**
-     * Below API 35 the window manager places the keyboard above the navigation bar, so the
-     * display's inset describes something that is not overlapping this window. Adding it would put
-     * a strip of dead keyboard on every older phone, which is the failure this asserts against.
+     * Below API 35 the window manager places the keyboard above the navigation bar, so the display's
+     * inset describes something that is not overlapping this window and the floor would be that many
+     * pixels of dead keyboard. Both are asserted against here.
      */
     @Test
-    fun olderPlatformsIgnoreTheDisplayInset() {
+    fun olderPlatformsIgnoreTheDisplayInsetAndTheFloor() {
         assertEquals(
             base,
             KeyboardInsets.bottomPadding(
                 basePadding = base,
+                minimumClearance = floor,
                 dispatchedNavigationInset = 0,
                 windowNavigationInset = threeButtonBar,
                 sdkInt = KeyboardInsets.EDGE_TO_EDGE_SDK - 1,
@@ -78,37 +110,28 @@ class KeyboardInsetsTest {
     @Test
     fun olderPlatformsStillHonourADispatchedInset() {
         assertEquals(
-            base + 63,
+            base + gesturePill,
             KeyboardInsets.bottomPadding(
                 basePadding = base,
-                dispatchedNavigationInset = 63,
+                minimumClearance = floor,
+                dispatchedNavigationInset = gesturePill,
                 windowNavigationInset = 0,
                 sdkInt = 30,
             ),
         )
     }
 
-    /** Gesture navigation: a thin pill, and the bar keeps clear of that too. */
+    /**
+     * Landscape with the navigation bar on the side reports no bottom inset at all — and the floor
+     * still applies, because the bottom of the screen is still the bottom of the screen.
+     */
     @Test
-    fun gestureNavigationGetsItsPillsWorthOfRoom() {
+    fun noNavigationBarBelowStillKeepsTheFloor() {
         assertEquals(
-            base + 63,
+            floor,
             KeyboardInsets.bottomPadding(
                 basePadding = base,
-                dispatchedNavigationInset = 63,
-                windowNavigationInset = 63,
-                sdkInt = 36,
-            ),
-        )
-    }
-
-    /** Landscape with the navigation bar on the side reports no bottom inset at all. */
-    @Test
-    fun noNavigationBarBelowLeavesOnlyTheBarsOwnPadding() {
-        assertEquals(
-            base,
-            KeyboardInsets.bottomPadding(
-                basePadding = base,
+                minimumClearance = floor,
                 dispatchedNavigationInset = 0,
                 windowNavigationInset = 0,
                 sdkInt = 36,
@@ -123,6 +146,7 @@ class KeyboardInsetsTest {
             base,
             KeyboardInsets.bottomPadding(
                 basePadding = base,
+                minimumClearance = -5,
                 dispatchedNavigationInset = -1,
                 windowNavigationInset = -20,
                 sdkInt = 36,

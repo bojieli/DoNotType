@@ -62,9 +62,20 @@ public static class SettingsTransfer
     {
         [JsonPropertyName("spacing")] public string Spacing { get; set; } = "spaced";
         [JsonPropertyName("chineseScript")] public string ChineseScript { get; set; } = "spoken";
-        [JsonPropertyName("formattingSample")]
-        public string FormattingSample { get; set; } =
-            string.Empty;
+        /// <summary>
+        /// Which dictation style is selected. Absent in a profile written before styles existed,
+        /// which then keeps whatever the importing device already had.
+        /// </summary>
+        [JsonPropertyName("dictationStyle")] public string? DictationStyle { get; set; }
+
+        /// <summary>
+        /// The user's own style text for each stage. Two fields rather than one, because the two
+        /// stages are different jobs: the dictation style may not reword and the rewrite style is
+        /// there to.
+        /// </summary>
+        [JsonPropertyName("customDictationStyle")] public string? CustomDictationStyle { get; set; }
+
+        [JsonPropertyName("customRewriteStyle")] public string? CustomRewriteStyle { get; set; }
 
         /// <summary>
         /// Empty, or absent altogether in a profile written before translation existed, means the
@@ -150,7 +161,9 @@ public static class SettingsTransfer
             {
                 Spacing = DoNotType.Core.Typography.Spelling(settings.TypographySpacing),
                 ChineseScript = settings.ChineseScript.Id(),
-                FormattingSample = settings.FormattingSample,
+                DictationStyle = settings.DictationStyle.Id(),
+                CustomDictationStyle = settings.CustomDictationStyle,
+                CustomRewriteStyle = settings.CustomRewriteStyle,
                 TranslateTo = settings.TranslateTo,
             },
             Windows = new WindowsValues
@@ -351,8 +364,21 @@ public static class SettingsTransfer
         {
             settings.TypographySpacing = importedSpacing;
             settings.ChineseScript = importedScript;
-            settings.FormattingSample =
-                DoNotType.Core.Typography.SanitizedSample(document.Typography?.FormattingSample);
+            // Absent is "the profile predates styles", which keeps what this device has.
+            if (document.Typography?.DictationStyle is { Length: > 0 } styleId)
+            {
+                settings.DictationStyle = DictationStyleExtensions.ParseDictationStyle(styleId);
+            }
+            if (document.Typography?.CustomDictationStyle is { } customDictation)
+            {
+                settings.CustomDictationStyle =
+                    DoNotType.Core.Typography.SanitizedSample(customDictation);
+            }
+            if (document.Typography?.CustomRewriteStyle is { } customRewrite)
+            {
+                settings.CustomRewriteStyle =
+                    DoNotType.Core.Typography.SanitizedSample(customRewrite);
+            }
             settings.TranslateTo =
                 TranslationTarget.Sanitized(document.Typography?.TranslateTo);
         }
