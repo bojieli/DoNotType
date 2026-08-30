@@ -18,7 +18,9 @@ final class Settings {
         static let fidelity = "fidelity"
         static let typographySpacing = "typographySpacing"
         static let chineseScript = "chineseScript"
-        static let formattingSample = "formattingSample"
+        static let dictationStyle = "dictationStyle"
+        static let customDictationStyle = "customDictationStyle"
+        static let customRewriteStyle = "customRewriteStyle"
         static let translateTo = "translateTo"
         static let trigger = "trigger"
         static let groundingEnabled = "groundingEnabled"
@@ -364,13 +366,30 @@ final class Settings {
         set { defaults.set(newValue.rawValue, forKey: Key.chineseScript) }
     }
 
-    /// A sentence written the way this user wants their transcripts written.
+    /// How a dictation is written down: one of a few presets, or the user's own text below.
+    var dictationStyle: DictationStyle {
+        get {
+            DictationStyle(rawValue: defaults.string(forKey: Key.dictationStyle) ?? "") ?? .default
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.dictationStyle) }
+    }
+
+    /// The user's own dictation style — a description, or a sentence written the way they want
+    /// theirs written.
     ///
     /// Sanitised on the way in rather than on the way out, so what the settings window shows is
-    /// what a request would carry.
-    var formattingSample: String {
-        get { defaults.string(forKey: Key.formattingSample) ?? "" }
-        set { defaults.set(Typography.sanitizedSample(newValue), forKey: Key.formattingSample) }
+    /// what a request would carry. Kept even while a preset is selected: switching to Chat and back
+    /// should not silently delete something somebody wrote.
+    var customDictationStyle: String {
+        get { defaults.string(forKey: Key.customDictationStyle) ?? "" }
+        set { defaults.set(Typography.sanitizedSample(newValue), forKey: Key.customDictationStyle) }
+    }
+
+    /// The same, for the rewrite stage. Its own setting because the two are different jobs — this
+    /// one may reword, and the dictation style may not.
+    var customRewriteStyle: String {
+        get { defaults.string(forKey: Key.customRewriteStyle) ?? "" }
+        set { defaults.set(Typography.sanitizedSample(newValue), forKey: Key.customRewriteStyle) }
     }
 
     var trigger: HotkeyMonitor.Trigger {

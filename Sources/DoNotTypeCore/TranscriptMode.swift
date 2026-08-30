@@ -137,6 +137,9 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
             case .formal: "Rewriting…"
             case .concise: "Tightening…"
             case .casual: "Loosening…"
+            // Deliberately the plain word. The other three are named after what that style does to
+            // the prose, and nothing here knows what the user asked for.
+            case .custom: "Rewriting…"
             }
         case .summary(let style):
             switch style {

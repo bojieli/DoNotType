@@ -40,7 +40,9 @@ public struct LegacyPromptFile: Sendable {
         for fidelity in Fidelity.allCases {
             if let body = clause(under: fidelity.rawValue) { found[.fidelity(fidelity)] = body }
         }
-        for style in RewriteStyle.allCases where style.isRewrite {
+        // Only the file-backed styles: `custom`'s clause is the user's own text in settings, so
+        // there is no shipped file for a legacy override to have replaced.
+        for style in RewriteStyle.allCases where style.hasClauseFile {
             if let body = clause(under: "style: \(style.rawValue)") { found[.style(style)] = body }
         }
         for style in SummaryStyle.allCases {

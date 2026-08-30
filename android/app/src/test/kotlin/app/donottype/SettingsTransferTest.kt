@@ -1,6 +1,7 @@
 package app.donottype
 
 import app.donottype.core.ChineseScript
+import app.donottype.core.DictationStyle
 import app.donottype.core.Fidelity
 import app.donottype.core.ProviderKind
 import app.donottype.core.RetentionPolicy
@@ -52,12 +53,16 @@ class SettingsTransferTest {
             "\"keepAudio\":false,",
             "\"keepAudio\":false," +
                 "\"typography\":{\"spacing\":\"tight\",\"chineseScript\":\"traditional\"," +
-                "\"formattingSample\":\"中文 English。\"},",
+                "\"dictationStyle\":\"custom\"," +
+                "\"customDictationStyle\":\"中文 English。\"," +
+                "\"customRewriteStyle\":\"Warm but brief.\"},",
         )
         val parsed = SettingsTransfer.parse(withBlock)
         assertEquals(TypographySpacing.TIGHT, parsed.typography?.spacing)
         assertEquals(ChineseScript.TRADITIONAL, parsed.typography?.script)
-        assertEquals("中文 English。", parsed.typography?.sample)
+        assertEquals(DictationStyle.CUSTOM, parsed.typography?.style)
+        assertEquals("中文 English。", parsed.typography?.customDictationStyle)
+        assertEquals("Warm but brief.", parsed.typography?.customRewriteStyle)
 
         assertThrows(IllegalArgumentException::class.java) {
             SettingsTransfer.parse(withBlock.replace("\"tight\"", "\"nonsense\""))

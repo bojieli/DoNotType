@@ -214,6 +214,9 @@ final class TranscriptModeTests: XCTestCase {
         ("rewrite:formal", "rewrite:formal"),
         ("rewrite:concise", "rewrite:concise"),
         ("rewrite:casual", "rewrite:casual"),
+        // The fourth style has no shipped clause — its text is the user's — but it is a style like
+        // any other as far as the grammar is concerned.
+        ("rewrite:custom", "rewrite:custom"),
         ("rewrite:", "rewrite:casual"),
         ("rewrite:verbatim", nil),
         ("summary", "summary:brief"),
@@ -257,6 +260,7 @@ final class TranscriptModeTests: XCTestCase {
             ("rewrite:formal", "Rewriting…"),
             ("rewrite:concise", "Tightening…"),
             ("rewrite:casual", "Loosening…"),
+            ("rewrite:custom", "Rewriting…"),
             ("summary:brief", "Summarising…"),
             ("summary:bullets", "Summarising into bullets…"),
             ("summary:actions", "Picking out the actions…"),

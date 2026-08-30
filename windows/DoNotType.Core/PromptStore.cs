@@ -163,7 +163,9 @@ public sealed class LegacyPromptFile(string template)
         {
             Add(found, PromptPart.Of(fidelity), Clause(fidelity.Id()));
         }
-        foreach (var style in Enum.GetValues<RewriteStyle>().Where(s => s != RewriteStyle.Verbatim))
+        // Only the file-backed styles: Custom's clause is the user's own text in settings, so there
+        // is no shipped file for a legacy override to have replaced.
+        foreach (var style in Enum.GetValues<RewriteStyle>().Where(s => s.HasClauseFile()))
         {
             Add(found, PromptPart.Of(style), Clause($"style: {style.Id()}"));
         }

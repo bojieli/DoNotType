@@ -31,8 +31,26 @@ public sealed class AppSettings
     /// <summary>Which characters Chinese is written in. Asked of the model.</summary>
     public ChineseScript ChineseScript { get; set; } = ChineseScript.Spoken;
 
-    /// <summary>A sentence written the way this user wants their transcripts written.</summary>
-    public string FormattingSample { get; set; } = string.Empty;
+    /// <summary>
+    /// How a dictation is written down: one of a few presets, or the user's own text below.
+    /// </summary>
+    public DictationStyle DictationStyle { get; set; } = DictationStyle.Spoken;
+
+    /// <summary>
+    /// The user's own dictation style — a description, or a sentence written the way they want
+    /// theirs written.
+    /// </summary>
+    /// <remarks>
+    /// Kept even while a preset is selected: switching to Chat and back should not silently delete
+    /// something somebody wrote.
+    /// </remarks>
+    public string CustomDictationStyle { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The same, for the rewrite stage. Its own setting because the two are different jobs — this
+    /// one may reword, and the dictation style may not.
+    /// </summary>
+    public string CustomRewriteStyle { get; set; } = string.Empty;
 
     /// <summary>
     /// The language dictations are written in, or empty for the one that was spoken.

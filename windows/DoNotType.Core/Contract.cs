@@ -244,8 +244,9 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
     /// with another part, which is why <see cref="IsClause"/> can no longer be derived from the
     /// placeholder being null.
     /// </summary>
-    public static readonly PromptPart Sample =
-        new("sample", "sample.md", "{{SAMPLE}}", "Blocks", "Formatting example");
+    public static readonly PromptPart DictationStyleBlock =
+        new("dictation-style", "dictation-style.md", "{{DICTATION_STYLE_RULE}}",
+            "Blocks", "Dictation style");
 
     public static PromptPart Of(Fidelity fidelity) =>
         new($"fidelity:{fidelity.Id()}", $"fidelity/{fidelity.Id()}.md", null, "Fidelity", fidelity.Id());
@@ -255,6 +256,10 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
 
     public static PromptPart Of(SummaryStyle style) =>
         new($"summary-style:{style.Id()}", $"summary-style/{style.Id()}.md", null, "Summary styles", style.Id());
+
+    public static PromptPart Of(DictationStyle style) =>
+        new($"dictation-style:{style.Id()}", $"dictation-style/{style.Id()}.md", null,
+            "Dictation styles", style.Id());
 
     public static PromptPart Of(ChineseScript script) =>
         new($"script:{script.Id()}", $"script/{script.Id()}.md", null, "Chinese script", script.Id());
@@ -266,10 +271,11 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
     {
         var parts = new List<PromptPart>
         {
-            System, Rewrite, Summary, Translate, Typography, Sample,
+            System, Rewrite, Summary, Translate, Typography, DictationStyleBlock,
         };
         parts.AddRange(Enum.GetValues<Fidelity>().Select(Of));
-        parts.AddRange(Enum.GetValues<RewriteStyle>().Where(s => s != RewriteStyle.Verbatim).Select(Of));
+        parts.AddRange(Enum.GetValues<RewriteStyle>().Where(s => s.HasClauseFile()).Select(Of));
+        parts.AddRange(Enum.GetValues<DictationStyle>().Where(s => s.HasClauseFile()).Select(Of));
         parts.AddRange(Enum.GetValues<SummaryStyle>().Select(Of));
         parts.AddRange(
             Enum.GetValues<ChineseScript>().Where(s => s != ChineseScript.Spoken).Select(Of));
@@ -292,7 +298,7 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
     /// that no clause file fills, because what goes in there is the user's own text.
     /// </remarks>
     public bool IsClause => Group is "Fidelity" or "Rewrite styles" or "Summary styles"
-        or "Chinese script";
+        or "Chinese script" or "Dictation styles";
 
     /// <summary>One line on what this part does, for the editor that has room to say so.</summary>
     public string SummaryLine => Id switch
@@ -302,10 +308,12 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
         "summary" => "Sent only when a summary style is chosen.",
         "translate" => "Sent only when a target language is set. Must contain {{TARGET_LANGUAGE}}.",
         "typography" => "Sent only when a Chinese script is chosen. Must contain {{SCRIPT_RULE}}.",
-        "sample" => "Sent only when a formatting example is set. Must contain {{SAMPLE}}.",
+        "dictation-style" =>
+            "Sent only when a dictation style is chosen. Must contain {{DICTATION_STYLE_RULE}}.",
         _ when Group == "Fidelity" => "Substituted into the transcription block.",
         _ when Group == "Rewrite styles" => "Substituted into the rewrite block.",
         _ when Group == "Chinese script" => "Substituted into the formatting block.",
+        _ when Group == "Dictation styles" => "Substituted into the dictation style block.",
         _ => "Substituted into the summary block.",
     };
 }
@@ -417,7 +425,8 @@ public sealed class PromptBuilder(PromptSource source)
     /// every number in docs/PROMPT.md describes the default request, and a new clause on every
     /// request would silently invalidate all of them.
     /// </remarks>
-    public string SystemInstruction(Fidelity fidelity, ChineseScript script, string sample)
+    public string SystemInstruction(
+        Fidelity fidelity, ChineseScript script, DictationStyle style, string customStyle)
     {
         var instruction = SystemInstruction(fidelity);
         if (script != ChineseScript.Spoken)
@@ -425,18 +434,43 @@ public sealed class PromptBuilder(PromptSource source)
             instruction += "\n\n" + Assemble(PromptPart.Typography, PromptPart.Of(script));
         }
 
-        var example = Typography.SanitizedSample(sample);
-        if (example.Length > 0)
+        var clause = DictationStyleClause(style, customStyle);
+        if (clause.Length > 0)
         {
             instruction += "\n\n"
-                + Source.TextFor(PromptPart.Sample).Replace("{{SAMPLE}}", example);
+                + Source.TextFor(PromptPart.DictationStyleBlock)
+                    .Replace("{{DICTATION_STYLE_RULE}}", clause);
         }
         return instruction;
     }
 
+    /// <summary>
+    /// The clause a dictation style contributes, or empty when it contributes nothing.
+    /// </summary>
+    /// <remarks>
+    /// One method for both halves of the control, because the host block — and with it the "never
+    /// change a word" rule and the "this is not speech" framing — has to wrap the user's own text
+    /// exactly as it wraps a preset. A custom style that bypassed the block would be user text
+    /// sitting unframed in a system instruction.
+    /// </remarks>
+    public string DictationStyleClause(DictationStyle style, string customStyle) => style switch
+    {
+        DictationStyle.Spoken => string.Empty,
+        DictationStyle.Custom => Typography.SanitizedSample(customStyle),
+        _ => Source.TextFor(PromptPart.Of(style)),
+    };
+
     /// <summary>The style rule alone, for a rewrite folded into the audio request.</summary>
-    public string StyleClause(RewriteStyle style) =>
-        Source.TextFor(PromptPart.Of(style));
+    /// <param name="custom">
+    /// The user's own style text, used only by <see cref="RewriteStyle.Custom"/>. Ignored for the
+    /// presets, whose clause comes from prompt/style/.
+    /// </param>
+    public string StyleClause(RewriteStyle style, string custom = "") => style switch
+    {
+        RewriteStyle.Verbatim => string.Empty,
+        RewriteStyle.Custom => Typography.SanitizedSample(custom),
+        _ => Source.TextFor(PromptPart.Of(style)),
+    };
 
     /// <summary>
     /// The instruction for whichever second stage a mode asks for, or null when it asks for none.
@@ -446,15 +480,31 @@ public sealed class PromptBuilder(PromptSource source)
     /// wrong method -- which is the mistake the two-part split exists to make impossible. A rewrite
     /// may never drop a fact; a summary exists to.
     /// </remarks>
-    public string? SecondStageInstruction(TranscriptMode mode) => mode switch
+    /// <param name="customStyle">
+    /// The user's own rewrite style text, for <see cref="RewriteStyle.Custom"/>.
+    /// </param>
+    public string? SecondStageInstruction(TranscriptMode mode, string customStyle = "") => mode switch
     {
-        TranscriptMode.RewriteMode rewrite =>
-            Assemble(PromptPart.Rewrite, PromptPart.Of(rewrite.Style)),
+        TranscriptMode.RewriteMode rewrite => RewriteInstruction(rewrite.Style, customStyle),
         TranscriptMode.SummaryMode summary =>
             Assemble(PromptPart.Summary, PromptPart.Of(summary.Style)),
         TranscriptMode.TranslateMode translate => TranslateInstruction(translate.Language),
         _ => null,
     };
+
+    /// <summary>System instruction for the second-stage rewrite.</summary>
+    /// <remarks>
+    /// A custom style whose text is empty returns empty, and every caller treats that as "no
+    /// rewrite" — which is the right answer: a rewrite instruction with a blank style clause is a
+    /// request to rewrite in no particular way, and the model would do something.
+    /// </remarks>
+    public string RewriteInstruction(RewriteStyle style, string custom = "")
+    {
+        if (!style.IsRewrite()) return string.Empty;
+        var clause = StyleClause(style, custom);
+        if (clause.Length == 0) return string.Empty;
+        return Source.TextFor(PromptPart.Rewrite).Replace("{{STYLE_RULE}}", clause);
+    }
 
     /// <summary>System instruction for the second-stage translation.</summary>
     /// <remarks>

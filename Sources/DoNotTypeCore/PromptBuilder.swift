@@ -153,28 +153,65 @@ public struct PromptBuilder: Sendable {
     /// project's text, editable and restorable like every other part; the sample is the user's own
     /// sentence, dropped into a block that frames it as an example and not as speech.
     public func systemInstruction(
-        fidelity: Fidelity = .default, script: ChineseScript, sample: String
+        fidelity: Fidelity = .default,
+        script: ChineseScript = .default,
+        dictationStyle: DictationStyle = .default,
+        customDictationStyle: String = ""
     ) throws -> String {
         var instruction = try systemInstruction(fidelity: fidelity)
         if !script.isDefault {
             instruction += "\n\n" + (try assemble(.typography, filling: .script(script)))
         }
-        let example = Typography.sanitizedSample(sample)
-        if !example.isEmpty {
-            instruction += "\n\n" + (try assemble(.sample, replacing: ["{{SAMPLE}}": example]))
+        if let clause = try dictationStyleClause(dictationStyle, custom: customDictationStyle) {
+            instruction += "\n\n"
+                + (try assemble(
+                    .dictationStyleBlock, replacing: ["{{DICTATION_STYLE_RULE}}": clause]))
         }
         return instruction
     }
 
+    /// The clause a dictation style contributes, or nil when it contributes nothing.
+    ///
+    /// One function for both halves of the control, because the host block — and with it the
+    /// "never change a word" rule and the "this is not speech" framing — has to wrap the user's own
+    /// text exactly as it wraps a preset. A custom style that bypassed the block would be user text
+    /// sitting unframed in a system instruction.
+    public func dictationStyleClause(
+        _ style: DictationStyle, custom: String
+    ) throws -> String? {
+        switch style {
+        case .spoken:
+            return nil
+        case .custom:
+            let text = Typography.sanitizedSample(custom)
+            return text.isEmpty ? nil : text
+        default:
+            return try source.text(for: .dictationStyle(style))
+        }
+    }
+
     /// System instruction for the second-stage rewrite.
-    public func rewriteInstruction(style: RewriteStyle) throws -> String {
+    ///
+    /// - Parameter custom: the user's own style text, used only by `RewriteStyle.custom`. Ignored
+    ///   for the presets, whose clause comes from `prompt/style/`.
+    public func rewriteInstruction(style: RewriteStyle, custom: String = "") throws -> String {
         guard style.isRewrite else { return "" }
-        return try assemble(.rewrite, filling: .style(style))
+        let clause = try styleClause(style, custom: custom)
+        guard !clause.isEmpty else { return "" }
+        return try assemble(.rewrite, replacing: ["{{STYLE_RULE}}": clause])
     }
 
     /// The style rule alone, for appending to a transcription prompt in single-pass mode.
-    public func styleClause(_ style: RewriteStyle) throws -> String {
-        style.isRewrite ? try source.text(for: .style(style)) : ""
+    ///
+    /// A custom style whose text is empty returns empty, and every caller treats that as "no
+    /// rewrite" — which is the right answer: a rewrite instruction with a blank style clause is a
+    /// request to rewrite in no particular way, and the model would do something.
+    public func styleClause(_ style: RewriteStyle, custom: String = "") throws -> String {
+        switch style {
+        case .verbatim: return ""
+        case .custom: return Typography.sanitizedSample(custom)
+        default: return try source.text(for: .style(style))
+        }
     }
 
     /// System instruction for the second-stage translation.
@@ -201,10 +238,13 @@ public struct PromptBuilder: Sendable {
     ///
     /// One entry point, so a caller cannot route a summary through the rewrite part by picking the
     /// wrong builder method — which is the mistake the two-part split exists to make impossible.
-    public func secondStageInstruction(for mode: TranscriptMode) throws -> String? {
+    /// - Parameter customStyle: the user's own rewrite style text, for `RewriteStyle.custom`.
+    public func secondStageInstruction(
+        for mode: TranscriptMode, customStyle: String = ""
+    ) throws -> String? {
         switch mode {
         case .verbatim: nil
-        case .rewrite(let style): try rewriteInstruction(style: style)
+        case .rewrite(let style): try rewriteInstruction(style: style, custom: customStyle)
         case .summary(let style): try summaryInstruction(style: style)
         case .translate(let language): try translateInstruction(language: language)
         }

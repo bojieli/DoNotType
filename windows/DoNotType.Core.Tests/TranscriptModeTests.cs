@@ -568,6 +568,9 @@ public sealed class TranscriptModeParityTests
     [InlineData("rewrite:formal", "rewrite:formal")]
     [InlineData("rewrite:concise", "rewrite:concise")]
     [InlineData("rewrite:casual", "rewrite:casual")]
+    // The fourth style has no shipped clause — its text is the user's — but it is a style like any
+    // other as far as the grammar is concerned.
+    [InlineData("rewrite:custom", "rewrite:custom")]
     [InlineData("rewrite:", "rewrite:casual")]
     [InlineData("rewrite:verbatim", null)]
     [InlineData("summary", "summary:brief")]
@@ -609,6 +612,7 @@ public sealed class TranscriptModeParityTests
     [InlineData("rewrite:formal", "Rewriting…")]
     [InlineData("rewrite:concise", "Tightening…")]
     [InlineData("rewrite:casual", "Loosening…")]
+    [InlineData("rewrite:custom", "Rewriting…")]
     [InlineData("summary:brief", "Summarising…")]
     [InlineData("summary:bullets", "Summarising into bullets…")]
     [InlineData("summary:actions", "Picking out the actions…")]

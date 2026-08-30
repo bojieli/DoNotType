@@ -290,10 +290,6 @@ final class DictationModel {
     var chineseScript: ChineseScript {
         didSet { UserDefaults.standard.set(chineseScript.rawValue, forKey: "chineseScript") }
     }
-    /// A sentence written the way this user wants their transcripts written.
-    ///
-    /// Sanitised on the way in rather than on the way out, so what the settings screen shows is
-    /// what a request would carry.
     /// The language dictations are written in, or empty for the one that was spoken.
     ///
     /// Empty by default, and that default is the product: this is the one setting that makes the
@@ -311,14 +307,38 @@ final class DictationModel {
         }
     }
 
-    var formattingSample: String {
+    /// How a dictation is written down: one of a few presets, or the user's own text below.
+    var dictationStyle: DictationStyle {
+        didSet { UserDefaults.standard.set(dictationStyle.rawValue, forKey: "dictationStyle") }
+    }
+
+    /// The user's own dictation style — a description, or a sentence written the way they want
+    /// theirs written.
+    ///
+    /// Sanitised on the way in rather than on the way out, so what the settings screen shows is
+    /// what a request would carry. Kept even while a preset is selected: switching to Chat and
+    /// back should not silently delete something somebody wrote.
+    var customDictationStyle: String {
         didSet {
-            let cleaned = Typography.sanitizedSample(formattingSample)
-            if cleaned != formattingSample {
-                formattingSample = cleaned
+            let cleaned = Typography.sanitizedSample(customDictationStyle)
+            if cleaned != customDictationStyle {
+                customDictationStyle = cleaned
                 return
             }
-            UserDefaults.standard.set(cleaned, forKey: "formattingSample")
+            UserDefaults.standard.set(cleaned, forKey: "customDictationStyle")
+        }
+    }
+
+    /// The same, for the rewrite stage. Its own setting because the two are different jobs — this
+    /// one may reword, and the dictation style may not.
+    var customRewriteStyle: String {
+        didSet {
+            let cleaned = Typography.sanitizedSample(customRewriteStyle)
+            if cleaned != customRewriteStyle {
+                customRewriteStyle = cleaned
+                return
+            }
+            UserDefaults.standard.set(cleaned, forKey: "customRewriteStyle")
         }
     }
     var retention: RetentionPolicy {
@@ -406,7 +426,10 @@ final class DictationModel {
             ?? .default
         chineseScript =
             ChineseScript(rawValue: defaults.string(forKey: "chineseScript") ?? "") ?? .default
-        formattingSample = defaults.string(forKey: "formattingSample") ?? ""
+        dictationStyle =
+            DictationStyle(rawValue: defaults.string(forKey: "dictationStyle") ?? "") ?? .default
+        customDictationStyle = defaults.string(forKey: "customDictationStyle") ?? ""
+        customRewriteStyle = defaults.string(forKey: "customRewriteStyle") ?? ""
         translateTo = TranslationTarget.sanitized(defaults.string(forKey: "translateTo") ?? "")
         let storedLiveStyle =
             RewriteStyle(rawValue: defaults.string(forKey: "liveStyle") ?? "") ?? .verbatim
@@ -530,7 +553,9 @@ final class DictationModel {
             typography: .init(
                 spacing: typographySpacing.rawValue,
                 chineseScript: chineseScript.rawValue,
-                formattingSample: formattingSample,
+                dictationStyle: dictationStyle.rawValue,
+                customDictationStyle: customDictationStyle,
+                customRewriteStyle: customRewriteStyle,
                 translateTo: translateTo),
             iOS: .init(liveStyle: liveStyle.rawValue))
     }
@@ -549,7 +574,7 @@ final class DictationModel {
             throw SettingsTransferApplyError.unsupportedValue(
                 field: "retention", value: document.retention)
         }
-        var importedTypography: (TypographySpacing, ChineseScript, String, String)?
+        var importedTypography: ImportedTypography?
         if let typography = document.typography {
             guard let spacing = TypographySpacing(rawValue: typography.spacing) else {
                 throw SettingsTransferApplyError.unsupportedValue(
@@ -559,8 +584,21 @@ final class DictationModel {
                 throw SettingsTransferApplyError.unsupportedValue(
                     field: "typography.chineseScript", value: typography.chineseScript)
             }
-            importedTypography = (
-                spacing, script, typography.formattingSample, typography.translateTo ?? "")
+            // Absent is "the profile predates styles", which keeps what this device has; present
+            // and unreadable fails the whole import rather than being silently defaulted.
+            var style = dictationStyle
+            if let raw = typography.dictationStyle {
+                guard let parsed = DictationStyle(rawValue: raw) else {
+                    throw SettingsTransferApplyError.unsupportedValue(
+                        field: "typography.dictationStyle", value: raw)
+                }
+                style = parsed
+            }
+            importedTypography = ImportedTypography(
+                spacing: spacing, script: script, style: style,
+                customDictation: typography.customDictationStyle ?? customDictationStyle,
+                customRewrite: typography.customRewriteStyle ?? customRewriteStyle,
+                translateTo: typography.translateTo ?? "")
         }
         let importedFallback: ProviderKind? = try document.fallback.map { fallback in
             guard let kind = ProviderKind(persistedValue: fallback.provider) else {
@@ -601,11 +639,17 @@ final class DictationModel {
         defaults.set(importedRetention.rawValue, forKey: "retention")
         defaults.set(document.keepAudio, forKey: "keepAudio")
         if let typography = importedTypography {
-            defaults.set(typography.0.rawValue, forKey: "typographySpacing")
-            defaults.set(typography.1.rawValue, forKey: "chineseScript")
+            defaults.set(typography.spacing.rawValue, forKey: "typographySpacing")
+            defaults.set(typography.script.rawValue, forKey: "chineseScript")
+            defaults.set(typography.style.rawValue, forKey: "dictationStyle")
             defaults.set(
-                Typography.sanitizedSample(typography.2), forKey: "formattingSample")
-            defaults.set(TranslationTarget.sanitized(typography.3), forKey: "translateTo")
+                Typography.sanitizedSample(typography.customDictation),
+                forKey: "customDictationStyle")
+            defaults.set(
+                Typography.sanitizedSample(typography.customRewrite),
+                forKey: "customRewriteStyle")
+            defaults.set(
+                TranslationTarget.sanitized(typography.translateTo), forKey: "translateTo")
         }
         if let importedStyle {
             defaults.set(importedStyle.rawValue, forKey: "liveStyle")
@@ -620,10 +664,12 @@ final class DictationModel {
             learnsFromEdits: document.dictionary.learnsFromEdits))
 
         if let typography = importedTypography {
-            typographySpacing = typography.0
-            chineseScript = typography.1
-            formattingSample = typography.2
-            translateTo = typography.3
+            typographySpacing = typography.spacing
+            chineseScript = typography.script
+            dictationStyle = typography.style
+            customDictationStyle = typography.customDictation
+            customRewriteStyle = typography.customRewrite
+            translateTo = typography.translateTo
         }
         provider = selected
         apiKey = Self.storedKey(for: selected) ?? ""
@@ -660,7 +706,8 @@ final class DictationModel {
 
         let builder = prompts.builder(bundled: promptURL)
         guard let instruction = try? builder.systemInstruction(
-            fidelity: fidelity, script: chineseScript, sample: formattingSample)
+            fidelity: fidelity, script: chineseScript,
+                    dictationStyle: dictationStyle, customDictationStyle: customDictationStyle)
         else { return nil }
 
         let service = TranscriptionService(
@@ -1360,7 +1407,8 @@ final class DictationModel {
     /// the one entry point so a translation cannot be sent through the rewrite block.
     private func secondStageInstruction(for mode: TranscriptMode) -> String? {
         guard let promptURL = Self.bundledPromptURL else { return nil }
-        let instruction = try? prompts.builder(bundled: promptURL).secondStageInstruction(for: mode)
+        let instruction = try? prompts.builder(bundled: promptURL)
+            .secondStageInstruction(for: mode, customStyle: customRewriteStyle)
         return (instruction ?? nil).flatMap { $0.isEmpty ? nil : $0 }
     }
 
@@ -1369,7 +1417,10 @@ final class DictationModel {
         switch mode {
         case .verbatim, .summary: nil
         case .translate(let language): .translation(language: language)
-        case .rewrite(let style): rewriteStyleClause(for: style).map { .style(clause: $0) }
+        case .rewrite(let style):
+            rewriteStyleClause(for: style).flatMap {
+                $0.isEmpty ? nil : StyledRequest.style(clause: $0)
+            }
         }
     }
 
@@ -1381,13 +1432,15 @@ final class DictationModel {
     /// disagree about the only files that matter.
     private func rewriteInstruction(for style: RewriteStyle) -> String? {
         guard let promptURL = Self.bundledPromptURL else { return nil }
-        return try? prompts.builder(bundled: promptURL).rewriteInstruction(style: style)
+        return try? prompts.builder(bundled: promptURL)
+            .rewriteInstruction(style: style, custom: customRewriteStyle)
     }
 
     /// The style rule alone, for folding a rewrite into the request that carries the audio.
     private func rewriteStyleClause(for style: RewriteStyle) -> String? {
         guard let promptURL = Self.bundledPromptURL else { return nil }
-        return try? prompts.builder(bundled: promptURL).styleClause(style)
+        return try? prompts.builder(bundled: promptURL)
+            .styleClause(style, custom: customRewriteStyle)
     }
 
     private func requestMicrophone() async -> Bool {
@@ -1708,7 +1761,8 @@ final class DictationModel {
             let promptURL = Self.bundledPromptURL,
             let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(
-                    fidelity: fidelity, script: chineseScript, sample: formattingSample)
+                    fidelity: fidelity, script: chineseScript,
+                    dictationStyle: dictationStyle, customDictationStyle: customDictationStyle)
         else { return FallbackTranscriber(primary: primary) }
 
         return FallbackTranscriber(
@@ -1725,7 +1779,8 @@ final class DictationModel {
             let promptURL = Self.bundledPromptURL,
             let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(
-                    fidelity: fidelity, script: chineseScript, sample: formattingSample)
+                    fidelity: fidelity, script: chineseScript,
+                    dictationStyle: dictationStyle, customDictationStyle: customDictationStyle)
         else { return nil }
 
         guard let backend = try? ProviderFactory.make(

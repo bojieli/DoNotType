@@ -1,6 +1,7 @@
 package app.donottype
 
 import app.donottype.core.ChineseScript
+import app.donottype.core.DictationStyle
 import app.donottype.core.Fidelity
 import app.donottype.core.LogLevel
 import app.donottype.core.ProviderKind
@@ -46,7 +47,9 @@ object SettingsTransfer {
     data class TypographyValues(
         val spacing: TypographySpacing,
         val script: ChineseScript,
-        val sample: String,
+        val style: DictationStyle,
+        val customDictationStyle: String,
+        val customRewriteStyle: String,
         val translateTo: String,
     )
 
@@ -82,7 +85,9 @@ object SettingsTransfer {
                 JSONObject()
                     .put("spacing", Settings.typographySpacing.id)
                     .put("chineseScript", Settings.chineseScript.id)
-                    .put("formattingSample", Settings.formattingSample)
+                    .put("dictationStyle", Settings.dictationStyle.id)
+                    .put("customDictationStyle", Settings.customDictationStyle)
+                    .put("customRewriteStyle", Settings.customRewriteStyle)
                     .put("translateTo", Settings.translateTo),
             )
             .put(
@@ -189,10 +194,29 @@ object SettingsTransfer {
             val scriptRaw = block.optString("chineseScript")
             val script = ChineseScript.entries.firstOrNull { it.id == scriptRaw }
                 ?: throw IllegalArgumentException("Unsupported Chinese script “$scriptRaw”.")
+            // Absent is "the profile predates styles", which keeps what this device has; present
+            // and unreadable is a document this client cannot honour.
+            val styleRaw = block.optString("dictationStyle")
+            val style = if (styleRaw.isEmpty()) {
+                Settings.dictationStyle
+            } else {
+                DictationStyle.entries.firstOrNull { it.id == styleRaw }
+                    ?: throw IllegalArgumentException("Unsupported dictation style “$styleRaw”.")
+            }
             TypographyValues(
                 spacing,
                 script,
-                block.optString("formattingSample"),
+                style,
+                if (block.has("customDictationStyle")) {
+                    block.optString("customDictationStyle")
+                } else {
+                    Settings.customDictationStyle
+                },
+                if (block.has("customRewriteStyle")) {
+                    block.optString("customRewriteStyle")
+                } else {
+                    Settings.customRewriteStyle
+                },
                 TranslationTarget.sanitized(block.optString("translateTo")),
             )
         }
@@ -225,7 +249,9 @@ object SettingsTransfer {
         parsed.typography?.let { typography ->
             Settings.typographySpacing = typography.spacing
             Settings.chineseScript = typography.script
-            Settings.formattingSample = typography.sample
+            Settings.dictationStyle = typography.style
+            Settings.customDictationStyle = typography.customDictationStyle
+            Settings.customRewriteStyle = typography.customRewriteStyle
             Settings.translateTo = typography.translateTo
         }
 

@@ -5,6 +5,7 @@ import app.donottype.core.ChineseScript
 import app.donottype.core.Fidelity
 import app.donottype.core.RewriteStyle
 import app.donottype.core.SummaryStyle
+import app.donottype.core.DictationStyle
 import app.donottype.core.TranscriptMode
 import app.donottype.core.TranslationTarget
 import app.donottype.core.Typography
@@ -43,7 +44,9 @@ data class PromptPart(
      * file fills, because what goes in there is the user's own text.
      */
     val isClause: Boolean
-        get() = group in setOf("Fidelity", "Rewrite styles", "Summary styles", "Chinese script")
+        get() = group in setOf(
+            "Fidelity", "Rewrite styles", "Summary styles", "Chinese script", "Dictation styles",
+        )
 
     /** One line on what this part does, for the editor that has room to say so. */
     val summaryLine: String get() = when {
@@ -54,10 +57,12 @@ data class PromptPart(
             "Sent only when a target language is set. Must contain {{TARGET_LANGUAGE}}."
         id == "typography" ->
             "Sent only when a Chinese script is chosen. Must contain {{SCRIPT_RULE}}."
-        id == "sample" -> "Sent only when a formatting example is set. Must contain {{SAMPLE}}."
+        id == "dictation-style" ->
+            "Sent only when a dictation style is chosen. Must contain {{DICTATION_STYLE_RULE}}."
         group == "Fidelity" -> "Substituted into the transcription block."
         group == "Rewrite styles" -> "Substituted into the rewrite block."
         group == "Chinese script" -> "Substituted into the formatting block."
+        group == "Dictation styles" -> "Substituted into the dictation style block."
         else -> "Substituted into the summary block."
     }
 
@@ -82,9 +87,14 @@ data class PromptPart(
         val TYPOGRAPHY =
             PromptPart("typography", "typography.md", "{{SCRIPT_RULE}}", "Blocks", "Formatting")
 
-        /** The user's own formatting example, filled with their text rather than another part. */
-        val SAMPLE =
-            PromptPart("sample", "sample.md", "{{SAMPLE}}", "Blocks", "Formatting example")
+        /**
+         * The dictation style block. Every style — preset or the user's own text — is substituted
+         * into it, so the framing and the never-change-a-word rule cover both alike.
+         */
+        val DICTATION_STYLE_BLOCK = PromptPart(
+            "dictation-style", "dictation-style.md", "{{DICTATION_STYLE_RULE}}",
+            "Blocks", "Dictation style",
+        )
 
         fun of(fidelity: Fidelity) =
             PromptPart("fidelity:${fidelity.id}", "fidelity/${fidelity.id}.md", null, "Fidelity", fidelity.id)
@@ -96,6 +106,12 @@ data class PromptPart(
             PromptPart(
                 "summary-style:${style.id}", "summary-style/${style.id}.md", null,
                 "Summary styles", style.id,
+            )
+
+        fun of(style: DictationStyle) =
+            PromptPart(
+                "dictation-style:${style.id}", "dictation-style/${style.id}.md", null,
+                "Dictation styles", style.id,
             )
 
         fun of(script: ChineseScript) =
@@ -110,9 +126,10 @@ data class PromptPart(
             add(SUMMARY)
             add(TRANSLATE)
             add(TYPOGRAPHY)
-            add(SAMPLE)
+            add(DICTATION_STYLE_BLOCK)
             Fidelity.entries.forEach { add(of(it)) }
-            RewriteStyle.entries.filter { it.isRewrite }.forEach { add(of(it)) }
+            RewriteStyle.entries.filter { it.hasClauseFile }.forEach { add(of(it)) }
+            DictationStyle.entries.filter { it.hasClauseFile }.forEach { add(of(it)) }
             SummaryStyle.entries.forEach { add(of(it)) }
             ChineseScript.entries.filterNot { it.isDefault }.forEach { add(of(it)) }
         }
@@ -265,23 +282,53 @@ object PromptAssets {
         context: Context,
         fidelity: Fidelity,
         script: ChineseScript,
-        sample: String,
+        style: DictationStyle,
+        customStyle: String,
     ): String {
         var instruction = systemInstruction(context, fidelity)
         if (!script.isDefault) {
             instruction += "\n\n" + assemble(context, PromptPart.TYPOGRAPHY, PromptPart.of(script))
         }
-        val example = Typography.sanitizedSample(sample)
-        if (example.isNotEmpty()) {
+        val clause = dictationStyleClause(context, style, customStyle)
+        if (!clause.isNullOrEmpty()) {
             instruction += "\n\n" +
-                text(context, PromptPart.SAMPLE).replace("{{SAMPLE}}", example)
+                text(context, PromptPart.DICTATION_STYLE_BLOCK)
+                    .replace("{{DICTATION_STYLE_RULE}}", clause)
         }
         return instruction
     }
 
-    /** The style rule alone, for folding a rewrite into the request that carries the audio. */
-    fun styleClause(context: Context, style: RewriteStyle): String =
-        text(context, PromptPart.of(style))
+    /**
+     * The clause a dictation style contributes, or null when it contributes nothing.
+     *
+     * One function for both halves of the control, because the host block — and with it the "never
+     * change a word" rule and the "this is not speech" framing — has to wrap the user's own text
+     * exactly as it wraps a preset. A custom style that bypassed the block would be user text
+     * sitting unframed in a system instruction.
+     */
+    fun dictationStyleClause(
+        context: Context,
+        style: DictationStyle,
+        customStyle: String,
+    ): String? = when (style) {
+        DictationStyle.SPOKEN -> null
+        DictationStyle.CUSTOM -> Typography.sanitizedSample(customStyle).ifEmpty { null }
+        else -> text(context, PromptPart.of(style))
+    }
+
+    /**
+     * The style rule alone, for folding a rewrite into the request that carries the audio.
+     *
+     * A custom style whose text is empty returns empty, and every caller treats that as "no
+     * rewrite" — which is the right answer: a rewrite instruction with a blank style clause is a
+     * request to rewrite in no particular way, and the model would do something.
+     */
+    fun styleClause(context: Context, style: RewriteStyle, custom: String = ""): String =
+        when (style) {
+            RewriteStyle.VERBATIM -> ""
+            RewriteStyle.CUSTOM -> Typography.sanitizedSample(custom)
+            else -> text(context, PromptPart.of(style))
+        }
 
     /**
      * The instruction for whichever second stage a mode asks for, or null when it asks for none.
@@ -290,9 +337,20 @@ object PromptAssets {
      * wrong method — which is the mistake the two-part split exists to make impossible. A rewrite
      * may never drop a fact; a summary exists to.
      */
-    fun secondStageInstruction(context: Context, mode: TranscriptMode): String? = when (mode) {
+    fun secondStageInstruction(
+        context: Context,
+        mode: TranscriptMode,
+        customStyle: String = "",
+    ): String? = when (mode) {
         is TranscriptMode.Verbatim -> null
-        is TranscriptMode.Rewrite -> assemble(context, PromptPart.REWRITE, PromptPart.of(mode.style))
+        is TranscriptMode.Rewrite -> {
+            val clause = styleClause(context, mode.style, customStyle)
+            if (clause.isEmpty()) {
+                null
+            } else {
+                text(context, PromptPart.REWRITE).replace("{{STYLE_RULE}}", clause)
+            }
+        }
         is TranscriptMode.Summary -> assemble(context, PromptPart.SUMMARY, PromptPart.of(mode.style))
         is TranscriptMode.Translate -> translateInstruction(context, mode.language)
     }

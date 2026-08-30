@@ -206,7 +206,8 @@ struct BackendOptions: ParsableArguments {
             systemInstruction: try promptBuilder().systemInstruction(
                 fidelity: try resolveFidelity(),
                 script: AppPreferences.chineseScript,
-                sample: AppPreferences.formattingSample),
+                dictationStyle: AppPreferences.dictationStyle,
+                customDictationStyle: AppPreferences.customDictationStyle),
             fidelity: try resolveFidelity(),
             keytermBiasing: keyterms,
             typography: AppPreferences.typographySpacing)
@@ -239,7 +240,8 @@ struct BackendOptions: ParsableArguments {
             systemInstruction: try promptBuilder().systemInstruction(
                 fidelity: try resolveFidelity(),
                 script: AppPreferences.chineseScript,
-                sample: AppPreferences.formattingSample),
+                dictationStyle: AppPreferences.dictationStyle,
+                customDictationStyle: AppPreferences.customDictationStyle),
             fidelity: try resolveFidelity(),
             typography: AppPreferences.typographySpacing)
         return (service, resolved.source)
@@ -317,8 +319,19 @@ enum AppPreferences {
         return value
     }
 
-    static var formattingSample: String {
-        defaults?.string(forKey: "formattingSample") ?? ""
+    static var dictationStyle: DictationStyle {
+        guard let raw = defaults?.string(forKey: "dictationStyle"),
+            let value = DictationStyle(rawValue: raw)
+        else { return .default }
+        return value
+    }
+
+    static var customDictationStyle: String {
+        defaults?.string(forKey: "customDictationStyle") ?? ""
+    }
+
+    static var customRewriteStyle: String {
+        defaults?.string(forKey: "customRewriteStyle") ?? ""
     }
 
     /// The language dictations are written in, or empty for the one that was spoken.

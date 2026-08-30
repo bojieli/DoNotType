@@ -22,6 +22,9 @@ public enum PromptPart: Sendable, Hashable, Codable {
     case style(RewriteStyle)
     /// One of the summary styles, substituted into `summary`.
     case summaryStyle(SummaryStyle)
+    /// One of the dictation-style clauses, substituted into `dictationStyle`. Never `.spoken`,
+    /// which sends nothing, and never `.custom`, whose clause is the user's own text.
+    case dictationStyle(DictationStyle)
     /// How the transcript is written down. Appended to the transcription contract, and only when
     /// the user has asked for a script — so the shipped default request is unchanged by its
     /// existence, and the measured numbers in `docs/PROMPT.md` still describe it.
@@ -31,7 +34,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
     case script(ChineseScript)
     /// The user's own formatting example, appended when they have supplied one. Its placeholder is
     /// filled with their text rather than with another part.
-    case sample
+    case dictationStyleBlock
     /// The second-stage translation block. Separate from `rewrite` for the same reason `summary`
     /// is: their rules differ. A rewrite keeps the speaker's language and may reshape the prose; a
     /// translation changes the language and may not reshape anything.
@@ -39,9 +42,10 @@ public enum PromptPart: Sendable, Hashable, Codable {
 
     /// Every part that has a file, in the order a settings list should show them.
     public static let allCases: [PromptPart] =
-        [.system, .rewrite, .summary, .translate, .typography, .sample]
+        [.system, .rewrite, .summary, .translate, .typography, .dictationStyleBlock]
         + Fidelity.allCases.map(PromptPart.fidelity)
-        + RewriteStyle.allCases.filter(\.isRewrite).map(PromptPart.style)
+        + RewriteStyle.allCases.filter(\.hasClauseFile).map(PromptPart.style)
+        + DictationStyle.allCases.filter(\.hasClauseFile).map(PromptPart.dictationStyle)
         + SummaryStyle.allCases.map(PromptPart.summaryStyle)
         + ChineseScript.allCases.filter { !$0.isDefault }.map(PromptPart.script)
 
@@ -56,9 +60,10 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .style(let style): "style/\(style.rawValue).md"
         case .summaryStyle(let style): "summary-style/\(style.rawValue).md"
         case .translate: "translate.md"
+        case .dictationStyle(let style): "dictation-style/\(style.rawValue).md"
         case .typography: "typography.md"
         case .script(let script): "script/\(script.rawValue).md"
-        case .sample: "sample.md"
+        case .dictationStyleBlock: "dictation-style.md"
         }
     }
 
@@ -71,8 +76,8 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .summary: "{{SUMMARY_RULE}}"
         case .translate: "{{TARGET_LANGUAGE}}"
         case .typography: "{{SCRIPT_RULE}}"
-        case .sample: "{{SAMPLE}}"
-        case .fidelity, .style, .summaryStyle, .script: nil
+        case .dictationStyleBlock: "{{DICTATION_STYLE_RULE}}"
+        case .fidelity, .style, .summaryStyle, .script, .dictationStyle: nil
         }
     }
 
@@ -86,19 +91,20 @@ public enum PromptPart: Sendable, Hashable, Codable {
     /// because what goes in there is the user's own text.
     public var isClause: Bool {
         switch self {
-        case .system, .rewrite, .summary, .translate, .typography, .sample: false
-        case .fidelity, .style, .summaryStyle, .script: true
+        case .system, .rewrite, .summary, .translate, .typography, .dictationStyleBlock: false
+        case .fidelity, .style, .summaryStyle, .script, .dictationStyle: true
         }
     }
 
     /// The part a clause is substituted into.
     public var host: PromptPart? {
         switch self {
-        case .system, .rewrite, .summary, .translate, .typography, .sample: nil
+        case .system, .rewrite, .summary, .translate, .typography, .dictationStyleBlock: nil
         case .fidelity: .system
         case .style: .rewrite
         case .summaryStyle: .summary
         case .script: .typography
+        case .dictationStyle: .dictationStyleBlock
         }
     }
 
@@ -107,11 +113,12 @@ public enum PromptPart: Sendable, Hashable, Codable {
     /// Heading a settings list groups this part under.
     public var group: String {
         switch self {
-        case .system, .rewrite, .summary, .translate, .typography, .sample: "Blocks"
+        case .system, .rewrite, .summary, .translate, .typography, .dictationStyleBlock: "Blocks"
         case .fidelity: "Fidelity"
         case .style: "Rewrite styles"
         case .summaryStyle: "Summary styles"
         case .script: "Chinese script"
+        case .dictationStyle: "Dictation styles"
         }
     }
 
@@ -122,11 +129,12 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .summary: "Summary"
         case .translate: "Translate"
         case .typography: "Formatting"
-        case .sample: "Formatting example"
+        case .dictationStyleBlock: "Dictation style"
         case .fidelity(let fidelity): fidelity.rawValue
         case .style(let style): style.rawValue
         case .summaryStyle(let style): style.rawValue
         case .script(let script): script.rawValue
+        case .dictationStyle(let style): style.rawValue
         }
     }
 
@@ -139,11 +147,13 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .translate:
             "Sent only when a target language is set. Must contain {{TARGET_LANGUAGE}}."
         case .typography: "Sent only when a Chinese script is chosen. Must contain {{SCRIPT_RULE}}."
-        case .sample: "Sent only when a formatting example is set. Must contain {{SAMPLE}}."
+        case .dictationStyleBlock:
+            "Sent only when a dictation style is chosen. Must contain {{DICTATION_STYLE_RULE}}."
         case .fidelity: "Substituted into the transcription block."
         case .style: "Substituted into the rewrite block."
         case .summaryStyle: "Substituted into the summary block."
         case .script: "Substituted into the formatting block."
+        case .dictationStyle: "Substituted into the dictation style block."
         }
     }
 
@@ -155,11 +165,12 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .summary: "summary"
         case .translate: "translate"
         case .typography: "typography"
-        case .sample: "sample"
+        case .dictationStyleBlock: "dictation-style"
         case .fidelity(let fidelity): "fidelity:\(fidelity.rawValue)"
         case .style(let style): "style:\(style.rawValue)"
         case .summaryStyle(let style): "summary-style:\(style.rawValue)"
         case .script(let script): "script:\(script.rawValue)"
+        case .dictationStyle(let style): "dictation-style:\(style.rawValue)"
         }
     }
 
@@ -174,7 +185,12 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case ("summary", nil): self = .summary
         case ("translate", nil): self = .translate
         case ("typography", nil): self = .typography
-        case ("sample", nil): self = .sample
+        case ("sample", nil), ("dictation-style", nil): self = .dictationStyleBlock
+        case ("dictation-style", let name?):
+            guard let value = DictationStyle(rawValue: name), value.hasClauseFile else {
+                return nil
+            }
+            self = .dictationStyle(value)
         case ("script", let name?):
             guard let value = ChineseScript(rawValue: name), !value.isDefault else { return nil }
             self = .script(value)
@@ -182,7 +198,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
             guard let value = Fidelity(rawValue: name) else { return nil }
             self = .fidelity(value)
         case ("style", let name?):
-            guard let value = RewriteStyle(rawValue: name), value.isRewrite else { return nil }
+            guard let value = RewriteStyle(rawValue: name), value.hasClauseFile else { return nil }
             self = .style(value)
         case ("summary-style", let name?), ("summary", let name?):
             guard let value = SummaryStyle(rawValue: name) else { return nil }

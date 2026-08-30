@@ -196,7 +196,8 @@ struct PromptCommand: ParsableCommand {
                     try builder.systemInstruction(
                         fidelity: try backend.resolveFidelity(),
                         script: AppPreferences.chineseScript,
-                        sample: AppPreferences.formattingSample))
+                        dictationStyle: AppPreferences.dictationStyle,
+                        customDictationStyle: AppPreferences.customDictationStyle))
             case "rewrite":
                 guard let parsed = RewriteStyle(rawValue: style), parsed.isRewrite else {
                     throw ValidationError(
@@ -204,7 +205,9 @@ struct PromptCommand: ParsableCommand {
                             + RewriteStyle.allCases.filter(\.isRewrite).map(\.rawValue)
                             .joined(separator: ", "))
                 }
-                Out.stdout(try builder.rewriteInstruction(style: parsed))
+                Out.stdout(
+                    try builder.rewriteInstruction(
+                        style: parsed, custom: AppPreferences.customRewriteStyle))
             case "summary":
                 guard let parsed = SummaryStyle(rawValue: summary) else {
                     throw ValidationError(

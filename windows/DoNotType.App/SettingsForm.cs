@@ -71,7 +71,10 @@ public sealed class SettingsForm : Form
         new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _chineseScript =
         new() { DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly TextBox _formattingSample = new() { Multiline = true, Height = 60 };
+    private readonly ComboBox _dictationStyle =
+        new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly TextBox _customDictationStyle = new() { Multiline = true, Height = 60 };
+    private readonly TextBox _customRewriteStyle = new() { Multiline = true, Height = 60 };
     private readonly ComboBox _translateTo = new() { DropDownStyle = ComboBoxStyle.DropDown };
     private readonly CheckBox _grounding = new() { Text = "Ground transcription in screen text", AutoSize = true };
     private readonly ComboBox _retention = new() { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -240,13 +243,24 @@ public sealed class SettingsForm : Form
         layout.Controls.Add(Heading("Typography"));
         layout.Controls.Add(Labelled("Chinese and Latin", _typographySpacing));
         layout.Controls.Add(Labelled("Chinese script", _chineseScript));
-        layout.Controls.Add(Labelled("Formatting example", _formattingSample));
         layout.Controls.Add(Caption(
             "Spacing is applied to the finished transcript on this PC, so it is the same on every "
-            + "dictation, in history and at the cursor. The script and the example are asked of "
-            + "the model — a request rather than a guarantee — and nothing here is allowed to "
-            + $"change a word. The example is trimmed to {Typography.MaxSampleCharacters} "
-            + "characters."));
+            + "dictation, in history and at the cursor. The script is asked of the model — a "
+            + "request rather than a guarantee — and nothing here is allowed to change a word."));
+
+        // Two sections rather than one control with a mode switch, because the two stages are
+        // different jobs and get different answers: the dictation style may not reword, and the
+        // rewrite style is there to.
+        layout.Controls.Add(Heading("Dictation style"));
+        layout.Controls.Add(Labelled("Write it as", _dictationStyle));
+        layout.Controls.Add(Labelled("Your style", _customDictationStyle));
+        layout.Controls.Add(Caption(
+            "How a dictation is written down — line breaks, punctuation, whether it reads like a "
+            + "chat message or a paragraph. Not what it says: none of these may add, remove or "
+            + "reword anything, and Fidelity above is the separate dial for how much of your own "
+            + "\"um\" survives. As spoken sends nothing extra, which is why it is the default. "
+            + $"Custom text is trimmed to {Typography.MaxSampleCharacters} characters and is kept "
+            + "when you switch to a preset and back."));
 
         // Its own heading, under Typography and above Rewrite, because it is the setting that
         // *replaces* a rewrite rather than another shade of one.
@@ -265,6 +279,7 @@ public sealed class SettingsForm : Form
         // fresh install nothing is bound, so the word appeared nowhere in the window at all.
         layout.Controls.Add(Heading("Rewrite"));
         layout.Controls.Add(Labelled("Second key", _secondTrigger));
+        layout.Controls.Add(Labelled("Your style", _customRewriteStyle));
         layout.Controls.Add(Labelled("It produces", _secondStyle));
         layout.Controls.Add(_secondKeyNote);
         layout.Controls.Add(Caption(
@@ -1110,7 +1125,13 @@ public sealed class SettingsForm : Form
             _chineseScript.Items.Add(script.Label());
         }
         _chineseScript.SelectedIndex = (int)_settings.ChineseScript;
-        _formattingSample.Text = _settings.FormattingSample;
+        foreach (var style in Enum.GetValues<DictationStyle>())
+        {
+            _dictationStyle.Items.Add(style.Label());
+        }
+        _dictationStyle.SelectedIndex = (int)_settings.DictationStyle;
+        _customDictationStyle.Text = _settings.CustomDictationStyle;
+        _customRewriteStyle.Text = _settings.CustomRewriteStyle;
         // Editable rather than a fixed list: the suggestions are a shortcut, never a whitelist.
         foreach (var language in TranslationTarget.Suggestions) _translateTo.Items.Add(language);
         _translateTo.Text = _settings.TranslateTo;
@@ -1192,8 +1213,13 @@ public sealed class SettingsForm : Form
         _settings.ChineseScript = (ChineseScript)_chineseScript.SelectedIndex;
         // Cleaned on the way in, and written back to the box, so what the window shows is what a
         // request would carry rather than what was pasted into it.
-        _settings.FormattingSample = Typography.SanitizedSample(_formattingSample.Text);
-        _formattingSample.Text = _settings.FormattingSample;
+        _settings.DictationStyle = (DictationStyle)_dictationStyle.SelectedIndex;
+        // Cleaned on the way in, and written back to the box, so what the window shows is what a
+        // request would carry rather than what was pasted into it.
+        _settings.CustomDictationStyle = Typography.SanitizedSample(_customDictationStyle.Text);
+        _customDictationStyle.Text = _settings.CustomDictationStyle;
+        _settings.CustomRewriteStyle = Typography.SanitizedSample(_customRewriteStyle.Text);
+        _customRewriteStyle.Text = _settings.CustomRewriteStyle;
         _settings.TranslateTo = TranslationTarget.Sanitized(_translateTo.Text);
         _translateTo.Text = _settings.TranslateTo;
         _settings.GroundingEnabled = _grounding.Checked;
@@ -1239,7 +1265,9 @@ public sealed class SettingsForm : Form
         _fidelity.SelectedIndex = (int)_settings.Fidelity;
         _typographySpacing.SelectedIndex = (int)_settings.TypographySpacing;
         _chineseScript.SelectedIndex = (int)_settings.ChineseScript;
-        _formattingSample.Text = _settings.FormattingSample;
+        _dictationStyle.SelectedIndex = (int)_settings.DictationStyle;
+        _customDictationStyle.Text = _settings.CustomDictationStyle;
+        _customRewriteStyle.Text = _settings.CustomRewriteStyle;
         _translateTo.Text = _settings.TranslateTo;
         _grounding.Checked = _settings.GroundingEnabled;
         _sounds.Checked = _settings.InteractionSounds;

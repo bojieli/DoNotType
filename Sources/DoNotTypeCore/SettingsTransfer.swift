@@ -103,18 +103,31 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
     public struct Typography: Codable, Equatable, Sendable {
         public var spacing: String
         public var chineseScript: String
-        public var formattingSample: String
+        /// Which dictation style is selected. Absent in a profile written before styles existed,
+        /// which then keeps whatever the importing device already had.
+        public var dictationStyle: String?
+        /// The user's own style text for each stage. Two fields rather than one, because the two
+        /// stages are different jobs: the dictation style may not reword and the rewrite style is
+        /// there to. Kept even while a preset is selected, so switching away and back does not
+        /// silently delete something somebody wrote.
+        public var customDictationStyle: String?
+        public var customRewriteStyle: String?
         /// Empty, or absent altogether in a profile written before translation existed, means the
         /// dictation stays in the language that was spoken.
         public var translateTo: String?
 
         public init(
-            spacing: String, chineseScript: String, formattingSample: String,
+            spacing: String, chineseScript: String,
+            dictationStyle: String? = nil,
+            customDictationStyle: String? = nil,
+            customRewriteStyle: String? = nil,
             translateTo: String? = nil
         ) {
             self.spacing = spacing
             self.chineseScript = chineseScript
-            self.formattingSample = formattingSample
+            self.dictationStyle = dictationStyle
+            self.customDictationStyle = customDictationStyle
+            self.customRewriteStyle = customRewriteStyle
             self.translateTo = translateTo
         }
     }
@@ -216,6 +229,32 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
                 throw SettingsTransferError.invalidFallbackDelay
             }
         }
+    }
+}
+
+/// The typography block of an imported profile, once every value in it has been validated.
+///
+/// A struct rather than the tuple it started as: six positional fields read as `.0` and `.4` at
+/// the call site, and nobody can tell which is which. In the core because both Apple clients
+/// validate the same block and then apply it in their own way.
+public struct ImportedTypography: Sendable, Equatable {
+    public var spacing: TypographySpacing
+    public var script: ChineseScript
+    public var style: DictationStyle
+    public var customDictation: String
+    public var customRewrite: String
+    public var translateTo: String
+
+    public init(
+        spacing: TypographySpacing, script: ChineseScript, style: DictationStyle,
+        customDictation: String, customRewrite: String, translateTo: String
+    ) {
+        self.spacing = spacing
+        self.script = script
+        self.style = style
+        self.customDictation = customDictation
+        self.customRewrite = customRewrite
+        self.translateTo = translateTo
     }
 }
 

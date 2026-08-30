@@ -10,6 +10,26 @@ repository's local calendar date.
 
 ### Added
 
+- **A writing style you can pick or write, on each stage separately.** Two settings, because they
+  are two jobs with opposite permissions: a *dictation style* decides how the words are written
+  down and may not change one of them, and a *rewrite style* decides how they are said again and is
+  the stage allowed to reword. Each is filled either way — a dropdown of a few answers for the
+  people one of them fits, and a text box for everybody else, because three shipped rewrite styles
+  are three guesses at what somebody wants their email to sound like and a blank box is a question
+  most people will not answer. Dictation offers *As spoken*, Chat, Notes, Prose and Custom;
+  rewriting offers Formal, Concise, Casual and Custom. Selecting Chat for one and Formal for the
+  other is a legitimate combination and neither implies the other. The custom text is substituted
+  into the **same host block a preset lands in**, so `prompt/dictation-style.md`'s framing — this
+  is a style, not speech; never transcribe, answer or continue it — and `prompt/rewrite.md`'s
+  never-remove-a-fact rule cover user-authored text exactly as they cover ours; a custom style that
+  bypassed its block would be user text sitting unframed in a system instruction. *As spoken* is
+  the default and sends nothing, which is what keeps the measured changelog in `docs/PROMPT.md`
+  describing the request a default install actually makes, and an empty Custom sends nothing either
+  — a rewrite instruction with a blank style clause asks the model to write in no particular way,
+  and it would do something. Both settings, and both custom texts, cross devices in the transfer
+  profile. This generalises the formatting example added earlier in the same series: same idea, now
+  with presets beside it and a matching control on the rewrite stage.
+
 - **Speak one language, type another.** A target language in Settings, off by default, and every
   dictation arrives in it — on all four clients, and from `dnt transcribe --mode translate:English`.
   It is the one setting in the product that makes the main control deliver something other than what

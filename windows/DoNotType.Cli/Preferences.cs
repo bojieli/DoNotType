@@ -79,7 +79,12 @@ public static class Preferences
             ? value
             : ChineseScript.Spoken;
 
-    public static string FormattingSample => String("FormattingSample") ?? string.Empty;
+    public static DictationStyle DictationStyle =>
+        DictationStyleExtensions.ParseDictationStyle(String("DictationStyle"));
+
+    public static string CustomDictationStyle => String("CustomDictationStyle") ?? string.Empty;
+
+    public static string CustomRewriteStyle => String("CustomRewriteStyle") ?? string.Empty;
 
     public static string TranslateTo => String("TranslateTo") ?? string.Empty;
 

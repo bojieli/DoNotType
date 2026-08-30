@@ -65,6 +65,46 @@ enum class ChineseScript(val id: String, val label: String) {
 }
 
 /**
+ * How a dictation is written down, chosen from a short list or written by the user.
+ *
+ * Not what it says — that is [Fidelity], which decides how much of the speaker's own noise
+ * survives, and neither of them may change a word. This is the shape of the written form: line
+ * breaks, punctuation density, whether it reads like a chat message or a paragraph.
+ *
+ * [SPOKEN] is the default and sends **nothing**. That is load-bearing rather than tidy: every
+ * measured number in `docs/PROMPT.md` describes the default request, and a clause added to it
+ * unconditionally would invalidate the whole table at once.
+ *
+ * [CUSTOM] is the other half of the same control, and the reason this is an enum rather than a text
+ * box: most people want one of a few answers and should get it in one tap, and the people who want
+ * something else should not be limited to the few we thought of. The custom text goes through the
+ * same host block as every preset.
+ */
+enum class DictationStyle(val id: String, val label: String) {
+    SPOKEN("spoken", "As spoken — however the model writes it"),
+    CHAT("chat", "Chat — short lines, light punctuation"),
+    NOTES("notes", "Notes — sentence case, one point per line"),
+    PROSE("prose", "Prose — complete sentences and paragraphs"),
+    CUSTOM("custom", "Custom — your own description or example");
+
+    /** Whether this style adds anything to the request. False only for [SPOKEN]. */
+    val isStyled: Boolean get() = this != SPOKEN
+
+    /**
+     * Whether the clause comes from a file in `prompt/dictation-style/`. False for [CUSTOM], whose
+     * clause is the user's own text, and for [SPOKEN], which has no clause at all.
+     */
+    val hasClauseFile: Boolean get() = isStyled && this != CUSTOM
+
+    companion object {
+        val DEFAULT = SPOKEN
+
+        fun from(id: String?): DictationStyle =
+            entries.firstOrNull { it.id == id?.trim()?.lowercase() } ?: DEFAULT
+    }
+}
+
+/**
  * Typography applied to a finished transcript, deterministically.
  *
  * This is the half of the formatting problem that does not belong in a prompt. A model asked to

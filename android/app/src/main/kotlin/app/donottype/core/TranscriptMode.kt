@@ -13,9 +13,25 @@ enum class RewriteStyle(val id: String, val label: String) {
     FORMAL("formal", "Formal — professional prose"),
     CONCISE("concise", "Concise — same voice, fewer words"),
     CASUAL("casual", "Casual — relaxed, as if typed"),
+
+    /**
+     * The user's own description or example, from settings rather than from a file.
+     *
+     * Three shipped styles are three guesses at what somebody wants their email to sound like.
+     * This is the fourth answer — the one we did not think of — and it goes through the same
+     * `prompt/rewrite.md` host block as the presets, so the never-remove-a-fact rule applies to it
+     * exactly as it applies to FORMAL.
+     */
+    CUSTOM("custom", "Custom — your own description or example"),
     ;
 
     val isRewrite: Boolean get() = this != VERBATIM
+
+    /**
+     * Whether the clause comes from a file in `prompt/style/`. False for [CUSTOM], whose clause is
+     * the user's own text, and for [VERBATIM], which is the absence of a rewrite.
+     */
+    val hasClauseFile: Boolean get() = isRewrite && this != CUSTOM
 
     /** Key under `### style: <name>` in PROMPT.md. */
     val promptSection: String get() = "style: $id"
@@ -107,6 +123,9 @@ sealed class TranscriptMode {
                 RewriteStyle.FORMAL -> "Rewriting…"
                 RewriteStyle.CONCISE -> "Tightening…"
                 RewriteStyle.CASUAL -> "Loosening…"
+                // Deliberately the plain word. The other three are named after what that style
+                // does to the prose, and nothing here knows what the user asked for.
+                RewriteStyle.CUSTOM -> "Rewriting…"
                 RewriteStyle.VERBATIM -> "Finishing…"
             }
             is Summary -> when (style) {

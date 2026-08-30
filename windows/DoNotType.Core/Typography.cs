@@ -332,3 +332,74 @@ public static class ChineseScriptExtensions
         _ => "Follow the speaker — Simplified unless they ask otherwise",
     };
 }
+
+/// <summary>
+/// How a dictation is written down, chosen from a short list or written by the user.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Not what it says — that is <see cref="Fidelity"/>, which decides how much of the speaker's own
+/// noise survives, and neither of them may change a word. This is the shape of the written form:
+/// line breaks, punctuation density, whether it reads like a chat message or a paragraph.
+/// </para>
+/// <para>
+/// <see cref="Spoken"/> is the default and sends <b>nothing</b>. That is load-bearing rather than
+/// tidy: every measured number in docs/PROMPT.md describes the default request, and a clause added
+/// to it unconditionally would invalidate the whole table at once.
+/// </para>
+/// <para>
+/// <see cref="Custom"/> is the other half of the same control, and the reason this is an enum
+/// rather than a text box: most people want one of a few answers and should get it in one tap, and
+/// the people who want something else should not be limited to the few we thought of. The custom
+/// text goes through the same host block as every preset.
+/// </para>
+/// </remarks>
+public enum DictationStyle
+{
+    Spoken,
+    Chat,
+    Notes,
+    Prose,
+    Custom,
+}
+
+public static class DictationStyleExtensions
+{
+    public static string Id(this DictationStyle style) => style switch
+    {
+        DictationStyle.Chat => "chat",
+        DictationStyle.Notes => "notes",
+        DictationStyle.Prose => "prose",
+        DictationStyle.Custom => "custom",
+        _ => "spoken",
+    };
+
+    public static DictationStyle ParseDictationStyle(string? id) => id?.Trim().ToLowerInvariant() switch
+    {
+        "chat" => DictationStyle.Chat,
+        "notes" => DictationStyle.Notes,
+        "prose" => DictationStyle.Prose,
+        "custom" => DictationStyle.Custom,
+        "spoken" => DictationStyle.Spoken,
+        _ => DictationStyle.Spoken,
+    };
+
+    /// <summary>Whether this style adds anything to the request. False only for Spoken.</summary>
+    public static bool IsStyled(this DictationStyle style) => style != DictationStyle.Spoken;
+
+    /// <summary>
+    /// Whether the clause comes from a file in prompt/dictation-style/. False for Custom, whose
+    /// clause is the user's own text, and for Spoken, which has no clause at all.
+    /// </summary>
+    public static bool HasClauseFile(this DictationStyle style) =>
+        style.IsStyled() && style != DictationStyle.Custom;
+
+    public static string Label(this DictationStyle style) => style switch
+    {
+        DictationStyle.Chat => "Chat — short lines, light punctuation",
+        DictationStyle.Notes => "Notes — sentence case, one point per line",
+        DictationStyle.Prose => "Prose — complete sentences and paragraphs",
+        DictationStyle.Custom => "Custom — your own description or example",
+        _ => "As spoken — however the model writes it",
+    };
+}

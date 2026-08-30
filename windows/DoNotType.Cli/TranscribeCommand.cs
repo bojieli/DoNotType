@@ -38,7 +38,8 @@ public static class TranscribeCommand
         var secondStage = MakeSecondStage(arguments, out var secondStageName);
 
         var transcriber = new FileTranscriber(
-            service, arguments.ResolvePrompt(), arguments.ResolveFidelity(), secondStage);
+            service, arguments.ResolvePrompt(), arguments.ResolveFidelity(), secondStage,
+            Preferences.CustomRewriteStyle);
 
         // Checked before a single byte is uploaded. Finding out that a summary is impossible after
         // billing forty minutes of audio is a bad way to learn it.

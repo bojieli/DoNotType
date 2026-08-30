@@ -245,7 +245,7 @@ class DictationService(private val context: Context) {
             } else if (stage.needsSecondPass && text.isNotBlank()) {
                 val rewriteStart = System.currentTimeMillis()
                 val mode = stage
-                val instruction = PromptAssets.secondStageInstruction(context, mode)
+                val instruction = PromptAssets.secondStageInstruction(context, mode, Settings.customRewriteStyle)
                 val kind = secondStageBackendFor(key)
                 log.info(
                     mapOf("dictation" to id, "mode" to stage.id, "chars" to text.length.toString()),
@@ -378,7 +378,8 @@ class DictationService(private val context: Context) {
         val key = Settings.apiKey?.takeIf { it.isNotBlank() }
             ?: throw ProviderException("No API key. Open DoNotType to add one.")
         val instruction = PromptAssets.systemInstruction(
-            context, Settings.fidelity, Settings.chineseScript, Settings.formattingSample)
+            context, Settings.fidelity, Settings.chineseScript, Settings.dictationStyle,
+                Settings.customDictationStyle)
         val client = ProviderFactory.create(Settings.provider, key, Settings.model)
 
         fun requestInputs(backend: TranscriptionProvider): Pair<List<InputPart>, List<String>> {
@@ -483,7 +484,7 @@ class DictationService(private val context: Context) {
     /** What to ask the transcription request for beside the verbatim transcript. */
     private fun styledRequest(mode: TranscriptMode): StyledRequest? = when (mode) {
         is TranscriptMode.Rewrite ->
-            StyledRequest.Style(PromptAssets.styleClause(context, mode.style))
+            StyledRequest.Style(PromptAssets.styleClause(context, mode.style, Settings.customRewriteStyle))
         is TranscriptMode.Translate -> StyledRequest.Translation(mode.language)
         // A summary is never a live mode — the type system stops it reaching here — and verbatim
         // is the absence of a second stage.
@@ -579,7 +580,7 @@ class DictationService(private val context: Context) {
             val result = client.transcribe(
                 PromptAssets.systemInstruction(
                     context, record.fidelity, Settings.chineseScript,
-                    Settings.formattingSample,
+                    Settings.dictationStyle, Settings.customDictationStyle,
                 ),
                 contextParts + InputPart.Audio(wav, "audio/wav"),
                 record.fidelity,

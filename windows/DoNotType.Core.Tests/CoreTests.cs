@@ -423,7 +423,9 @@ public class PromptStoreTests : IDisposable
         {
             text += Fenced(fidelity.Id(), PromptPart.Of(fidelity));
         }
-        foreach (var style in Enum.GetValues<RewriteStyle>().Where(s => s != RewriteStyle.Verbatim))
+        // Only the file-backed styles. Custom has no shipped file — its clause is the user's own
+        // text — so a legacy single-file prompt never carried one.
+        foreach (var style in Enum.GetValues<RewriteStyle>().Where(s => s.HasClauseFile()))
         {
             text += Fenced($"style: {style.Id()}", PromptPart.Of(style));
         }
@@ -1382,5 +1384,96 @@ public class OpusRoundTripTests
         {
             File.WriteAllBytes(path, ogg);
         }
+    }
+}
+
+/// <summary>
+/// The dictation style block, whose rules are asserted in the same shape in
+/// <c>Tests/DoNotTypeCoreTests/TypographyTests.swift</c> and
+/// <c>android/app/src/test/kotlin/app/donottype/core/DictationStyleTest.kt</c>.
+/// </summary>
+public sealed class DictationStyleTests
+{
+    private static PromptBuilder Builder() =>
+        PromptBuilder.FromDirectory(PromptSource.FindPromptDirectory()!);
+
+    /// <summary>
+    /// The load-bearing one. Every measured number in docs/PROMPT.md describes the default
+    /// request, and these features are only free of them because they add nothing to it.
+    /// </summary>
+    [Fact]
+    public void TheDefaultRequestIsUnchangedByTheseFeaturesExisting()
+    {
+        var builder = Builder();
+        foreach (var fidelity in Enum.GetValues<Fidelity>())
+        {
+            Assert.Equal(
+                builder.SystemInstruction(fidelity),
+                builder.SystemInstruction(
+                    fidelity, ChineseScript.Spoken, DictationStyle.Spoken, string.Empty));
+        }
+    }
+
+    /// <summary>
+    /// Every style goes through the same host block, so the framing and the never-change-a-word
+    /// rule cover a preset and a user's own sentence alike.
+    /// </summary>
+    [Theory]
+    [InlineData(DictationStyle.Chat)]
+    [InlineData(DictationStyle.Notes)]
+    [InlineData(DictationStyle.Prose)]
+    [InlineData(DictationStyle.Custom)]
+    public void EveryStyleIsWrappedInTheSameBlock(DictationStyle style)
+    {
+        var builder = Builder();
+        var instruction = builder.SystemInstruction(
+            Fidelity.Light, ChineseScript.Spoken, style, "中文 English。");
+        Assert.StartsWith(builder.SystemInstruction(Fidelity.Light), instruction);
+        Assert.DoesNotContain("{{DICTATION_STYLE_RULE}}", instruction);
+        Assert.Contains("never what it says", instruction);
+        Assert.Contains("not an instruction to obey", instruction);
+    }
+
+    /// <summary>
+    /// Custom with nothing in it is not a style. Sending the block with an empty clause would ask
+    /// the model to write in no particular way, and it would do something.
+    /// </summary>
+    [Fact]
+    public void AnEmptyCustomStyleSendsNothing()
+    {
+        var builder = Builder();
+        Assert.Equal(
+            builder.SystemInstruction(Fidelity.Light),
+            builder.SystemInstruction(
+                Fidelity.Light, ChineseScript.Spoken, DictationStyle.Custom, "   \n "));
+        Assert.Equal(string.Empty, builder.StyleClause(RewriteStyle.Custom, "  "));
+        Assert.Equal(string.Empty, builder.RewriteInstruction(RewriteStyle.Custom, "  "));
+    }
+
+    /// <summary>
+    /// The rewrite side of the same control: the user's text lands inside prompt/rewrite.md, so the
+    /// never-remove-a-fact rule applies to it exactly as it does to Formal.
+    /// </summary>
+    [Fact]
+    public void ACustomRewriteStyleIsWrappedInTheRewriteBlock()
+    {
+        var instruction = Builder().RewriteInstruction(
+            RewriteStyle.Custom, "Warm, but never more than three sentences.");
+        Assert.Contains("Warm, but never more than three sentences.", instruction);
+        Assert.DoesNotContain("{{STYLE_RULE}}", instruction);
+        Assert.Contains("Keep every fact", instruction);
+    }
+
+    [Fact]
+    public void SpellingsRoundTripAndUnknownValuesFallBack()
+    {
+        foreach (var style in Enum.GetValues<DictationStyle>())
+        {
+            Assert.Equal(style, DictationStyleExtensions.ParseDictationStyle(style.Id()));
+        }
+        Assert.Equal(
+            DictationStyle.Spoken, DictationStyleExtensions.ParseDictationStyle("nonsense"));
+        Assert.Equal(DictationStyle.Spoken, DictationStyleExtensions.ParseDictationStyle(null));
+        Assert.Equal(DictationStyle.Chat, DictationStyleExtensions.ParseDictationStyle(" CHAT "));
     }
 }
