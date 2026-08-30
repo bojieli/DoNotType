@@ -8,6 +8,31 @@ repository's local calendar date.
 
 ## Unreleased
 
+### Fixed
+
+- **Settings no longer opens with the caret in a field, and the Model box checks what it is given.**
+  Both desktop toolkits hand the focus to the first control when a settings window is shown. On
+  macOS that is the Model field, which saves as you type — so opening the panel and typing anything
+  put it into the model ID, and a working configuration was replaced before there was anything on
+  screen to explain it. AppKit also restores a cached window's first responder, so a single click in
+  that field, once, made every later `⌘,` land back in it. On Windows the first control is the
+  Service dropdown, which jumps its selection to whatever letter is typed at it, with Model directly
+  behind. Both now open with the caret nowhere; Tab still reaches every control in the same order.
+  A missing API key still takes the caret on macOS, which is a placement with a reason. Android
+  already did this — `screenScaffold` takes the initial focus itself — and iOS never had the
+  problem, since SwiftUI on iOS focuses nothing on its own.
+- **A model ID that could not be one is refused, in the same words on all four clients.** The field
+  is free text because model IDs are not ours to enumerate, and until now it accepted anything —
+  a sentence, a line of CJK — and surfaced it at the end of the next dictation as a 404 that reads
+  exactly like a bad key. The check is about shape and never existence: ASCII letters, digits and
+  `. _ - : / + @`, no spaces, at most 200 characters, taken from IDs these providers actually serve
+  (`google/gemini-3.6-flash`, `qwen2.5:7b-instruct-q4_K_M`, `ft:gpt-4o:acme:tone:1`). Whatever
+  passes is still sent to the provider, which stays the authority on whether the model exists. On
+  the desktops and iOS, where the field saves as you type, a failing value is simply not stored —
+  the previous model stays in effect and keeps running dictations, which is what "In use" reports —
+  and on Android and Windows, where there is a Save button, Save is refused rather than reporting
+  success for a form in which the one edited field was the one thing not written.
+
 ## 0.4.0 - 2026-08-29
 
 The recording behind a dictation becomes something you can act on. A history row whose audio is
