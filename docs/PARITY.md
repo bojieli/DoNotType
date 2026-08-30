@@ -95,6 +95,16 @@ still the ones under the user's fingers. A phone keyboard *does* replace it, so 
 offer cannot be done without switching keyboards first — and speaking a message and then swapping
 keyboards to send it is most of the cost of using this one.
 
+Android's keyboard puts the talk button at the top of its bar, where iOS puts it under the status
+line. That is the one deliberate divergence in the two bars' layout, and it is about where the
+screen ends rather than about taste: an Android IME is anchored to the bottom of the display with
+the navigation bar below it, so a control's position *within* the bar is its position under the
+thumb — and with a label and a level meter above it, the one control the keyboard exists for was
+the second-lowest thing on the screen. Putting it first lifts it about 60dp without making the
+keyboard taller, because the two rows it swaps with are the two nobody presses. iOS pins its
+keyboard to a fixed height that the system already keeps clear of the home indicator, so the same
+move would buy it nothing.
+
 Android's Return differs from iOS's on purpose. iOS inserts a newline; Android fields declare what
 their Enter key is for — Search, Send, Go, Next, Done — so the declared action wins where there is
 one and the key is labelled with it, and a newline is what is left when the field wants no action.
