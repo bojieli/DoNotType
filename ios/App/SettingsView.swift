@@ -113,6 +113,8 @@ struct SettingsView: View {
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("model")
 
+            modelProblem(model.modelProblem, identifier: "model-problem")
+
             TextField(
                 "API endpoint", text: $model.endpoint,
                 prompt: Text(model.provider.defaultEndpoint)
@@ -146,6 +148,8 @@ struct SettingsView: View {
                 TextField("Fallback model", text: $model.fallbackModel)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+
+                modelProblem(model.fallbackModelProblem, identifier: "fallback-model-problem")
 
                 TextField("Fallback endpoint", text: $model.fallbackEndpoint)
                     .textInputAutocapitalization(.never)
@@ -212,6 +216,23 @@ struct SettingsView: View {
                 "Calls go straight to Google with your key. Nothing routes through a server of "
                     + "ours, and the key is stored in the Keychain."
             )
+        }
+    }
+
+    /// The sentence under a Model field when what is in it could not be a model ID.
+    ///
+    /// Directly under the field it is about, like the endpoint note above — this Section has no
+    /// separate block of explanations the way the macOS panel does. Orange rather than red, and
+    /// phrased as what the field takes rather than as a rejection: nothing has been lost. The
+    /// previous value is still stored and still running dictations — see `DictationModel.model` —
+    /// and this says why the box in front of you has not replaced it.
+    @ViewBuilder
+    private func modelProblem(_ message: String?, identifier: String) -> some View {
+        if let message {
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+                .accessibilityIdentifier(identifier)
         }
     }
 
