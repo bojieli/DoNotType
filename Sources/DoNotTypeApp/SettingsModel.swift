@@ -75,6 +75,24 @@ final class SettingsModel {
         didSet { Settings.shared.fidelity = fidelity }
     }
 
+    var typographySpacing: TypographySpacing {
+        didSet { Settings.shared.typographySpacing = typographySpacing }
+    }
+
+    var chineseScript: ChineseScript {
+        didSet { Settings.shared.chineseScript = chineseScript }
+    }
+
+    /// Saved as typed, like every other field in this window, and cleaned by the setter — so the
+    /// box shows the text a request would carry rather than the text that was pasted into it.
+    var formattingSample: String {
+        didSet {
+            Settings.shared.formattingSample = formattingSample
+            let cleaned = Settings.shared.formattingSample
+            if cleaned != formattingSample { formattingSample = cleaned }
+        }
+    }
+
     var keytermBiasing: Bool {
         didSet { Settings.shared.keytermBiasing = keytermBiasing }
     }
@@ -619,6 +637,9 @@ final class SettingsModel {
         textModel = settings.textModel ?? ""
         endpoint = settings.endpoint
         fidelity = settings.fidelity
+        typographySpacing = settings.typographySpacing
+        chineseScript = settings.chineseScript
+        formattingSample = settings.formattingSample
         keytermBiasing = settings.keytermBiasing
         fallbackProvider = settings.fallbackProvider
         fallbackAfterSeconds = settings.fallbackAfterSeconds
@@ -690,6 +711,10 @@ final class SettingsModel {
                 manual: settings.dictionaryTerms,
                 learned: settings.learnedDictionaryTerms,
                 learnsFromEdits: settings.learnDictionaryFromEdits),
+            typography: .init(
+                spacing: settings.typographySpacing.rawValue,
+                chineseScript: settings.chineseScript.rawValue,
+                formattingSample: settings.formattingSample),
             desktop: .init(
                 trigger: settings.trigger.rawValue,
                 hotkeyMode: settings.hotkeyMode.rawValue,
@@ -722,6 +747,19 @@ final class SettingsModel {
                 guard let kind = ProviderKind(persistedValue: raw) else { return nil }
                 return (kind, value)
             }
+        var importedTypography: (TypographySpacing, ChineseScript, String)?
+        if let typography = document.typography {
+            guard let spacing = TypographySpacing(rawValue: typography.spacing) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "typography.spacing", value: typography.spacing)
+            }
+            guard let script = ChineseScript(rawValue: typography.chineseScript) else {
+                throw SettingsTransferApplyError.unsupportedValue(
+                    field: "typography.chineseScript", value: typography.chineseScript)
+            }
+            importedTypography = (spacing, script, typography.formattingSample)
+        }
+
         guard let importedFidelity = Fidelity(rawValue: document.fidelity) else {
             throw SettingsTransferApplyError.unsupportedValue(
                 field: "fidelity", value: document.fidelity)
@@ -803,6 +841,11 @@ final class SettingsModel {
         settings.dictionaryTerms = document.dictionary.manual
         settings.learnedDictionaryTerms = document.dictionary.learned
         settings.learnDictionaryFromEdits = document.dictionary.learnsFromEdits
+        if let typography = importedTypography {
+            settings.typographySpacing = typography.0
+            settings.chineseScript = typography.1
+            settings.formattingSample = typography.2
+        }
 
         if let desktop = document.desktop, let values = desktopValues {
             settings.trigger = values.0
@@ -837,6 +880,9 @@ final class SettingsModel {
         textModel = settings.textModel ?? ""
         endpoint = settings.endpoint
         fidelity = settings.fidelity
+        typographySpacing = settings.typographySpacing
+        chineseScript = settings.chineseScript
+        formattingSample = settings.formattingSample
         keytermBiasing = settings.keytermBiasing
         fallbackProvider = settings.fallbackProvider
         fallbackAfterSeconds = settings.fallbackAfterSeconds
@@ -1130,14 +1176,16 @@ final class SettingsModel {
             let provider = try? Settings.shared.makeProvider(provider, apiKey: key),
             let promptURL = Self.bundledPromptURL(),
             let instruction = try? prompts.builder(bundled: promptURL)
-                .systemInstruction(fidelity: fidelity)
+                .systemInstruction(
+                    fidelity: fidelity, script: chineseScript, sample: formattingSample)
         else { return nil }
 
         return RetryCoordinator(
             service: TranscriptionService(
                 provider: provider, model: model, systemInstruction: instruction,
                 fidelity: fidelity, keytermBiasing: keytermBiasing,
-                personalDictionary: Settings.shared.personalDictionaryTerms),
+                personalDictionary: Settings.shared.personalDictionaryTerms,
+                typography: typographySpacing),
             store: store)
     }
 }

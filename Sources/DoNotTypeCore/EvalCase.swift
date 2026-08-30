@@ -203,7 +203,11 @@ public struct EvalRunner: Sendable {
             // backend that may be having a slow hour, and quietly doubling that spend is a harness
             // defect. Nothing here measures latency either — the numbers in `docs/EVALUATION.md`
             // come from the dictation benchmark, which runs the product path hedge and all.
-            hedgeStalledRequests: false)
+            hedgeStalledRequests: false,
+            // Off for the same reason, one level along: a suite scores what the backend produced.
+            // Typography is applied after the model has answered, so leaving it on would score
+            // this app's own transform against ground truth transcribed from the model's output.
+            typography: .unchanged)
     }
 
     /// Transcribes once. `context` of `nil` produces the no-context baseline.

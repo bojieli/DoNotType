@@ -20,9 +20,12 @@ mis-match.
 | Transcription contract | [`prompt/system.md`](../prompt/system.md) | `{{FIDELITY_RULE}}` |
 | Rewrite stage | [`prompt/rewrite.md`](../prompt/rewrite.md) | `{{STYLE_RULE}}` |
 | Summary stage | [`prompt/summary.md`](../prompt/summary.md) | `{{SUMMARY_RULE}}` |
+| Formatting block | [`prompt/typography.md`](../prompt/typography.md) | `{{SCRIPT_RULE}}` |
+| Formatting example | [`prompt/sample.md`](../prompt/sample.md) | `{{SAMPLE}}` |
 | Fidelity clauses | [`prompt/fidelity/`](../prompt/fidelity/) — `raw`, `light`, `tidy` | — |
 | Rewrite styles | [`prompt/style/`](../prompt/style/) — `formal`, `concise`, `casual` | — |
 | Summary styles | [`prompt/summary-style/`](../prompt/summary-style/) — `brief`, `bullets`, `actions` | — |
+| Chinese script clauses | [`prompt/script/`](../prompt/script/) — `simplified`, `traditional` | — |
 
 Two rules govern the whole directory:
 
@@ -168,6 +171,40 @@ This is a script choice, not translation: wording and language remain governed b
 fidelity and language-preservation rules. A user-edited `system.md` remains authoritative, as
 every other prompt override does.
 
+Rule 3 is the *default*, not the only answer, and in practice it was not a stable one — the same
+speaker got Simplified on one dictation and Traditional on the next. A user who wants the question
+settled picks a script in Typography, and `prompt/script/simplified.md` or
+`prompt/script/traditional.md` is substituted into the formatting block below.
+
+## The formatting blocks
+
+Two parts that are **absent from the default request**, and that is the whole design.
+
+[`prompt/typography.md`](../prompt/typography.md) is appended to the transcription instruction only
+when the user has chosen a Chinese script; [`prompt/sample.md`](../prompt/sample.md) only when they
+have supplied a formatting example. Choosing neither — the default — sends the same bytes this
+project sent before either file existed, which is asserted directly in the suites
+(`testTheDefaultRequestIsUnchangedByThisFeatureExisting`) rather than argued for here.
+
+That is not tidiness. Every number in the changelog below describes the default request. A clause
+added to it unconditionally would invalidate all of them at once, and the honest response would be
+to re-run the whole table rather than to add a row.
+
+**What each block is allowed to do.** Both open by restating the rule they could otherwise be read
+as relaxing: formatting governs how the transcript is written down, never what it says, and nothing
+in either may add, remove, reorder or reword anything. The sample block says three more times that
+the user's text is an example and not speech — not to be transcribed, answered, continued, or
+borrowed from. It is the only user-authored text this project puts into a system instruction, and
+it is framed the way screen context is, for the same reason.
+
+**Why the punctuation rule lives here and not in code.** The complaint that produced these blocks
+had two halves: inconsistent spacing between Chinese and Latin, and clauses separated sometimes by
+a comma and sometimes by a space. The first is arithmetic over characters and is done locally, on
+every request, by `Typography` — see [ARCHITECTURE.md](ARCHITECTURE.md). The second is not:
+replacing a space with a comma is *adding a mark the speaker did not say*, which is a content
+change, and this project does not make content changes locally. So it is asked for, in a block the
+model can decline, rather than imposed by a transform that could not be argued with.
+
 ## Changelog
 
 Measured with `swift run dnt-eval suite eval/nearmiss --repeat-count 3`.
@@ -177,6 +214,7 @@ screen context broke it. That is the failure this contract exists to prevent, an
 
 | Date | Change | Provider / model | runs | matched | improved | regressed |
 |------|--------|------------------|------|---------|----------|-----------|
+| 2026-08-30 | Formatting blocks added; default request byte-identical (control) | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
 | 2026-08-19 | Casual rewrite style replaces bullets; default rewrite style | **gemini** · gemini-3.5-flash | 48 | 37 | 11 | **2** |
 | 2026-08-19 | Light vocal fillers made unconditional | **gemini** · gemini-3.5-flash | 48 | 36 | 10 | **2** |
 | 2026-08-17 | Light self-correction cleanup | **gemini** · gemini-3.5-flash | 48 | 35 | 7 | **2** |
@@ -184,6 +222,23 @@ screen context broke it. That is the failure this contract exists to prevent, an
 | 2026-08-17 | Pre-change 972-word control | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
 | 2026-08-09 | Initial contract | **gemini** · gemini-3.6-flash | 15 | 15 | 0 | **0** |
 | 2026-08-09 | Initial contract | openrouter · google/gemini-3.6-flash | 15 | 12 | 0 | 1 |
+
+### 2026-08-30 — the formatting blocks, and a control run rather than a measurement
+
+`prompt/typography.md`, `prompt/sample.md` and `prompt/script/` were added. None of them reaches a
+default request: the first is sent only when a Chinese script is chosen, the second only when a
+formatting example is set, and choosing neither leaves the instruction byte-identical to the one
+before these files existed. That equality is a test rather than a claim
+(`testTheDefaultRequestIsUnchangedByThisFeatureExisting`, and its ports).
+
+The suite was therefore run as a **control**, not as a before/after: 38 matched, 7 improved, 2
+regressed over 48 runs, against the 2026-08-19 baseline's 37/11/2. Both movements are inside the
+per-pass range the runner prints for itself, which is what a suite re-run on an unchanged request
+is expected to produce, and neither figure is evidence about the new blocks — nothing measured here
+sent one. A change to the *text* of either block, or any decision to send one by default, needs its
+own measurement.
+
+The two regressions are the standing `benefit-novel-repo` failures, which predate this change.
 
 ### 2026-08-19 — casual rewrite style replaces bullets; the word-count caps are gone
 

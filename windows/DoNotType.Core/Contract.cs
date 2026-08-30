@@ -223,6 +223,22 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
     public static readonly PromptPart Summary =
         new("summary", "summary.md", "{{SUMMARY_RULE}}", "Blocks", "Summary");
 
+    /// <summary>
+    /// How the transcript is written down. Appended to the transcription contract, and only when
+    /// the user has asked for a script — so the shipped default request is unchanged by its
+    /// existence, and the measured numbers in docs/PROMPT.md still describe it.
+    /// </summary>
+    public static readonly PromptPart Typography =
+        new("typography", "typography.md", "{{SCRIPT_RULE}}", "Blocks", "Formatting");
+
+    /// <summary>
+    /// The user's own formatting example. Its placeholder is filled with their text rather than
+    /// with another part, which is why <see cref="IsClause"/> can no longer be derived from the
+    /// placeholder being null.
+    /// </summary>
+    public static readonly PromptPart Sample =
+        new("sample", "sample.md", "{{SAMPLE}}", "Blocks", "Formatting example");
+
     public static PromptPart Of(Fidelity fidelity) =>
         new($"fidelity:{fidelity.Id()}", $"fidelity/{fidelity.Id()}.md", null, "Fidelity", fidelity.Id());
 
@@ -232,15 +248,20 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
     public static PromptPart Of(SummaryStyle style) =>
         new($"summary-style:{style.Id()}", $"summary-style/{style.Id()}.md", null, "Summary styles", style.Id());
 
+    public static PromptPart Of(ChineseScript script) =>
+        new($"script:{script.Id()}", $"script/{script.Id()}.md", null, "Chinese script", script.Id());
+
     /// <summary>Every part that has a file, in the order a settings list should show them.</summary>
     public static IReadOnlyList<PromptPart> All { get; } = BuildAll();
 
     private static PromptPart[] BuildAll()
     {
-        var parts = new List<PromptPart> { System, Rewrite, Summary };
+        var parts = new List<PromptPart> { System, Rewrite, Summary, Typography, Sample };
         parts.AddRange(Enum.GetValues<Fidelity>().Select(Of));
         parts.AddRange(Enum.GetValues<RewriteStyle>().Where(s => s != RewriteStyle.Verbatim).Select(Of));
         parts.AddRange(Enum.GetValues<SummaryStyle>().Select(Of));
+        parts.AddRange(
+            Enum.GetValues<ChineseScript>().Where(s => s != ChineseScript.Spoken).Select(Of));
         return [.. parts];
     }
 
@@ -254,7 +275,13 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
     /// The one transform in the whole loader: a clause is written as a wrapped paragraph and joined
     /// into a single line on load, so source wrapping never changes the instruction.
     /// </remarks>
-    public bool IsClause => Placeholder is null;
+    /// <remarks>
+    /// Stated against the group rather than derived from <c>Placeholder is null</c>, which is what
+    /// it used to be. <see cref="Sample"/> broke that shortcut: it is a block with a placeholder
+    /// that no clause file fills, because what goes in there is the user's own text.
+    /// </remarks>
+    public bool IsClause => Group is "Fidelity" or "Rewrite styles" or "Summary styles"
+        or "Chinese script";
 
     /// <summary>One line on what this part does, for the editor that has room to say so.</summary>
     public string SummaryLine => Id switch
@@ -262,8 +289,11 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
         "system" => "Sent on every request. Must contain {{FIDELITY_RULE}}.",
         "rewrite" => "Sent only when a rewrite style is chosen.",
         "summary" => "Sent only when a summary style is chosen.",
+        "typography" => "Sent only when a Chinese script is chosen. Must contain {{SCRIPT_RULE}}.",
+        "sample" => "Sent only when a formatting example is set. Must contain {{SAMPLE}}.",
         _ when Group == "Fidelity" => "Substituted into the transcription block.",
         _ when Group == "Rewrite styles" => "Substituted into the rewrite block.",
+        _ when Group == "Chinese script" => "Substituted into the formatting block.",
         _ => "Substituted into the summary block.",
     };
 }
@@ -364,6 +394,33 @@ public sealed class PromptBuilder(PromptSource source)
 
     public string SystemInstruction(Fidelity fidelity) =>
         Assemble(PromptPart.System, PromptPart.Of(fidelity));
+
+    /// <summary>
+    /// The transcription contract with the user's formatting blocks appended, when they have set
+    /// any.
+    /// </summary>
+    /// <remarks>
+    /// Appended rather than woven into system.md, and absent unless asked for, so that a default
+    /// install sends the same bytes it sent before this feature existed. That is not tidiness:
+    /// every number in docs/PROMPT.md describes the default request, and a new clause on every
+    /// request would silently invalidate all of them.
+    /// </remarks>
+    public string SystemInstruction(Fidelity fidelity, ChineseScript script, string sample)
+    {
+        var instruction = SystemInstruction(fidelity);
+        if (script != ChineseScript.Spoken)
+        {
+            instruction += "\n\n" + Assemble(PromptPart.Typography, PromptPart.Of(script));
+        }
+
+        var example = Typography.SanitizedSample(sample);
+        if (example.Length > 0)
+        {
+            instruction += "\n\n"
+                + Source.TextFor(PromptPart.Sample).Replace("{{SAMPLE}}", example);
+        }
+        return instruction;
+    }
 
     /// <summary>The style rule alone, for a rewrite folded into the audio request.</summary>
     public string StyleClause(RewriteStyle style) =>

@@ -1,10 +1,12 @@
 package app.donottype
 
 import android.content.Context
+import app.donottype.core.ChineseScript
 import app.donottype.core.Fidelity
 import app.donottype.core.RewriteStyle
 import app.donottype.core.SummaryStyle
 import app.donottype.core.TranscriptMode
+import app.donottype.core.Typography
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets
@@ -35,15 +37,25 @@ data class PromptPart(
      * The one transform in the whole loader: a clause is written as a wrapped paragraph and joined
      * into a single line on load, so source wrapping never changes the instruction.
      */
-    val isClause: Boolean get() = placeholder == null
+    /**
+     * Stated against the group rather than derived from `placeholder == null`, which is what it used
+     * to be. [Companion.SAMPLE] broke that shortcut: it is a block with a placeholder that no clause
+     * file fills, because what goes in there is the user's own text.
+     */
+    val isClause: Boolean
+        get() = group in setOf("Fidelity", "Rewrite styles", "Summary styles", "Chinese script")
 
     /** One line on what this part does, for the editor that has room to say so. */
     val summaryLine: String get() = when {
         id == "system" -> "Sent on every request. Must contain {{FIDELITY_RULE}}."
         id == "rewrite" -> "Sent only when a rewrite style is chosen."
         id == "summary" -> "Sent only when a summary style is chosen."
+        id == "typography" ->
+            "Sent only when a Chinese script is chosen. Must contain {{SCRIPT_RULE}}."
+        id == "sample" -> "Sent only when a formatting example is set. Must contain {{SAMPLE}}."
         group == "Fidelity" -> "Substituted into the transcription block."
         group == "Rewrite styles" -> "Substituted into the rewrite block."
+        group == "Chinese script" -> "Substituted into the formatting block."
         else -> "Substituted into the summary block."
     }
 
@@ -51,6 +63,18 @@ data class PromptPart(
         val SYSTEM = PromptPart("system", "system.md", "{{FIDELITY_RULE}}", "Blocks", "Transcription")
         val REWRITE = PromptPart("rewrite", "rewrite.md", "{{STYLE_RULE}}", "Blocks", "Rewrite")
         val SUMMARY = PromptPart("summary", "summary.md", "{{SUMMARY_RULE}}", "Blocks", "Summary")
+
+        /**
+         * How the transcript is written down. Appended to the transcription contract, and only when
+         * the user has asked for a script — so the shipped default request is unchanged by its
+         * existence, and the measured numbers in `docs/PROMPT.md` still describe it.
+         */
+        val TYPOGRAPHY =
+            PromptPart("typography", "typography.md", "{{SCRIPT_RULE}}", "Blocks", "Formatting")
+
+        /** The user's own formatting example, filled with their text rather than another part. */
+        val SAMPLE =
+            PromptPart("sample", "sample.md", "{{SAMPLE}}", "Blocks", "Formatting example")
 
         fun of(fidelity: Fidelity) =
             PromptPart("fidelity:${fidelity.id}", "fidelity/${fidelity.id}.md", null, "Fidelity", fidelity.id)
@@ -64,14 +88,22 @@ data class PromptPart(
                 "Summary styles", style.id,
             )
 
+        fun of(script: ChineseScript) =
+            PromptPart(
+                "script:${script.id}", "script/${script.id}.md", null, "Chinese script", script.id,
+            )
+
         /** Every part that has a file, in the order a settings list should show them. */
         val all: List<PromptPart> = buildList {
             add(SYSTEM)
             add(REWRITE)
             add(SUMMARY)
+            add(TYPOGRAPHY)
+            add(SAMPLE)
             Fidelity.entries.forEach { add(of(it)) }
             RewriteStyle.entries.filter { it.isRewrite }.forEach { add(of(it)) }
             SummaryStyle.entries.forEach { add(of(it)) }
+            ChineseScript.entries.filterNot { it.isDefault }.forEach { add(of(it)) }
         }
 
         fun parse(id: String): PromptPart? = all.firstOrNull { it.id.equals(id.trim(), true) }
@@ -209,6 +241,32 @@ object PromptAssets {
 
     fun systemInstruction(context: Context, fidelity: Fidelity): String =
         assemble(context, PromptPart.SYSTEM, PromptPart.of(fidelity))
+
+    /**
+     * The transcription contract with the user's formatting blocks appended, when they have set any.
+     *
+     * Appended rather than woven into `system.md`, and absent unless asked for, so that a default
+     * install sends the same bytes it sent before this feature existed. That is not tidiness: every
+     * number in `docs/PROMPT.md` describes the default request, and a new clause on every request
+     * would silently invalidate all of them.
+     */
+    fun systemInstruction(
+        context: Context,
+        fidelity: Fidelity,
+        script: ChineseScript,
+        sample: String,
+    ): String {
+        var instruction = systemInstruction(context, fidelity)
+        if (!script.isDefault) {
+            instruction += "\n\n" + assemble(context, PromptPart.TYPOGRAPHY, PromptPart.of(script))
+        }
+        val example = Typography.sanitizedSample(sample)
+        if (example.isNotEmpty()) {
+            instruction += "\n\n" +
+                text(context, PromptPart.SAMPLE).replace("{{SAMPLE}}", example)
+        }
+        return instruction
+    }
 
     /** The style rule alone, for folding a rewrite into the request that carries the audio. */
     fun styleClause(context: Context, style: RewriteStyle): String =

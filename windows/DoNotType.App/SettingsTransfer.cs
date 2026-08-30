@@ -26,6 +26,13 @@ public static class SettingsTransfer
         [JsonPropertyName("retention")] public string Retention { get; set; } = "forever";
         [JsonPropertyName("keepAudio")] public bool KeepAudio { get; set; }
         [JsonPropertyName("dictionary")] public DictionaryValues Dictionary { get; set; } = new();
+
+        /// <summary>
+        /// Shared rather than platform-specific: typography is not a desktop concept, and a
+        /// transcript spaced one way here and another on the phone reading the same profile is the
+        /// drift this block prevents. Null when the document predates it.
+        /// </summary>
+        [JsonPropertyName("typography")] public TypographyValues? Typography { get; set; }
         [JsonPropertyName("desktop")] public DesktopValues? Desktop { get; set; }
         [JsonPropertyName("windows")] public WindowsValues? Windows { get; set; }
     }
@@ -49,6 +56,15 @@ public static class SettingsTransfer
         [JsonPropertyName("manual")] public List<string> Manual { get; set; } = [];
         [JsonPropertyName("learned")] public List<string> Learned { get; set; } = [];
         [JsonPropertyName("learnsFromEdits")] public bool LearnsFromEdits { get; set; }
+    }
+
+    public sealed class TypographyValues
+    {
+        [JsonPropertyName("spacing")] public string Spacing { get; set; } = "spaced";
+        [JsonPropertyName("chineseScript")] public string ChineseScript { get; set; } = "spoken";
+        [JsonPropertyName("formattingSample")]
+        public string FormattingSample { get; set; } =
+            string.Empty;
     }
 
     /// <summary>Subset of the macOS block with platform-independent meaning.</summary>
@@ -123,6 +139,12 @@ public static class SettingsTransfer
                 Manual = [.. settings.DictionaryTerms],
                 Learned = [.. settings.LearnedDictionaryTerms],
                 LearnsFromEdits = settings.LearnDictionaryFromEdits,
+            },
+            Typography = new TypographyValues
+            {
+                Spacing = DoNotType.Core.Typography.Spelling(settings.TypographySpacing),
+                ChineseScript = settings.ChineseScript.Id(),
+                FormattingSample = settings.FormattingSample,
             },
             Windows = new WindowsValues
             {
@@ -249,6 +271,29 @@ public static class SettingsTransfer
         var dictionary = document.Dictionary
             ?? throw new InvalidDataException("Dictionary settings are missing.");
 
+        // Optional, so a profile exported before this existed still imports; but a value that is
+        // present and unreadable fails the whole document rather than being silently defaulted,
+        // which is how every other typed field here behaves.
+        TypographySpacing? spacing = null;
+        DoNotType.Core.ChineseScript? script = null;
+        if (document.Typography is { } typography)
+        {
+            spacing = typography.Spacing switch
+            {
+                "spaced" => TypographySpacing.Spaced,
+                "tight" => TypographySpacing.Tight,
+                "unchanged" => TypographySpacing.Unchanged,
+                _ => throw Unsupported("typography.spacing", typography.Spacing),
+            };
+            script = typography.ChineseScript switch
+            {
+                "spoken" => DoNotType.Core.ChineseScript.Spoken,
+                "simplified" => DoNotType.Core.ChineseScript.Simplified,
+                "traditional" => DoNotType.Core.ChineseScript.Traditional,
+                _ => throw Unsupported("typography.chineseScript", typography.ChineseScript),
+            };
+        }
+
         var windows = document.Windows;
         HotkeyMonitor.Trigger? trigger = windows is null ? null : ParseEnum<HotkeyMonitor.Trigger>(windows.Trigger);
         HotkeyMonitor.Mode? mode = windows is null ? null : ParseEnum<HotkeyMonitor.Mode>(windows.HotkeyMode);
@@ -295,6 +340,13 @@ public static class SettingsTransfer
         settings.DictionaryTerms = dictionary.Manual;
         settings.LearnedDictionaryTerms = dictionary.Learned;
         settings.LearnDictionaryFromEdits = dictionary.LearnsFromEdits;
+        if (spacing is { } importedSpacing && script is { } importedScript)
+        {
+            settings.TypographySpacing = importedSpacing;
+            settings.ChineseScript = importedScript;
+            settings.FormattingSample =
+                DoNotType.Core.Typography.SanitizedSample(document.Typography?.FormattingSample);
+        }
 
         if (windows is not null)
         {

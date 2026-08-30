@@ -107,11 +107,13 @@ public sealed class Arguments : CommandLine
         var provider = ProviderFactory.Create(kind, resolved.Key, model);
         var service = new TranscriptionService(
             provider,
-            ResolvePrompt().SystemInstruction(ResolveFidelity()),
+            ResolvePrompt().SystemInstruction(
+                ResolveFidelity(), Preferences.ChineseScript, Preferences.FormattingSample),
             new ContextEncoder())
         {
             Fidelity = ResolveFidelity(),
             KeytermBiasing = Flag("keyterms"),
+            Typography = Preferences.TypographySpacing,
         };
         return (service, resolved.Source);
     }

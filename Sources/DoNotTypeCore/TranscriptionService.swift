@@ -34,7 +34,8 @@ public struct TranscriptionService: Sendable {
                 "second stage returned nothing; keeping the transcript",
                 ["provider": provider.name, "model": model])
         }
-        return rewritten.isEmpty ? transcript : rewritten
+        return rewritten.isEmpty
+            ? transcript : Typography.normalize(rewritten, spacing: typography)
     }
 
     /// Errors worth retrying automatically, as opposed to ones that will fail identically forever.
@@ -90,6 +91,17 @@ public struct TranscriptionService: Sendable {
     /// through a network. Off for measurement: a benchmark that reports the better of two draws is
     /// not reporting the backend's latency.
     public var hedgeStalledRequests: Bool
+    /// What to do where Chinese or Japanese meets Latin in whatever comes back. See `Typography`.
+    ///
+    /// It lives here, on the object every path goes through — dictation, file transcription,
+    /// retry, redo, the CLI — for the same reason the hallucination guard does: a transform some
+    /// callers apply is a transform that will be missing from the one that matters. A history row
+    /// and a live insertion of the same words must not be spaced differently.
+    ///
+    /// Measurement is the one caller that turns it off, and does so explicitly: a suite scoring a
+    /// transcript against ground truth should see what the backend produced, not what this app
+    /// then did to it.
+    public var typography: TypographySpacing
 
     public init(
         provider: any TranscriptionProvider,
@@ -99,7 +111,8 @@ public struct TranscriptionService: Sendable {
         fidelity: Fidelity = .default,
         keytermBiasing: Bool = false,
         personalDictionary: [String] = [],
-        hedgeStalledRequests: Bool = true
+        hedgeStalledRequests: Bool = true,
+        typography: TypographySpacing = .default
     ) {
         self.provider = provider
         self.model = model
@@ -109,6 +122,7 @@ public struct TranscriptionService: Sendable {
         self.keytermBiasing = keytermBiasing
         self.personalDictionary = PersonalDictionary.sanitized(personalDictionary)
         self.hedgeStalledRequests = hedgeStalledRequests
+        self.typography = typography
     }
 
     /// What this service's backend can actually do with the screen, for callers that need to say
@@ -246,6 +260,14 @@ public struct TranscriptionService: Sendable {
                     ])
                 result.truncation = truncation
             }
+        }
+
+        // After the guards, never before. Both of them measure the transcript against the audio,
+        // and a space this added or removed is not something either is entitled to see.
+        result.transcript.transcript = Typography.normalize(
+            result.transcript.transcript, spacing: typography)
+        result.transcript.styled = result.transcript.styled.map {
+            Typography.normalize($0, spacing: typography)
         }
         return result
     }
@@ -482,7 +504,12 @@ public struct TranscriptionService: Sendable {
         let pieces = results.compactMap { $0 }
         return TranscriptionResult(
             transcript: Transcript(
-                transcript: AudioChunker.stitch(pieces.map(\.transcript.transcript)),
+                // Again, over the join this time. Each chunk was normalised on its own and the
+                // stitch adds one space between them, which after a full stop is exactly the
+                // stray space this removes. Normalising twice is normalising once.
+                transcript: Typography.normalize(
+                    AudioChunker.stitch(pieces.map(\.transcript.transcript)),
+                    spacing: typography),
                 language: pieces.first?.transcript.language ?? ""),
             usage: pieces.map(\.usage).reduce(TokenUsage(), +),
             rawOutput: pieces.map(\.rawOutput).joined(separator: "\n"),

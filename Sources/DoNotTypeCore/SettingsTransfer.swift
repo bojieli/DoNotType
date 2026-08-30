@@ -93,6 +93,25 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
         }
     }
 
+    /// How transcripts are written down. Shared by all four clients rather than living in
+    /// `Desktop`, because typography is not a desktop concept: a transcript spaced one way on a
+    /// laptop and another on the phone reading the same profile is the drift this block prevents.
+    ///
+    /// Optional, so a document written before it existed still imports. An importing client
+    /// validates the strings against the cases it has and refuses the whole document if they do
+    /// not parse, exactly as it does for `fidelity`.
+    public struct Typography: Codable, Equatable, Sendable {
+        public var spacing: String
+        public var chineseScript: String
+        public var formattingSample: String
+
+        public init(spacing: String, chineseScript: String, formattingSample: String) {
+            self.spacing = spacing
+            self.chineseScript = chineseScript
+            self.formattingSample = formattingSample
+        }
+    }
+
     /// The phone chooses a rewrite style in the UI; desktop chooses it with a second hotkey.
     public struct IOS: Codable, Equatable, Sendable {
         public var liveStyle: String
@@ -109,13 +128,14 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
     public var retention: String
     public var keepAudio: Bool
     public var dictionary: Dictionary
+    public var typography: Typography?
     public var desktop: Desktop?
     public var iOS: IOS?
 
     public init(
         selectedProvider: String, providers: [String: Provider], fidelity: String,
         fallback: Fallback?, retention: String, keepAudio: Bool, dictionary: Dictionary,
-        desktop: Desktop? = nil, iOS: IOS? = nil
+        typography: Typography? = nil, desktop: Desktop? = nil, iOS: IOS? = nil
     ) {
         format = Self.formatIdentifier
         version = Self.currentVersion
@@ -126,6 +146,7 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
         self.retention = retention
         self.keepAudio = keepAudio
         self.dictionary = dictionary
+        self.typography = typography
         self.desktop = desktop
         self.iOS = iOS
     }

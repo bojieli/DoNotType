@@ -141,6 +141,31 @@ public struct PromptBuilder: Sendable {
         try assemble(.system, filling: .fidelity(fidelity))
     }
 
+    /// The transcription contract with the user's formatting blocks appended, when they have set
+    /// any.
+    ///
+    /// Appended rather than woven into `system.md`, and absent unless asked for, so that a default
+    /// install sends the same bytes it sent before this feature existed. That is not tidiness:
+    /// every number in `docs/PROMPT.md` describes the default request, and a new clause on every
+    /// request would silently invalidate all of them.
+    ///
+    /// The two blocks are separate parts because they are separately owned. `typography` is the
+    /// project's text, editable and restorable like every other part; the sample is the user's own
+    /// sentence, dropped into a block that frames it as an example and not as speech.
+    public func systemInstruction(
+        fidelity: Fidelity = .default, script: ChineseScript, sample: String
+    ) throws -> String {
+        var instruction = try systemInstruction(fidelity: fidelity)
+        if !script.isDefault {
+            instruction += "\n\n" + (try assemble(.typography, filling: .script(script)))
+        }
+        let example = Typography.sanitizedSample(sample)
+        if !example.isEmpty {
+            instruction += "\n\n" + (try assemble(.sample, replacing: ["{{SAMPLE}}": example]))
+        }
+        return instruction
+    }
+
     /// System instruction for the second-stage rewrite.
     public func rewriteInstruction(style: RewriteStyle) throws -> String {
         guard style.isRewrite else { return "" }
@@ -189,10 +214,24 @@ public struct PromptBuilder: Sendable {
 
     // MARK: - Private
 
+    /// The host is read first, deliberately. A missing `system.md` has to be reported as a missing
+    /// `system.md` rather than as a missing fidelity clause, which is what a reordering of these
+    /// two lines produces and what the suite asserts against.
     private func assemble(_ host: PromptPart, filling clause: PromptPart) throws -> String {
         let body = try source.text(for: host)
         guard let placeholder = host.placeholder else { return body }
-        return body.replacingOccurrences(
-            of: placeholder, with: try source.text(for: clause))
+        return body.replacingOccurrences(of: placeholder, with: try source.text(for: clause))
+    }
+
+    /// The same substitution, for a placeholder whose value is not another part.
+    ///
+    /// Only the formatting example uses it. A part file cannot hold that text, because the text is
+    /// the user's.
+    private func assemble(_ host: PromptPart, replacing values: [String: String]) throws -> String {
+        var body = try source.text(for: host)
+        for (placeholder, value) in values {
+            body = body.replacingOccurrences(of: placeholder, with: value)
+        }
+        return body
     }
 }

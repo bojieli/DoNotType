@@ -63,6 +63,24 @@ public static class Preferences
             ? value
             : Fidelity.Light;
 
+    /// <summary>
+    /// The three typography preferences, read for the same reason every other one here is: the CLI
+    /// and the app are the same product, and a transcript that came out of dnt.exe should not be
+    /// spaced differently from one the hotkey produced a minute earlier.
+    /// </summary>
+    public static TypographySpacing TypographySpacing =>
+        Enum.TryParse<TypographySpacing>(
+            String("TypographySpacing"), ignoreCase: true, out var value)
+            ? value
+            : Typography.DefaultSpacing;
+
+    public static ChineseScript ChineseScript =>
+        Enum.TryParse<ChineseScript>(String("ChineseScript"), ignoreCase: true, out var value)
+            ? value
+            : ChineseScript.Spoken;
+
+    public static string FormattingSample => String("FormattingSample") ?? string.Empty;
+
     public static string Model(ProviderKind kind)
     {
         if (Root?.TryGetProperty("Models", out var models) == true &&

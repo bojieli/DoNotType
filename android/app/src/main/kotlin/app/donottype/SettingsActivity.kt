@@ -2,6 +2,7 @@ package app.donottype
 
 import app.donottype.accessibility.ScreenReaderService
 import app.donottype.core.DictationService
+import app.donottype.core.ChineseScript
 import app.donottype.core.Fidelity
 import app.donottype.core.ModelIdentifier
 import app.donottype.core.PerformanceStats
@@ -11,6 +12,8 @@ import app.donottype.core.ProviderProbe
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.RewriteAvailability
 import app.donottype.core.RewriteStyle
+import app.donottype.core.Typography
+import app.donottype.core.TypographySpacing
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -98,6 +101,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var historySummary: TextView
     private lateinit var dictionaryContainer: LinearLayout
     private lateinit var dictionaryEntry: TextInputEditText
+    private lateinit var formattingSampleField: TextInputEditText
     private lateinit var dictionaryEntryLayout: TextInputLayout
     private lateinit var dictionaryStatus: TextView
 
@@ -348,6 +352,44 @@ class SettingsActivity : AppCompatActivity() {
         column.addView(card(controlRow(null, buildFidelityPicker())))
         column.addView(
             sectionFooter("Even Tidy only changes typography. None of these reword you.")
+        )
+
+        // ---- Typography ----
+        // Beneath Fidelity because it is the same kind of dial — how the words are written down,
+        // never which words — and above Rewrite, which is the first setting that may change them.
+        column.addView(sectionTitle("Typography"))
+        column.addView(
+            card(
+                controlRow("Chinese and Latin", buildSpacingPicker()),
+                controlRow("Chinese script", buildScriptPicker()),
+            )
+        )
+        formattingSampleField = TextInputEditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setText(Settings.formattingSample)
+        }
+        column.addView(
+            fieldContainer(
+                "Formatting example",
+                formattingSampleField,
+                helper = "Optional. Up to ${Typography.MAX_SAMPLE_CHARACTERS} characters, "
+                    + "trimmed to that on save.",
+            )
+        )
+        column.addView(
+            primaryButton("Save formatting example") {
+                Settings.formattingSample = formattingSampleField.text.toString()
+                formattingSampleField.setText(Settings.formattingSample)
+                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+            }
+        )
+        column.addView(
+            sectionFooter(
+                "Spacing is applied to the finished transcript here on the phone, so it is the "
+                    + "same on every dictation. The script and the example are asked of the model, "
+                    + "which is why they are a request rather than a guarantee — and why nothing "
+                    + "here is allowed to change a word."
+            )
         )
 
         // ---- Rewrite ----
@@ -796,6 +838,54 @@ class SettingsActivity : AppCompatActivity() {
                         setOnClickListener { Settings.fidelity = fidelity }
                     }
                 )
+            }
+        }
+    }
+
+    /**
+     * Deterministic, so it is offered as a plain choice with no caveat: whatever is picked here is
+     * what every transcript will look like.
+     */
+    private fun buildSpacingPicker(): Spinner {
+        val choices = TypographySpacing.entries
+        return Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@SettingsActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                choices.map { it.label },
+            )
+            setSelection(choices.indexOf(Settings.typographySpacing).coerceAtLeast(0))
+            contentDescription = "typography-spacing"
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: AdapterView<*>?, view: View?, position: Int, id: Long,
+                ) {
+                    Settings.typographySpacing = choices[position]
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            }
+        }
+    }
+
+    private fun buildScriptPicker(): Spinner {
+        val choices = ChineseScript.entries
+        return Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@SettingsActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                choices.map { it.label },
+            )
+            setSelection(choices.indexOf(Settings.chineseScript).coerceAtLeast(0))
+            contentDescription = "chinese-script"
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: AdapterView<*>?, view: View?, position: Int, id: Long,
+                ) {
+                    Settings.chineseScript = choices[position]
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             }
         }
     }

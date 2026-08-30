@@ -10,6 +10,30 @@ repository's local calendar date.
 
 ### Added
 
+- **Typography, on all four clients: a rule instead of a coin flip.** The space between Chinese and
+  Latin was whatever the model felt like on the request — the same sentence came back spaced once
+  and tight the next time, sometimes with a stray space after a full-width full stop, which no
+  convention allows anywhere. The fix is split along the line between what can be decided locally
+  and what cannot. **Spacing is arithmetic**, so it is done on the device, in
+  `TranscriptionService`, after both audio guards and before the transcript leaves — the same choke
+  point as the hallucination guard, so dictation, file transcription, retry, redo and both CLIs get
+  the same answer, and history and the cursor cannot disagree. One space at the boundary is the
+  default (the convention most Chinese style guides ask for), *no space* and *leave it as the model
+  wrote it* are the other two, and space beside a full-width mark is removed under both rules
+  because it is wrong under all of them. It may only ever add or remove horizontal space: the three
+  suites assert that input and output are identical once whitespace is dropped, and share one
+  22-row table so a transcript cannot be spaced one way on a laptop and another on a phone. Korean
+  is deliberately outside the rule (it separates its own words, so "no space" would break it) and
+  Japanese kana deliberately inside it. **Script and punctuation are not arithmetic**, so they are
+  asked of the model: *Chinese script* settles Simplified against Traditional, which was drifting
+  inside single dictations, and a free-text *formatting example* — up to 500 characters — shows the
+  model the conventions this codebase has no name for. Both are sent only when set, so a default
+  install's request is byte-identical to the one before this existed, which is asserted rather than
+  claimed; every measured number in `docs/PROMPT.md` still describes it. Replacing a space between
+  clauses with a comma stays a request rather than a transform, because a comma the speaker did not
+  say is a content change, and this project does not make those locally. All three settings travel
+  in the transfer profile.
+
 - **A way out of a recording, on every client, that does not involve paying for it.** Abandoning a
   dictation already worked everywhere; on three of the four clients nothing said so. The desktops
   bound Escape and never printed it, and both phones cancelled capture by dragging off the talk

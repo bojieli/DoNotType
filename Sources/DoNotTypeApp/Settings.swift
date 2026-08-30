@@ -16,6 +16,9 @@ final class Settings {
         static let provider = "provider"
         static let model = "model"
         static let fidelity = "fidelity"
+        static let typographySpacing = "typographySpacing"
+        static let chineseScript = "chineseScript"
+        static let formattingSample = "formattingSample"
         static let trigger = "trigger"
         static let groundingEnabled = "groundingEnabled"
         static let screenshotEnabled = "screenshotEnabled"
@@ -340,6 +343,33 @@ final class Settings {
     var fidelity: Fidelity {
         get { Fidelity(rawValue: defaults.string(forKey: Key.fidelity) ?? "") ?? .default }
         set { defaults.set(newValue.rawValue, forKey: Key.fidelity) }
+    }
+
+    /// What happens where Chinese meets Latin in a finished transcript. Deterministic — see
+    /// `Typography`. The other three clients spell the stored values the same way.
+    var typographySpacing: TypographySpacing {
+        get {
+            TypographySpacing(rawValue: defaults.string(forKey: Key.typographySpacing) ?? "")
+                ?? .default
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.typographySpacing) }
+    }
+
+    /// Which characters Chinese is written in. Asked of the model; see `ChineseScript`.
+    var chineseScript: ChineseScript {
+        get {
+            ChineseScript(rawValue: defaults.string(forKey: Key.chineseScript) ?? "") ?? .default
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.chineseScript) }
+    }
+
+    /// A sentence written the way this user wants their transcripts written.
+    ///
+    /// Sanitised on the way in rather than on the way out, so what the settings window shows is
+    /// what a request would carry.
+    var formattingSample: String {
+        get { defaults.string(forKey: Key.formattingSample) ?? "" }
+        set { defaults.set(Typography.sanitizedSample(newValue), forKey: Key.formattingSample) }
     }
 
     var trigger: HotkeyMonitor.Trigger {
