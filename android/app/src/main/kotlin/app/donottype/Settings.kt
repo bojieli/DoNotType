@@ -12,6 +12,7 @@ import app.donottype.core.PersonalDictionary
 import app.donottype.core.RewriteStyle
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.TranscriptMode
+import app.donottype.core.TranslationTarget
 import app.donottype.core.Typography
 import app.donottype.core.TypographySpacing
 import org.json.JSONArray
@@ -37,6 +38,7 @@ object Settings {
     private const val KEY_TYPOGRAPHY_SPACING = "typographySpacing"
     private const val KEY_CHINESE_SCRIPT = "chineseScript"
     private const val KEY_FORMATTING_SAMPLE = "formattingSample"
+    private const val KEY_TRANSLATE_TO = "translateTo"
     private const val KEY_GROUNDING = "grounding"
     private const val KEY_BLOCKED = "blockedPackages"
     private const val KEY_RETENTION = "retention"
@@ -338,6 +340,27 @@ object Settings {
             if (ready) {
                 prefs.edit()
                     .putString(KEY_FORMATTING_SAMPLE, Typography.sanitizedSample(value))
+                    .apply()
+            }
+        }
+
+    /**
+     * The language dictations are written in, or empty for the one that was spoken.
+     *
+     * Empty by default, and that default is the product: this is the one setting that makes the
+     * talk button deliver something other than what was said. What it does not change is the
+     * promise underneath — the verbatim transcript is still produced first and still stored.
+     */
+    var translateTo: String
+        get() = if (ready) {
+            TranslationTarget.sanitized(prefs.getString(KEY_TRANSLATE_TO, null))
+        } else {
+            ""
+        }
+        set(value) {
+            if (ready) {
+                prefs.edit()
+                    .putString(KEY_TRANSLATE_TO, TranslationTarget.sanitized(value))
                     .apply()
             }
         }

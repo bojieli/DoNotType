@@ -155,8 +155,8 @@ struct Ablate: AsyncParsableCommand {
                 typography: .unchanged)
             return try await service.transcribeStyled(
                 audio: audio, context: context,
-                styleClause: try builder.styleClause(.formal),
-                rewriteInstruction: try builder.rewriteInstruction(style: .formal)).styled
+                styled: .style(clause: try builder.styleClause(.formal)),
+                secondPassInstruction: try builder.rewriteInstruction(style: .formal)).styled
 
         case "two-formal":
             // Transcribe verbatim, then rewrite the text with no audio and no screen context.

@@ -12,6 +12,7 @@ import app.donottype.core.ProviderProbe
 import app.donottype.core.RetentionPolicy
 import app.donottype.core.RewriteAvailability
 import app.donottype.core.RewriteStyle
+import app.donottype.core.TranslationTarget
 import app.donottype.core.Typography
 import app.donottype.core.TypographySpacing
 import android.Manifest
@@ -102,6 +103,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var dictionaryContainer: LinearLayout
     private lateinit var dictionaryEntry: TextInputEditText
     private lateinit var formattingSampleField: TextInputEditText
+    private lateinit var translateField: TextInputEditText
+    private lateinit var translateLayout: TextInputLayout
     private lateinit var dictionaryEntryLayout: TextInputLayout
     private lateinit var dictionaryStatus: TextView
 
@@ -389,6 +392,45 @@ class SettingsActivity : AppCompatActivity() {
                     + "same on every dictation. The script and the example are asked of the model, "
                     + "which is why they are a request rather than a guarantee — and why nothing "
                     + "here is allowed to change a word."
+            )
+        )
+
+        // ---- Translation ----
+        // Its own section, under Typography and above Rewrite, because it is the setting that
+        // *replaces* a rewrite rather than another shade of one.
+        column.addView(sectionTitle("Translation"))
+        translateField = TextInputEditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            setText(Settings.translateTo)
+        }
+        translateLayout = fieldContainer(
+            "Translate to",
+            translateField,
+            helper = "Empty keeps the language you spoke.",
+        )
+        // As it is typed rather than only when Save is pressed, exactly like the Model field: the
+        // check is about the shape of what is in the box, so it can answer immediately.
+        translateField.doAfterTextChanged {
+            translateLayout.error = TranslationTarget.validationMessage(it?.toString())
+        }
+        column.addView(translateLayout)
+        column.addView(card(controlRow("Common languages", buildTranslatePicker())))
+        column.addView(
+            primaryButton("Save target language") {
+                Settings.translateTo = translateField.text.toString()
+                translateField.setText(Settings.translateTo)
+                refreshProviderNotes()
+                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+            }
+        )
+        column.addView(
+            sectionFooter(
+                "Speak one language and get another. This is the one setting that makes the talk "
+                    + "button deliver something other than what you said — and the verbatim "
+                    + "transcript is still produced first, still stored, and still in History. The "
+                    + "field is free text, like Model: the model is the authority on which "
+                    + "languages it can write. While a language is set it is the second stage, so "
+                    + "the rewrite style below does not apply."
             )
         )
 
@@ -770,7 +812,9 @@ class SettingsActivity : AppCompatActivity() {
         // From the shared rule, so a phone and a laptop answer "can this rewrite" the same way.
         // Stated whether or not it can: a note that appears only on failure leaves the feature
         // undiscoverable in the ordinary case, which is how it came to look absent entirely.
-        val availability = RewriteAvailability.resolve(kind) { !Settings.keyFor(it).isNullOrBlank() }
+        val availability = RewriteAvailability.resolve(kind, Settings.translateTo) {
+            !Settings.keyFor(it).isNullOrBlank()
+        }
         rewriteStylePicker.isEnabled = availability.isAvailable
         rewriteNote.text = availability.reason
             ?: "Use the small Dictate/Rewrite switch on the keyboard before you speak. This " +
@@ -883,6 +927,37 @@ class SettingsActivity : AppCompatActivity() {
                     parent: AdapterView<*>?, view: View?, position: Int, id: Long,
                 ) {
                     Settings.chineseScript = choices[position]
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            }
+        }
+    }
+
+    /**
+     * A shortcut rather than a whitelist: the field above accepts anything, and picking here only
+     * fills it in. "Off" is the first entry because empty is the default and the only value that
+     * changes nothing.
+     */
+    private fun buildTranslatePicker(): Spinner {
+        val choices = listOf("") + TranslationTarget.SUGGESTIONS
+        return Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@SettingsActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                choices.map { it.ifEmpty { "Off" } },
+            )
+            setSelection(choices.indexOf(Settings.translateTo).coerceAtLeast(0))
+            contentDescription = "translate-suggestions"
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: AdapterView<*>?, view: View?, position: Int, id: Long,
+                ) {
+                    val chosen = choices[position]
+                    if (chosen == Settings.translateTo) return
+                    Settings.translateTo = chosen
+                    translateField.setText(chosen)
+                    refreshProviderNotes()
                 }
 
                 override fun onNothingSelected(parent: AdapterView<*>?) = Unit

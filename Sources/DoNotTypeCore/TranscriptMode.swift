@@ -17,6 +17,12 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
     case rewrite(RewriteStyle)
     /// Verbatim, then summarised — the one stage allowed to discard content. See `SummaryStyle`.
     case summary(SummaryStyle)
+    /// Verbatim, then written again in another language. The words change; nothing else may.
+    ///
+    /// The language is free text rather than an enum for the same reason a model ID is: languages
+    /// are not ours to enumerate, and the model is the authority on which it can write. See
+    /// `TranslationTarget`.
+    case translate(String)
 
     public static let `default`: TranscriptMode = .verbatim
 
@@ -27,6 +33,14 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
             + SummaryStyle.allCases.map(TranscriptMode.summary)
     }
 
+    /// The same list with a translation into `language` in it, for the screens that have a target
+    /// to offer. Absent from `allChoices` because a translation without a language is not a mode —
+    /// there is nothing to put in the picker until the user has named one.
+    public static func allChoices(translatingInto language: String) -> [TranscriptMode] {
+        let target = TranslationTarget.sanitized(language)
+        return allChoices + (target.isEmpty ? [] : [.translate(target)])
+    }
+
     /// Whether a second, text-only model request is needed. False only for `verbatim`.
     ///
     /// This is also the question "can a speech recognition backend do this?" — a recogniser has no
@@ -34,7 +48,7 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
     public var needsSecondPass: Bool {
         switch self {
         case .verbatim: false
-        case .rewrite, .summary: true
+        case .rewrite, .summary, .translate: true
         }
     }
 
@@ -45,6 +59,7 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
         case .verbatim: "verbatim"
         case .rewrite(let style): "rewrite:\(style.rawValue)"
         case .summary(let style): "summary:\(style.rawValue)"
+        case .translate(let language): "translate:\(language)"
         }
     }
 
@@ -75,6 +90,20 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
             }
             guard let style = SummaryStyle(rawValue: tail) else { return nil }
             self = .summary(style)
+        case "translate":
+            // No default language, so a bare `translate` is rejected rather than guessing one.
+            // Every other stage has an obvious default; "into what?" has none, and picking English
+            // would be this project choosing a language on someone's behalf.
+            guard let tail else { return nil }
+            // The language is taken from the *original* spelling, not the lowercased one: a
+            // language is a name, and `--mode translate:Français` should not deliver `français`
+            // into the instruction.
+            let original = rawValue.trimmed
+            guard let colon = original.firstIndex(of: ":") else { return nil }
+            let language = TranslationTarget.sanitized(
+                String(original[original.index(after: colon)...]))
+            guard !language.isEmpty else { return nil }
+            self = .translate(language)
         default:
             return nil
         }
@@ -85,6 +114,7 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
         case .verbatim: "Verbatim — word for word"
         case .rewrite(let style): "Rewrite — \(style.label)"
         case .summary(let style): "Summary — \(style.label)"
+        case .translate(let language): "Translate — into \(language)"
         }
     }
 
@@ -114,6 +144,7 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
             case .bullets: "Summarising into bullets…"
             case .actions: "Picking out the actions…"
             }
+        case .translate: "Translating…"
         }
     }
 
@@ -130,6 +161,10 @@ public enum TranscriptMode: Sendable, Equatable, Codable, Hashable {
         ["verbatim"]
             + RewriteStyle.allCases.filter(\.isRewrite).map { "rewrite:\($0.rawValue)" }
             + SummaryStyle.allCases.map { "summary:\($0.rawValue)" }
+            // A concrete example rather than a placeholder: the language is free text, so there is
+            // no list to enumerate, and `--help` showing something that cannot be typed is worse
+            // than showing one thing that can.
+            + ["translate:English"]
     }
 }
 

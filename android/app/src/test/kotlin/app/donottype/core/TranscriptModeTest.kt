@@ -137,6 +137,17 @@ class TranscriptModeTest {
             "nonsense" to null,
             "rewrite:nonsense" to null,
             "summary:nonsense" to null,
+            // A language is free text, so there is no wrong one to reject — only a missing one.
+            // The case is preserved because a language is a name, and the value survives the
+            // lowercasing that every other tail goes through.
+            "translate:English" to "translate:English",
+            "translate:简体中文" to "translate:简体中文",
+            "translate:Brazilian Portuguese" to "translate:Brazilian Portuguese",
+            "  translate:English  " to "translate:English",
+            "TRANSLATE:English" to "translate:English",
+            "translate" to null,
+            "translate:" to null,
+            "translate:   " to null,
         )
         table.forEach { (typed, expected) ->
             assertEquals(
@@ -162,6 +173,7 @@ class TranscriptModeTest {
             "summary:brief" to "Summarising…",
             "summary:bullets" to "Summarising into bullets…",
             "summary:actions" to "Picking out the actions…",
+            "translate:English" to "Translating…",
         )
         table.forEach { (typed, expected) ->
             assertEquals(typed, expected, TranscriptMode.from(typed)?.progressLabel)

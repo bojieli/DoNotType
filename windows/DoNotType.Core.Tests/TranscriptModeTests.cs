@@ -583,6 +583,17 @@ public sealed class TranscriptModeParityTests
     [InlineData("nonsense", null)]
     [InlineData("rewrite:nonsense", null)]
     [InlineData("summary:nonsense", null)]
+    // A language is free text, so there is no wrong one to reject — only a missing one. The case
+    // is preserved because a language is a name, and the value survives the lowercasing that every
+    // other tail goes through.
+    [InlineData("translate:English", "translate:English")]
+    [InlineData("translate:简体中文", "translate:简体中文")]
+    [InlineData("translate:Brazilian Portuguese", "translate:Brazilian Portuguese")]
+    [InlineData("  translate:English  ", "translate:English")]
+    [InlineData("TRANSLATE:English", "translate:English")]
+    [InlineData("translate", null)]
+    [InlineData("translate:", null)]
+    [InlineData("translate:   ", null)]
     public void TheModeGrammarIsIdenticalOnEveryPlatform(string typed, string? expected)
     {
         Assert.Equal(expected, TranscriptMode.Parse(typed)?.Id);
@@ -601,6 +612,7 @@ public sealed class TranscriptModeParityTests
     [InlineData("summary:brief", "Summarising…")]
     [InlineData("summary:bullets", "Summarising into bullets…")]
     [InlineData("summary:actions", "Picking out the actions…")]
+    [InlineData("translate:English", "Translating…")]
     public void TheProgressLabelIsIdenticalOnEveryPlatform(string typed, string expected)
     {
         Assert.Equal(expected, TranscriptMode.Parse(typed)!.ProgressLabel);
@@ -716,5 +728,62 @@ public sealed class DecodeFailureMessageTests : IDisposable
         var message = Message(path);
         Assert.False(message == "(it loaded)", "a text file decoded as audio");
         Assert.Contains("notes.wav", message);
+    }
+}
+
+/// <summary>
+/// The target-language field, whose rules are repeated in
+/// <c>Tests/DoNotTypeCoreTests/TranscriptModeTests.swift</c> and
+/// <c>android/app/src/test/kotlin/app/donottype/core/TranslationTargetTest.kt</c>.
+/// </summary>
+public sealed class TranslationTargetTests
+{
+    [Theory]
+    [InlineData("English", "English")]
+    [InlineData("  English  ", "English")]
+    [InlineData("Traditional  Chinese", "Traditional Chinese")]
+    [InlineData("Brazilian\nPortuguese", "Brazilian Portuguese")]
+    [InlineData("a\tb", "a b")]
+    [InlineData("", "")]
+    [InlineData("   ", "")]
+    public void TheSanitiserIsIdenticalOnEveryPlatform(string typed, string expected)
+    {
+        Assert.Equal(expected, TranslationTarget.Sanitized(typed));
+    }
+
+    [Fact]
+    public void TheSanitiserCapsALongName()
+    {
+        Assert.Equal(
+            TranslationTarget.MaxCharacters,
+            TranslationTarget.Sanitized(new string('x', 200)).Length);
+    }
+
+    /// <summary>
+    /// Empty is off rather than invalid, which is the difference between a field you can clear and
+    /// one that shouts at you for clearing it.
+    /// </summary>
+    [Fact]
+    public void AnEmptyFieldIsNotAnError()
+    {
+        Assert.Null(TranslationTarget.ValidationMessage(string.Empty));
+        Assert.Null(TranslationTarget.ValidationMessage("   "));
+        Assert.Null(TranslationTarget.ValidationMessage(null));
+        Assert.Null(TranslationTarget.ValidationMessage("简体中文"));
+        Assert.Equal(
+            "A language name is at most 60 characters.",
+            TranslationTarget.ValidationMessage(new string('x', 200)));
+    }
+
+    /// <summary>
+    /// Not a whitelist, and the suite says so: a language that is not in the list must still be
+    /// accepted, because the model is the authority on what it can write.
+    /// </summary>
+    [Fact]
+    public void TheSuggestionsAreNotAWhitelist()
+    {
+        Assert.Null(TranslationTarget.ValidationMessage("Klingon"));
+        Assert.Equal("translate:Klingon", TranscriptMode.Parse("translate:Klingon")!.Id);
+        Assert.Contains("English", TranslationTarget.Suggestions);
     }
 }

@@ -32,10 +32,14 @@ public enum PromptPart: Sendable, Hashable, Codable {
     /// The user's own formatting example, appended when they have supplied one. Its placeholder is
     /// filled with their text rather than with another part.
     case sample
+    /// The second-stage translation block. Separate from `rewrite` for the same reason `summary`
+    /// is: their rules differ. A rewrite keeps the speaker's language and may reshape the prose; a
+    /// translation changes the language and may not reshape anything.
+    case translate
 
     /// Every part that has a file, in the order a settings list should show them.
     public static let allCases: [PromptPart] =
-        [.system, .rewrite, .summary, .typography, .sample]
+        [.system, .rewrite, .summary, .translate, .typography, .sample]
         + Fidelity.allCases.map(PromptPart.fidelity)
         + RewriteStyle.allCases.filter(\.isRewrite).map(PromptPart.style)
         + SummaryStyle.allCases.map(PromptPart.summaryStyle)
@@ -51,6 +55,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .fidelity(let fidelity): "fidelity/\(fidelity.rawValue).md"
         case .style(let style): "style/\(style.rawValue).md"
         case .summaryStyle(let style): "summary-style/\(style.rawValue).md"
+        case .translate: "translate.md"
         case .typography: "typography.md"
         case .script(let script): "script/\(script.rawValue).md"
         case .sample: "sample.md"
@@ -64,6 +69,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .system: "{{FIDELITY_RULE}}"
         case .rewrite: "{{STYLE_RULE}}"
         case .summary: "{{SUMMARY_RULE}}"
+        case .translate: "{{TARGET_LANGUAGE}}"
         case .typography: "{{SCRIPT_RULE}}"
         case .sample: "{{SAMPLE}}"
         case .fidelity, .style, .summaryStyle, .script: nil
@@ -80,7 +86,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
     /// because what goes in there is the user's own text.
     public var isClause: Bool {
         switch self {
-        case .system, .rewrite, .summary, .typography, .sample: false
+        case .system, .rewrite, .summary, .translate, .typography, .sample: false
         case .fidelity, .style, .summaryStyle, .script: true
         }
     }
@@ -88,7 +94,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
     /// The part a clause is substituted into.
     public var host: PromptPart? {
         switch self {
-        case .system, .rewrite, .summary, .typography, .sample: nil
+        case .system, .rewrite, .summary, .translate, .typography, .sample: nil
         case .fidelity: .system
         case .style: .rewrite
         case .summaryStyle: .summary
@@ -101,7 +107,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
     /// Heading a settings list groups this part under.
     public var group: String {
         switch self {
-        case .system, .rewrite, .summary, .typography, .sample: "Blocks"
+        case .system, .rewrite, .summary, .translate, .typography, .sample: "Blocks"
         case .fidelity: "Fidelity"
         case .style: "Rewrite styles"
         case .summaryStyle: "Summary styles"
@@ -114,6 +120,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .system: "Transcription"
         case .rewrite: "Rewrite"
         case .summary: "Summary"
+        case .translate: "Translate"
         case .typography: "Formatting"
         case .sample: "Formatting example"
         case .fidelity(let fidelity): fidelity.rawValue
@@ -129,6 +136,8 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .system: "Sent on every request. Must contain {{FIDELITY_RULE}}."
         case .rewrite: "Sent only when a rewrite style is chosen."
         case .summary: "Sent only when a summary style is chosen."
+        case .translate:
+            "Sent only when a target language is set. Must contain {{TARGET_LANGUAGE}}."
         case .typography: "Sent only when a Chinese script is chosen. Must contain {{SCRIPT_RULE}}."
         case .sample: "Sent only when a formatting example is set. Must contain {{SAMPLE}}."
         case .fidelity: "Substituted into the transcription block."
@@ -144,6 +153,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .system: "system"
         case .rewrite: "rewrite"
         case .summary: "summary"
+        case .translate: "translate"
         case .typography: "typography"
         case .sample: "sample"
         case .fidelity(let fidelity): "fidelity:\(fidelity.rawValue)"
@@ -162,6 +172,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case ("system", nil), ("transcribe", nil): self = .system
         case ("rewrite", nil): self = .rewrite
         case ("summary", nil): self = .summary
+        case ("translate", nil): self = .translate
         case ("typography", nil): self = .typography
         case ("sample", nil): self = .sample
         case ("script", let name?):

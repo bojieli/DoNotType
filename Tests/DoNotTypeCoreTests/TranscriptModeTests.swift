@@ -36,6 +36,23 @@ final class TranscriptModeTests: XCTestCase {
         XCTAssertFalse(TranscriptMode.verbatim.needsSecondPass)
         XCTAssertTrue(TranscriptMode.rewrite(.formal).needsSecondPass)
         XCTAssertTrue(TranscriptMode.summary(.actions).needsSecondPass)
+        XCTAssertTrue(TranscriptMode.translate("English").needsSecondPass)
+    }
+
+    /// A translation is not a rewrite style, and a history row must not record it as one — that
+    /// column drives "revert to what you said", and the two mean different things.
+    func testATranslationIsNotRecordedAsARewriteStyle() {
+        XCTAssertNil(TranscriptMode.translate("English").rewriteStyle)
+        XCTAssertEqual(TranscriptMode.rewrite(.formal).rewriteStyle, .formal)
+    }
+
+    /// A picker has nothing to offer until a language exists, so the translation appears in the
+    /// list only when there is one.
+    func testTheModeListOffersATranslationOnlyWhenALanguageIsSet() {
+        XCTAssertFalse(TranscriptMode.allChoices.contains { if case .translate = $0 { true } else { false } })
+        XCTAssertEqual(TranscriptMode.allChoices(translatingInto: "  ").count, TranscriptMode.allChoices.count)
+        XCTAssertEqual(
+            TranscriptMode.allChoices(translatingInto: "English").last, .translate("English"))
     }
 
     /// A summary is not a rewrite style, and a history row must not claim it is — that column feeds
@@ -212,6 +229,17 @@ final class TranscriptModeTests: XCTestCase {
         ("nonsense", nil),
         ("rewrite:nonsense", nil),
         ("summary:nonsense", nil),
+        // A language is free text, so there is no wrong one to reject — only a missing one. The
+        // case is preserved because a language is a name, and the value survives lowercasing that
+        // every other tail goes through.
+        ("translate:English", "translate:English"),
+        ("translate:简体中文", "translate:简体中文"),
+        ("translate:Brazilian Portuguese", "translate:Brazilian Portuguese"),
+        ("  translate:English  ", "translate:English"),
+        ("TRANSLATE:English", "translate:English"),
+        ("translate", nil),
+        ("translate:", nil),
+        ("translate:   ", nil),
         ]
         for (typed, expected) in table {
             XCTAssertEqual(
@@ -232,9 +260,53 @@ final class TranscriptModeTests: XCTestCase {
             ("summary:brief", "Summarising…"),
             ("summary:bullets", "Summarising into bullets…"),
             ("summary:actions", "Picking out the actions…"),
+            ("translate:English", "Translating…"),
         ]
         for (typed, expected) in table {
             XCTAssertEqual(TranscriptMode(rawValue: typed)?.progressLabel, expected, typed)
         }
+    }
+}
+
+/// The target-language field, whose rules are repeated in
+/// `windows/DoNotType.Core.Tests/TranscriptModeTests.cs` and
+/// `android/app/src/test/kotlin/app/donottype/core/TranslationTargetTest.kt`.
+final class TranslationTargetTests: XCTestCase {
+    func testTheSanitiserIsIdenticalOnEveryPlatform() {
+        let table: [(String, String)] = [
+            ("English", "English"),
+            ("  English  ", "English"),
+            ("Traditional  Chinese", "Traditional Chinese"),
+            ("Brazilian\nPortuguese", "Brazilian Portuguese"),
+            ("a\tb", "a b"),
+            ("", ""),
+            ("   ", ""),
+        ]
+        for (typed, expected) in table {
+            XCTAssertEqual(TranslationTarget.sanitized(typed), expected, typed)
+        }
+        XCTAssertEqual(
+            TranslationTarget.sanitized(String(repeating: "x", count: 200)).count,
+            TranslationTarget.maxCharacters)
+    }
+
+    /// Empty is off rather than invalid, which is the difference between a field you can clear and
+    /// one that shouts at you for clearing it.
+    func testAnEmptyFieldIsNotAnError() {
+        XCTAssertNil(TranslationTarget.validationMessage(""))
+        XCTAssertNil(TranslationTarget.validationMessage("   "))
+        XCTAssertNil(TranslationTarget.validationMessage(nil))
+        XCTAssertNil(TranslationTarget.validationMessage("简体中文"))
+        XCTAssertEqual(
+            TranslationTarget.validationMessage(String(repeating: "x", count: 200)),
+            "A language name is at most 60 characters.")
+    }
+
+    /// Not a whitelist, and the suite says so: a language that is not in the list must still be
+    /// accepted, because the model is the authority on what it can write.
+    func testTheSuggestionsAreNotAWhitelist() {
+        XCTAssertNil(TranslationTarget.validationMessage("Klingon"))
+        XCTAssertEqual(TranscriptMode(rawValue: "translate:Klingon"), .translate("Klingon"))
+        XCTAssertTrue(TranslationTarget.suggestions.contains("English"))
     }
 }

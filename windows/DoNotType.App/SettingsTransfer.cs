@@ -65,6 +65,12 @@ public static class SettingsTransfer
         [JsonPropertyName("formattingSample")]
         public string FormattingSample { get; set; } =
             string.Empty;
+
+        /// <summary>
+        /// Empty, or absent altogether in a profile written before translation existed, means the
+        /// dictation stays in the language that was spoken.
+        /// </summary>
+        [JsonPropertyName("translateTo")] public string? TranslateTo { get; set; }
     }
 
     /// <summary>Subset of the macOS block with platform-independent meaning.</summary>
@@ -145,6 +151,7 @@ public static class SettingsTransfer
                 Spacing = DoNotType.Core.Typography.Spelling(settings.TypographySpacing),
                 ChineseScript = settings.ChineseScript.Id(),
                 FormattingSample = settings.FormattingSample,
+                TranslateTo = settings.TranslateTo,
             },
             Windows = new WindowsValues
             {
@@ -346,6 +353,8 @@ public static class SettingsTransfer
             settings.ChineseScript = importedScript;
             settings.FormattingSample =
                 DoNotType.Core.Typography.SanitizedSample(document.Typography?.FormattingSample);
+            settings.TranslateTo =
+                TranslationTarget.Sanitized(document.Typography?.TranslateTo);
         }
 
         if (windows is not null)

@@ -6,6 +6,7 @@ import app.donottype.core.Fidelity
 import app.donottype.core.RewriteStyle
 import app.donottype.core.SummaryStyle
 import app.donottype.core.TranscriptMode
+import app.donottype.core.TranslationTarget
 import app.donottype.core.Typography
 import java.io.File
 import java.io.FileOutputStream
@@ -50,6 +51,8 @@ data class PromptPart(
         id == "system" -> "Sent on every request. Must contain {{FIDELITY_RULE}}."
         id == "rewrite" -> "Sent only when a rewrite style is chosen."
         id == "summary" -> "Sent only when a summary style is chosen."
+        id == "translate" ->
+            "Sent only when a target language is set. Must contain {{TARGET_LANGUAGE}}."
         id == "typography" ->
             "Sent only when a Chinese script is chosen. Must contain {{SCRIPT_RULE}}."
         id == "sample" -> "Sent only when a formatting example is set. Must contain {{SAMPLE}}."
@@ -63,6 +66,14 @@ data class PromptPart(
         val SYSTEM = PromptPart("system", "system.md", "{{FIDELITY_RULE}}", "Blocks", "Transcription")
         val REWRITE = PromptPart("rewrite", "rewrite.md", "{{STYLE_RULE}}", "Blocks", "Rewrite")
         val SUMMARY = PromptPart("summary", "summary.md", "{{SUMMARY_RULE}}", "Blocks", "Summary")
+
+        /**
+         * The second-stage translation block. Separate from [REWRITE] for the same reason [SUMMARY]
+         * is: their rules differ. A rewrite keeps the speaker's language and may reshape the prose;
+         * a translation changes the language and may not reshape anything.
+         */
+        val TRANSLATE =
+            PromptPart("translate", "translate.md", "{{TARGET_LANGUAGE}}", "Blocks", "Translate")
 
         /**
          * How the transcript is written down. Appended to the transcription contract, and only when
@@ -98,6 +109,7 @@ data class PromptPart(
             add(SYSTEM)
             add(REWRITE)
             add(SUMMARY)
+            add(TRANSLATE)
             add(TYPOGRAPHY)
             add(SAMPLE)
             Fidelity.entries.forEach { add(of(it)) }
@@ -283,6 +295,20 @@ object PromptAssets {
         is TranscriptMode.Verbatim -> null
         is TranscriptMode.Rewrite -> assemble(context, PromptPart.REWRITE, PromptPart.of(mode.style))
         is TranscriptMode.Summary -> assemble(context, PromptPart.SUMMARY, PromptPart.of(mode.style))
+        is TranscriptMode.Translate -> translateInstruction(context, mode.language)
+    }
+
+    /**
+     * System instruction for the second-stage translation.
+     *
+     * Its own part rather than a rewrite style, on the same reasoning that keeps the summary
+     * separate: the blocks' rules differ. A rewrite keeps the speaker's language and may reshape the
+     * prose; a translation changes the language and may reshape nothing.
+     */
+    fun translateInstruction(context: Context, language: String): String? {
+        val target = TranslationTarget.sanitized(language)
+        if (target.isEmpty()) return null
+        return text(context, PromptPart.TRANSLATE).replace("{{TARGET_LANGUAGE}}", target)
     }
 
     /** Whether the prompt in force can run a mode's second stage at all. */

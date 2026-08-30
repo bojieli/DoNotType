@@ -93,6 +93,11 @@ final class SettingsModel {
         }
     }
 
+    /// Saved as typed, like every other field in this window. Empty is off.
+    var translateTo: String {
+        didSet { Settings.shared.translateTo = translateTo }
+    }
+
     var keytermBiasing: Bool {
         didSet { Settings.shared.keytermBiasing = keytermBiasing }
     }
@@ -314,7 +319,7 @@ final class SettingsModel {
     /// Read from the same rule every client uses, rather than asked locally — this window used to
     /// not ask at all, and offered the binding whatever was configured.
     var rewriteAvailability: RewriteAvailability {
-        RewriteAvailability.resolve(provider: provider) { kind in
+        RewriteAvailability.resolve(provider: provider, translatingInto: translateTo) { kind in
             !(Settings.shared.resolvedAPIKey(for: kind) ?? "").isEmpty
         }
     }
@@ -640,6 +645,7 @@ final class SettingsModel {
         typographySpacing = settings.typographySpacing
         chineseScript = settings.chineseScript
         formattingSample = settings.formattingSample
+        translateTo = settings.translateTo
         keytermBiasing = settings.keytermBiasing
         fallbackProvider = settings.fallbackProvider
         fallbackAfterSeconds = settings.fallbackAfterSeconds
@@ -714,7 +720,8 @@ final class SettingsModel {
             typography: .init(
                 spacing: settings.typographySpacing.rawValue,
                 chineseScript: settings.chineseScript.rawValue,
-                formattingSample: settings.formattingSample),
+                formattingSample: settings.formattingSample,
+                translateTo: settings.translateTo),
             desktop: .init(
                 trigger: settings.trigger.rawValue,
                 hotkeyMode: settings.hotkeyMode.rawValue,
@@ -747,7 +754,7 @@ final class SettingsModel {
                 guard let kind = ProviderKind(persistedValue: raw) else { return nil }
                 return (kind, value)
             }
-        var importedTypography: (TypographySpacing, ChineseScript, String)?
+        var importedTypography: (TypographySpacing, ChineseScript, String, String)?
         if let typography = document.typography {
             guard let spacing = TypographySpacing(rawValue: typography.spacing) else {
                 throw SettingsTransferApplyError.unsupportedValue(
@@ -757,7 +764,8 @@ final class SettingsModel {
                 throw SettingsTransferApplyError.unsupportedValue(
                     field: "typography.chineseScript", value: typography.chineseScript)
             }
-            importedTypography = (spacing, script, typography.formattingSample)
+            importedTypography = (
+                spacing, script, typography.formattingSample, typography.translateTo ?? "")
         }
 
         guard let importedFidelity = Fidelity(rawValue: document.fidelity) else {
@@ -845,6 +853,7 @@ final class SettingsModel {
             settings.typographySpacing = typography.0
             settings.chineseScript = typography.1
             settings.formattingSample = typography.2
+            settings.translateTo = typography.3
         }
 
         if let desktop = document.desktop, let values = desktopValues {
@@ -883,6 +892,7 @@ final class SettingsModel {
         typographySpacing = settings.typographySpacing
         chineseScript = settings.chineseScript
         formattingSample = settings.formattingSample
+        translateTo = settings.translateTo
         keytermBiasing = settings.keytermBiasing
         fallbackProvider = settings.fallbackProvider
         fallbackAfterSeconds = settings.fallbackAfterSeconds

@@ -618,6 +618,39 @@ private struct GeneralTab: View {
                 .foregroundStyle(.secondary)
             }
 
+            // Its own section, under Typography and above Rewrite, because it is the setting that
+            // *replaces* a rewrite rather than another shade of one.
+            Section("Translation") {
+                LabeledContent("Translate to") {
+                    TextField("Off — keep the language I spoke", text: $model.translateTo)
+                        .textFieldStyle(.roundedBorder)
+                }
+                if !TranslationTarget.suggestions.isEmpty {
+                    Picker("Common languages", selection: $model.translateTo) {
+                        Text("Off").tag("")
+                        ForEach(TranslationTarget.suggestions, id: \.self) { language in
+                            Text(language).tag(language)
+                        }
+                    }
+                }
+                if let problem = TranslationTarget.validationMessage(model.translateTo) {
+                    Label(problem, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text(
+                    "Speak one language and get another at the cursor. This is the one setting "
+                        + "that makes the main key deliver something other than what you said — "
+                        + "and the verbatim transcript is still produced first, still stored, and "
+                        + "still one ⌘⌥Z away. The field is free text, like Model: the model is "
+                        + "the authority on which languages it can write. While a language is set "
+                        + "it is the second stage, so the rewrite styles below do not apply."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
             RewriteSection(model: model)
 
             Section("Shortcuts") {

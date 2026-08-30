@@ -448,6 +448,13 @@ final class DictationController {
         let style = pendingStyle
         pendingStyle = .verbatim
         let settings = Settings.shared
+        // A target language replaces the second stage rather than joining it. Two jobs in one
+        // request is exactly the combination this project has already measured as worse, and
+        // "formal French" is a feature request rather than a fix for the one that was asked for.
+        // The settings window says so beside the rewrite picker, through `RewriteAvailability`.
+        let stage: TranscriptMode = settings.translateTo.isEmpty
+            ? (style.isRewrite ? .rewrite(style) : .verbatim)
+            : .translate(settings.translateTo)
         let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName
 
         guard let coordinator = makeCoordinator() else {
@@ -488,7 +495,7 @@ final class DictationController {
                 "dictation": Self.short(dictationID),
                 "provider": settings.provider.rawValue, "model": settings.model,
                 "fidelity": settings.fidelity.rawValue,
-                "style": style.rawValue,
+                "mode": stage.rawValue,
                 "seconds": String(format: "%.2f", audio.durationSeconds ?? 0),
                 "grounded": context == nil ? "no" : "yes",
                 "contextChars": "\(context?.visibleText?.count ?? 0)",
@@ -506,8 +513,7 @@ final class DictationController {
         //
         // Only the live-pipeline path opts out: it stitches segments transcribed as the user
         // speaks, and a style belongs to the whole utterance rather than to each segment.
-        let foldedStyleClause = style.isRewrite && livePipeline == nil
-            ? styleClause(for: style) : nil
+        let folded: StyledRequest? = livePipeline == nil ? styledRequest(for: stage) : nil
 
         do {
             let requestStart = Date()
@@ -520,7 +526,7 @@ final class DictationController {
                 outcome = try await livePipeline.finish()
             } else {
                 outcome = try await makeTranscriber(primary: coordinator.service).transcribe(
-                    audio: audio, context: context, styleClause: foldedStyleClause
+                    audio: audio, context: context, styled: folded
                 ) { [weak self] done, total in
                     Task { @MainActor in
                         self?.overlay.update(phase: .transcribingChunk(done: done, of: total))
@@ -579,21 +585,22 @@ final class DictationController {
                 // The rewrite came back in the transcription response, so there is no second stage
                 // to run and nothing extra to wait for.
                 record.styledText = styled
-                record.style = style
+                record.style = stage.rewriteStyle
+                record.mode = stage
                 delivered = styled
                 log.info(
                     "styled in one request",
                     [
-                        "dictation": Self.short(dictationID), "style": style.rawValue,
+                        "dictation": Self.short(dictationID), "mode": stage.rawValue,
                         "chars": "\(styled.count)", "from": "\(text.count)",
                     ])
-            } else if style.isRewrite, let instruction = rewriteInstruction(for: style) {
-                overlay.update(phase: .deriving(style))
+            } else if stage.needsSecondPass, let instruction = secondStageInstruction(for: stage) {
+                overlay.update(phase: .deriving(stage))
                 let rewriteStart = Date()
                 log.info(
                     "second stage",
                     [
-                        "dictation": Self.short(dictationID), "style": style.rawValue,
+                        "dictation": Self.short(dictationID), "mode": stage.rawValue,
                         "chars": "\(text.count)",
                     ])
                 do {
@@ -604,7 +611,8 @@ final class DictationController {
                     let styled = try await rewriter.rewrite(text, instruction: instruction)
                     try Task.checkCancellation()
                     record.styledText = styled
-                    record.style = style
+                    record.style = stage.rewriteStyle
+                    record.mode = stage
                     delivered = styled
                     log.info(
                         "second stage finished",
@@ -624,7 +632,7 @@ final class DictationController {
                     log.warning(
                         "second stage failed, delivering the verbatim transcript",
                         [
-                            "dictation": Self.short(dictationID), "style": style.rawValue,
+                            "dictation": Self.short(dictationID), "mode": stage.rawValue,
                             "detail": FailureAdvice.detail(of: error),
                         ])
                 }
@@ -813,19 +821,34 @@ final class DictationController {
         overlay.hide(after: .seconds(3))
     }
 
-    private func rewriteInstruction(for style: RewriteStyle) -> String? {
+    /// The second-stage instruction for whichever stage this dictation asked for.
+    ///
+    /// Routed through `secondStageInstruction` rather than reaching for a builder method, so a
+    /// translation cannot be sent through the rewrite block by picking the wrong one.
+    private func secondStageInstruction(for mode: TranscriptMode) -> String? {
         guard let promptURL = SettingsModel.bundledPromptURL() else { return nil }
-        return try? PromptStore(directory: HistoryStore.defaultDirectory())
+        let instruction = try? PromptStore(directory: HistoryStore.defaultDirectory())
             .builder(bundled: promptURL)
-            .rewriteInstruction(style: style)
+            .secondStageInstruction(for: mode)
+        return (instruction ?? nil).flatMap { $0.isEmpty ? nil : $0 }
     }
 
-    /// The style rule alone, for folding into the transcription request.
-    private func styleClause(for style: RewriteStyle) -> String? {
-        guard let promptURL = SettingsModel.bundledPromptURL() else { return nil }
-        return try? PromptStore(directory: HistoryStore.defaultDirectory())
-            .builder(bundled: promptURL)
-            .styleClause(style)
+    /// What to ask the transcription request for beside the verbatim transcript, or nil when the
+    /// dictation wants nothing but the words.
+    private func styledRequest(for mode: TranscriptMode) -> StyledRequest? {
+        switch mode {
+        case .verbatim, .summary:
+            // A summary is never a live mode — the type system stops it reaching here — and
+            // verbatim is the absence of a second stage.
+            return nil
+        case .translate(let language):
+            return .translation(language: language)
+        case .rewrite(let style):
+            guard let promptURL = SettingsModel.bundledPromptURL() else { return nil }
+            return (try? PromptStore(directory: HistoryStore.defaultDirectory())
+                .builder(bundled: promptURL)
+                .styleClause(style)).map { StyledRequest.style(clause: $0) }
+        }
     }
 
     /// Wraps the configured primary with a fallback, when one is set.

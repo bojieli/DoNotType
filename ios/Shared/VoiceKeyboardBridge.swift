@@ -92,6 +92,7 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
         static let keyboardHasFullAccess = "voiceKeyboard.keyboardHasFullAccess"
         static let returnHostBundleIdentifier = "voiceKeyboard.returnHostBundleIdentifier"
         static let rewriteModeEnabled = "voiceKeyboard.rewriteModeEnabled"
+        static let translationTarget = "voiceKeyboard.translationTarget"
     }
 
     private enum NotificationName {
@@ -149,6 +150,21 @@ public final class VoiceKeyboardBridge: @unchecked Sendable {
     public var rewriteModeEnabled: Bool? {
         guard defaults?.object(forKey: Key.rewriteModeEnabled) != nil else { return nil }
         return defaults?.bool(forKey: Key.rewriteModeEnabled)
+    }
+
+    /// The configured target language, or empty.
+    ///
+    /// The keyboard needs it only to name what it is about to do. It cannot translate anything
+    /// itself — the containing app owns the request — but a chip reading "Rewrite" over a dictation
+    /// that is going to come back in another language is worse than no chip at all.
+    public var translationTarget: String {
+        defaults?.string(forKey: Key.translationTarget) ?? ""
+    }
+
+    public func setTranslationTarget(_ language: String) {
+        defaults?.set(language, forKey: Key.translationTarget)
+        defaults?.synchronize()
+        Self.post(NotificationName.update)
     }
 
     public func setRewriteModeEnabled(_ enabled: Bool) {

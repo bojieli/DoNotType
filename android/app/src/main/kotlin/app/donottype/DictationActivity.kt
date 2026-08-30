@@ -519,7 +519,7 @@ class DictationActivity : AppCompatActivity() {
 
     private fun choose(rewrite: Boolean) {
         if (dictation.state == DictationController.State.TRANSCRIBING) return
-        val availability = RewriteAvailability.resolve(Settings.provider) {
+        val availability = RewriteAvailability.resolve(Settings.provider, Settings.translateTo) {
             !Settings.keyFor(it).isNullOrBlank()
         }
         if (rewrite && !availability.isAvailable) {
@@ -537,20 +537,25 @@ class DictationActivity : AppCompatActivity() {
     }
 
     private fun refreshMode() {
-        val availability = RewriteAvailability.resolve(Settings.provider) {
+        val availability = RewriteAvailability.resolve(Settings.provider, Settings.translateTo) {
             !Settings.keyFor(it).isNullOrBlank()
         }
         if (!availability.isAvailable && Settings.rewriteModeEnabled) {
             Settings.rewriteModeEnabled = false
         }
-        val rewrite = Settings.rewriteModeEnabled
-        paintSegment(modeDictate, selected = !rewrite)
+        // A target language is what the dictation will actually do, so neither segment is the
+        // answer and neither is selected. Clearing it belongs to Settings, which is where the
+        // sentence explaining it lives.
+        val translating = Settings.translateTo.isNotEmpty()
+        val rewrite = !translating && Settings.rewriteModeEnabled
+        paintSegment(modeDictate, selected = !translating && !rewrite)
         paintSegment(modeRewrite, selected = rewrite)
         // finish() reads the style after capture stops, so a recording in progress may be corrected
         // from Dictate to Rewrite without interrupting the speaker; a request already out may not.
-        val canChange = dictation.state != DictationController.State.TRANSCRIBING
+        val canChange = !translating && dictation.state != DictationController.State.TRANSCRIBING
         modeDictate.isEnabled = canChange
         modeRewrite.isEnabled = canChange && (rewrite || availability.isAvailable)
+        modeDictate.alpha = if (modeDictate.isEnabled) 1f else 0.55f
         modeRewrite.alpha = if (modeRewrite.isEnabled) 1f else 0.55f
         modeDictate.contentDescription = "mode-dictate"
         modeRewrite.contentDescription = "mode-rewrite"

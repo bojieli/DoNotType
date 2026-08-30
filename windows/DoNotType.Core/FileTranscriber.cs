@@ -149,14 +149,24 @@ public sealed class FileTranscriber(
         }
 
         var transcribeStart = DateTimeOffset.Now;
-        var foldedStyleClause = mode is TranscriptMode.RewriteMode rewrite
-            && service.Provider.Grounding is GroundingSupport.MultimodalGrounding
-            ? prompt.StyleClause(rewrite.Style)
-            : null;
+        // Folded only where the backend can answer the wider schema, and only for the two stages
+        // that have a per-request answer. A summary is never folded: a request asked to preserve
+        // every fact and to drop most of them is the one combination this project will not make.
+        StyledRequest? folded =
+            service.Provider.Grounding is GroundingSupport.MultimodalGrounding
+                ? mode switch
+                {
+                    TranscriptMode.RewriteMode rewrite =>
+                        new StyledRequest.Style(prompt.StyleClause(rewrite.Style)),
+                    TranscriptMode.TranslateMode translate =>
+                        new StyledRequest.Translation(translate.Language),
+                    _ => null,
+                }
+                : null;
         var result = await service.TranscribeLongAsync(
                 wav, context, attempts, maxConcurrent,
                 (done, of) => onProgress?.Invoke(new Progress.Transcribing(done, of)),
-                cancellationToken, foldedStyleClause)
+                cancellationToken, folded)
             .ConfigureAwait(false);
         var transcriptionSeconds = (DateTimeOffset.Now - transcribeStart).TotalSeconds;
 

@@ -19,6 +19,7 @@ final class Settings {
         static let typographySpacing = "typographySpacing"
         static let chineseScript = "chineseScript"
         static let formattingSample = "formattingSample"
+        static let translateTo = "translateTo"
         static let trigger = "trigger"
         static let groundingEnabled = "groundingEnabled"
         static let screenshotEnabled = "screenshotEnabled"
@@ -378,6 +379,17 @@ final class Settings {
                 ?? .rightCommand
         }
         set { defaults.set(newValue.rawValue, forKey: Key.trigger) }
+    }
+
+    /// The language dictations are written in, or empty for the one that was spoken.
+    ///
+    /// Empty by default, and that default is the product: this is the one setting that makes the
+    /// main key deliver something other than what was said. What it does *not* change is the
+    /// promise underneath — the verbatim transcript is still produced first and still stored, so
+    /// `⌘⌥Z` puts the spoken words back exactly as it does after a rewrite.
+    var translateTo: String {
+        get { TranslationTarget.sanitized(defaults.string(forKey: Key.translateTo) ?? "") }
+        set { defaults.set(TranslationTarget.sanitized(newValue), forKey: Key.translateTo) }
     }
 
     var groundingEnabled: Bool {

@@ -21,6 +21,7 @@ is reachable by a user of that client, not merely present in its core library.
 | Finish recording, insert, and submit | ✅ Return / ⌘Return / Off ¹⁵ | ✅ Enter / Ctrl+Enter / Off ¹⁵ | — ¹⁵ | — ¹⁵ |
 | Push-to-talk / hands-free as a *setting* | ✅ | ✅ | — ¹ | — ¹ |
 | Rewrite a dictation | ✅ second hotkey | ✅ second hotkey | ✅ style chips | ✅ style picker |
+| Translate a dictation | ✅ ²¹ | ✅ ²¹ | ✅ ²¹ | ✅ ²¹ |
 | Says why a rewrite is unavailable | ✅ | ✅ | ✅ | ✅ |
 | Summarise a dictation live | — ⁶ | — ⁶ | — ⁶ | — ⁶ |
 | Undo the last insertion | ✅ ⌘⇧Z | ✅ Ctrl+Shift+Z | — ² | — ² |
@@ -100,6 +101,17 @@ A keyboard that ignored that would turn every search box into one that grows a b
 searching. Backspace sends `KEYCODE_DEL` rather than deleting a character count, because only the
 editor knows whether the character before the cursor is one `char` or two, or whether there is a
 selection to remove instead.
+
+²¹ A target language in Settings, and it is the one setting in the product that makes the main
+control deliver something other than what was said. What it does not change is the promise
+underneath: the verbatim transcript is produced first, stored first, and recoverable — `⌘⌥Z` on
+macOS, `Ctrl+Alt+Z` on Windows, the History row on both phones. It **replaces** the rewrite stage
+rather than joining it, on all four, and each client says so where the rewrite control is: two jobs
+in one request is the combination this project measured as worse, and "formal French" is a feature
+request rather than a fix for the one that was asked for. The field is free text with a shape
+check, exactly like Model — the model is the authority on which languages it can write — with a
+list of common ones as a shortcut rather than a whitelist. `dnt transcribe --mode translate:English`
+is the same stage from a shell.
 
 ²⁰ A visible control, on the phone's keyboard and on its dictation screen, in both halves of a
 dictation: `Discard recording` while the microphone is open, `Cancel transcription` once the
@@ -281,6 +293,9 @@ one screen further in on two of them.
   *formatting example* are asked of the model, and are sent only when set — the default request is
   byte-identical to the one this feature did not exist for. The example is capped at 500 characters
   and the field says so. All three cross devices in the settings-transfer profile.
+- **Translation.** Off by default. Set a target language and every dictation arrives in it, with
+  the verbatim transcript still first in History. See footnote ²¹ for why it replaces the rewrite
+  stage rather than stacking with it.
 - **Fidelity.** `raw` keeps every filler and correction; `light` (default) removes empty fillers,
   repetitions, false starts, and superseded corrections; `tidy` also applies standard casing and
   punctuation without rephrasing.
@@ -322,6 +337,12 @@ platform's test suite to keep parsing behavior aligned across clients.
 | `` (empty) | rejected | |
 | `nonsense` | rejected | |
 | `rewrite:nonsense` | rejected | a wrong style is not silently the default |
+| `translate:English` | translate, English | |
+| `translate:简体中文` | translate, 简体中文 | a language is a name, not an identifier |
+| `translate:Brazilian Portuguese` | translate, Brazilian Portuguese | spaces are part of the name |
+| `TRANSLATE:English` | translate, English | the stage is case-insensitive; the language is not |
+| `translate` | rejected | every other stage has a default; "into what?" has none |
+| `translate:` | rejected | an unfinished colon is not a language either |
 
 Historical divergence: `rewrite:` and `summary:` used to differ — macOS took the default, Windows
 rejected it, Android rejected it. No dependent behavior exposed the difference, so it was not

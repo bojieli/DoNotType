@@ -148,7 +148,10 @@ final class OverlayState {
         /// the two. This said "Transcribing…" while a model rewrote a transcript that was already
         /// finished — so the one phase where the wait is the *model's* thinking was the one phase
         /// that did not say so.
-        case deriving(RewriteStyle)
+        ///
+        /// Carries the whole mode rather than a `RewriteStyle`, because a translation is waited on
+        /// here too and "Loosening…" over a translation names the wrong job.
+        case deriving(TranscriptMode)
         /// Brief confirmation that words were inserted, so success is visible rather than a
         /// silent disappearance the user has to infer from the text appearing.
         case inserted(Int, rewriteFailed: Bool, submission: Submission)
@@ -220,9 +223,9 @@ private struct OverlayView: View {
                 StatusLabel(
                     "Transcribing… part \(min(done + 1, total)) of \(total)",
                     detail: state.hint)
-            case .deriving(let style):
+            case .deriving(let mode):
                 ThinkingDots()
-                StatusLabel(TranscriptMode.rewrite(style).progressLabel, detail: state.hint)
+                StatusLabel(mode.progressLabel, detail: state.hint)
             case .inserted(let characters, let rewriteFailed, let submission):
                 Image(systemName: rewriteFailed
                     ? "exclamationmark.circle.fill" : "checkmark.circle.fill")

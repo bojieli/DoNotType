@@ -33,6 +33,17 @@ public sealed class AppSettings
 
     /// <summary>A sentence written the way this user wants their transcripts written.</summary>
     public string FormattingSample { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The language dictations are written in, or empty for the one that was spoken.
+    /// </summary>
+    /// <remarks>
+    /// Empty by default, and that default is the product: this is the one setting that makes the
+    /// main key deliver something other than what was said. What it does not change is the promise
+    /// underneath — the verbatim transcript is still produced first and still stored, so
+    /// Ctrl+Alt+Z puts the spoken words back exactly as it does after a rewrite.
+    /// </remarks>
+    public string TranslateTo { get; set; } = string.Empty;
     public HotkeyMonitor.Trigger Trigger { get; set; } = HotkeyMonitor.Trigger.RightControl;
     public HotkeyMonitor.Mode HotkeyMode { get; set; } = HotkeyMonitor.Mode.Automatic;
     public CancelShortcut CancelShortcut { get; set; } = DoNotType.Core.CancelShortcut.Escape;

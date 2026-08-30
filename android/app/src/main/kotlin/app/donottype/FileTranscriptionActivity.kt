@@ -114,17 +114,18 @@ class FileTranscriptionActivity : AppCompatActivity() {
         column.addView(fileLabel)
 
         column.addView(sectionTitle("Produce"))
+        // Read once, here: the list gains a translation only when a target language is set.
+        val modes = TranscriptMode.allTranslatingInto(Settings.translateTo)
         modeSpinner = Spinner(this).apply {
             adapter = ArrayAdapter(
                 this@FileTranscriptionActivity,
                 android.R.layout.simple_spinner_dropdown_item,
-                TranscriptMode.ALL.map { it.label },
+                modes.map { it.label },
             )
-            setSelection(TranscriptMode.ALL.indexOfFirst { it.id == Settings.fileMode.id }
-                .coerceAtLeast(0))
+            setSelection(modes.indexOfFirst { it.id == Settings.fileMode.id }.coerceAtLeast(0))
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                    Settings.fileMode = TranscriptMode.ALL[position]
+                    Settings.fileMode = modes[position]
                     refresh()
                 }
                 override fun onNothingSelected(parent: AdapterView<*>?) = Unit

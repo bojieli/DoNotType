@@ -72,6 +72,7 @@ public sealed class SettingsForm : Form
     private readonly ComboBox _chineseScript =
         new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox _formattingSample = new() { Multiline = true, Height = 60 };
+    private readonly ComboBox _translateTo = new() { DropDownStyle = ComboBoxStyle.DropDown };
     private readonly CheckBox _grounding = new() { Text = "Ground transcription in screen text", AutoSize = true };
     private readonly ComboBox _retention = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly CheckBox _keepAudio = new() { Text = "Keep audio for successful dictations", AutoSize = true };
@@ -246,6 +247,18 @@ public sealed class SettingsForm : Form
             + "the model — a request rather than a guarantee — and nothing here is allowed to "
             + $"change a word. The example is trimmed to {Typography.MaxSampleCharacters} "
             + "characters."));
+
+        // Its own heading, under Typography and above Rewrite, because it is the setting that
+        // *replaces* a rewrite rather than another shade of one.
+        layout.Controls.Add(Heading("Translation"));
+        layout.Controls.Add(Labelled("Translate to", _translateTo));
+        layout.Controls.Add(Caption(
+            "Speak one language and get another at the cursor. This is the one setting that makes "
+            + "the main key deliver something other than what you said — and the verbatim "
+            + "transcript is still produced first, still stored, and still one Ctrl+Alt+Z away. "
+            + "The box is free text, like Model: the model is the authority on which languages it "
+            + "can write. Leave it empty to keep the language you spoke. While a language is set "
+            + "it is the second stage, so the rewrite style below does not apply."));
 
         // Its own heading, not two more rows under Dictation. "Second key" names the mechanism and
         // never the feature, so somebody looking for rewriting had no reason to read it — and on a
@@ -919,7 +932,7 @@ public sealed class SettingsForm : Form
         // enabled, macOS never asked, and the mobiles asked a question about the kind of backend
         // rather than about whether one was usable.
         var kind = SelectedProvider();
-        var availability = RewriteAvailability.Resolve(kind, HasKeyFor);
+        var availability = RewriteAvailability.Resolve(kind, HasKeyFor, _settings.TranslateTo);
         _secondKeyNote.Text = availability.Reason;
         _secondKeyNote.Visible = _secondKeyNote.Text.Length > 0;
 
@@ -1098,6 +1111,9 @@ public sealed class SettingsForm : Form
         }
         _chineseScript.SelectedIndex = (int)_settings.ChineseScript;
         _formattingSample.Text = _settings.FormattingSample;
+        // Editable rather than a fixed list: the suggestions are a shortcut, never a whitelist.
+        foreach (var language in TranslationTarget.Suggestions) _translateTo.Items.Add(language);
+        _translateTo.Text = _settings.TranslateTo;
 
         _grounding.Checked = _settings.GroundingEnabled;
 
@@ -1178,6 +1194,8 @@ public sealed class SettingsForm : Form
         // request would carry rather than what was pasted into it.
         _settings.FormattingSample = Typography.SanitizedSample(_formattingSample.Text);
         _formattingSample.Text = _settings.FormattingSample;
+        _settings.TranslateTo = TranslationTarget.Sanitized(_translateTo.Text);
+        _translateTo.Text = _settings.TranslateTo;
         _settings.GroundingEnabled = _grounding.Checked;
         // Index 0 is "System default", which is stored as null rather than as its label.
         _settings.MicrophoneName = _microphone.SelectedIndex > 0
@@ -1222,6 +1240,7 @@ public sealed class SettingsForm : Form
         _typographySpacing.SelectedIndex = (int)_settings.TypographySpacing;
         _chineseScript.SelectedIndex = (int)_settings.ChineseScript;
         _formattingSample.Text = _settings.FormattingSample;
+        _translateTo.Text = _settings.TranslateTo;
         _grounding.Checked = _settings.GroundingEnabled;
         _sounds.Checked = _settings.InteractionSounds;
         _retention.SelectedIndex = (int)_settings.Retention;

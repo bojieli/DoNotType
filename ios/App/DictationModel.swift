@@ -128,7 +128,7 @@ final class DictationModel {
     /// went true on a fresh install and the picker appeared on a phone that could not transcribe at
     /// all, let alone rewrite.
     var rewriteAvailability: RewriteAvailability {
-        RewriteAvailability.resolve(provider: provider) { kind in
+        RewriteAvailability.resolve(provider: provider, translatingInto: translateTo) { kind in
             !(KeychainStore.read(account: kind.rawValue) ?? "").isEmpty
         }
     }
@@ -294,6 +294,23 @@ final class DictationModel {
     ///
     /// Sanitised on the way in rather than on the way out, so what the settings screen shows is
     /// what a request would carry.
+    /// The language dictations are written in, or empty for the one that was spoken.
+    ///
+    /// Empty by default, and that default is the product: this is the one setting that makes the
+    /// Speak button deliver something other than what was said. What it does not change is the
+    /// promise underneath — the verbatim transcript is still produced first and still stored.
+    var translateTo: String {
+        didSet {
+            let cleaned = TranslationTarget.sanitized(translateTo)
+            if cleaned != translateTo {
+                translateTo = cleaned
+                return
+            }
+            UserDefaults.standard.set(cleaned, forKey: "translateTo")
+            voiceKeyboardBridge.setTranslationTarget(cleaned)
+        }
+    }
+
     var formattingSample: String {
         didSet {
             let cleaned = Typography.sanitizedSample(formattingSample)
@@ -390,6 +407,7 @@ final class DictationModel {
         chineseScript =
             ChineseScript(rawValue: defaults.string(forKey: "chineseScript") ?? "") ?? .default
         formattingSample = defaults.string(forKey: "formattingSample") ?? ""
+        translateTo = TranslationTarget.sanitized(defaults.string(forKey: "translateTo") ?? "")
         let storedLiveStyle =
             RewriteStyle(rawValue: defaults.string(forKey: "liveStyle") ?? "") ?? .verbatim
         liveStyle = storedLiveStyle
@@ -512,7 +530,8 @@ final class DictationModel {
             typography: .init(
                 spacing: typographySpacing.rawValue,
                 chineseScript: chineseScript.rawValue,
-                formattingSample: formattingSample),
+                formattingSample: formattingSample,
+                translateTo: translateTo),
             iOS: .init(liveStyle: liveStyle.rawValue))
     }
 
@@ -530,7 +549,7 @@ final class DictationModel {
             throw SettingsTransferApplyError.unsupportedValue(
                 field: "retention", value: document.retention)
         }
-        var importedTypography: (TypographySpacing, ChineseScript, String)?
+        var importedTypography: (TypographySpacing, ChineseScript, String, String)?
         if let typography = document.typography {
             guard let spacing = TypographySpacing(rawValue: typography.spacing) else {
                 throw SettingsTransferApplyError.unsupportedValue(
@@ -540,7 +559,8 @@ final class DictationModel {
                 throw SettingsTransferApplyError.unsupportedValue(
                     field: "typography.chineseScript", value: typography.chineseScript)
             }
-            importedTypography = (spacing, script, typography.formattingSample)
+            importedTypography = (
+                spacing, script, typography.formattingSample, typography.translateTo ?? "")
         }
         let importedFallback: ProviderKind? = try document.fallback.map { fallback in
             guard let kind = ProviderKind(persistedValue: fallback.provider) else {
@@ -585,6 +605,7 @@ final class DictationModel {
             defaults.set(typography.1.rawValue, forKey: "chineseScript")
             defaults.set(
                 Typography.sanitizedSample(typography.2), forKey: "formattingSample")
+            defaults.set(TranslationTarget.sanitized(typography.3), forKey: "translateTo")
         }
         if let importedStyle {
             defaults.set(importedStyle.rawValue, forKey: "liveStyle")
@@ -602,6 +623,7 @@ final class DictationModel {
             typographySpacing = typography.0
             chineseScript = typography.1
             formattingSample = typography.2
+            translateTo = typography.3
         }
         provider = selected
         apiKey = Self.storedKey(for: selected) ?? ""
@@ -1323,6 +1345,34 @@ final class DictationModel {
             personalDictionary: personalDictionaryTerms, typography: typographySpacing)
     }
 
+    /// What this dictation's second stage is, resolved from the two settings that can ask for one.
+    ///
+    /// A target language replaces the rewrite rather than joining it: two jobs in one request is
+    /// the combination this project has already measured as worse, and the settings screen says so
+    /// through `RewriteAvailability`.
+    var liveMode: TranscriptMode {
+        translateTo.isEmpty
+            ? (liveStyle.isRewrite ? .rewrite(liveStyle) : .verbatim)
+            : .translate(translateTo)
+    }
+
+    /// The second-stage instruction for whichever stage this dictation asked for, routed through
+    /// the one entry point so a translation cannot be sent through the rewrite block.
+    private func secondStageInstruction(for mode: TranscriptMode) -> String? {
+        guard let promptURL = Self.bundledPromptURL else { return nil }
+        let instruction = try? prompts.builder(bundled: promptURL).secondStageInstruction(for: mode)
+        return (instruction ?? nil).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// What to ask the transcription request for beside the verbatim transcript.
+    private func styledRequest(for mode: TranscriptMode) -> StyledRequest? {
+        switch mode {
+        case .verbatim, .summary: nil
+        case .translate(let language): .translation(language: language)
+        case .rewrite(let style): rewriteStyleClause(for: style).map { .style(clause: $0) }
+        }
+    }
+
     /// The rewrite block from the prompt in force — the user's edited copy when there is one.
     ///
     /// Read the same way `makeCoordinator` reads the system instruction: from the bundle, through
@@ -1362,6 +1412,7 @@ final class DictationModel {
         // Read once, here. Moving the picker while a transcription is in flight must not change
         // what the recording already made becomes.
         let style = liveStyle
+        let stage = liveMode
 
         guard let coordinator = makeCoordinator() else {
             finishKeyboardRequestWithFailure("Add your API key in Settings.")
@@ -1382,14 +1433,13 @@ final class DictationModel {
             let requestStart = Date()
             // Live segmentation is intentionally verbatim: a style belongs to the whole
             // utterance, not to each segment. The ordinary request can return both fields at once.
-            let styleClause = livePipeline == nil && style.isRewrite
-                ? rewriteStyleClause(for: style) : nil
+            let folded: StyledRequest? = livePipeline == nil ? styledRequest(for: stage) : nil
             // Hedged when a fallback is configured; a transparent pass-through otherwise.
             let outcome = if let livePipeline {
                 try await livePipeline.finish()
             } else {
                 try await makeTranscriber(primary: coordinator.service)
-                    .transcribe(audio: audio, context: nil, styleClause: styleClause)
+                    .transcribe(audio: audio, context: nil, styled: folded)
             }
             try Task.checkCancellation()
             let result = outcome.result
@@ -1429,32 +1479,36 @@ final class DictationModel {
             // A model response may carry the rewrite beside the verbatim transcript. Recognition
             // backends and older responses fall through to the existing text-only stage.
             var delivered = text
-            if style.isRewrite, let styled = result.transcript.styled?.trimmed, !styled.isEmpty {
+            if stage.needsSecondPass, let styled = result.transcript.styled?.trimmed,
+                !styled.isEmpty
+            {
                 record.styledText = styled
-                record.style = style
+                record.style = stage.rewriteStyle
+                record.mode = stage
                 delivered = styled
                 log.info(
                     "styled in one request",
                     [
-                        "dictation": Self.short(pendingID), "style": style.rawValue,
+                        "dictation": Self.short(pendingID), "mode": stage.rawValue,
                         "chars": "\(styled.count)", "from": "\(text.count)",
                     ])
-            } else if style.isRewrite {
+            } else if stage.needsSecondPass {
                 let rewriteStart = Date()
                 log.info(
                     "second stage",
                     [
-                        "dictation": Self.short(pendingID), "style": style.rawValue,
+                        "dictation": Self.short(pendingID), "mode": stage.rawValue,
                         "chars": "\(text.count)",
                     ])
                 if let rewriter = makeRewriter(),
-                    let instruction = rewriteInstruction(for: style)
+                    let instruction = secondStageInstruction(for: stage)
                 {
                     do {
                         let styled = try await rewriter.rewrite(text, instruction: instruction)
                         try Task.checkCancellation()
                         record.styledText = styled
-                        record.style = style
+                        record.style = stage.rewriteStyle
+                        record.mode = stage
                         delivered = styled
                         log.info(
                             "second stage finished",
@@ -1474,7 +1528,7 @@ final class DictationModel {
                         log.warning(
                             "second stage failed, delivering the verbatim transcript",
                             [
-                                "dictation": Self.short(pendingID), "style": style.rawValue,
+                                "dictation": Self.short(pendingID), "mode": stage.rawValue,
                                 "detail": FailureAdvice.detail(of: error),
                             ])
                     }

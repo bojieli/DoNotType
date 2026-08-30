@@ -19,6 +19,9 @@ public enum RewriteAvailability: Sendable, Equatable {
     /// The selected backend turns audio into text and cannot turn text into text, and no other
     /// configured backend can either.
     case backendCannotRewrite(ProviderKind)
+    /// A target language is set, so the second stage is a translation. Not a failure and not a
+    /// missing backend — the user asked for one job rather than the other.
+    case translating(String)
 
     public var isAvailable: Bool { self == .available }
 
@@ -35,6 +38,9 @@ public enum RewriteAvailability: Sendable, Equatable {
         case .backendCannotRewrite(let kind):
             "\(kind.displayName) only transcribes audio and cannot rewrite text. Add a key for a "
                 + "backend that can, and rewriting will use it."
+        case .translating(let language):
+            "Dictations are being translated into \(language), which is the second stage. Clear "
+                + "the target language to rewrite instead."
         }
     }
 
@@ -44,9 +50,15 @@ public enum RewriteAvailability: Sendable, Equatable {
     ///   - provider: the selected backend.
     ///   - hasKey: whether a usable key exists for a backend. Passed in rather than read here so
     ///     the Keychain, DPAPI and SharedPreferences all answer the same question.
+    /// - Parameter translatingInto: the configured target language, or empty. Checked before the
+    ///   backend questions on purpose: with a target set the rewrite stage is not going to run
+    ///   whatever the backends can do, and reporting a key problem for a control that is unavailable
+    ///   for an unrelated reason sends the user to fix the wrong thing.
     public static func resolve(
-        provider: ProviderKind, hasKey: (ProviderKind) -> Bool
+        provider: ProviderKind, translatingInto: String = "", hasKey: (ProviderKind) -> Bool
     ) -> RewriteAvailability {
+        let target = TranslationTarget.sanitized(translatingInto)
+        if !target.isEmpty { return .translating(target) }
         // Asked first, and about the *selected* backend: with no key the dictation itself fails, so
         // a message about rewriting would be answering the second question while the first is still
         // wrong.

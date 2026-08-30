@@ -77,18 +77,19 @@ public struct FallbackTranscriber: Sendable {
     /// A primary that *fails* rather than stalls hands over immediately — there is nothing left to
     /// wait for. If both fail the primary's error is thrown, because that is the backend the user
     /// chose and its error is the one that explains their configuration.
-    /// - Parameter styleClause: folded into the request when set, so a rewrite costs no second
-    ///   round trip. The fallback leg carries it too: a hedged dictation that came back verbatim
-    ///   while the primary's came back styled would make the rewrite depend on which backend won.
+    /// - Parameter styled: folded into the request when set, so a second version of the transcript
+    ///   costs no extra round trip. The fallback leg carries it too: a hedged dictation that came
+    ///   back verbatim while the primary's came back styled would make the second stage depend on
+    ///   which backend happened to win.
     public func transcribe(
         audio: AudioFile,
         context: ScreenContext?,
-        styleClause: String? = nil,
+        styled: StyledRequest? = nil,
         onProgress: (@Sendable (Int, Int) -> Void)? = nil
     ) async throws -> Outcome {
         guard let secondary else {
             let result = try await primary.transcribeLong(
-                audio: audio, context: context, styleClause: styleClause, onProgress: onProgress)
+                audio: audio, context: context, styled: styled, onProgress: onProgress)
             return Outcome(result: result, attribution: attribution(primary, wasFallback: false))
         }
 
@@ -96,7 +97,7 @@ public struct FallbackTranscriber: Sendable {
             group.addTask {
                 Outcome(
                     result: try await primary.transcribeLong(
-                        audio: audio, context: context, styleClause: styleClause,
+                        audio: audio, context: context, styled: styled,
                         onProgress: onProgress),
                     attribution: attribution(primary, wasFallback: false))
             }
@@ -117,7 +118,7 @@ public struct FallbackTranscriber: Sendable {
                     ])
                 return Outcome(
                     result: try await secondary.transcribeLong(
-                        audio: audio, context: context, styleClause: styleClause,
+                        audio: audio, context: context, styled: styled,
                         onProgress: nil),
                     attribution: attribution(secondary, wasFallback: true))
             }

@@ -42,16 +42,20 @@ internal sealed class FileTranscriptionTab
     private FileTranscriber.Outcome? _outcome;
     private bool _showingVerbatim;
     private bool _running;
+    private readonly IReadOnlyList<TranscriptMode> _modes;
 
     public FileTranscriptionTab(AppSettings settings)
     {
         _settings = settings;
-        foreach (var mode in TranscriptMode.All) _mode.Items.Add(mode.Label);
+        // Read once, here: the list gains a translation only when a target language is set, and
+        // the tab is rebuilt when settings change.
+        _modes = TranscriptMode.AllTranslatingInto(settings.TranslateTo);
+        foreach (var mode in _modes) _mode.Items.Add(mode.Label);
         _mode.SelectedIndex = Math.Max(
-            0, TranscriptMode.All.ToList().FindIndex(m => m.Id == settings.FileMode));
+            0, _modes.ToList().FindIndex(m => m.Id == settings.FileMode));
         _mode.SelectedIndexChanged += (_, _) =>
         {
-            _settings.FileMode = TranscriptMode.All[_mode.SelectedIndex].Id;
+            _settings.FileMode = _modes[_mode.SelectedIndex].Id;
             _settings.Save();
             RefreshNote();
         };
@@ -141,7 +145,7 @@ internal sealed class FileTranscriptionTab
     {
         if (_running || _path.TextLength == 0) return;
 
-        var mode = TranscriptMode.All[_mode.SelectedIndex];
+        var mode = _modes[_mode.SelectedIndex];
         var key = _settings.KeyFor(_settings.Provider);
         if (string.IsNullOrEmpty(key))
         {
@@ -262,7 +266,7 @@ internal sealed class FileTranscriptionTab
 
     private void RefreshNote()
     {
-        var mode = TranscriptMode.All[Math.Max(_mode.SelectedIndex, 0)];
+        var mode = _modes[Math.Max(_mode.SelectedIndex, 0)];
         _note.Text = mode.NeedsSecondPass && _settings.Provider.IsSpeechRecognition()
             ? $"{_settings.Provider} only transcribes, so a model backend will write the result in "
                 + "a second request. Add a key for one on the General tab if there is none."

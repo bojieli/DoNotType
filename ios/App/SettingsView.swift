@@ -24,6 +24,7 @@ struct SettingsView: View {
             providerSection
             dictationSection
             typographySection
+            translationSection
             rewriteSection
             dictionarySection
             historySection
@@ -291,6 +292,39 @@ struct SettingsView: View {
                     + "on every dictation. The script and the example are asked of the model, "
                     + "which is why they are a request rather than a guarantee — and why nothing "
                     + "here is allowed to change a word."
+            )
+        }
+    }
+
+    /// Its own section, under Typography and above Rewrite, because it is the setting that
+    /// *replaces* a rewrite rather than another shade of one.
+    private var translationSection: some View {
+        Section {
+            TextField("Off — keep the language I spoke", text: $model.translateTo)
+                .accessibilityIdentifier("translate-to")
+            Picker("Common languages", selection: $model.translateTo) {
+                Text("Off").tag("")
+                ForEach(TranslationTarget.suggestions, id: \.self) { language in
+                    Text(language).tag(language)
+                }
+            }
+            .accessibilityIdentifier("translate-suggestions")
+            if let problem = TranslationTarget.validationMessage(model.translateTo) {
+                Label(problem, systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            Text("Translation")
+        } footer: {
+            Text(
+                "Speak one language and get another. This is the one setting that makes the Speak "
+                    + "button deliver something other than what you said — and the verbatim "
+                    + "transcript is still produced first, still stored, and still in History. The "
+                    + "field is free text, like Model: the model is the authority on which "
+                    + "languages it can write. While a language is set it is the second stage, so "
+                    + "the rewrite style below does not apply."
             )
         }
     }

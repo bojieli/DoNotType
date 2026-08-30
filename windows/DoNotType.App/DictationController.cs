@@ -636,7 +636,7 @@ public sealed class DictationController : IDisposable
     /// </summary>
     private FallbackTranscriber BuildTranscriber(
         TranscriptionService primary, byte[] wav, ScreenContext? context,
-        bool reportProgress = true, string? styleClause = null)
+        bool reportProgress = true, StyledRequest? styled = null)
     {
         Task<TranscriptionResult> RunPrimary(CancellationToken token) =>
             primary.TranscribeLongAsync(
@@ -644,7 +644,7 @@ public sealed class DictationController : IDisposable
                 onProgress: reportProgress
                     ? (done, total) => ChunkProgress?.Invoke(done, total)
                     : null,
-                cancellationToken: token, styleClause: styleClause);
+                cancellationToken: token, styled: styled);
 
         var kind = _settings.ResolvedFallbackProvider();
         var key = kind is null
@@ -675,7 +675,7 @@ public sealed class DictationController : IDisposable
 
         Task<TranscriptionResult> RunSecondary(CancellationToken token) =>
             secondary.TranscribeLongAsync(
-                wav, context, cancellationToken: token, styleClause: styleClause);
+                wav, context, cancellationToken: token, styled: styled);
 
         return new FallbackTranscriber(
             RunPrimary, primary.Provider.Name, primary.Provider.Model,
@@ -787,13 +787,26 @@ public sealed class DictationController : IDisposable
         try
         {
             var requestStart = Stopwatch.GetTimestamp();
-            var styleClause = style.IsRewrite() ? Prompt(promptPath).StyleClause(style) : null;
+            // A target language replaces the second stage rather than joining it. Two jobs in
+            // one request is exactly the combination this project has already measured as worse,
+            // and the settings window says so beside the rewrite picker.
+            var stage = _settings.TranslateTo.Length > 0
+                ? TranscriptMode.Translate(_settings.TranslateTo)
+                : style.IsRewrite() ? TranscriptMode.Rewrite(style) : TranscriptMode.Verbatim;
+            StyledRequest? folded = stage switch
+            {
+                TranscriptMode.RewriteMode rewriteStage =>
+                    new StyledRequest.Style(Prompt(promptPath).StyleClause(rewriteStage.Style)),
+                TranscriptMode.TranslateMode translateStage =>
+                    new StyledRequest.Translation(translateStage.Language),
+                _ => null,
+            };
             // Long recordings split across concurrent requests; short ones -- every ordinary
             // dictation -- take the single-request path unchanged.
             // Hedged when a fallback backend is configured: the primary gets the whole delay to
             // itself, and only a stalled one is ever raced. See FallbackTranscriber.
             var outcome = liveSession is null
-                ? await BuildTranscriber(service, wav, context, styleClause: styleClause)
+                ? await BuildTranscriber(service, wav, context, styled: folded)
                     .TranscribeAsync(cancellationToken).ConfigureAwait(false)
                 : await liveSession.FinishAsync(context).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
@@ -838,9 +851,9 @@ public sealed class DictationController : IDisposable
             // stage, so the user-facing pair is identical whichever backend answered.
             var delivered = text;
             var rewriteFailed = false;
-            if (style.IsRewrite())
+            if (stage.NeedsSecondPass)
             {
-                var mode = TranscriptMode.Rewrite(style);
+                var mode = stage;
                 var instruction = Prompt(promptPath).SecondStageInstruction(mode);
                 var styledInResponse = result.Transcript.Styled?.Trim();
                 if (!string.IsNullOrWhiteSpace(styledInResponse))
@@ -851,7 +864,7 @@ public sealed class DictationController : IDisposable
                     DictationLog.Info(() => "styled in one request", new Dictionary<string, string>
                     {
                         ["dictation"] = Short(dictationId),
-                        ["style"] = style.Id(),
+                        ["mode"] = mode.Id,
                         ["chars"] = styledInResponse.Length.ToString(),
                         ["from"] = text.Length.ToString(),
                     });
@@ -863,7 +876,7 @@ public sealed class DictationController : IDisposable
                     DictationLog.Info(() => "second stage", new Dictionary<string, string>
                     {
                         ["dictation"] = Short(dictationId),
-                        ["style"] = style.Id(),
+                        ["mode"] = mode.Id,
                         ["chars"] = text.Length.ToString(),
                     });
                     try

@@ -112,7 +112,8 @@ The guard lives on the provider protocol, not in an allowlist, because any backe
 | `Typography` | space at a Chinese/Latin boundary | The only transform applied to a finished transcript, and it may only add or remove horizontal space. A rule that could insert a comma would be inventing a pause the speaker did not take; that half of the same complaint is asked of the model instead, in `prompt/typography.md`. |
 | `AudioDecoder` | any recording → 16 kHz mono WAV | The live path never needed it; a file does. Without it the chunker cannot split a compressed recording, the duration reads as zero, and the upload is not compressed. |
 | `FileTranscriber` | decode → transcribe → second stage | Shared by the GUI window and `dnt transcribe`, so the two cannot drift on what a mode means or on which backend runs the second stage. |
-| `TranscriptMode` | verbatim, rewrite, summary | Ordering is the point: the verbatim transcript is stored before any styled text is delivered, whether the style came back in the same request or from a second one. |
+| `StyledRequest` | what the `styled` field is for | A case rather than two optional parameters. A rewrite and a translation are different jobs asked for through the same field, and two optionals would make "both at once" a state somebody has to remember not to construct. |
+| `TranscriptMode` | verbatim, rewrite, summary, translate | Ordering is the point: the verbatim transcript is stored before any styled text is delivered, whether the style came back in the same request or from a second one. |
 | `LogRouter` / `Log` | levels, sinks, redaction | A lock rather than an actor, because logging has to be callable from an audio callback without an `await` — a logger you cannot call from the hot path is one nobody calls. |
 
 ## Typography
@@ -184,6 +185,31 @@ transcript is produced first and stored first.** Folding the rewrite into one re
 weaken it — `DictationController` writes `record.text` from the `transcript` field before it assigns
 `record.styledText`, so `⌘⌥Z` behaves identically whether one request ran or two. What the styled
 field removes is a round trip, not a copy of what was said.
+
+## Translation
+
+Speak one language, get another at the cursor. It is the one setting in the product that makes the
+main control deliver something other than what was said, and it is off by default.
+
+What it does *not* change is the promise underneath. A translation is a second stage over a
+transcript that already exists, so the verbatim words are produced first, stored first, and
+recoverable — the same invariant, the same `⌘⌥Z`, the same History row. A translation you cannot
+expand back into what produced it is the failure this project was built against; one you can is a
+convenience sitting beside the words.
+
+Three decisions are worth recording:
+
+- **It replaces the rewrite stage rather than joining it.** "Formal French" is one request doing
+  two jobs, which is the combination measured as twice as bad for substitution (see
+  [PROMPT.md](PROMPT.md)) — and it is a feature request rather than a fix for what was asked for.
+  Each client says so where the rewrite control is, through `RewriteAvailability.translating`,
+  rather than leaving a picker that silently does nothing.
+- **It folds into the transcribing request.** Same reason as the rewrite: that request is the only
+  one that has the audio, and a translator working from text alone "corrects" a version number it
+  believes is stale. Recognisers, split recordings and the live pipeline keep the second pass.
+- **The language is free text.** Languages are not ours to enumerate any more than model IDs are —
+  "Traditional Chinese", "Brazilian Portuguese" and "plain English" are all things a model can do.
+  `TranslationTarget` checks shape and never existence; the model is the authority.
 
 ## Long dictations
 

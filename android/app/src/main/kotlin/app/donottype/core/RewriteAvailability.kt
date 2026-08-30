@@ -27,6 +27,12 @@ sealed class RewriteAvailability {
      */
     data class BackendCannotRewrite(val kind: ProviderKind) : RewriteAvailability()
 
+    /**
+     * A target language is set, so the second stage is a translation. Not a failure and not a
+     * missing backend — the user asked for one job rather than the other.
+     */
+    data class Translating(val language: String) : RewriteAvailability()
+
     val isAvailable: Boolean get() = this is Available
 
     /**
@@ -42,6 +48,9 @@ sealed class RewriteAvailability {
             is BackendCannotRewrite ->
                 "${kind.plainName} only transcribes audio and cannot rewrite text. Add a key for " +
                     "a backend that can, and rewriting will use it."
+            is Translating ->
+                "Dictations are being translated into $language, which is the second stage. " +
+                    "Clear the target language to rewrite instead."
         }
 
     companion object {
@@ -51,8 +60,19 @@ sealed class RewriteAvailability {
          * @param provider the selected backend.
          * @param hasKey whether a usable key exists for a backend. Passed in rather than read here
          *   so the Keychain, DPAPI and SharedPreferences all answer the same question.
+         * @param translatingInto the configured target language, or empty. Checked before the
+         *   backend questions on purpose: with a target set the rewrite stage is not going to run
+         *   whatever the backends can do, and reporting a key problem for a control that is
+         *   unavailable for an unrelated reason sends the user to fix the wrong thing.
          */
-        fun resolve(provider: ProviderKind, hasKey: (ProviderKind) -> Boolean): RewriteAvailability {
+        fun resolve(
+            provider: ProviderKind,
+            translatingInto: String = "",
+            hasKey: (ProviderKind) -> Boolean,
+        ): RewriteAvailability {
+            val target = TranslationTarget.sanitized(translatingInto)
+            if (target.isNotEmpty()) return Translating(target)
+
             // Asked first, and about the selected backend: with no key the dictation itself fails,
             // so a message about rewriting would answer the second question while the first is
             // still wrong.
