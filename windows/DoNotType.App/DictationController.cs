@@ -65,7 +65,7 @@ public sealed class DictationController : IDisposable
     /// from are live: changing the style mid-dictation must not change what the recording already
     /// in flight becomes.
     /// </remarks>
-    private RewriteStyle _pendingStyle = RewriteStyle.Verbatim;
+    private LiveMode _pendingMode = LiveMode.Dictate;
     /// <summary>Latched only when Enter, rather than the normal trigger, ends the recording.</summary>
     private FinishAndSendAction _pendingFinishAndSend = FinishAndSendAction.Disabled;
 
@@ -138,6 +138,15 @@ public sealed class DictationController : IDisposable
     public bool WillSubmit => _pendingFinishAndSend != FinishAndSendAction.Disabled
         && Current is State.Transcribing or State.Deriving;
 
+    /// <summary>The stage the dictation in flight is actually running.</summary>
+    /// <remarks>
+    /// Read from the key that started it rather than guessed from settings, which is what the tray
+    /// and the overlay used to do. With one key that guess was right; with three it would name
+    /// whichever mode Settings happened to describe, so a rewrite could be labelled "Translating…"
+    /// for the whole of its second stage.
+    /// </remarks>
+    public TranscriptMode PendingStage => _settings.SecondStageFor(_pendingMode);
+
     public DictationController(AppSettings settings)
     {
         _settings = settings;
@@ -209,7 +218,8 @@ public sealed class DictationController : IDisposable
     {
         _hotkey.Stop();
         _hotkey.Key = _settings.Trigger;
-        _hotkey.SecondaryKey = _settings.SecondaryTrigger;
+        _hotkey.RewriteKey = _settings.RewriteTrigger;
+        _hotkey.TranslateKey = _settings.TranslateTrigger;
         _hotkey.RecordingMode = _settings.HotkeyMode;
         _hotkey.CancelKey = _settings.CancelShortcut;
         _hotkey.FinishAndSendKey = _settings.FinishAndSendAction;
@@ -279,9 +289,7 @@ public sealed class DictationController : IDisposable
             // question being asked is always about one of them.
             _pendingId = Guid.NewGuid();
             _pendingFinishAndSend = FinishAndSendAction.Disabled;
-            _pendingStyle = _hotkey.UsedSecondary && _settings.SecondaryTrigger is not null
-                ? _settings.SecondaryStyle
-                : RewriteStyle.Verbatim;
+            _pendingMode = _hotkey.ActiveMode;
             // Where the words are meant to go, decided now rather than when they arrive.
             Interop.GetWindowThreadProcessId(Interop.GetForegroundWindow(), out var targetPid);
             _pendingTarget = targetPid == 0 ? null : (targetPid, Interop.ForegroundWindowTitle());
@@ -290,7 +298,7 @@ public sealed class DictationController : IDisposable
             DictationLog.Info(() => "recording started", new Dictionary<string, string>
             {
                 ["dictation"] = Short(_pendingId),
-                ["style"] = _pendingStyle.Id(),
+                ["live"] = _pendingMode.Id(),
                 ["mode"] = _settings.HotkeyMode.ToString(),
                 ["trigger"] = _settings.Trigger.ToString(),
                 ["provider"] = _settings.Provider.ToString(),
@@ -727,8 +735,8 @@ public sealed class DictationController : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         // Snapshotted, not read live. Nothing today can change it mid-flight — a press while a
         // transcription is running is refused — but this method is long and the field is set by a
-        // keyboard hook, and "the style changed under us" is not a bug anybody would find twice.
-        var style = _pendingStyle;
+        // keyboard hook, and "the mode changed under us" is not a bug anybody would find twice.
+        var liveMode = _pendingMode;
         var context = MergeContext();
 
         var key = _settings.ResolvedApiKey();
@@ -791,11 +799,12 @@ public sealed class DictationController : IDisposable
         try
         {
             var requestStart = Stopwatch.GetTimestamp();
-            // A target language replaces the second stage rather than joining it. Two jobs in
-            // one request is exactly the combination this project has already measured as worse,
-            // and the settings window says so beside the rewrite picker. Resolved by AppSettings
-            // so the tray's "Translating…" label cannot disagree with what was requested.
-            var stage = _settings.SecondStageFor(style);
+            // Resolved by the rule all four clients share rather than by a conditional only the
+            // desktops had. A target language used to be read here and applied to every dictation,
+            // so setting one took the main key away from verbatim; it is now what the translate
+            // key writes in, and nothing else. A rewrite and a translation still never combine —
+            // that is LiveMode.Stage's job, and it is the pairing this project measured as worse.
+            var stage = _settings.SecondStageFor(liveMode);
             StyledRequest? folded = stage switch
             {
                 TranscriptMode.RewriteMode rewriteStage =>
@@ -925,7 +934,7 @@ public sealed class DictationController : IDisposable
                             new Dictionary<string, string>
                             {
                                 ["dictation"] = Short(dictationId),
-                                ["style"] = style.Id(),
+                                ["mode"] = stage.Id,
                                 ["detail"] = FailureAdvice.Detail(error),
                             });
                     }

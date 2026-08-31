@@ -33,7 +33,7 @@ public sealed class SettingsForm : Form
     /// with it, which is almost always.
     /// </summary>
     /// <remarks>
-    /// The same amber as <c>_secondKeyNote</c> rather than red: nothing has been lost at this
+    /// The same amber as <c>_rewriteKeyNote</c> rather than red: nothing has been lost at this
     /// point. The stored model is untouched and still running dictations, and this says why Save
     /// will not replace it.
     /// </remarks>
@@ -54,11 +54,20 @@ public sealed class SettingsForm : Form
     private readonly ComboBox _trigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _cancelShortcut = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _finishAndSend = new() { DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly ComboBox _secondTrigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly ComboBox _secondStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _rewriteTrigger = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _rewriteStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _translateTrigger =
+        new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _microphone = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly CheckBox _sounds = new() { Text = "Play a tone when recording starts and stops", AutoSize = true };
-    private readonly Label _secondKeyNote = new()
+    private readonly Label _rewriteKeyNote = new()
+    {
+        AutoSize = true,
+        MaximumSize = new Size(520, 0),
+        ForeColor = Color.FromArgb(190, 140, 60),
+        Visible = false,
+    };
+    private readonly Label _translateKeyNote = new()
     {
         AutoSize = true,
         MaximumSize = new Size(520, 0),
@@ -265,26 +274,28 @@ public sealed class SettingsForm : Form
         // Its own heading, under Typography and above Rewrite, because it is the setting that
         // *replaces* a rewrite rather than another shade of one.
         layout.Controls.Add(Heading("Translation"));
+        layout.Controls.Add(Labelled("Translate key", _translateTrigger));
         layout.Controls.Add(Labelled("Translate to", _translateTo));
+        layout.Controls.Add(_translateKeyNote);
         layout.Controls.Add(Caption(
-            "Speak one language and get another at the cursor. This is the one setting that makes "
-            + "the main key deliver something other than what you said — and the verbatim "
-            + "transcript is still produced first, still stored, and still one Ctrl+Alt+Z away. "
-            + "The box is free text, like Model: the model is the authority on which languages it "
-            + "can write. Leave it empty to keep the language you spoke. While a language is set "
-            + "it is the second stage, so the rewrite style below does not apply."));
+            "Optional. A third key that dictates and then writes the same thing in your target "
+            + "language, so the choice is made before you speak rather than from a menu "
+            + "afterwards. Your main key stays verbatim and your rewrite key stays a rewrite — "
+            + "which key you hold decides. The verbatim transcript is still produced first, still "
+            + "stored, and still one Ctrl+Alt+Z away. The box is free text, like Model: the model "
+            + "is the authority on which languages it can write."));
 
         // Its own heading, not two more rows under Dictation. "Second key" names the mechanism and
         // never the feature, so somebody looking for rewriting had no reason to read it — and on a
         // fresh install nothing is bound, so the word appeared nowhere in the window at all.
         layout.Controls.Add(Heading("Rewrite"));
-        layout.Controls.Add(Labelled("Second key", _secondTrigger));
+        layout.Controls.Add(Labelled("Rewrite key", _rewriteTrigger));
         layout.Controls.Add(Labelled("Your style", _customRewriteStyle));
         layout.Controls.Add(Caption(
             "Used when Custom is selected. Empty means no rewrite — you get the transcript as it "
             + "is."));
-        layout.Controls.Add(Labelled("It produces", _secondStyle));
-        layout.Controls.Add(_secondKeyNote);
+        layout.Controls.Add(Labelled("It produces", _rewriteStyle));
+        layout.Controls.Add(_rewriteKeyNote);
         layout.Controls.Add(Caption(
             "Optional. A second key that dictates and then rewrites, so the choice is made before "
             + "you speak rather than from a menu afterwards — there is no mode to leave switched "
@@ -950,14 +961,21 @@ public sealed class SettingsForm : Form
         // enabled, macOS never asked, and the mobiles asked a question about the kind of backend
         // rather than about whether one was usable.
         var kind = SelectedProvider();
-        var availability = RewriteAvailability.ForSecondKey(kind, _settings.TranslateTo, HasKeyFor);
-        _secondKeyNote.Text = availability.Reason;
-        _secondKeyNote.Visible = _secondKeyNote.Text.Length > 0;
+        var rewrite = LiveMode.Rewrite.Availability(kind, _settings.TranslateTo, HasKeyFor);
+        _rewriteKeyNote.Text = rewrite.Reason;
+        _rewriteKeyNote.Visible = _rewriteKeyNote.Text.Length > 0;
 
         // Disabled rather than hidden. A control that vanishes takes the explanation with it, and
         // "where is it" is a harder question than "why is it off".
-        _secondTrigger.Enabled = availability.IsAvailable;
-        _secondStyle.Enabled = availability.IsAvailable && _secondTrigger.SelectedIndex > 0;
+        _rewriteTrigger.Enabled = rewrite.IsAvailable;
+        _rewriteStyle.Enabled = rewrite.IsAvailable && _rewriteTrigger.SelectedIndex > 0;
+
+        // Only once a key is bound. Before that this heading is an offer, and one that opens with
+        // a warning about a language nobody has asked for yet reads as a fault.
+        var translate = LiveMode.Translate.Availability(
+            kind, TranslationTarget.Sanitized(_translateTo.Text), HasKeyFor);
+        _translateKeyNote.Text = _translateTrigger.SelectedIndex > 0 ? translate.Reason : string.Empty;
+        _translateKeyNote.Visible = _translateKeyNote.Text.Length > 0;
 
         // What the choice buys, for the two there is a recommendation for, before what it costs.
         _recommendationNote.Text = kind.RecommendationNote();
@@ -1088,24 +1106,30 @@ public sealed class SettingsForm : Form
         _finishAndSend.Items.AddRange(["Insert only", "Insert + Enter", "Insert + Ctrl+Enter"]);
         _finishAndSend.SelectedIndex = (int)_settings.FinishAndSendAction;
 
-        _secondTrigger.Items.Add("None");
-        foreach (var trigger in Enum.GetValues<HotkeyMonitor.Trigger>())
+        foreach (var box in new[] { _rewriteTrigger, _translateTrigger })
         {
-            _secondTrigger.Items.Add(HotkeyMonitor.Label(trigger));
+            box.Items.Add("None");
+            foreach (var trigger in Enum.GetValues<HotkeyMonitor.Trigger>())
+            {
+                box.Items.Add(HotkeyMonitor.Label(trigger));
+            }
         }
-        _secondTrigger.SelectedIndex =
-            _settings.SecondaryTrigger is { } secondary ? (int)secondary + 1 : 0;
+        _rewriteTrigger.SelectedIndex =
+            _settings.RewriteTrigger is { } rewriteKey ? (int)rewriteKey + 1 : 0;
+        _translateTrigger.SelectedIndex =
+            _settings.TranslateTrigger is { } translateKey ? (int)translateKey + 1 : 0;
 
-        // Verbatim is absent on purpose: it is what the first key already does, and a second key
+        // Verbatim is absent on purpose: it is what the main key already does, and a second key
         // that produces the same thing is a setting with no effect.
         foreach (var style in Enum.GetValues<RewriteStyle>().Where(style => style.IsRewrite()))
         {
-            _secondStyle.Items.Add(style.Label());
+            _rewriteStyle.Items.Add(style.Label());
         }
-        _secondStyle.SelectedIndex = Math.Max(0, (int)_settings.SecondaryStyle - 1);
+        _rewriteStyle.SelectedIndex = Math.Max(0, (int)_settings.RewriteStyle - 1);
         // Enablement is decided in one place, so a key change and a binding change cannot leave the
-        // two controls disagreeing about whether a rewrite is possible.
-        _secondTrigger.SelectedIndexChanged += (_, _) => RefreshProviderNotes();
+        // controls disagreeing about whether a rewrite is possible.
+        _rewriteTrigger.SelectedIndexChanged += (_, _) => RefreshProviderNotes();
+        _translateTrigger.SelectedIndexChanged += (_, _) => RefreshProviderNotes();
 
         _mode.Items.AddRange(["Tap to toggle, hold to talk", "Hold to talk", "Tap to start, tap to stop"]);
         _mode.SelectedIndex = _settings.HotkeyMode switch
@@ -1201,10 +1225,13 @@ public sealed class SettingsForm : Form
         _settings.Trigger = (HotkeyMonitor.Trigger)_trigger.SelectedIndex;
         _settings.CancelShortcut = (CancelShortcut)_cancelShortcut.SelectedIndex;
         _settings.FinishAndSendAction = (FinishAndSendAction)_finishAndSend.SelectedIndex;
-        _settings.SecondaryTrigger = _secondTrigger.SelectedIndex > 0
-            ? (HotkeyMonitor.Trigger)(_secondTrigger.SelectedIndex - 1)
+        _settings.RewriteTrigger = _rewriteTrigger.SelectedIndex > 0
+            ? (HotkeyMonitor.Trigger)(_rewriteTrigger.SelectedIndex - 1)
             : null;
-        _settings.SecondaryStyle = (RewriteStyle)(_secondStyle.SelectedIndex + 1);
+        _settings.RewriteStyle = (RewriteStyle)(_rewriteStyle.SelectedIndex + 1);
+        _settings.TranslateTrigger = _translateTrigger.SelectedIndex > 0
+            ? (HotkeyMonitor.Trigger)(_translateTrigger.SelectedIndex - 1)
+            : null;
         _settings.HotkeyMode = _mode.SelectedIndex switch
         {
             1 => HotkeyMonitor.Mode.PushToTalk,
@@ -1256,9 +1283,11 @@ public sealed class SettingsForm : Form
         _trigger.SelectedIndex = (int)_settings.Trigger;
         _cancelShortcut.SelectedIndex = (int)_settings.CancelShortcut;
         _finishAndSend.SelectedIndex = (int)_settings.FinishAndSendAction;
-        _secondTrigger.SelectedIndex = _settings.SecondaryTrigger is { } secondary
-            ? (int)secondary + 1 : 0;
-        _secondStyle.SelectedIndex = Math.Max(0, (int)_settings.SecondaryStyle - 1);
+        _rewriteTrigger.SelectedIndex = _settings.RewriteTrigger is { } rewriteKey
+            ? (int)rewriteKey + 1 : 0;
+        _rewriteStyle.SelectedIndex = Math.Max(0, (int)_settings.RewriteStyle - 1);
+        _translateTrigger.SelectedIndex = _settings.TranslateTrigger is { } translateKey
+            ? (int)translateKey + 1 : 0;
         _mode.SelectedIndex = _settings.HotkeyMode switch
         {
             HotkeyMonitor.Mode.PushToTalk => 1,

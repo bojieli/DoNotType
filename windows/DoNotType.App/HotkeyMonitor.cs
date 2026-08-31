@@ -56,7 +56,7 @@ public sealed class HotkeyMonitor : IDisposable
     public FinishAndSendAction FinishAndSendKey { get; set; } = FinishAndSendAction.Disabled;
 
     /// <summary>
-    /// A second key that dictates and then rewrites, or null when there is only one.
+    /// A key that dictates and then rewrites, or null when nothing is bound to it.
     /// </summary>
     /// <remarks>
     /// The whole design of the rewrite is that the choice is made *before* speaking, by which key
@@ -64,10 +64,20 @@ public sealed class HotkeyMonitor : IDisposable
     /// appearing, or a setting somebody has to remember they changed — and the point of dictation
     /// is that the gap between thinking and text is short.
     /// </remarks>
-    public Trigger? SecondaryKey { get; set; }
+    public Trigger? RewriteKey { get; set; }
 
-    /// <summary>Whether the press in flight came from <see cref="SecondaryKey"/>.</summary>
-    public bool UsedSecondary { get; private set; }
+    /// <summary>
+    /// A key that dictates and then writes it in the configured target language, or null.
+    /// </summary>
+    /// <remarks>
+    /// The third key exists because the alternative was a setting that quietly took the other two
+    /// over: a target language used to make <em>every</em> key translate, the main one included,
+    /// which is the single place this product broke its own promise that the main key is verbatim.
+    /// </remarks>
+    public Trigger? TranslateKey { get; set; }
+
+    /// <summary>Which mode's key started the press in flight.</summary>
+    public LiveMode ActiveMode { get; private set; } = LiveMode.Dictate;
 
     public event Action? Pressed;
     public event Action? Released;
@@ -232,8 +242,15 @@ public sealed class HotkeyMonitor : IDisposable
             }
         }
 
-        var isSecondary = SecondaryKey is { } secondary && info.vkCode == VirtualKey(secondary);
-        if (info.vkCode == VirtualKey(Key) || isSecondary)
+        // Ordered deliberately: the main key wins if a hand-edited settings file binds the same
+        // key twice, and rewrite wins over translate on the same reasoning — a key that silently
+        // translated when the user bound it to rewrite is the failure this design removes.
+        LiveMode? pressed = info.vkCode == VirtualKey(Key) ? LiveMode.Dictate
+            : RewriteKey is { } rewrite && info.vkCode == VirtualKey(rewrite) ? LiveMode.Rewrite
+            : TranslateKey is { } translate && info.vkCode == VirtualKey(translate)
+                ? LiveMode.Translate
+                : null;
+        if (pressed is { } mode)
         {
             if (isDown && !IsHeld)
             {
@@ -241,7 +258,7 @@ public sealed class HotkeyMonitor : IDisposable
                 HoldChanged?.Invoke(true);
                 // Read once, at the press. Releasing a different key than the one held would
                 // otherwise change what the finished recording becomes.
-                UsedSecondary = isSecondary;
+                ActiveMode = mode;
                 HandlePress(info.time);
             }
             else if (isUp && IsHeld)

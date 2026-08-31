@@ -53,13 +53,15 @@ public sealed class AppSettings
     public string CustomRewriteStyle { get; set; } = string.Empty;
 
     /// <summary>
-    /// The language dictations are written in, or empty for the one that was spoken.
+    /// The language <see cref="TranslateTrigger"/> writes in, or empty when none is set.
     /// </summary>
     /// <remarks>
-    /// Empty by default, and that default is the product: this is the one setting that makes the
-    /// main key deliver something other than what was said. What it does not change is the promise
-    /// underneath — the verbatim transcript is still produced first and still stored, so
-    /// Ctrl+Alt+Z puts the spoken words back exactly as it does after a rewrite.
+    /// This used to be enough on its own to change what every key delivered, the main one
+    /// included, which made it the one setting that could take verbatim away without being asked
+    /// twice. It is now what the translate key writes in and nothing else, so an unbound key means
+    /// this setting does nothing. The promise underneath never changed: the verbatim transcript is
+    /// produced first and stored first, so Ctrl+Alt+Z puts the spoken words back exactly as it
+    /// does after a rewrite.
     /// </remarks>
     public string TranslateTo { get; set; } = string.Empty;
 
@@ -71,10 +73,7 @@ public sealed class AppSettings
     /// resolves what to call it while it is in flight, and those two answering differently is how
     /// an overlay comes to say "Loosening…" over a translation.
     /// </remarks>
-    public TranscriptMode SecondStageFor(RewriteStyle style) =>
-        TranslateTo.Length > 0
-            ? TranscriptMode.Translate(TranslateTo)
-            : style.IsRewrite() ? TranscriptMode.Rewrite(style) : TranscriptMode.Verbatim;
+    public TranscriptMode SecondStageFor(LiveMode mode) => mode.Stage(RewriteStyle, TranslateTo);
     public HotkeyMonitor.Trigger Trigger { get; set; } = HotkeyMonitor.Trigger.RightControl;
     public HotkeyMonitor.Mode HotkeyMode { get; set; } = HotkeyMonitor.Mode.Automatic;
     public CancelShortcut CancelShortcut { get; set; } = DoNotType.Core.CancelShortcut.Escape;
@@ -83,18 +82,34 @@ public sealed class AppSettings
         DoNotType.Core.FinishAndSendAction.Disabled;
 
     /// <summary>
-    /// A second key that dictates and then rewrites, or null for one key and verbatim only.
+    /// A key that dictates and then rewrites, or null for verbatim only.
     /// </summary>
     /// <remarks>
     /// Off by default. A rewrite changes the delivered wording, so it is opt-in — but when it is
     /// on, the choice is made by which key you hold, before speaking, rather than by a setting
     /// somebody has to remember they changed. Model-backed short dictations return both versions
     /// in one request; split or recognition paths retain the compatibility second stage.
+    ///
+    /// The stored names still say "secondary" from when a rewrite was the only thing a second key
+    /// could do. Renaming them on disk would log every existing user out of their own binding to
+    /// no benefit, so the spelling in settings.json stays and the property names moved.
     /// </remarks>
-    public HotkeyMonitor.Trigger? SecondaryTrigger { get; set; }
+    [JsonPropertyName("SecondaryTrigger")]
+    public HotkeyMonitor.Trigger? RewriteTrigger { get; set; }
 
-    /// <summary>What the second key produces. Never verbatim: that is what the first key is for.</summary>
-    public RewriteStyle SecondaryStyle { get; set; } = RewriteStyle.Casual;
+    /// <summary>What the rewrite key produces. Never verbatim: that is the main key's job.</summary>
+    [JsonPropertyName("SecondaryStyle")]
+    public RewriteStyle RewriteStyle { get; set; } = DoNotType.Core.RewriteStyle.Casual;
+
+    /// <summary>
+    /// A key that dictates and then writes it in <see cref="TranslateTo"/>, or null.
+    /// </summary>
+    /// <remarks>
+    /// Off by default for the same reason the rewrite key is, and it is the control that took the
+    /// override out of <see cref="TranslateTo"/>: a mode that changes what is delivered should be
+    /// chosen by which key is held, before speaking, on every one of the three.
+    /// </remarks>
+    public HotkeyMonitor.Trigger? TranslateTrigger { get; set; }
     public bool GroundingEnabled { get; set; } = true;
     public RetentionPolicy Retention { get; set; } = RetentionPolicy.Forever;
     public bool KeepAudio { get; set; }
