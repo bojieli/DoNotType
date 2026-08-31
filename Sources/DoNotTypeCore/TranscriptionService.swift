@@ -593,6 +593,23 @@ public struct RetryCoordinator: Sendable {
         }
     }
 
+    /// Transcribes a stored recording again and writes **nothing** back.
+    ///
+    /// The same request `retry` makes, against whatever settings the caller built this coordinator
+    /// with, and that is the whole feature: a settings screen can answer "what would this do to my
+    /// speech" with the user's own voice instead of a label they have to simulate in their head.
+    /// The line-break report that prompted this took a hand-written A/B over a file pulled out of
+    /// the audio folder to diagnose, and the answer took ten seconds once it existed.
+    ///
+    /// Separate from `retry` rather than a flag on it, because writing back is not an incidental
+    /// detail of that function — it is what a retry is *for*, and a preview that updated the row
+    /// would rewrite the history somebody is trying to compare against.
+    public func preview(_ record: DictationRecord) async throws -> String {
+        let audio = try await store.audioFile(for: record)
+        let result = try await service.transcribe(audio: audio, context: record.context)
+        return result.transcript.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     public func retryAll() async -> Outcome {
         var outcome = Outcome()
         for record in await store.retryable() {

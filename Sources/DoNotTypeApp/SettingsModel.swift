@@ -1183,6 +1183,69 @@ final class SettingsModel {
         await refresh()
     }
 
+    // MARK: - Preview
+
+    /// What the settings currently in this window would do to a dictation you have already made.
+    ///
+    /// The reason this exists: every control above is a *cause*, and what somebody wants to know is
+    /// the *effect*. A dropdown label can only ever describe the effect, and the one that said
+    /// "Chat — short lines, light punctuation" was describing it accurately while somebody read it
+    /// as a mood and got line breaks they had not asked for. A preview is not a better description;
+    /// it is the thing itself, in the user's own voice.
+    struct Preview: Equatable {
+        var before: String
+        var after: String
+        var appName: String?
+        var createdAt: Date
+    }
+
+    private(set) var preview: Preview?
+    private(set) var isPreviewing = false
+    private(set) var previewProblem: String?
+
+    /// Whether there is a recording to try this on at all.
+    ///
+    /// False on a fresh install, because keeping audio is off by default — so this is a real state
+    /// and not an edge case, and it gets a sentence rather than a disabled button with no reason.
+    var canPreview: Bool { previewCandidate != nil }
+
+    private var previewCandidate: DictationRecord? {
+        records.first { $0.status == DictationRecord.Status.completed && $0.canRedo && !$0.text.isEmpty }
+    }
+
+    /// Runs the current settings over the most recent dictation whose audio is still on disk.
+    ///
+    /// A real request, deliberately: the question is what the model does with this instruction, and
+    /// the only thing that answers it is the model. It is a button rather than something that fires
+    /// as the box is typed into, because each press costs a call.
+    func runPreview() async {
+        guard let record = previewCandidate else {
+            previewProblem = "No recording to try this on. Turn on Keep audio, make a dictation, "
+                + "and it will appear here."
+            return
+        }
+        guard let coordinator = makeCoordinator() else {
+            previewProblem = "No API key set."
+            return
+        }
+        isPreviewing = true
+        previewProblem = nil
+        defer { isPreviewing = false }
+        do {
+            let after = try await coordinator.preview(record)
+            preview = Preview(
+                before: record.deliveredText, after: after,
+                appName: record.appName, createdAt: record.createdAt)
+        } catch {
+            previewProblem = error.localizedDescription
+        }
+    }
+
+    func clearPreview() {
+        preview = nil
+        previewProblem = nil
+    }
+
     /// Transcribes a stored recording again, for a dictation that arrived and arrived wrong.
     ///
     /// The same request Retry makes, and deliberately not the same ending: a retry is recovering

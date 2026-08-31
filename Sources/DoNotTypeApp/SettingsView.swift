@@ -589,6 +589,8 @@ private struct GeneralTab: View {
 
             AlwaysSection(model: model)
 
+            PreviewSection(model: model)
+
             TranslationSection(model: model)
 
             RewriteSection(model: model)
@@ -1311,6 +1313,99 @@ private struct HotkeyRecorder: View {
 /// Shown even when it cannot run, greyed out with the reason. Hiding it is what made the feature
 /// look absent rather than unavailable, and "why is this off" is answerable while "where is it"
 /// is not.
+/// What these settings would do to a dictation you have already made.
+///
+/// The control that makes the rest of this panel usable. Everything above it is a *cause* and what
+/// somebody wants to know is the *effect*, and no label can close that gap: the one that read
+/// "Chat — short lines, light punctuation" was describing its effect accurately while being read as
+/// a mood, and the line breaks that followed were untraceable from anything on screen.
+///
+/// Diagnosing that report meant pulling a file out of the audio folder by hand and running it twice.
+/// This is that, as a button.
+private struct PreviewSection: View {
+    @Bindable var model: SettingsModel
+
+    var body: some View {
+        Section("Preview") {
+            HStack(spacing: 8) {
+                Button(model.isPreviewing ? "Transcribing…" : "Try it on your last dictation") {
+                    Task { await model.runPreview() }
+                }
+                .disabled(model.isPreviewing || !model.canPreview)
+
+                if model.preview != nil {
+                    Button("Clear") { model.clearPreview() }
+                }
+                if model.isPreviewing { ProgressView().controlSize(.small) }
+            }
+
+            if let preview = model.preview {
+                // Side by side, because the question is always comparative. A single "after" pane
+                // would need the reader to remember what they used to get, which is exactly the
+                // thing nobody can do reliably about their own dictation.
+                HStack(alignment: .top, spacing: 12) {
+                    PreviewPane(title: "What you got", text: preview.before)
+                    PreviewPane(title: "With these settings", text: preview.after)
+                }
+                Text(
+                    "Your recording from \(preview.createdAt.formatted(date: .abbreviated, time: .shortened))"
+                        + (preview.appName.map { " in \($0)" } ?? "")
+                        + ". Nothing was changed in History — this is a new request, not a redo."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
+            if let problem = model.previewProblem {
+                Label(problem, systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if !model.canPreview {
+                Text(
+                    "Nothing to try this on yet. Keeping audio is off by default, so there is no "
+                        + "recording to send again — turn it on under History, make a dictation, "
+                        + "and this will work on it."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            } else {
+                Text(
+                    "Sends your most recent recording again with the settings above, and shows "
+                        + "both answers. It costs one request, which is why it is a button."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// One half of the comparison. Selectable, because the difference is often one character.
+private struct PreviewPane: View {
+    let title: String
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ScrollView {
+                Text(text.isEmpty ? "—" : text)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxHeight: 160)
+            .padding(8)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 /// "Write it like this" — the one control for how a transcript is laid out.
 ///
 /// This replaced a five-case dropdown whose labels had to compress a whole instruction into a

@@ -467,6 +467,12 @@ final class DictationController {
             provider: settings.provider.rawValue,
             model: settings.model,
             fidelity: settings.fidelity,
+            // Recorded on the row so History can answer "what produced this" without asking the
+            // settings, which have since moved on.
+            dictationExample: settings.dictationExample.isEmpty
+                ? nil : settings.dictationExample,
+            chineseScript: settings.chineseScript,
+            typographySpacing: settings.typographySpacing,
             appName: context?.appName ?? frontmost,
             windowTitle: context?.windowTitle,
             durationSeconds: audio.durationSeconds ?? 0,

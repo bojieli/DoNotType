@@ -58,6 +58,20 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
     public var provider: String
     public var model: String
     public var fidelity: Fidelity
+    /// What the example box held when this dictation was sent, or nil when it was empty — and nil
+    /// on every record written before the box existed.
+    ///
+    /// Stored on the row rather than read back from settings, because settings are live and a
+    /// transcript is not: the question somebody asks of History is "what produced *this*", and
+    /// answering it from the current settings answers a different question convincingly. This is
+    /// the gap that made the line-break report hard to diagnose — the row recorded `fidelity` and
+    /// the rewrite `style` and nothing about layout, so nothing on screen could name the setting
+    /// that was actually responsible.
+    public var dictationExample: String?
+    /// The script asked for, and the spacing applied here, when this dictation was written down.
+    /// Nil means the shipped default, or a record older than the setting.
+    public var chineseScript: ChineseScript?
+    public var typographySpacing: TypographySpacing?
 
     /// Where it was dictated, for the history list.
     public var appName: String?
@@ -112,6 +126,9 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         provider: String,
         model: String,
         fidelity: Fidelity,
+        dictationExample: String? = nil,
+        chineseScript: ChineseScript? = nil,
+        typographySpacing: TypographySpacing? = nil,
         appName: String? = nil,
         windowTitle: String? = nil,
         durationSeconds: Double = 0,
@@ -138,6 +155,9 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         self.provider = provider
         self.model = model
         self.fidelity = fidelity
+        self.dictationExample = dictationExample
+        self.chineseScript = chineseScript
+        self.typographySpacing = typographySpacing
         self.appName = appName
         self.windowTitle = windowTitle
         self.durationSeconds = durationSeconds
