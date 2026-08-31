@@ -56,6 +56,11 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
         public var finishAndSendAction: String
         public var secondaryTrigger: String?
         public var secondaryStyle: String
+        /// The key bound to Translate. Absent in a profile written before Translate had a key of
+        /// its own, when a target language in `Typography` overrode both of the other keys
+        /// instead — so an old document leaves the importing device's binding alone rather than
+        /// clearing it.
+        public var translateTrigger: String?
         public var interactionSounds: Bool
         public var launchAtLogin: Bool
         public var groundingEnabled: Bool
@@ -70,6 +75,7 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
         public init(
             trigger: String, hotkeyMode: String, cancelShortcut: String,
             finishAndSendAction: String, secondaryTrigger: String?, secondaryStyle: String,
+            translateTrigger: String? = nil,
             interactionSounds: Bool, launchAtLogin: Bool, groundingEnabled: Bool,
             screenshotEnabled: Bool, keytermBiasing: Bool, blockedBundleIDs: [String],
             blockedURLPrefixes: [String], logLevel: String, logContent: Bool, fileMode: String
@@ -80,6 +86,7 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
             self.finishAndSendAction = finishAndSendAction
             self.secondaryTrigger = secondaryTrigger
             self.secondaryStyle = secondaryStyle
+            self.translateTrigger = translateTrigger
             self.interactionSounds = interactionSounds
             self.launchAtLogin = launchAtLogin
             self.groundingEnabled = groundingEnabled
@@ -132,7 +139,7 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
         }
     }
 
-    /// The phone chooses a rewrite style in the UI; desktop chooses it with a second hotkey.
+    /// The phone chooses its mode from the chip; a desktop chooses it with which key it holds.
     public struct IOS: Codable, Equatable, Sendable {
         public var liveStyle: String
 
