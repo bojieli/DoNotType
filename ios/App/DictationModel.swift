@@ -1148,21 +1148,7 @@ final class DictationModel {
         }
 
         do {
-            if !recorder.isMonitoring {
-                let session = AVAudioSession.sharedInstance()
-                // allowBluetoothHFP is the iOS 26 SDK's name for allowBluetooth; the CI image's
-                // Xcode 16.4 SDK only has the old one. The compiler version tracks the SDK here.
-                #if compiler(>=6.2)
-                try session.setCategory(
-                    .playAndRecord, mode: .measurement,
-                    options: [.defaultToSpeaker, .mixWithOthers, .allowBluetoothHFP])
-                #else
-                try session.setCategory(
-                    .playAndRecord, mode: .measurement,
-                    options: [.defaultToSpeaker, .mixWithOthers, .allowBluetooth])
-                #endif
-                try session.setActive(true)
-            }
+            try activateAudioSessionIfNeeded()
 
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("dnt-\(UUID().uuidString).wav")
@@ -1456,6 +1442,28 @@ final class DictationModel {
             self.deactivateAudioSession()
             self.voiceKeyboardBridge.endSession()
         }
+    }
+
+    /// Claims the microphone route, unless the engine already has it.
+    ///
+    /// Extracted so a preview clip takes the same route with the same options a dictation does — a
+    /// preview recorded through a different category would be answering a question about a
+    /// different recording.
+    func activateAudioSessionIfNeeded() throws {
+        guard !recorder.isMonitoring else { return }
+        let session = AVAudioSession.sharedInstance()
+        // allowBluetoothHFP is the iOS 26 SDK's name for allowBluetooth; the CI image's
+        // Xcode 16.4 SDK only has the old one. The compiler version tracks the SDK here.
+        #if compiler(>=6.2)
+        try session.setCategory(
+            .playAndRecord, mode: .measurement,
+            options: [.defaultToSpeaker, .mixWithOthers, .allowBluetoothHFP])
+        #else
+        try session.setCategory(
+            .playAndRecord, mode: .measurement,
+            options: [.defaultToSpeaker, .mixWithOthers, .allowBluetooth])
+        #endif
+        try session.setActive(true)
     }
 
     /// Releases the route immediately so music, calls, and other audio regain their prior session.
@@ -1894,6 +1902,149 @@ final class DictationModel {
                 systemInstruction: instruction, fidelity: fidelity,
                 personalDictionary: personalDictionaryTerms, typography: typographySpacing),
             hedgeAfter: .seconds(fallbackAfterSeconds))
+    }
+
+    // MARK: - Preview
+
+    /// What the settings currently on screen would do to a dictation.
+    ///
+    /// Every other control in that screen is a *cause*, and what somebody needs is the *effect*. No
+    /// label closes that gap: the one that read `Chat — short lines, light punctuation` was
+    /// describing its effect accurately while being read as a mood, and the line breaks that
+    /// followed were untraceable from anything on screen.
+    struct Preview: Equatable {
+        var baseline: StylePreview.Baseline
+        var before: String
+        var after: String
+        var source: String
+    }
+
+    private(set) var preview: Preview?
+    private(set) var isPreviewing = false
+    private(set) var isRecordingClip = false
+    private(set) var previewProblem: String?
+
+    /// Whether a stored recording exists to try this on. False on a fresh install, because keeping
+    /// audio is off by default — which is why recording a clip is the other button, not a fallback.
+    var canPreviewStored: Bool { previewCandidate != nil }
+
+    var clipBaseline: StylePreview.Baseline {
+        StylePreview.baseline(forClipWithExample: dictationExample)
+    }
+
+    private var previewCandidate: DictationRecord? {
+        records.first {
+            $0.status == DictationRecord.Status.completed && $0.canRedo && !$0.text.isEmpty
+        }
+    }
+
+    func runStoredPreview() async {
+        guard let record = previewCandidate else {
+            previewProblem = StylePreview.noStoredRecording
+            return
+        }
+        guard let coordinator = makeCoordinator() else {
+            previewProblem = "No API key set."
+            return
+        }
+        isPreviewing = true
+        previewProblem = nil
+        defer { isPreviewing = false }
+        do {
+            let after = try await coordinator.preview(record)
+            let when = record.createdAt.formatted(date: .abbreviated, time: .shortened)
+            preview = Preview(
+                baseline: .stored, before: record.deliveredText, after: after,
+                source: "Your recording from \(when)")
+        } catch {
+            previewProblem = error.localizedDescription
+        }
+    }
+
+    /// Starts capturing a clip to preview. The second press transcribes it.
+    ///
+    /// On a phone this is the half that matters most: keeping audio is off by default, so most
+    /// people have no stored recording to send again — and this is the more honest preview anyway,
+    /// being your voice now rather than one from a week ago.
+    func toggleClipPreview() async {
+        if isRecordingClip {
+            await finishClipPreview()
+        } else {
+            await startClipPreview()
+        }
+    }
+
+    private func startClipPreview() async {
+        previewProblem = nil
+        guard !recorder.isRecording else {
+            previewProblem = "A dictation is already recording."
+            return
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("preview-\(UUID().uuidString).wav")
+        do {
+            try activateAudioSessionIfNeeded()
+            try recorder.start(url: url)
+            isRecordingClip = true
+        } catch {
+            previewProblem = error.localizedDescription
+        }
+    }
+
+    private func finishClipPreview() async {
+        isRecordingClip = false
+        guard let url = recorder.stop(), let audio = try? AudioFile(contentsOf: url) else {
+            previewProblem = "That clip was too short. Say a sentence or two."
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        guard let styled = makePreviewService(example: dictationExample) else {
+            previewProblem = "No API key set."
+            return
+        }
+        isPreviewing = true
+        defer { isPreviewing = false }
+
+        let baseline = clipBaseline
+        do {
+            let after = try await styled.transcribe(audio: audio, context: nil)
+                .transcript.transcript.trimmed
+            // Only when there is something to compare against: with an empty box the two requests
+            // would be the same request, and showing one answer twice is not a comparison.
+            let before = baseline == .withoutExample
+                ? try await makePreviewService(example: "")?
+                    .transcribe(audio: audio, context: nil).transcript.transcript.trimmed ?? ""
+                : ""
+            preview = Preview(
+                baseline: baseline, before: before, after: after,
+                source: "The clip you just recorded")
+        } catch {
+            previewProblem = error.localizedDescription
+        }
+    }
+
+    /// The same service a dictation would use, with the example overridden.
+    ///
+    /// The override is the point of the baseline request: same audio, same fidelity, same script,
+    /// one thing different.
+    private func makePreviewService(example: String) -> TranscriptionService? {
+        guard hasAPIKey,
+            let promptURL = Self.bundledPromptURL,
+            let instruction = try? prompts.builder(bundled: promptURL)
+                .systemInstruction(
+                    fidelity: fidelity, script: chineseScript, dictationExample: example),
+            let backend = try? ProviderFactory.make(
+                provider, apiKey: apiKey, endpoint: endpoint)
+        else { return nil }
+        return TranscriptionService(
+            provider: backend, model: model, systemInstruction: instruction, fidelity: fidelity,
+            personalDictionary: personalDictionaryTerms, typography: typographySpacing)
+    }
+
+    func clearPreview() {
+        preview = nil
+        previewProblem = nil
     }
 
     private func makeCoordinator() -> RetryCoordinator? {
