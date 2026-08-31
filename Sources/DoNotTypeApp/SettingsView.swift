@@ -543,7 +543,11 @@ private struct GeneralTab: View {
                 Toggle("Launch at login", isOn: $model.launchAtLogin)
             }
 
-            Section("Dictation") {
+            // "Recording", not "Dictation": everything here is about how a recording starts,
+            // stops, cancels and submits, whichever of the three keys began it. What the words then
+            // become is the next section's question, and merging the two is what made Fidelity sit
+            // among the hot keys pointing at typography settings four screens away.
+            Section("Recording") {
                 LabeledContent("Hot key") {
                     HotkeyRecorder(
                         value: Binding(
@@ -571,25 +575,9 @@ private struct GeneralTab: View {
                 Text(dictationHelp)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-
-                Picker("Fidelity", selection: $model.fidelity) {
-                    Text("Raw — every um and false start").tag(Fidelity.raw)
-                    Text("Light — drop fillers, keep your words").tag(Fidelity.light)
-                    Text("Tidy — light, plus punctuation").tag(Fidelity.tidy)
-                }
-                Text(
-                    "Even Tidy only changes typography. None of these reword you or make you "
-                        + "sound more formal."
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
             }
 
-            DictationExampleSection(model: model)
-
-            AlwaysSection(model: model)
-
-            PreviewSection(model: model)
+            TranscriptStyleSection(model: model)
 
             TranslationSection(model: model)
 
@@ -1313,70 +1301,163 @@ private struct HotkeyRecorder: View {
 /// Shown even when it cannot run, greyed out with the reason. Hiding it is what made the feature
 /// look absent rather than unavailable, and "why is this off" is answerable while "where is it"
 /// is not.
-/// What these settings would do to a dictation you have already made.
+/// Everything that decides what a finished transcript looks like, in one place.
 ///
-/// The control that makes the rest of this panel usable. Everything above it is a *cause* and what
-/// somebody wants to know is the *effect*, and no label can close that gap: the one that read
-/// "Chat — short lines, light punctuation" was describing its effect accurately while being read as
-/// a mood, and the line breaks that followed were untraceable from anything on screen.
+/// This was four separate sections — Fidelity up with the hot keys, then Typography, then a style
+/// dropdown, then a preview — and the split was the problem rather than the labels. Each part had
+/// to end by pointing at another ("Fidelity above is the separate dial for…"), which is what a
+/// grouping does when it is wrong. They are one question: *how do my words get written down*, asked
+/// in four steps — which words survive, what shape they take, what is guaranteed regardless, and
+/// what that combination actually produces.
 ///
-/// Diagnosing that report meant pulling a file out of the audio folder by hand and running it twice.
-/// This is that, as a button.
-private struct PreviewSection: View {
+/// The last step is the one that makes the rest usable. Every control above it is a *cause* and
+/// what somebody needs is the *effect*; no label closes that gap, and the one that read
+/// `Chat — short lines, light punctuation` was describing its effect accurately while being read as
+/// a mood.
+private struct TranscriptStyleSection: View {
     @Bindable var model: SettingsModel
 
     var body: some View {
-        Section("Preview") {
-            HStack(spacing: 8) {
-                Button(model.isPreviewing ? "Transcribing…" : "Try it on your last dictation") {
-                    Task { await model.runPreview() }
-                }
-                .disabled(model.isPreviewing || !model.canPreview)
-
-                if model.preview != nil {
-                    Button("Clear") { model.clearPreview() }
-                }
-                if model.isPreviewing { ProgressView().controlSize(.small) }
-            }
-
-            if let preview = model.preview {
-                // Side by side, because the question is always comparative. A single "after" pane
-                // would need the reader to remember what they used to get, which is exactly the
-                // thing nobody can do reliably about their own dictation.
-                HStack(alignment: .top, spacing: 12) {
-                    PreviewPane(title: "What you got", text: preview.before)
-                    PreviewPane(title: "With these settings", text: preview.after)
-                }
-                Text(
-                    "Your recording from \(preview.createdAt.formatted(date: .abbreviated, time: .shortened))"
-                        + (preview.appName.map { " in \($0)" } ?? "")
-                        + ". Nothing was changed in History — this is a new request, not a redo."
-                )
+        Section("How your transcript is written") {
+            Text("Nothing here may add, remove or reword anything you said.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            }
 
-            if let problem = model.previewProblem {
-                Label(problem, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if !model.canPreview {
-                Text(
-                    "Nothing to try this on yet. Keeping audio is off by default, so there is no "
-                        + "recording to send again — turn it on under History, make a dictation, "
-                        + "and this will work on it."
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            } else {
-                Text(
-                    "Sends your most recent recording again with the settings above, and shows "
-                        + "both answers. It costs one request, which is why it is a button."
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            Subheading("Which of your words survive")
+            Picker("Fidelity", selection: $model.fidelity) {
+                Text("Raw — every um and false start").tag(Fidelity.raw)
+                Text("Light — drop fillers, keep your words").tag(Fidelity.light)
+                Text("Tidy — light, plus punctuation").tag(Fidelity.tidy)
             }
+            Text("Even Tidy only changes punctuation. None of these make you sound more formal.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            Subheading("What shape they take")
+            // Buttons rather than a picker: pressing one is not choosing a mode, it fills a field
+            // you may then edit. A picker would show a selection that stops being true the moment
+            // somebody types.
+            LabeledContent("Write it like this") {
+                HStack(spacing: 8) {
+                    ForEach(DictationPreset.allCases, id: \.self) { preset in
+                        Button(preset.label) { model.applyPreset(preset) }
+                            .help(preset.shape)
+                    }
+                    Button("Clear") { model.dictationExample = "" }
+                        .disabled(model.dictationExample.isEmpty)
+                }
+            }
+            TextField(
+                "Empty — however the model would write it",
+                text: $model.dictationExample, axis: .vertical
+            )
+            .lineLimit(4...12)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityIdentifier("dictation-example")
+            Text(
+                "Describe how you want your transcripts written, or paste a sentence written that "
+                    + "way — a preset button fills this in and you can edit it. Layout only: line "
+                    + "breaks, punctuation, how long the lines are. Empty sends nothing extra, "
+                    + "which is the default. Trimmed to \(Typography.maxSampleCharacters) "
+                    + "characters."
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+
+            Subheading("What holds regardless")
+            Picker("Chinese and Latin", selection: $model.typographySpacing) {
+                ForEach(TypographySpacing.allCases, id: \.self) { spacing in
+                    Text(spacing.label).tag(spacing)
+                }
+            }
+            Text("Applied on this Mac after the transcript comes back — a guarantee.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Picker("Chinese script", selection: $model.chineseScript) {
+                ForEach(ChineseScript.allCases, id: \.self) { script in
+                    Text(script.label).tag(script)
+                }
+            }
+            Text("Asked of the model on every request — a request, not a guarantee.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            Subheading("What all of that actually produces")
+            PreviewControls(model: model)
+        }
+    }
+}
+
+/// A labelled step inside a section, so one heading can hold four without the reader losing which
+/// question each control is answering.
+private struct Subheading: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.top, 4)
+    }
+}
+
+/// The preview: two buttons, two panes, and a sentence about what each will cost.
+private struct PreviewControls: View {
+    @Bindable var model: SettingsModel
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(model.isRecordingClip ? "Stop and transcribe" : "Record a clip") {
+                Task { await model.toggleClipPreview() }
+            }
+            .disabled(model.isPreviewing)
+
+            Button("Try it on your last dictation") {
+                Task { await model.runStoredPreview() }
+            }
+            .disabled(model.isPreviewing || model.isRecordingClip || !model.canPreviewStored)
+
+            if model.preview != nil {
+                Button("Clear") { model.clearPreview() }
+                    .disabled(model.isPreviewing || model.isRecordingClip)
+            }
+            if model.isPreviewing { ProgressView().controlSize(.small) }
+        }
+
+        if let preview = model.preview {
+            // Side by side, because the question is always comparative. A single "after" pane would
+            // need the reader to remember what they used to get, which is exactly the thing nobody
+            // can do reliably about their own dictation.
+            HStack(alignment: .top, spacing: 12) {
+                if preview.baseline != .none {
+                    PreviewPane(title: preview.baseline.label, text: preview.before)
+                }
+                PreviewPane(title: StylePreview.styledLabel, text: preview.after)
+            }
+            Text("\(preview.source). Nothing in History was changed.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+
+        if let problem = model.previewProblem {
+            Label(problem, systemImage: "exclamationmark.triangle")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if model.isRecordingClip {
+            Text("Recording. Say a sentence or two, then press Stop.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else {
+            Text(
+                StylePreview.costNote(for: model.clipBaseline)
+                    + (model.canPreviewStored
+                        ? " Or send your most recent kept recording again — one request."
+                        : " " + StylePreview.noStoredRecording)
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
         }
     }
 }
@@ -1403,92 +1484,6 @@ private struct PreviewPane: View {
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-/// "Write it like this" — the one control for how a transcript is laid out.
-///
-/// This replaced a five-case dropdown whose labels had to compress a whole instruction into a
-/// dash-clause. `Chat — short lines, light punctuation` read as a mood and behaved as a rule, so
-/// somebody who wanted the mood got line breaks they never asked for and had no way to trace them:
-/// the words actually being sent lived three files away from the only place they were described.
-///
-/// The instruction is the control now. A preset button drops its text in the box, where it can be
-/// read and edited before it is used — so the thing you are agreeing to is on screen, in the words
-/// the model will get. An empty box sends nothing, which is the default and keeps a fresh install's
-/// request identical to the one every measured number in `docs/PROMPT.md` describes.
-private struct DictationExampleSection: View {
-    @Bindable var model: SettingsModel
-
-    var body: some View {
-        Section("Write it like this") {
-            // Buttons rather than a picker: pressing one is not choosing a mode, it is filling a
-            // field you may then edit. A picker would show a selection that stops being true the
-            // moment somebody types.
-            LabeledContent("Start from") {
-                HStack(spacing: 8) {
-                    ForEach(DictationPreset.allCases, id: \.self) { preset in
-                        Button(preset.label) { model.applyPreset(preset) }
-                            .help(preset.shape)
-                    }
-                    Button("Clear") { model.dictationExample = "" }
-                        .disabled(model.dictationExample.isEmpty)
-                }
-            }
-
-            TextField(
-                "Empty — however the model would write it",
-                text: $model.dictationExample, axis: .vertical
-            )
-            .lineLimit(4...12)
-            .textFieldStyle(.roundedBorder)
-            .accessibilityIdentifier("dictation-example")
-
-            Text(
-                "Describe how you want your transcripts written, or paste a sentence written that "
-                    + "way. This is layout only — line breaks, punctuation, how long the lines "
-                    + "are. It may never add, remove or reword anything you said; Fidelity above "
-                    + "is the separate dial for how much of your own \"um\" survives. Empty sends "
-                    + "nothing extra, which is the default. Trimmed to "
-                    + "\(Typography.maxSampleCharacters) characters."
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        }
-    }
-}
-
-/// The settings that are promises rather than preferences.
-///
-/// Grouped and labelled by *who keeps the promise*, which is the distinction that decides whether
-/// a thing can be a setting at all. Spacing is arithmetic performed here, so it is the same on
-/// every dictation forever; script is one unambiguous sentence added to the request, so it is a
-/// request. Both are things an example cannot carry: a model asked to space Chinese and Latin
-/// consistently does it most of the time, and a sample written in Traditional cannot say whether
-/// that was the point or an accident.
-private struct AlwaysSection: View {
-    @Bindable var model: SettingsModel
-
-    var body: some View {
-        Section("Always") {
-            Picker("Chinese and Latin", selection: $model.typographySpacing) {
-                ForEach(TypographySpacing.allCases, id: \.self) { spacing in
-                    Text(spacing.label).tag(spacing)
-                }
-            }
-            Text("Applied on this Mac, after the transcript comes back. A guarantee.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
-            Picker("Chinese script", selection: $model.chineseScript) {
-                ForEach(ChineseScript.allCases, id: \.self) { script in
-                    Text(script.label).tag(script)
-                }
-            }
-            Text("Asked of the model, on every request. A request, not a guarantee.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
     }
 }
 

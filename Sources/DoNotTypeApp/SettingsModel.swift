@@ -663,6 +663,9 @@ final class SettingsModel {
     }
 
     let store: HistoryStore
+    /// The preview's own recorder, deliberately not the dictation controller's: a clip recorded in
+    /// this window must not interrupt a dictation in flight, and a dictation must not end a clip.
+    private let clipRecorder = AudioRecorder()
     let prompts: PromptStore
 
     init(store: HistoryStore) {
@@ -1195,24 +1198,34 @@ final class SettingsModel {
     /// as a mood and got line breaks they had not asked for. A preview is not a better description;
     /// it is the thing itself, in the user's own voice.
     struct Preview: Equatable {
+        var baseline: StylePreview.Baseline
         var before: String
         var after: String
-        var appName: String?
-        var createdAt: Date
+        /// Where the audio came from, for the line under the panes.
+        var source: String
     }
 
     private(set) var preview: Preview?
     private(set) var isPreviewing = false
+    private(set) var isRecordingClip = false
     private(set) var previewProblem: String?
 
-    /// Whether there is a recording to try this on at all.
+    /// Whether there is a stored recording to try this on at all.
     ///
     /// False on a fresh install, because keeping audio is off by default — so this is a real state
     /// and not an edge case, and it gets a sentence rather than a disabled button with no reason.
-    var canPreview: Bool { previewCandidate != nil }
+    /// Recording a clip works regardless, which is why that is the other button and not a fallback.
+    var canPreviewStored: Bool { previewCandidate != nil }
+
+    /// What pressing "Record a clip" will cost, so the panel can say so before it is pressed.
+    var clipBaseline: StylePreview.Baseline {
+        StylePreview.baseline(forClipWithExample: dictationExample)
+    }
 
     private var previewCandidate: DictationRecord? {
-        records.first { $0.status == DictationRecord.Status.completed && $0.canRedo && !$0.text.isEmpty }
+        records.first {
+            $0.status == DictationRecord.Status.completed && $0.canRedo && !$0.text.isEmpty
+        }
     }
 
     /// Runs the current settings over the most recent dictation whose audio is still on disk.
@@ -1220,10 +1233,9 @@ final class SettingsModel {
     /// A real request, deliberately: the question is what the model does with this instruction, and
     /// the only thing that answers it is the model. It is a button rather than something that fires
     /// as the box is typed into, because each press costs a call.
-    func runPreview() async {
+    func runStoredPreview() async {
         guard let record = previewCandidate else {
-            previewProblem = "No recording to try this on. Turn on Keep audio, make a dictation, "
-                + "and it will appear here."
+            previewProblem = StylePreview.noStoredRecording
             return
         }
         guard let coordinator = makeCoordinator() else {
@@ -1235,12 +1247,92 @@ final class SettingsModel {
         defer { isPreviewing = false }
         do {
             let after = try await coordinator.preview(record)
+            let when = record.createdAt.formatted(date: .abbreviated, time: .shortened)
             preview = Preview(
-                before: record.deliveredText, after: after,
-                appName: record.appName, createdAt: record.createdAt)
+                baseline: .stored, before: record.deliveredText, after: after,
+                source: "Your recording from \(when)"
+                    + (record.appName.map { " in \($0)" } ?? ""))
         } catch {
             previewProblem = error.localizedDescription
         }
+    }
+
+    /// Starts capturing a clip to preview. The second press transcribes it.
+    ///
+    /// The other half of the feature, and on a fresh install the only half that works: keeping
+    /// audio is off by default, so most people have no stored recording to send again. It is also
+    /// the more honest preview — your voice, now, rather than one from a week ago.
+    func toggleClipPreview() async {
+        if isRecordingClip {
+            await finishClipPreview()
+        } else {
+            startClipPreview()
+        }
+    }
+
+    private func startClipPreview() {
+        previewProblem = nil
+        clipRecorder.preferredDeviceUID = microphoneUID
+        do {
+            try clipRecorder.start()
+            isRecordingClip = true
+        } catch {
+            previewProblem = error.localizedDescription
+        }
+    }
+
+    private func finishClipPreview() async {
+        isRecordingClip = false
+        let audio: AudioFile
+        do {
+            audio = try clipRecorder.stop()
+        } catch {
+            previewProblem = error.localizedDescription
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: audio.url) }
+
+        guard let styled = makeService(example: dictationExample) else {
+            previewProblem = "No API key set."
+            return
+        }
+        isPreviewing = true
+        defer { isPreviewing = false }
+
+        let baseline = clipBaseline
+        do {
+            let after = try await styled.transcribe(audio: audio, context: nil)
+                .transcript.transcript.trimmed
+            // Only when there is something to compare against. With an empty box the two requests
+            // would be the same request, and charging for it twice to show one answer twice is not
+            // a comparison.
+            let before = baseline == .withoutExample
+                ? try await makeService(example: "")?.transcribe(audio: audio, context: nil)
+                    .transcript.transcript.trimmed ?? ""
+                : ""
+            preview = Preview(
+                baseline: baseline, before: before, after: after,
+                source: "The clip you just recorded")
+        } catch {
+            previewProblem = error.localizedDescription
+        }
+    }
+
+    /// A transcription service built from the settings in this window, with the example overridden.
+    ///
+    /// The override is the whole point of the baseline request: same audio, same fidelity, same
+    /// script, one thing different.
+    private func makeService(example: String) -> TranscriptionService? {
+        guard let key = Settings.shared.resolvedAPIKey(), !key.isEmpty,
+            let backend = try? Settings.shared.makeProvider(provider, apiKey: key),
+            let promptURL = Self.bundledPromptURL(),
+            let instruction = try? prompts.builder(bundled: promptURL)
+                .systemInstruction(
+                    fidelity: fidelity, script: chineseScript, dictationExample: example)
+        else { return nil }
+        return TranscriptionService(
+            provider: backend, model: model, systemInstruction: instruction,
+            fidelity: fidelity, typography: typographySpacing)
     }
 
     func clearPreview() {
