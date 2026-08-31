@@ -86,6 +86,38 @@ public sealed class SettingsForm : Form
         new() { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
     /// <summary>What each preset will do to the shape of the text, before it is pressed.</summary>
     private readonly ToolTip _presetTips = new();
+    private readonly FlowLayoutPanel _previewButtons =
+        new() { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
+    private readonly Button _previewClip = new() { Text = "Record a clip", AutoSize = true };
+    private readonly Button _previewStored =
+        new() { Text = "Last dictation", AutoSize = true, Margin = new Padding(6, 0, 0, 0) };
+    /// <summary>One half of the comparison, hidden until there is something to compare.</summary>
+    private readonly Label _previewBefore = new()
+    {
+        AutoSize = true,
+        MaximumSize = new Size(560, 0),
+        Margin = new Padding(0, 2, 0, 6),
+        Visible = false,
+    };
+    private readonly Label _previewAfter = new()
+    {
+        AutoSize = true,
+        MaximumSize = new Size(560, 0),
+        Margin = new Padding(0, 2, 0, 6),
+        Visible = false,
+    };
+    private readonly Label _previewNote = new()
+    {
+        AutoSize = true,
+        MaximumSize = new Size(560, 0),
+        ForeColor = SystemColors.GrayText,
+        Margin = new Padding(0, 2, 0, 10),
+    };
+    /// <summary>
+    /// The preview's own recorder, deliberately not the dictation controller's: a clip recorded in
+    /// this window must not interrupt a dictation in flight, and a dictation must not end a clip.
+    /// </summary>
+    private readonly AudioRecorder _clipRecorder = new();
     private readonly TextBox _customRewriteStyle = new() { Multiline = true, Height = 60 };
     private readonly ComboBox _translateTo = new() { DropDownStyle = ComboBoxStyle.DropDown };
     private readonly CheckBox _grounding = new() { Text = "Ground transcription in screen text", AutoSize = true };
@@ -234,12 +266,15 @@ public sealed class SettingsForm : Form
         layout.Controls.Add(Labelled("Start it after (s)", _fallbackAfter));
         layout.Controls.Add(_fallbackNote);
 
-        layout.Controls.Add(Heading("Dictation"));
+        // "Recording", not "Dictation": everything here is about how a recording starts, stops,
+        // cancels and submits, whichever of the three keys began it. What the words then become is
+        // the next heading's question, and merging the two is what made Fidelity sit among the hot
+        // keys pointing at typography settings further down the form.
+        layout.Controls.Add(Heading("Recording"));
         layout.Controls.Add(Labelled("Key", _trigger));
         layout.Controls.Add(Labelled("Behaviour", _mode));
         layout.Controls.Add(Labelled("Cancel shortcut", _cancelShortcut));
         layout.Controls.Add(Labelled("Finish with Enter", _finishAndSend));
-        layout.Controls.Add(Labelled("Fidelity", _fidelity));
         layout.Controls.Add(Caption(
             "A quick tap starts recording and a second tap ends it; holding the key past a moment "
             + "records only while held. Escape can cancel recording or transcription, but is "
@@ -254,30 +289,42 @@ public sealed class SettingsForm : Form
         // lines, light punctuation" read as a mood and behaved as a rule. The instruction is the
         // control now: a preset button fills the box, and what you are agreeing to is on screen in
         // the words the model will get.
-        layout.Controls.Add(Heading("Write it like this"));
+        // One heading over four steps, because they are one question. This was three headings —
+        // Fidelity, then the example, then typography — and each had to end by pointing at another
+        // ("Fidelity above is the separate dial for…"), which is what a grouping does when it is
+        // wrong.
+        layout.Controls.Add(Heading("How your transcript is written"));
+        layout.Controls.Add(Caption(
+            "Nothing here may add, remove or reword anything you said."));
+
+        layout.Controls.Add(Step("Which of your words survive"));
+        layout.Controls.Add(Labelled("Fidelity", _fidelity));
+        layout.Controls.Add(Caption(
+            "Even Tidy only changes punctuation. None of these make you sound more formal."));
+
+        layout.Controls.Add(Step("What shape they take"));
         layout.Controls.Add(Labelled("Start from", _presets));
-        layout.Controls.Add(Labelled("Example", _dictationExample));
+        layout.Controls.Add(Labelled("Write it like this", _dictationExample));
         layout.Controls.Add(Caption(
             "Describe how you want your transcripts written, or paste a sentence written that "
-            + "way. This is layout only — line breaks, punctuation, how long the lines are. It "
-            + "may never add, remove or reword anything you said; Fidelity above is the separate "
-            + "dial for how much of your own \"um\" survives. Empty sends nothing extra, which is "
-            + $"the default. Trimmed to {Typography.MaxSampleCharacters} characters."));
+            + "way — a preset button fills this in and you can edit it. Layout only: line breaks, "
+            + "punctuation, how long the lines are. Empty sends nothing extra. Trimmed to "
+            + $"{Typography.MaxSampleCharacters} characters."));
 
-        // Grouped by who keeps the promise rather than by what the setting is about, because that
-        // is the line that decides what can be a setting at all: both are things an example cannot
-        // carry, which is why they survive while the style dropdown does not.
-        layout.Controls.Add(Heading("Always"));
+        layout.Controls.Add(Step("What holds regardless"));
         layout.Controls.Add(Labelled("Chinese and Latin", _typographySpacing));
         layout.Controls.Add(Caption(
             "Applied on this PC, after the transcript comes back. A guarantee."));
         layout.Controls.Add(Labelled("Chinese script", _chineseScript));
         layout.Controls.Add(Caption(
-            "Asked of the model, on every request. A request, not a guarantee. Neither is allowed "
-            + "to change a word."));
+            "Asked of the model, on every request. A request, not a guarantee."));
 
-        // Its own heading, under Typography and above Rewrite, because it is the setting that
-        // *replaces* a rewrite rather than another shade of one.
+        layout.Controls.Add(Step("What all of that actually produces"));
+        layout.Controls.Add(Labelled("Preview", _previewButtons));
+        layout.Controls.Add(_previewBefore);
+        layout.Controls.Add(_previewAfter);
+        layout.Controls.Add(_previewNote);
+
         layout.Controls.Add(Heading("Translation"));
         layout.Controls.Add(Labelled("Translate key", _translateTrigger));
         layout.Controls.Add(Labelled("Translate to", _translateTo));
@@ -905,6 +952,130 @@ public sealed class SettingsForm : Form
     /// Through the store rather than the shipped directory, so somebody who has edited
     /// prompt/dictation-style/chat.md gets their own words back when they press Chat.
     /// </remarks>
+    // MARK: - Preview
+
+    /// <summary>Starts capturing a clip, or stops and transcribes the one in flight.</summary>
+    /// <remarks>
+    /// The half of preview that works on a fresh install: keeping audio is off by default, so most
+    /// people have no stored recording to send again -- and it is the more honest preview anyway,
+    /// being your voice now rather than one from a week ago.
+    /// </remarks>
+    private async Task ToggleClipPreviewAsync()
+    {
+        if (!_clipRecorder.IsRecording)
+        {
+            try
+            {
+                _clipRecorder.Start();
+            }
+            catch (Exception error)
+            {
+                ShowPreviewProblem(FailureAdvice.Describe(error).Message);
+                return;
+            }
+            _previewClip.Text = "Stop and transcribe";
+            RefreshPreviewNote();
+            return;
+        }
+
+        _previewClip.Text = "Record a clip";
+        var wav = _clipRecorder.Stop();
+        if (wav is null)
+        {
+            ShowPreviewProblem("That clip was too short. Say a sentence or two.");
+            return;
+        }
+
+        var example = DoNotType.Core.Typography.SanitizedSample(_dictationExample.Text);
+        var baseline = StylePreview.BaselineForClip(example);
+        await RunPreviewAsync("The clip you just recorded", baseline, async () =>
+        {
+            var after = await _controller.PreviewClipAsync(wav, example).ConfigureAwait(true);
+            // Only when there is something to compare against: with an empty box the two requests
+            // would be the same request, and one answer twice is not a comparison.
+            var before = baseline == StylePreview.Baseline.WithoutExample
+                ? await _controller.PreviewClipAsync(wav, string.Empty).ConfigureAwait(true)
+                : string.Empty;
+            return (before, after);
+        }).ConfigureAwait(true);
+    }
+
+    private async Task RunStoredPreviewAsync()
+    {
+        if (_controller.PreviewCandidate() is not { } record)
+        {
+            ShowPreviewProblem(StylePreview.NoStoredRecording);
+            return;
+        }
+
+        await RunPreviewAsync(
+            $"Your recording from {record.CreatedAt.LocalDateTime:g}",
+            StylePreview.Baseline.Stored,
+            async () => (record.DeliveredText,
+                await _controller.PreviewAsync(record).ConfigureAwait(true))).ConfigureAwait(true);
+    }
+
+    private async Task RunPreviewAsync(
+        string source, StylePreview.Baseline baseline, Func<Task<(string Before, string After)>> work)
+    {
+        SetPreviewBusy(true);
+        try
+        {
+            var (before, after) = await work().ConfigureAwait(true);
+            if (baseline != StylePreview.Baseline.None)
+            {
+                _previewBefore.Text = $"{baseline.Label()}\r\n{before}";
+                _previewBefore.Visible = true;
+            }
+            else
+            {
+                _previewBefore.Visible = false;
+            }
+            _previewAfter.Text = $"{StylePreview.StyledLabel}\r\n{after}";
+            _previewAfter.Visible = true;
+            _previewNote.Text = $"{source}. Nothing in History was changed.";
+        }
+        catch (Exception error)
+        {
+            ShowPreviewProblem(FailureAdvice.Describe(error).Message);
+        }
+        finally
+        {
+            SetPreviewBusy(false);
+        }
+    }
+
+    private void SetPreviewBusy(bool busy)
+    {
+        _previewClip.Enabled = !busy;
+        _previewStored.Enabled = !busy && _controller.PreviewCandidate() is not null;
+        if (busy) _previewNote.Text = "Transcribing…";
+    }
+
+    private void ShowPreviewProblem(string message)
+    {
+        _previewBefore.Visible = false;
+        _previewAfter.Visible = false;
+        _previewNote.Text = message;
+    }
+
+    private void RefreshPreviewNote()
+    {
+        if (_clipRecorder.IsRecording)
+        {
+            _previewNote.Text = "Recording. Say a sentence or two, then press Stop.";
+            return;
+        }
+
+        var hasStored = _controller.PreviewCandidate() is not null;
+        _previewStored.Enabled = hasStored;
+        _previewNote.Text =
+            StylePreview.CostNote(StylePreview.BaselineForClip(_dictationExample.Text))
+            + (hasStored
+                ? " Or send your most recent kept recording again — one request."
+                : " " + StylePreview.NoStoredRecording);
+    }
+
     internal static string? PresetTextForMigration(DictationPreset preset) => PresetText(preset);
 
     private static string? PresetText(DictationPreset preset)
@@ -1203,6 +1374,14 @@ public sealed class SettingsForm : Form
         var clear = new Button { Text = "Clear", AutoSize = true, Margin = Padding.Empty };
         clear.Click += (_, _) => _dictationExample.Text = string.Empty;
         _presets.Controls.Add(clear);
+
+        _previewButtons.Controls.Add(_previewClip);
+        _previewButtons.Controls.Add(_previewStored);
+        _previewClip.Click += async (_, _) => await ToggleClipPreviewAsync();
+        _previewStored.Click += async (_, _) => await RunStoredPreviewAsync();
+        // The cost changes with the box, so the sentence under the buttons does too.
+        _dictationExample.TextChanged += (_, _) => RefreshPreviewNote();
+        RefreshPreviewNote();
         _customRewriteStyle.Text = _settings.CustomRewriteStyle;
         // Editable rather than a fixed list: the suggestions are a shortcut, never a whitelist.
         foreach (var language in TranslationTarget.Suggestions) _translateTo.Items.Add(language);
@@ -1406,6 +1585,19 @@ public sealed class SettingsForm : Form
         AutoSize = true,
         Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold),
         Margin = new Padding(0, 14, 0, 6),
+    };
+
+    /// <summary>
+    /// A labelled step inside a heading, so one heading can hold four without the reader losing
+    /// which question each control is answering.
+    /// </summary>
+    private static Label Step(string text) => new()
+    {
+        Text = text,
+        AutoSize = true,
+        Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold),
+        ForeColor = SystemColors.GrayText,
+        Margin = new Padding(0, 10, 0, 4),
     };
 
     private static Label Caption(string text) => new()

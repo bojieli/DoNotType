@@ -1135,6 +1135,61 @@ public sealed class DictationController : IDisposable
     /// Both the retry of a dictation that failed and the redo of one the user thinks came back
     /// wrong: the request is the same either way.
     /// </remarks>
+    /// <summary>Transcribes a stored recording again and writes <b>nothing</b> back.</summary>
+    /// <remarks>
+    /// The same request <see cref="RetryAsync"/> makes, against whatever settings are configured
+    /// now, and that is the whole feature: a settings window can answer "what would this do to my
+    /// speech" with the user's own voice instead of a label they have to simulate in their head.
+    ///
+    /// Separate from the retry rather than a flag on it, because writing back is not an incidental
+    /// detail of that method -- it is what a retry is for -- and a preview that updated the row
+    /// would rewrite the history somebody is trying to compare against.
+    /// </remarks>
+    public async Task<string> PreviewAsync(DictationRecord record)
+    {
+        var wav = _history.AudioFor(record)
+            ?? throw new InvalidOperationException("The recording is no longer on disk.");
+        return await PreviewClipAsync(wav, _settings.DictationExample, record.Fidelity)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>Transcribes raw audio with one example, touching no stored state at all.</summary>
+    /// <remarks>
+    /// The example is a parameter rather than read from settings because the baseline request is
+    /// the same audio with the box emptied -- same fidelity, same script, one thing different --
+    /// and that comparison is the only thing that answers "what is my example actually doing".
+    /// </remarks>
+    public async Task<string> PreviewClipAsync(byte[] wav, string example, Fidelity? fidelity = null)
+    {
+        var key = _settings.ResolvedApiKey();
+        var promptPath = PromptBuilder.FindPromptDirectory();
+        if (string.IsNullOrEmpty(key) || promptPath is null)
+        {
+            throw new InvalidOperationException("No API key set.");
+        }
+
+        var chosen = fidelity ?? _settings.Fidelity;
+        var service = new TranscriptionService(
+            ProviderFactory.Create(_settings.Provider, key, _settings.Model),
+            Prompt(promptPath).SystemInstruction(chosen, _settings.ChineseScript, example))
+        {
+            Fidelity = chosen,
+            Typography = _settings.TypographySpacing,
+            PersonalDictionary = _settings.PersonalDictionaryTerms(),
+        };
+        var result = await service.TranscribeAsync(wav, null).ConfigureAwait(false);
+        return result.Transcript.Text.Trim();
+    }
+
+    /// <summary>The most recent dictation whose audio is still on disk, or null.</summary>
+    /// <remarks>
+    /// Null on a fresh install, because keeping audio is off by default -- which is why recording a
+    /// clip is the other button rather than a fallback.
+    /// </remarks>
+    public DictationRecord? PreviewCandidate() =>
+        _history.All().FirstOrDefault(r =>
+            r.Status == DictationStatus.Completed && r.CanRedo && r.Text.Length > 0);
+
     public async Task<bool> RetryAsync(DictationRecord record)
     {
         var key = _settings.ResolvedApiKey();
