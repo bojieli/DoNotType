@@ -10,6 +10,49 @@ repository's local calendar date.
 
 ### Changed
 
+- **The dictation style becomes an example you can read, and a preview you can run.** Five settings
+  described how a transcript would be written down and none of them showed you. The dropdown had to
+  compress a whole instruction into a dash-clause, so `Chat — short lines, light punctuation` read
+  as a mood and behaved as a rule: choosing it for the register got you a line break per sentence,
+  and nothing on screen — not the label, not History — could tell you which setting was responsible.
+  The words actually being sent lived three files away from the only place they were described.
+
+  The instruction is the control now. *Write it like this* is one text box with Chat, Notes and
+  Prose buttons that **fill** it, and a Clear that empties it. Pressing Chat puts
+  `prompt/dictation-style/chat.md`'s own words in the box, where you read them, edit them, or throw
+  them away before they are ever used. Presets stopped being stored values and became buttons, so
+  they can be added, renamed and reworded without migrating anybody; typed text and pressed text go
+  through the same host block, the same sanitiser and the same 500-character cap, which is what
+  makes "start from Chat and change it" an offer rather than a mode. Empty is the default and sends
+  nothing, so a fresh install's request is still the one every measured number in `docs/PROMPT.md`
+  describes.
+
+  **Preview** answers the question the settings could not. It sends your most recent kept recording
+  again with the settings currently in the window and shows both answers side by side, writing
+  nothing back to History. Every other control there is a *cause*, and what you need is the
+  *effect*; the report that prompted all of this was diagnosed by pulling a file out of the audio
+  folder and running it twice by hand, and this is that as a button. macOS first.
+
+  The typography section splits into *Write it like this* and *Always*, and the second is grouped by
+  **who keeps the promise** rather than by what the setting is about. Chinese and Latin spacing is
+  arithmetic performed on your device, so it says *a guarantee*; Chinese script is a sentence added
+  to the request, so it says *a request, not a guarantee*. That distinction has been true in the
+  code since typography shipped and invisible in the window, and it is the line that decides what
+  can be a setting at all: both are things an example cannot carry, which is why they survive while
+  the style dropdown does not.
+
+  History rows now record the example, the script and the spacing that were in force. The row kept
+  fidelity and the rewrite style and nothing about layout, which is why answering "what produced
+  this?" meant reading `defaults`.
+
+  **Upgrading changes no request.** The old setting becomes the text it was already sending —
+  someone on Chat gets `chat.md`'s words in their box, byte for byte, and can finally see them.
+  Someone on the default had nothing appended and still does. A settings profile carries the new
+  field and the retired pair together, so it imports correctly in both directions. If a preset's
+  file cannot be read the old setting is left alone and retried on the next launch rather than
+  cleared, because "unreadable" and "no style" produce the same empty box and only one of them may
+  destroy what you chose.
+
 - **Translate has a key of its own on the desktops, and the main key is verbatim again.** Setting a
   target language used to be enough on its own to change what *every* key delivered: the main key
   stopped giving back what was said, and the second key stopped rewriting. That was the one place

@@ -21,7 +21,8 @@ is reachable by a user of that client, not merely present in its core library.
 | Finish recording, insert, and submit | ✅ Return / ⌘Return / Off ¹⁵ | ✅ Enter / Ctrl+Enter / Off ¹⁵ | — ¹⁵ | — ¹⁵ |
 | Push-to-talk / hands-free as a *setting* | ✅ | ✅ | — ¹ | — ¹ |
 | Rewrite a dictation | ✅ second hotkey | ✅ second hotkey | ✅ mode chip ²² | ✅ mode chip ²² |
-| Preset or custom writing style, per stage | ✅ | ✅ | ✅ | ✅ |
+| Write it like this (one example box) | ✅ | ✅ | ✅ | ✅ |
+| Preview these settings on your own recording | ✅ | — ²³ | — ²³ | — ²³ |
 | Translate a dictation | ✅ third hotkey ²¹ | ✅ third hotkey ²¹ | ✅ mode chip ²¹ ²² | ✅ mode chip ²¹ ²² |
 | Says why a mode cannot run | ✅ | ✅ | ✅ | ✅ |
 | Summarise a dictation live | — ⁶ | — ⁶ | — ⁶ | — ⁶ |
@@ -149,6 +150,14 @@ keyboards cannot read the Keychain, so on iOS the containing app publishes which
 landed on and the extension rebuilds the sentence from it. The target language stays in Settings on
 both: a keyboard cannot type into its own popup, so a language list there would be a fixed handful
 quietly disagreeing with the free-text target the app already stores.
+
+²³ Built on macOS first, and a gap rather than an impossibility: all four clients already
+transcribe a stored recording again — that is what Redo is — so a preview is that request against
+the settings currently in the window, with nothing written back. The reason it exists is that every
+other control in that panel is a *cause* while what a user needs to know is the *effect*, and no
+label can close that gap: the one reading `Chat — short lines, light punctuation` was describing its
+effect accurately while being read as a mood. Keeping audio is off by default, so the honest version
+of this also needs a record-a-clip path, which no client has yet.
 
 ²⁰ A visible control, on the phone's keyboard and on its dictation screen, in both halves of a
 dictation: `Discard recording` while the microphone is open, `Cancel transcription` once the
@@ -324,22 +333,33 @@ one screen further in on two of them.
   verbatim transcript is always kept. Not `Ctrl+Z`, which belongs to whatever is being typed into.
 - **Audio.** Pin a microphone rather than following the system default; start/stop tones are on by
   default and can be disabled.
-- **Typography.** Three settings on all four clients, in one section between Fidelity and
-  Rewrite, because they are the same kind of dial as Fidelity — how the words are written down,
-  never which words. *Chinese and Latin* is deterministic and applied locally to the finished
-  transcript, so it is the same on every dictation, in history and at the cursor: one space at the
-  boundary (the default), none, or whatever the model wrote. *Chinese script* and a free-text
-  *formatting example* are asked of the model, and are sent only when set — the default request is
-  byte-identical to the one this feature did not exist for. The example is capped at 500 characters
-  and the field says so. All three cross devices in the settings-transfer profile.
-- **Writing style.** One control on each stage, filled either way. *Dictation style* — As spoken
-  (the default, which sends nothing), Chat, Notes, Prose, or Custom — decides how the words are
-  written down and may not change one of them. *Rewrite style* — Formal, Concise, Casual, or
-  Custom — decides how they are said again, and is the stage allowed to reword. Two settings
-  because they are two jobs with opposite permissions, and Custom on each because three presets are
-  three guesses. A custom style is substituted into the same host block as a preset, so the
-  framing and the preservation rules cover the user's own text too. Both cross devices in the
-  transfer profile.
+- **Always.** The settings that are promises rather than preferences, grouped on all four clients
+  by *who keeps the promise*, because that is the line deciding what can be a setting at all — both
+  are things an example cannot carry. *Chinese and Latin* is arithmetic performed on the device
+  after the transcript comes back, so it is a guarantee: one space at the boundary (the default),
+  none, or whatever the model wrote. *Chinese script* is one sentence added to the request, so it is
+  a request and the panel says so. Both are sent only when set, leaving the default request
+  byte-identical to the one these features did not exist for, and both cross devices in the
+  settings-transfer profile.
+- **Write it like this.** One text box on all four clients, with Chat / Notes / Prose buttons that
+  *fill* it and a Clear that empties it. Empty is the default and sends nothing. This replaced a
+  five-case dropdown, and the reason is the whole design: a label has to compress an instruction
+  into a dash-clause, so `Chat — short lines, light punctuation` read as a mood and behaved as a
+  rule, and somebody who wanted the mood got line breaks they had not asked for with nothing on
+  screen to explain why. A preset is a button rather than a stored value now — pressing it puts
+  `prompt/dictation-style/chat.md`'s own words in the box, where they can be read and edited before
+  use — so presets can be added, renamed and reworded without migrating anybody. The box goes
+  through the same host block, sanitiser and 500-character cap whether its text was typed or
+  pressed. Upgrading turns the old setting into the text it was already sending, so no request
+  changes; a preset whose file cannot be read leaves the old setting alone and retries next launch
+  rather than clearing it. *Rewrite style* keeps its enum — it is a stage rather than a layout —
+  and still offers Formal, Concise, Casual and Custom.
+- **Preview.** ✅ macOS. Sends your most recent kept recording again with the settings currently in
+  the window and shows both answers side by side, writing nothing back to History. It exists
+  because every other control is a *cause* and what a user needs is the *effect*; the report that
+  produced it was diagnosed by pulling a file out of the audio folder and running it twice by hand.
+  Not yet on Windows, iOS or Android — a gap rather than an impossibility, and all three already
+  have the stored-audio redo it is built from.
 - **Translation.** Off by default, in two halves that both have to be set: a target language, and
   the control that runs it — the translate key on the desktops, the chip on the phones. The
   verbatim transcript is still first in History either way. See footnote ²¹ for why it replaces the
