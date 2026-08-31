@@ -65,6 +65,8 @@ internal sealed class TrayApplication : ApplicationContext
         // already sending — so upgrading changes nothing about the request and everything about
         // whether it can be seen.
         _settings.MigrateDictationExample(SettingsForm.PresetTextForMigration);
+        // After the migration, so an upgrading install is never mistaken for a new one.
+        _settings.SeedDictationExample(SettingsForm.PresetTextForMigration);
 
         _controller = new DictationController(_settings);
         _controller.StateChanged += OnStateChanged;

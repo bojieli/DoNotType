@@ -426,8 +426,22 @@ final class Settings {
             legacyStyle: legacyStyle, legacyCustom: legacyCustom, presetText: presetText)
         else { return }
         clearLegacyKeys()
-        guard !migrated.isEmpty else { return }
+        // Written even when empty, and that is load-bearing: it records that this install has made
+        // its choice, so `seedDictationExample` leaves it alone. Someone upgrading from "As spoken"
+        // was sending nothing and goes on sending nothing.
         dictationExample = migrated
+    }
+
+    /// Gives a brand-new install the default example, once.
+    ///
+    /// After the migration, and only when the key has never been written — an empty string is
+    /// somebody who pressed Clear, and putting words back they had just removed is the same
+    /// unforgivable outcome the migration guards against.
+    func seedDictationExample(presetText: (DictationPreset) -> String?) {
+        guard let seeded = DictationExample.seeding(
+            stored: defaults.string(forKey: Key.dictationExample), presetText: presetText)
+        else { return }
+        dictationExample = seeded
     }
 
     /// The same, for the rewrite stage. Its own setting because the two are different jobs — this

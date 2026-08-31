@@ -41,6 +41,31 @@ public sealed class AppSettings
     /// </remarks>
     public string DictationExample { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Whether <see cref="DictationExample"/> has ever been written, as distinct from being empty.
+    /// </summary>
+    /// <remarks>
+    /// A separate flag because JSON cannot tell an absent string from an empty one once the object
+    /// is deserialised with a default. Empty means somebody pressed Clear and meant it; absent
+    /// means a fresh install that has not been seeded yet.
+    /// </remarks>
+    public bool HasDictationExample { get; set; }
+
+    /// <summary>Gives a brand-new install the default example, once.</summary>
+    /// <remarks>
+    /// After the migration, so an upgrading install is never mistaken for a new one, and only when
+    /// the value has never been written -- putting words back that somebody had just removed is the
+    /// same unforgivable outcome the migration guards against.
+    /// </remarks>
+    public void SeedDictationExample(Func<DictationPreset, string?> presetText)
+    {
+        var stored = HasDictationExample ? DictationExample : null;
+        if (DoNotType.Core.DictationExample.Seeding(stored, presetText) is not { } seeded) return;
+        DictationExample = seeded;
+        HasDictationExample = true;
+        Save();
+    }
+
     /// <summary>Retired, read once by <see cref="MigrateDictationExample"/> and then cleared.</summary>
     [JsonPropertyName("DictationStyle")]
     public string? LegacyDictationStyle { get; set; }
@@ -68,6 +93,7 @@ public sealed class AppSettings
         {
             LegacyDictationStyle = null;
             LegacyCustomDictationStyle = null;
+            HasDictationExample = true;
             Save();
             return;
         }
@@ -81,7 +107,11 @@ public sealed class AppSettings
 
         LegacyDictationStyle = null;
         LegacyCustomDictationStyle = null;
+        // Written even when empty, and that is load-bearing: it records that this install has made
+        // its choice, so SeedDictationExample leaves it alone. Someone upgrading from "As spoken"
+        // was sending nothing and goes on sending nothing.
         DictationExample = migrated;
+        HasDictationExample = true;
         Save();
     }
 

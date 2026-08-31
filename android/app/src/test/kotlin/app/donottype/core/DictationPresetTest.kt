@@ -83,6 +83,27 @@ class DictationPresetTest {
         )
     }
 
+
+    /**
+     * A fresh install starts on Prose, and somebody who pressed Clear stays cleared.
+     *
+     * The two are the same empty string in every store on every platform, so the rule is written
+     * against *absence* rather than emptiness. Getting it backwards would put the default back into
+     * a box that had just been deliberately emptied, on every launch, forever.
+     */
+    @Test
+    fun `seeding fills a fresh install and leaves a cleared box alone`() {
+        val stub: (DictationPreset) -> String? = { "text for ${it.id}" }
+
+        assertEquals(DictationPreset.PROSE, DictationExample.DEFAULT_PRESET)
+        assertEquals(DictationPreset.PROSE, DictationPreset.entries.first())
+        assertEquals("text for prose", DictationExample.seeding(null, stub))
+
+        assertNull(DictationExample.seeding("", stub))
+        assertNull(DictationExample.seeding("whatever", stub))
+        assertNull(DictationExample.seeding(null) { null })
+    }
+
     /** The rewrite side kept its enum: it is a stage, not a layout, and still has three shipped clauses. */
     @Test
     fun `the rewrite styles are unchanged`() {

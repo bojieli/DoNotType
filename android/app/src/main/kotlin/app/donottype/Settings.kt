@@ -101,6 +101,7 @@ object Settings {
         // rule turns it into the text that pair was already sending -- so upgrading changes nothing
         // about the request and everything about whether it can be seen.
         migrateDictationExample()
+        seedDictationExample()
     }
 
     private val ready: Boolean get() = ::prefs.isInitialized && ::apiKeys.isInitialized
@@ -436,7 +437,26 @@ object Settings {
         // that will probably work on the next launch.
         val migrated = DictationExample.migrating(legacyStyle, legacyCustom, presetText) ?: return
         clearLegacyKeys()
-        if (migrated.isNotEmpty()) dictationExample = migrated
+        // Written even when empty, and that is load-bearing: it records that this install has made
+        // its choice, so `seedDictationExample` leaves it alone. Someone upgrading from "As spoken"
+        // was sending nothing and goes on sending nothing.
+        dictationExample = migrated
+    }
+
+    /**
+     * Gives a brand-new install the default example, once.
+     *
+     * After the migration, so an upgrading install is never mistaken for a new one, and only when
+     * the key has never been written — an empty string is somebody who pressed Clear, and putting
+     * words back they had just removed is the same unforgivable outcome the migration guards
+     * against.
+     */
+    fun seedDictationExample(presetText: (DictationPreset) -> String? = ::presetText) {
+        if (!ready) return
+        val seeded = DictationExample.seeding(
+            prefs.getString(KEY_DICTATION_EXAMPLE, null), presetText,
+        ) ?: return
+        dictationExample = seeded
     }
 
     /**

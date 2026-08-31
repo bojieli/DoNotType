@@ -13,13 +13,14 @@ import Foundation
 /// case. Presets can therefore be added, renamed and reworded without changing a stored value or
 /// migrating anybody, because nothing stores them.
 ///
-/// The absence of a style is the empty string, which sends nothing — the same default as the old
-/// `.spoken`, and still the thing that keeps every measured number in `docs/PROMPT.md` describing
-/// the request a fresh install actually makes.
+/// The absence of a style is the empty string, which sends nothing. That is what the retired
+/// `.spoken` did and what an upgrading install keeps, but it is no longer what a *new* install
+/// starts with — see `DictationExample.seeding`.
 public enum DictationPreset: String, CaseIterable, Sendable, Codable {
+    /// First, and what a new install starts with. See `DictationExample.seeding`.
+    case prose
     case chat
     case notes
-    case prose
 
     /// The button's text. A name and nothing else: what it means is the text it drops in the box,
     /// which is on screen the moment it is pressed.
@@ -59,6 +60,32 @@ public enum DictationPreset: String, CaseIterable, Sendable, Codable {
 ///   - legacyCustom: the retired free-text field, which only `custom` ever used.
 ///   - presetText: resolves a preset to its shipped (or user-overridden) text.
 public enum DictationExample {
+    /// What a brand-new install starts with.
+    ///
+    /// Empty used to be the default, and it had one real virtue: the shipped request was the one
+    /// every measured number in `docs/PROMPT.md` described. It also meant a fresh install's
+    /// transcripts were laid out however the model felt like that day, which is the complaint the
+    /// whole formatting series started from — a default of "no answer" is still an answer, and it
+    /// was the least predictable one available.
+    public static let defaultPreset: DictationPreset = .prose
+
+    /// The example a fresh install starts with, or nil when there is nothing to do.
+    ///
+    /// - Parameter stored: the persisted value, or nil when the key has never been written. The
+    ///   distinction is the whole function: an empty string is somebody who pressed Clear and meant
+    ///   it, and seeding over that would put words back they had just removed. Only the absence of
+    ///   the key is a fresh install.
+    /// - Returns: the text to store; nil when the install already has an answer, and nil when the
+    ///   preset's file could not be read — in which case the key stays absent and the next launch
+    ///   tries again.
+    public static func seeding(
+        stored: String?, presetText: (DictationPreset) -> String?
+    ) -> String? {
+        guard stored == nil else { return nil }
+        guard let text = presetText(defaultPreset) else { return nil }
+        return Typography.sanitizedSample(text)
+    }
+
     /// - Returns: the text for the box, or **nil** when the answer is not knowable yet — a preset
     ///   this build recognises whose file could not be read. Nil is not "no style": a caller that
     ///   treated it as one would clear the retired keys and destroy the only record of what the

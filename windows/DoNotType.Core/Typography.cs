@@ -355,9 +355,10 @@ public static class ChineseScriptExtensions
 /// </remarks>
 public enum DictationPreset
 {
+    /// <summary>First, and what a new install starts with. See <see cref="DictationExample"/>.</summary>
+    Prose,
     Chat,
     Notes,
-    Prose,
 }
 
 public static class DictationPresetExtensions
@@ -411,6 +412,28 @@ public static class DictationPresetExtensions
 /// </remarks>
 public static class DictationExample
 {
+    /// <summary>What a brand-new install starts with.</summary>
+    /// <remarks>
+    /// Empty used to be the default, and it had one real virtue: the shipped request was the one
+    /// every measured number in docs/PROMPT.md described. It also meant a fresh install's
+    /// transcripts were laid out however the model felt like that day, which is the complaint the
+    /// whole formatting series started from -- a default of "no answer" is still an answer, and it
+    /// was the least predictable one available.
+    /// </summary>
+    public const DictationPreset DefaultPreset = DictationPreset.Prose;
+
+    /// <summary>The example a fresh install starts with, or null when there is nothing to do.</summary>
+    /// <param name="stored">
+    /// The persisted value, or null when the key has never been written. The distinction is the
+    /// whole method: an empty string is somebody who pressed Clear and meant it, and seeding over
+    /// that would put words back they had just removed. Only absence is a fresh install.
+    /// </param>
+    public static string? Seeding(string? stored, Func<DictationPreset, string?> presetText)
+    {
+        if (stored is not null) return null;
+        return presetText(DefaultPreset) is { } text ? Typography.SanitizedSample(text) : null;
+    }
+
     /// <returns>
     /// The text for the box, or <c>null</c> when the answer is not knowable yet -- a preset this
     /// build recognises whose file could not be read. Null is not "no style": a caller that treated

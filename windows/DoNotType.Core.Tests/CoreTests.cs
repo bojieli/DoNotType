@@ -1468,6 +1468,32 @@ public sealed class DictationStyleTests
         Assert.Equal(string.Empty, builder.RewriteInstruction(RewriteStyle.Custom, "  "));
     }
 
+
+    /// <summary>
+    /// A fresh install starts on Prose, and somebody who pressed Clear stays cleared.
+    /// </summary>
+    /// <remarks>
+    /// The two are the same empty string in every store on every platform, so the rule is written
+    /// against <em>absence</em> rather than emptiness. Getting it backwards would put the default
+    /// back into a box that had just been deliberately emptied, on every launch, forever.
+    /// </remarks>
+    [Fact]
+    public void SeedingFillsAFreshInstallAndLeavesAClearedBoxAlone()
+    {
+        var builder = Builder();
+        string? Preset(DictationPreset p) => builder.DictationPresetText(p);
+
+        Assert.Equal(DictationPreset.Prose, DictationExample.DefaultPreset);
+        Assert.Equal(DictationPreset.Prose, Enum.GetValues<DictationPreset>()[0]);
+        Assert.Equal(
+            builder.DictationPresetText(DictationExample.DefaultPreset),
+            DictationExample.Seeding(null, Preset));
+
+        Assert.Null(DictationExample.Seeding(string.Empty, Preset));
+        Assert.Null(DictationExample.Seeding("whatever", Preset));
+        Assert.Null(DictationExample.Seeding(null, _ => null));
+    }
+
     /// <summary>
     /// Upgrading must not change anybody's request — only make it visible. Somebody on Chat had
     /// chat.md's words in every dictation, and afterwards has those same words in their box.

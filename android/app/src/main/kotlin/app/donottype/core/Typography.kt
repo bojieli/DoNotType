@@ -88,9 +88,10 @@ enum class ChineseScript(val id: String, val label: String) {
  *   rule.
  */
 enum class DictationPreset(val id: String, val label: String, val shape: String) {
+    /** First, and what a new install starts with. See [DictationExample.seeding]. */
+    PROSE("prose", "Prose", "Full sentences, paragraphs"),
     CHAT("chat", "Chat", "Short lines, one thought each"),
-    NOTES("notes", "Notes", "One point per line"),
-    PROSE("prose", "Prose", "Full sentences, paragraphs");
+    NOTES("notes", "Notes", "One point per line");
 
     companion object {
         /** Null rather than a default: an unknown name has no text to fill the box with. */
@@ -109,6 +110,30 @@ enum class DictationPreset(val id: String, val label: String, val shape: String)
  * can now see and edit them.
  */
 object DictationExample {
+    /**
+     * What a brand-new install starts with.
+     *
+     * Empty used to be the default, and it had one real virtue: the shipped request was the one
+     * every measured number in `docs/PROMPT.md` described. It also meant a fresh install's
+     * transcripts were laid out however the model felt like that day, which is the complaint the
+     * whole formatting series started from — a default of "no answer" is still an answer, and it was
+     * the least predictable one available.
+     */
+    val DEFAULT_PRESET = DictationPreset.PROSE
+
+    /**
+     * The example a fresh install starts with, or null when there is nothing to do.
+     *
+     * @param stored the persisted value, or null when the key has never been written. The
+     *   distinction is the whole function: an empty string is somebody who pressed Clear and meant
+     *   it, and seeding over that would put words back they had just removed.
+     */
+    fun seeding(stored: String?, presetText: (DictationPreset) -> String?): String? {
+        if (stored != null) return null
+        val text = presetText(DEFAULT_PRESET) ?: return null
+        return Typography.sanitizedSample(text)
+    }
+
     /**
      * @return the text for the box, or **null** when the answer is not knowable yet — a preset this
      *   build recognises whose file could not be read. Null is not "no style": a caller that

@@ -26,13 +26,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // has the retired style setting, and the migration turns it into the text that setting was
         // already sending — so upgrading changes nothing about the request and everything about
         // whether you can see it.
-        Settings.shared.migrateDictationExample { preset in
+        let presetText: (DictationPreset) -> String? = { preset in
             SettingsModel.bundledPromptURL().flatMap {
                 try? PromptStore(directory: HistoryStore.defaultDirectory())
                     .builder(bundled: $0)
                     .dictationPresetText(preset)
             }
         }
+        Settings.shared.migrateDictationExample(presetText: presetText)
+        // After the migration, so an upgrading install is never mistaken for a new one.
+        Settings.shared.seedDictationExample(presetText: presetText)
 
         // An invisible menu bar, purely so ⌘V reaches the key field. See `MainMenu`.
         NSApp.mainMenu = MainMenu.make()

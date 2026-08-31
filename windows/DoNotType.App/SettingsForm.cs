@@ -1289,6 +1289,9 @@ public sealed class SettingsForm : Form
         // Cleaned on the way in, and written back to the box, so what the window shows is what a
         // request would carry rather than what was pasted into it.
         _settings.DictationExample = Typography.SanitizedSample(_dictationExample.Text);
+        // Saving from this window is an answer, including "nothing". Recording that stops the
+        // seed putting the default back on the next launch.
+        _settings.HasDictationExample = true;
         _dictationExample.Text = _settings.DictationExample;
         _settings.CustomRewriteStyle = Typography.SanitizedSample(_customRewriteStyle.Text);
         _customRewriteStyle.Text = _settings.CustomRewriteStyle;

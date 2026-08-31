@@ -365,8 +365,24 @@ final class DictationModel {
             legacyStyle: legacyStyle, legacyCustom: legacyCustom, presetText: presetText)
         else { return }
         clearLegacyKeys()
-        guard !migrated.isEmpty else { return }
+        // Written even when empty, and that is load-bearing: it records that this install has made
+        // its choice, so `seedDictationExample` leaves it alone. Someone upgrading from "As spoken"
+        // was sending nothing and goes on sending nothing.
         dictationExample = migrated
+    }
+
+    /// Gives a brand-new install the default example, once.
+    ///
+    /// After the migration, so an upgrading install is never mistaken for a new one, and only when
+    /// the key has never been written — an empty string is somebody who pressed Clear, and putting
+    /// words back they had just removed is the same unforgivable outcome the migration guards
+    /// against.
+    private func seedDictationExample() {
+        guard let seeded = DictationExample.seeding(
+            stored: UserDefaults.standard.string(forKey: "dictationExample"),
+            presetText: presetText)
+        else { return }
+        dictationExample = seeded
     }
 
     /// Drops a preset's text into the example box, where it can be read and edited before use.
@@ -524,6 +540,8 @@ final class DictationModel {
         // sending, so upgrading changes nothing about the request and everything about whether it
         // can be seen.
         migrateDictationExample()
+        // After the migration, so an upgrading install is never mistaken for a new one.
+        seedDictationExample()
 
         // Before the first request, and before anything else can log. On a phone there is no
         // Console and no shell, so a log file in the shared container is the only evidence a bug

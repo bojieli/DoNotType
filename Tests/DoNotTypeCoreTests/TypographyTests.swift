@@ -231,6 +231,30 @@ final class TypographyPromptTests: XCTestCase {
         XCTAssertTrue(instruction.contains("Keep every fact"))
     }
 
+
+    /// A fresh install starts on Prose, and somebody who pressed Clear stays cleared.
+    ///
+    /// The two are the same empty string in every store on every platform, so the rule is written
+    /// against *absence* rather than emptiness. Getting this backwards would put the default back
+    /// into a box that had just been deliberately emptied, on every launch, forever.
+    func testSeedingFillsAFreshInstallAndLeavesAClearedBoxAlone() throws {
+        let builder = try builder()
+        let preset = { (p: DictationPreset) in try? builder.dictationPresetText(p) }
+
+        let seeded = try XCTUnwrap(DictationExample.seeding(stored: nil, presetText: preset))
+        XCTAssertEqual(seeded, try builder.dictationPresetText(DictationExample.defaultPreset))
+        XCTAssertEqual(DictationExample.defaultPreset, .prose)
+        XCTAssertEqual(DictationPreset.allCases.first, .prose, "Prose is offered first too")
+
+        // Cleared on purpose. Nothing to do.
+        XCTAssertNil(DictationExample.seeding(stored: "", presetText: preset))
+        // Already answered. Nothing to do.
+        XCTAssertNil(DictationExample.seeding(stored: "whatever", presetText: preset))
+        // Unreadable file: leave the key absent so the next launch tries again, rather than
+        // recording an empty box the user never chose.
+        XCTAssertNil(DictationExample.seeding(stored: nil, presetText: { _ in nil }))
+    }
+
     func testEveryPartStillResolves() throws {
         try builder().validate()
         XCTAssertEqual(PromptPart(id: "script:traditional"), .script(.traditional))
