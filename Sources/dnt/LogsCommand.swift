@@ -196,8 +196,7 @@ struct PromptCommand: ParsableCommand {
                     try builder.systemInstruction(
                         fidelity: try backend.resolveFidelity(),
                         script: AppPreferences.chineseScript,
-                        dictationStyle: AppPreferences.dictationStyle,
-                        customDictationStyle: AppPreferences.customDictationStyle))
+                        dictationExample: AppPreferences.dictationExample(using: builder)))
             case "rewrite":
                 guard let parsed = RewriteStyle(rawValue: style), parsed.isRewrite else {
                     throw ValidationError(

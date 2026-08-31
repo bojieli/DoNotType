@@ -869,8 +869,7 @@ final class DictationController {
                 .builder(bundled: promptURL)
                 .systemInstruction(
                     fidelity: settings.fidelity, script: settings.chineseScript,
-                    dictationStyle: settings.dictationStyle,
-                    customDictationStyle: settings.customDictationStyle)
+                    dictationExample: settings.dictationExample)
         else {
             return FallbackTranscriber(primary: primary)
         }
@@ -914,8 +913,7 @@ final class DictationController {
                 .builder(bundled: promptURL)
                 .systemInstruction(
                     fidelity: settings.fidelity, script: settings.chineseScript,
-                    dictationStyle: settings.dictationStyle,
-                    customDictationStyle: settings.customDictationStyle)
+                    dictationExample: settings.dictationExample)
         else { return nil }
 
         return RetryCoordinator(

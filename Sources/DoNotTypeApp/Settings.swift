@@ -18,8 +18,11 @@ final class Settings {
         static let fidelity = "fidelity"
         static let typographySpacing = "typographySpacing"
         static let chineseScript = "chineseScript"
-        static let dictationStyle = "dictationStyle"
-        static let customDictationStyle = "customDictationStyle"
+        static let dictationExample = "dictationExample"
+        // Retired, read once by `migrateDictationExample()` and then cleared. Kept as names here
+        // so the migration reads the same strings the old build wrote.
+        static let legacyDictationStyle = "dictationStyle"
+        static let legacyCustomDictationStyle = "customDictationStyle"
         static let customRewriteStyle = "customRewriteStyle"
         static let translateTo = "translateTo"
         static let trigger = "trigger"
@@ -380,23 +383,41 @@ final class Settings {
         set { defaults.set(newValue.rawValue, forKey: Key.chineseScript) }
     }
 
-    /// How a dictation is written down: one of a few presets, or the user's own text below.
-    var dictationStyle: DictationStyle {
-        get {
-            DictationStyle(rawValue: defaults.string(forKey: Key.dictationStyle) ?? "") ?? .default
-        }
-        set { defaults.set(newValue.rawValue, forKey: Key.dictationStyle) }
+    /// How the transcript should be written down — a description, or a sentence written the way
+    /// the user wants theirs written. Empty sends nothing at all.
+    ///
+    /// One string where there used to be a five-case enum and a text box that only one of the
+    /// cases used. Sanitised on the way in rather than on the way out, so what the settings window
+    /// shows is what a request would carry.
+    var dictationExample: String {
+        get { defaults.string(forKey: Key.dictationExample) ?? "" }
+        set { defaults.set(Typography.sanitizedSample(newValue), forKey: Key.dictationExample) }
     }
 
-    /// The user's own dictation style — a description, or a sentence written the way they want
-    /// theirs written.
+    /// Turns a pre-example install's style setting into the text that setting was sending.
     ///
-    /// Sanitised on the way in rather than on the way out, so what the settings window shows is
-    /// what a request would carry. Kept even while a preset is selected: switching to Chat and back
-    /// should not silently delete something somebody wrote.
-    var customDictationStyle: String {
-        get { defaults.string(forKey: Key.customDictationStyle) ?? "" }
-        set { defaults.set(Typography.sanitizedSample(newValue), forKey: Key.customDictationStyle) }
+    /// Runs once, at launch, and clears the old keys so it cannot run twice and cannot resurrect a
+    /// value the user has since edited. Nobody's dictations change: someone who had chosen Chat had
+    /// `chat.md`'s words in every request, and afterwards has those same words in their box, where
+    /// they can finally see them. Someone on the default had nothing appended and still does.
+    ///
+    /// - Parameter presetText: resolves a preset to its text. Passed in because `Settings` has no
+    ///   prompt directory of its own, and the one in force may be the user's override.
+    func migrateDictationExample(presetText: (DictationPreset) -> String?) {
+        let legacyStyle = defaults.string(forKey: Key.legacyDictationStyle)
+        let legacyCustom = defaults.string(forKey: Key.legacyCustomDictationStyle)
+        guard legacyStyle != nil || legacyCustom != nil else { return }
+        defer {
+            defaults.removeObject(forKey: Key.legacyDictationStyle)
+            defaults.removeObject(forKey: Key.legacyCustomDictationStyle)
+        }
+        // An example already set wins. The migration is for an install that has never seen the box,
+        // and overwriting a box somebody has typed into would be the one unforgivable outcome.
+        guard (defaults.string(forKey: Key.dictationExample) ?? "").isEmpty else { return }
+        let migrated = DictationExample.migrating(
+            legacyStyle: legacyStyle, legacyCustom: legacyCustom, presetText: presetText)
+        guard !migrated.isEmpty else { return }
+        dictationExample = migrated
     }
 
     /// The same, for the rewrite stage. Its own setting because the two are different jobs — this

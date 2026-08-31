@@ -585,61 +585,9 @@ private struct GeneralTab: View {
                 .foregroundStyle(.secondary)
             }
 
-            // Between Fidelity and Rewrite because it is the same kind of dial as Fidelity —
-            // how the words are written down, never which words — and Rewrite is the first
-            // setting below it that may change them.
-            Section("Typography") {
-                Picker("Chinese and Latin", selection: $model.typographySpacing) {
-                    ForEach(TypographySpacing.allCases, id: \.self) { spacing in
-                        Text(spacing.label).tag(spacing)
-                    }
-                }
-                Picker("Chinese script", selection: $model.chineseScript) {
-                    ForEach(ChineseScript.allCases, id: \.self) { script in
-                        Text(script.label).tag(script)
-                    }
-                }
-                Text(
-                    "Spacing is applied to the finished transcript on this Mac, so it is the same "
-                        + "on every dictation, in history and at the cursor. The script is asked "
-                        + "of the model — a request rather than a guarantee — and nothing here is "
-                        + "allowed to change a word."
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            }
+            DictationExampleSection(model: model)
 
-            // Two sections rather than one control with a mode switch, because the two stages are
-            // different jobs and get different answers: the dictation style may not reword, and
-            // the rewrite style is there to.
-            Section("Dictation style") {
-                Picker("Write it as", selection: $model.dictationStyle) {
-                    ForEach(DictationStyle.allCases, id: \.self) { style in
-                        Text(style.label).tag(style)
-                    }
-                }
-                if model.dictationStyle == .custom {
-                    LabeledContent("Your style") {
-                        TextField(
-                            "Describe it, or paste a sentence written the way you want yours",
-                            text: $model.customDictationStyle, axis: .vertical
-                        )
-                        .lineLimit(3...8)
-                        .textFieldStyle(.roundedBorder)
-                    }
-                }
-                Text(
-                    "How a dictation is written down — line breaks, punctuation, whether it reads "
-                        + "like a chat message or a paragraph. Not what it says: none of these may "
-                        + "add, remove or reword anything, and Fidelity above is the separate dial "
-                        + "for how much of your own \"um\" survives. *As spoken* sends nothing "
-                        + "extra, which is why it is the default. Custom text is trimmed to "
-                        + "\(Typography.maxSampleCharacters) characters and is kept when you "
-                        + "switch to a preset and back."
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            }
+            AlwaysSection(model: model)
 
             TranslationSection(model: model)
 
@@ -1363,6 +1311,92 @@ private struct HotkeyRecorder: View {
 /// Shown even when it cannot run, greyed out with the reason. Hiding it is what made the feature
 /// look absent rather than unavailable, and "why is this off" is answerable while "where is it"
 /// is not.
+/// "Write it like this" — the one control for how a transcript is laid out.
+///
+/// This replaced a five-case dropdown whose labels had to compress a whole instruction into a
+/// dash-clause. `Chat — short lines, light punctuation` read as a mood and behaved as a rule, so
+/// somebody who wanted the mood got line breaks they never asked for and had no way to trace them:
+/// the words actually being sent lived three files away from the only place they were described.
+///
+/// The instruction is the control now. A preset button drops its text in the box, where it can be
+/// read and edited before it is used — so the thing you are agreeing to is on screen, in the words
+/// the model will get. An empty box sends nothing, which is the default and keeps a fresh install's
+/// request identical to the one every measured number in `docs/PROMPT.md` describes.
+private struct DictationExampleSection: View {
+    @Bindable var model: SettingsModel
+
+    var body: some View {
+        Section("Write it like this") {
+            // Buttons rather than a picker: pressing one is not choosing a mode, it is filling a
+            // field you may then edit. A picker would show a selection that stops being true the
+            // moment somebody types.
+            LabeledContent("Start from") {
+                HStack(spacing: 8) {
+                    ForEach(DictationPreset.allCases, id: \.self) { preset in
+                        Button(preset.label) { model.applyPreset(preset) }
+                            .help(preset.shape)
+                    }
+                    Button("Clear") { model.dictationExample = "" }
+                        .disabled(model.dictationExample.isEmpty)
+                }
+            }
+
+            TextField(
+                "Empty — however the model would write it",
+                text: $model.dictationExample, axis: .vertical
+            )
+            .lineLimit(4...12)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityIdentifier("dictation-example")
+
+            Text(
+                "Describe how you want your transcripts written, or paste a sentence written that "
+                    + "way. This is layout only — line breaks, punctuation, how long the lines "
+                    + "are. It may never add, remove or reword anything you said; Fidelity above "
+                    + "is the separate dial for how much of your own \"um\" survives. Empty sends "
+                    + "nothing extra, which is the default. Trimmed to "
+                    + "\(Typography.maxSampleCharacters) characters."
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// The settings that are promises rather than preferences.
+///
+/// Grouped and labelled by *who keeps the promise*, which is the distinction that decides whether
+/// a thing can be a setting at all. Spacing is arithmetic performed here, so it is the same on
+/// every dictation forever; script is one unambiguous sentence added to the request, so it is a
+/// request. Both are things an example cannot carry: a model asked to space Chinese and Latin
+/// consistently does it most of the time, and a sample written in Traditional cannot say whether
+/// that was the point or an accident.
+private struct AlwaysSection: View {
+    @Bindable var model: SettingsModel
+
+    var body: some View {
+        Section("Always") {
+            Picker("Chinese and Latin", selection: $model.typographySpacing) {
+                ForEach(TypographySpacing.allCases, id: \.self) { spacing in
+                    Text(spacing.label).tag(spacing)
+                }
+            }
+            Text("Applied on this Mac, after the transcript comes back. A guarantee.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            Picker("Chinese script", selection: $model.chineseScript) {
+                ForEach(ChineseScript.allCases, id: \.self) { script in
+                    Text(script.label).tag(script)
+                }
+            }
+            Text("Asked of the model, on every request. A request, not a guarantee.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
 /// Its own section, under Typography and above Rewrite, because it is the setting that
 /// *replaces* a rewrite rather than another shade of one.
 ///

@@ -83,18 +83,25 @@ final class SettingsModel {
         didSet { Settings.shared.chineseScript = chineseScript }
     }
 
-    var dictationStyle: DictationStyle {
-        didSet { Settings.shared.dictationStyle = dictationStyle }
-    }
-
     /// Saved as typed, like every other field in this window, and cleaned by the setter — so the
     /// box shows the text a request would carry rather than the text that was pasted into it.
-    var customDictationStyle: String {
+    var dictationExample: String {
         didSet {
-            Settings.shared.customDictationStyle = customDictationStyle
-            let cleaned = Settings.shared.customDictationStyle
-            if cleaned != customDictationStyle { customDictationStyle = cleaned }
+            Settings.shared.dictationExample = dictationExample
+            let cleaned = Settings.shared.dictationExample
+            if cleaned != dictationExample { dictationExample = cleaned }
         }
+    }
+
+    /// Drops a preset's text into the example box, where it can be read and edited before use.
+    ///
+    /// Through the store rather than the bundle, so somebody who has edited
+    /// `prompt/dictation-style/chat.md` gets their own words back when they press Chat.
+    func applyPreset(_ preset: DictationPreset) {
+        guard let promptURL = Self.bundledPromptURL(),
+            let text = try? prompts.builder(bundled: promptURL).dictationPresetText(preset)
+        else { return }
+        dictationExample = text
     }
 
     var customRewriteStyle: String {
@@ -670,8 +677,7 @@ final class SettingsModel {
         fidelity = settings.fidelity
         typographySpacing = settings.typographySpacing
         chineseScript = settings.chineseScript
-        dictationStyle = settings.dictationStyle
-        customDictationStyle = settings.customDictationStyle
+        dictationExample = settings.dictationExample
         customRewriteStyle = settings.customRewriteStyle
         translateTo = settings.translateTo
         keytermBiasing = settings.keytermBiasing
@@ -749,8 +755,12 @@ final class SettingsModel {
             typography: .init(
                 spacing: settings.typographySpacing.rawValue,
                 chineseScript: settings.chineseScript.rawValue,
-                dictationStyle: settings.dictationStyle.rawValue,
-                customDictationStyle: settings.customDictationStyle,
+                dictationExample: settings.dictationExample,
+                // Written as the retired pair too, so this profile still imports correctly into a
+                // build that predates the box: an example arrives there as `custom` with the same
+                // text, which is the same request.
+                dictationStyle: settings.dictationExample.isEmpty ? "spoken" : "custom",
+                customDictationStyle: settings.dictationExample,
                 customRewriteStyle: settings.customRewriteStyle,
                 translateTo: settings.translateTo),
             desktop: .init(
@@ -799,18 +809,26 @@ final class SettingsModel {
             // Absent is "the profile predates styles", which keeps what this device has; present
             // and unreadable is a document this client cannot honour, and fails the whole import
             // rather than being silently defaulted.
-            var style = Settings.shared.dictationStyle
-            if let raw = typography.dictationStyle {
-                guard let parsed = DictationStyle(rawValue: raw) else {
-                    throw SettingsTransferApplyError.unsupportedValue(
-                        field: "typography.dictationStyle", value: raw)
-                }
-                style = parsed
+            // A profile written before the example box carries the retired pair instead, and is
+            // migrated by the shared rule rather than rejected: those values were valid when they
+            // were written and mean something exact here.
+            let example: String
+            if let stored = typography.dictationExample {
+                example = Typography.sanitizedSample(stored)
+            } else if typography.dictationStyle != nil || typography.customDictationStyle != nil {
+                example = DictationExample.migrating(
+                    legacyStyle: typography.dictationStyle,
+                    legacyCustom: typography.customDictationStyle,
+                    presetText: { preset in
+                        Self.bundledPromptURL().flatMap {
+                            try? prompts.builder(bundled: $0).dictationPresetText(preset)
+                        }
+                    })
+            } else {
+                example = Settings.shared.dictationExample
             }
             importedTypography = ImportedTypography(
-                spacing: spacing, script: script, style: style,
-                customDictation: typography.customDictationStyle
-                    ?? Settings.shared.customDictationStyle,
+                spacing: spacing, script: script, example: example,
                 customRewrite: typography.customRewriteStyle
                     ?? Settings.shared.customRewriteStyle,
                 translateTo: typography.translateTo ?? "")
@@ -909,8 +927,7 @@ final class SettingsModel {
         if let typography = importedTypography {
             settings.typographySpacing = typography.spacing
             settings.chineseScript = typography.script
-            settings.dictationStyle = typography.style
-            settings.customDictationStyle = typography.customDictation
+            settings.dictationExample = typography.example
             settings.customRewriteStyle = typography.customRewrite
             settings.translateTo = typography.translateTo
         }
@@ -951,8 +968,7 @@ final class SettingsModel {
         fidelity = settings.fidelity
         typographySpacing = settings.typographySpacing
         chineseScript = settings.chineseScript
-        dictationStyle = settings.dictationStyle
-        customDictationStyle = settings.customDictationStyle
+        dictationExample = settings.dictationExample
         customRewriteStyle = settings.customRewriteStyle
         translateTo = settings.translateTo
         keytermBiasing = settings.keytermBiasing
@@ -1251,8 +1267,7 @@ final class SettingsModel {
             let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(
                     fidelity: fidelity, script: chineseScript,
-                    dictationStyle: dictationStyle,
-                    customDictationStyle: customDictationStyle)
+                    dictationExample: dictationExample)
         else { return nil }
 
         return RetryCoordinator(
