@@ -411,20 +411,25 @@ public static class DictationPresetExtensions
 /// </remarks>
 public static class DictationExample
 {
-    public static string Migrating(
+    /// <returns>
+    /// The text for the box, or <c>null</c> when the answer is not knowable yet -- a preset this
+    /// build recognises whose file could not be read. Null is not "no style": a caller that treated
+    /// it as one would clear the retired settings and destroy the only record of what the user had
+    /// chosen, over something as temporary as an unreadable directory. Keep them and try again.
+    /// </returns>
+    public static string? Migrating(
         string? legacyStyle, string? legacyCustom, Func<DictationPreset, string?> presetText)
     {
         var name = (legacyStyle ?? string.Empty).Trim().ToLowerInvariant();
         if (name == "custom") return Typography.SanitizedSample(legacyCustom ?? string.Empty);
-        if (DictationPresetExtensions.ParsePreset(name) is { } preset
-            && presetText(preset) is { } text)
+        if (DictationPresetExtensions.ParsePreset(name) is { } preset)
         {
-            return Typography.SanitizedSample(text);
+            return presetText(preset) is { } text ? Typography.SanitizedSample(text) : null;
         }
 
         // "spoken", absent, or a value this build does not know. All three mean the box is empty,
-        // which sends nothing -- the behaviour Spoken had, and the safe answer for a name from a
-        // future build whose text this one cannot resolve.
+        // which sends nothing -- the behaviour Spoken had, and the safe answer for a name this
+        // build could not resolve even with the files in front of it.
         return string.Empty;
     }
 }

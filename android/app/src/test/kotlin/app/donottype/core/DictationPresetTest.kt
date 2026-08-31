@@ -71,8 +71,10 @@ class DictationPresetTest {
         }
         assertEquals("", DictationExample.migrating(null, null, stub))
 
-        // A preset whose file cannot be read is an empty box, never a half-resolved one.
-        assertEquals("", DictationExample.migrating("chat", "", { null }))
+        // A preset this build knows whose file it cannot read is *not knowable yet*, and must not
+        // be confused with "no style" — a caller that did would clear the retired setting and
+        // destroy the only record of what the user chose, over an unreadable asset.
+        assertNull(DictationExample.migrating("chat", "", { null }))
 
         // Custom carried the user's own text and still does, sanitiser and cap included.
         assertEquals(

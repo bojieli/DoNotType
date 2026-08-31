@@ -419,12 +419,23 @@ object Settings {
         val legacyStyle = prefs.getString(KEY_LEGACY_DICTATION_STYLE, null)
         val legacyCustom = prefs.getString(KEY_LEGACY_CUSTOM_DICTATION_STYLE, null)
         if (legacyStyle == null && legacyCustom == null) return
-        prefs.edit()
-            .remove(KEY_LEGACY_DICTATION_STYLE)
-            .remove(KEY_LEGACY_CUSTOM_DICTATION_STYLE)
-            .apply()
-        if (dictationExample.isNotEmpty()) return
-        val migrated = DictationExample.migrating(legacyStyle, legacyCustom, presetText)
+
+        fun clearLegacyKeys() {
+            prefs.edit()
+                .remove(KEY_LEGACY_DICTATION_STYLE)
+                .remove(KEY_LEGACY_CUSTOM_DICTATION_STYLE)
+                .apply()
+        }
+
+        if (dictationExample.isNotEmpty()) {
+            clearLegacyKeys()
+            return
+        }
+        // Null is "not knowable yet", never "no style". Clearing the keys on an unreadable asset
+        // would throw away the only record of what the user chose, permanently, over something
+        // that will probably work on the next launch.
+        val migrated = DictationExample.migrating(legacyStyle, legacyCustom, presetText) ?: return
+        clearLegacyKeys()
         if (migrated.isNotEmpty()) dictationExample = migrated
     }
 

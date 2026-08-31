@@ -816,6 +816,8 @@ final class SettingsModel {
             if let stored = typography.dictationExample {
                 example = Typography.sanitizedSample(stored)
             } else if typography.dictationStyle != nil || typography.customDictationStyle != nil {
+                // A document is applied once and then gone, so there is nothing to retry later:
+                // an unresolvable preset becomes an empty box, which sends nothing.
                 example = DictationExample.migrating(
                     legacyStyle: typography.dictationStyle,
                     legacyCustom: typography.customDictationStyle,
@@ -823,7 +825,7 @@ final class SettingsModel {
                         Self.bundledPromptURL().flatMap {
                             try? prompts.builder(bundled: $0).dictationPresetText(preset)
                         }
-                    })
+                    }) ?? ""
             } else {
                 example = Settings.shared.dictationExample
             }

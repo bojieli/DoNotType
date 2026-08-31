@@ -407,15 +407,25 @@ final class Settings {
         let legacyStyle = defaults.string(forKey: Key.legacyDictationStyle)
         let legacyCustom = defaults.string(forKey: Key.legacyCustomDictationStyle)
         guard legacyStyle != nil || legacyCustom != nil else { return }
-        defer {
+
+        func clearLegacyKeys() {
             defaults.removeObject(forKey: Key.legacyDictationStyle)
             defaults.removeObject(forKey: Key.legacyCustomDictationStyle)
         }
+
         // An example already set wins. The migration is for an install that has never seen the box,
         // and overwriting a box somebody has typed into would be the one unforgivable outcome.
-        guard (defaults.string(forKey: Key.dictationExample) ?? "").isEmpty else { return }
-        let migrated = DictationExample.migrating(
+        guard (defaults.string(forKey: Key.dictationExample) ?? "").isEmpty else {
+            clearLegacyKeys()
+            return
+        }
+        // Nil is "not knowable yet", never "no style". Clearing the keys on an unreadable prompt
+        // directory would throw away the only record of what the user chose, permanently, over
+        // something that will probably work on the next launch.
+        guard let migrated = DictationExample.migrating(
             legacyStyle: legacyStyle, legacyCustom: legacyCustom, presetText: presetText)
+        else { return }
+        clearLegacyKeys()
         guard !migrated.isEmpty else { return }
         dictationExample = migrated
     }

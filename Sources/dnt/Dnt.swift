@@ -328,10 +328,13 @@ enum AppPreferences {
         if let stored = defaults?.string(forKey: "dictationExample") {
             return Typography.sanitizedSample(stored)
         }
+        // Nil means the preset's file could not be read. The CLI writes nothing back either way,
+        // so there is nothing to preserve here — an empty box sends nothing, which is the safe
+        // request to make when the instruction cannot be resolved.
         return DictationExample.migrating(
             legacyStyle: defaults?.string(forKey: "dictationStyle"),
             legacyCustom: defaults?.string(forKey: "customDictationStyle"),
-            presetText: { try? builder.dictationPresetText($0) })
+            presetText: { try? builder.dictationPresetText($0) }) ?? ""
     }
 
     static var customRewriteStyle: String {

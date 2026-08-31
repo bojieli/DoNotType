@@ -349,13 +349,22 @@ final class DictationModel {
         let legacyStyle = defaults.string(forKey: "dictationStyle")
         let legacyCustom = defaults.string(forKey: "customDictationStyle")
         guard legacyStyle != nil || legacyCustom != nil else { return }
-        defer {
+
+        func clearLegacyKeys() {
             defaults.removeObject(forKey: "dictationStyle")
             defaults.removeObject(forKey: "customDictationStyle")
         }
-        guard dictationExample.isEmpty else { return }
-        let migrated = DictationExample.migrating(
+
+        guard dictationExample.isEmpty else {
+            clearLegacyKeys()
+            return
+        }
+        // Nil is "not knowable yet", never "no style". Clearing the keys on an unreadable bundle
+        // would throw away the only record of what the user chose, permanently.
+        guard let migrated = DictationExample.migrating(
             legacyStyle: legacyStyle, legacyCustom: legacyCustom, presetText: presetText)
+        else { return }
+        clearLegacyKeys()
         guard !migrated.isEmpty else { return }
         dictationExample = migrated
     }
@@ -656,10 +665,12 @@ final class DictationModel {
             if let stored = typography.dictationExample {
                 example = Typography.sanitizedSample(stored)
             } else if typography.dictationStyle != nil || typography.customDictationStyle != nil {
+                // A document is applied once and then gone, so there is nothing to retry later:
+                // an unresolvable preset becomes an empty box, which sends nothing.
                 example = DictationExample.migrating(
                     legacyStyle: typography.dictationStyle,
                     legacyCustom: typography.customDictationStyle,
-                    presetText: presetText)
+                    presetText: presetText) ?? ""
             } else {
                 example = dictationExample
             }

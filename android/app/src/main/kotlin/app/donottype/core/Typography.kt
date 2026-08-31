@@ -109,21 +109,27 @@ enum class DictationPreset(val id: String, val label: String, val shape: String)
  * can now see and edit them.
  */
 object DictationExample {
+    /**
+     * @return the text for the box, or **null** when the answer is not knowable yet — a preset this
+     *   build recognises whose file could not be read. Null is not "no style": a caller that
+     *   treated it as one would clear the retired keys and destroy the only record of what the user
+     *   had chosen, over something as temporary as an unreadable asset. Keep them and try again.
+     */
     fun migrating(
         legacyStyle: String?,
         legacyCustom: String?,
         presetText: (DictationPreset) -> String?,
-    ): String {
+    ): String? {
         val name = legacyStyle?.trim()?.lowercase().orEmpty()
         if (name == "custom") return Typography.sanitizedSample(legacyCustom.orEmpty())
         val preset = DictationPreset.from(name)
         if (preset != null) {
-            val text = presetText(preset)
-            if (text != null) return Typography.sanitizedSample(text)
+            val text = presetText(preset) ?: return null
+            return Typography.sanitizedSample(text)
         }
         // "spoken", absent, or a value this build does not know. All three mean the box is empty,
-        // which sends nothing — the behaviour SPOKEN had, and the safe answer for a name from a
-        // future build whose text this one cannot resolve.
+        // which sends nothing — the behaviour SPOKEN had, and the safe answer for a name this build
+        // could not resolve even with the files in front of it.
         return ""
     }
 }

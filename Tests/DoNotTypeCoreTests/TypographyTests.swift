@@ -184,8 +184,10 @@ final class TypographyPromptTests: XCTestCase {
         let preset = { (p: DictationPreset) in try? builder.dictationPresetText(p) }
 
         for value in DictationPreset.allCases {
-            let migrated = DictationExample.migrating(
-                legacyStyle: value.rawValue, legacyCustom: "", presetText: preset)
+            let migrated = try XCTUnwrap(
+                DictationExample.migrating(
+                    legacyStyle: value.rawValue, legacyCustom: "", presetText: preset),
+                "a preset whose file is right there must resolve")
             XCTAssertEqual(
                 try builder.systemInstruction(dictationExample: migrated),
                 try builder.systemInstruction(
@@ -209,6 +211,13 @@ final class TypographyPromptTests: XCTestCase {
             DictationExample.migrating(
                 legacyStyle: "custom", legacyCustom: " 中文 English。 ", presetText: preset),
             "中文 English。")
+
+        // A preset this build knows whose file it cannot read is *not knowable yet*, and must not
+        // be confused with "no style" — a caller that did would clear the retired setting and
+        // destroy the only record of what the user chose, over an unreadable directory.
+        XCTAssertNil(
+            DictationExample.migrating(
+                legacyStyle: "chat", legacyCustom: "", presetText: { _ in nil }))
     }
 
     /// The rewrite side of the same control: the user's text lands inside `prompt/rewrite.md`, so

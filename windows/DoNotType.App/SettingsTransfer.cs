@@ -397,10 +397,12 @@ public static class SettingsTransfer
             else if (document.Typography?.DictationStyle is { Length: > 0 }
                 || document.Typography?.CustomDictationStyle is not null)
             {
+                // A document is applied once and then gone, so there is nothing to retry later:
+                // an unresolvable preset becomes an empty box, which sends nothing.
                 settings.DictationExample = DoNotType.Core.DictationExample.Migrating(
                     document.Typography?.DictationStyle,
                     document.Typography?.CustomDictationStyle,
-                    PresetText);
+                    PresetText) ?? string.Empty;
             }
             if (document.Typography?.CustomRewriteStyle is { } customRewrite)
             {

@@ -1500,6 +1500,11 @@ public sealed class DictationStyleTests
         Assert.Equal(
             "中文 English。",
             DictationExample.Migrating("custom", " 中文 English。 ", Preset));
+
+        // A preset this build knows whose file it cannot read is *not knowable yet*, and must not
+        // be confused with "no style" -- a caller that did would clear the retired setting and
+        // destroy the only record of what the user chose, over an unreadable directory.
+        Assert.Null(DictationExample.Migrating("chat", string.Empty, _ => null));
     }
 
     /// <summary>

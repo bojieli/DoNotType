@@ -59,19 +59,25 @@ public enum DictationPreset: String, CaseIterable, Sendable, Codable {
 ///   - legacyCustom: the retired free-text field, which only `custom` ever used.
 ///   - presetText: resolves a preset to its shipped (or user-overridden) text.
 public enum DictationExample {
+    /// - Returns: the text for the box, or **nil** when the answer is not knowable yet — a preset
+    ///   this build recognises whose file could not be read. Nil is not "no style": a caller that
+    ///   treated it as one would clear the retired keys and destroy the only record of what the
+    ///   user had chosen, over something as temporary as an unreadable directory. Keep the keys
+    ///   and try again on the next launch.
     public static func migrating(
         legacyStyle: String?,
         legacyCustom: String?,
         presetText: (DictationPreset) -> String?
-    ) -> String {
+    ) -> String? {
         let name = (legacyStyle ?? "").trimmed.lowercased()
         if name == "custom" { return Typography.sanitizedSample(legacyCustom ?? "") }
-        if let preset = DictationPreset(rawValue: name), let text = presetText(preset) {
+        if let preset = DictationPreset(rawValue: name) {
+            guard let text = presetText(preset) else { return nil }
             return Typography.sanitizedSample(text)
         }
         // `spoken`, absent, or a value this build does not know. All three mean the box is empty,
         // which sends nothing — the behaviour `spoken` had, and the safe answer for a name from a
-        // future build whose text this one cannot resolve.
+        // future build whose text this one could not resolve even with the files in front of it.
         return ""
     }
 }

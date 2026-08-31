@@ -208,11 +208,13 @@ object SettingsTransfer {
                 block.has("dictationExample") ->
                     app.donottype.core.Typography.sanitizedSample(
                         block.optString("dictationExample"))
+                // A document is applied once and then gone, so there is nothing to retry later:
+                // an unresolvable preset becomes an empty box, which sends nothing.
                 block.has("dictationStyle") || block.has("customDictationStyle") ->
                     DictationExample.migrating(
                         block.optString("dictationStyle").ifEmpty { null },
                         block.optString("customDictationStyle").ifEmpty { null },
-                    ) { preset -> Settings.presetText(preset) }
+                    ) { preset -> Settings.presetText(preset) }.orEmpty()
                 else -> Settings.dictationExample
             }
             TypographyValues(

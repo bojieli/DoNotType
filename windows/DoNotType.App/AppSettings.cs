@@ -61,18 +61,27 @@ public sealed class AppSettings
     public void MigrateDictationExample(Func<DictationPreset, string?> presetText)
     {
         if (LegacyDictationStyle is null && LegacyCustomDictationStyle is null) return;
-        var legacyStyle = LegacyDictationStyle;
-        var legacyCustom = LegacyCustomDictationStyle;
-        LegacyDictationStyle = null;
-        LegacyCustomDictationStyle = null;
 
         // An example already set wins. The migration is for an install that has never seen the box,
         // and overwriting a box somebody has typed into would be the one unforgivable outcome.
-        if (DictationExample.Length == 0)
+        if (DictationExample.Length > 0)
         {
-            DictationExample =
-                DoNotType.Core.DictationExample.Migrating(legacyStyle, legacyCustom, presetText);
+            LegacyDictationStyle = null;
+            LegacyCustomDictationStyle = null;
+            Save();
+            return;
         }
+
+        // Null is "not knowable yet", never "no style". Clearing the retired fields on an
+        // unreadable prompt directory would throw away the only record of what the user chose,
+        // permanently, over something that will probably work on the next launch.
+        var migrated = DoNotType.Core.DictationExample.Migrating(
+            LegacyDictationStyle, LegacyCustomDictationStyle, presetText);
+        if (migrated is null) return;
+
+        LegacyDictationStyle = null;
+        LegacyCustomDictationStyle = null;
+        DictationExample = migrated;
         Save();
     }
 

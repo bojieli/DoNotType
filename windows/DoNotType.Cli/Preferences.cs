@@ -95,8 +95,10 @@ public static class Preferences
         {
             return Typography.SanitizedSample(stored);
         }
+        // The CLI writes nothing back either way, so there is nothing to preserve here: an empty
+        // box sends nothing, which is the safe request when the instruction cannot be resolved.
         return Core.DictationExample.Migrating(
-            String("DictationStyle"), String("CustomDictationStyle"), presetText);
+            String("DictationStyle"), String("CustomDictationStyle"), presetText) ?? string.Empty;
     }
 
     public static string CustomRewriteStyle => String("CustomRewriteStyle") ?? string.Empty;
