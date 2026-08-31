@@ -315,23 +315,37 @@ final class SettingsModel {
         }
     }
 
-    var secondaryTrigger: HotkeyMonitor.Trigger? {
+    var rewriteTrigger: HotkeyMonitor.Trigger? {
         didSet {
-            Settings.shared.secondaryTrigger = secondaryTrigger
+            Settings.shared.rewriteTrigger = rewriteTrigger
             onHotkeyChange?()
         }
     }
 
-    var secondaryStyle: RewriteStyle {
-        didSet { Settings.shared.secondaryStyle = secondaryStyle }
+    var rewriteStyle: RewriteStyle {
+        didSet { Settings.shared.rewriteStyle = rewriteStyle }
+    }
+
+    var translateTrigger: HotkeyMonitor.Trigger? {
+        didSet {
+            Settings.shared.translateTrigger = translateTrigger
+            onHotkeyChange?()
+        }
     }
 
     /// Whether a rewrite can run at all, and what to say when it cannot.
     ///
     /// Read from the same rule every client uses, rather than asked locally — this window used to
-    /// not ask at all, and offered the binding whatever was configured.
-    var rewriteAvailability: RewriteAvailability {
-        RewriteAvailability.forSecondKey(provider: provider, translatingInto: translateTo) { kind in
+    /// not ask at all, and offered the binding whatever was configured. It is `LiveMode`'s rule
+    /// now, the one the phones' chip already used: a desktop key and a phone chip are two ways of
+    /// choosing between the same three modes, and they were answering with two rules.
+    var rewriteAvailability: RewriteAvailability { availability(of: .rewrite) }
+
+    /// The same question for the translate key, which additionally needs a target language.
+    var translateAvailability: RewriteAvailability { availability(of: .translate) }
+
+    private func availability(of mode: LiveMode) -> RewriteAvailability {
+        mode.availability(provider: provider, language: translateTo) { kind in
             !(Settings.shared.resolvedAPIKey(for: kind) ?? "").isEmpty
         }
     }
@@ -671,8 +685,9 @@ final class SettingsModel {
         hotkeyMode = settings.hotkeyMode
         cancelShortcut = settings.cancelShortcut
         finishAndSendAction = settings.finishAndSendAction
-        secondaryTrigger = settings.secondaryTrigger
-        secondaryStyle = settings.secondaryStyle
+        rewriteTrigger = settings.rewriteTrigger
+        rewriteStyle = settings.rewriteStyle
+        translateTrigger = settings.translateTrigger
         microphoneUID = settings.microphoneUID
         interactionSounds = settings.interactionSounds
         launchAtLogin = LaunchAtLogin.isEnabled
@@ -743,8 +758,9 @@ final class SettingsModel {
                 hotkeyMode: settings.hotkeyMode.rawValue,
                 cancelShortcut: settings.cancelShortcut.rawValue,
                 finishAndSendAction: settings.finishAndSendAction.rawValue,
-                secondaryTrigger: settings.secondaryTrigger?.rawValue,
-                secondaryStyle: settings.secondaryStyle.rawValue,
+                secondaryTrigger: settings.rewriteTrigger?.rawValue,
+                secondaryStyle: settings.rewriteStyle.rawValue,
+                translateTrigger: settings.translateTrigger?.rawValue,
                 interactionSounds: settings.interactionSounds,
                 launchAtLogin: LaunchAtLogin.isEnabled,
                 groundingEnabled: settings.groundingEnabled,
@@ -818,7 +834,8 @@ final class SettingsModel {
 
         var desktopValues: (
             HotkeyMonitor.Trigger, HotkeyMonitor.Mode, CancelShortcut, FinishAndSendAction,
-            HotkeyMonitor.Trigger?, RewriteStyle, LogLevel, TranscriptMode
+            HotkeyMonitor.Trigger?, RewriteStyle, HotkeyMonitor.Trigger?, LogLevel,
+            TranscriptMode
         )?
         if let desktop = document.desktop {
             guard let trigger = HotkeyMonitor.Trigger(rawValue: desktop.trigger) else {
@@ -837,16 +854,23 @@ final class SettingsModel {
                 throw SettingsTransferApplyError.unsupportedValue(
                     field: "desktop.finishAndSendAction", value: desktop.finishAndSendAction)
             }
-            let secondaryTrigger: HotkeyMonitor.Trigger? = try desktop.secondaryTrigger.map { raw in
+            let rewriteTrigger: HotkeyMonitor.Trigger? = try desktop.secondaryTrigger.map { raw in
                 guard let value = HotkeyMonitor.Trigger(rawValue: raw) else {
                     throw SettingsTransferApplyError.unsupportedValue(
                         field: "desktop.secondaryTrigger", value: raw)
                 }
                 return value
             }
+            let translateTrigger: HotkeyMonitor.Trigger? = try desktop.translateTrigger.map { raw in
+                guard let value = HotkeyMonitor.Trigger(rawValue: raw) else {
+                    throw SettingsTransferApplyError.unsupportedValue(
+                        field: "desktop.translateTrigger", value: raw)
+                }
+                return value
+            }
             // "bullets" predates the rename to casual; a transfer document crosses versions,
             // so the retired spelling degrades to the default instead of failing the import.
-            guard let secondaryStyle = RewriteStyle(rawValue: desktop.secondaryStyle)
+            guard let rewriteStyle = RewriteStyle(rawValue: desktop.secondaryStyle)
                 ?? (desktop.secondaryStyle == "bullets" ? .casual : nil)
             else {
                 throw SettingsTransferApplyError.unsupportedValue(
@@ -861,7 +885,8 @@ final class SettingsModel {
                     field: "desktop.fileMode", value: desktop.fileMode)
             }
             desktopValues = (
-                trigger, mode, cancel, finish, secondaryTrigger, secondaryStyle, logLevel, fileMode)
+                trigger, mode, cancel, finish, rewriteTrigger, rewriteStyle, translateTrigger,
+                logLevel, fileMode)
         }
 
         let settings = Settings.shared
@@ -895,8 +920,9 @@ final class SettingsModel {
             settings.hotkeyMode = values.1
             settings.cancelShortcut = values.2
             settings.finishAndSendAction = values.3
-            settings.secondaryTrigger = values.4
-            settings.secondaryStyle = values.5
+            settings.rewriteTrigger = values.4
+            settings.rewriteStyle = values.5
+            settings.translateTrigger = values.6
             settings.interactionSounds = desktop.interactionSounds
             LaunchAtLogin.set(desktop.launchAtLogin)
             settings.groundingEnabled = desktop.groundingEnabled
@@ -904,9 +930,9 @@ final class SettingsModel {
             settings.keytermBiasing = desktop.keytermBiasing
             settings.blockedBundleIDs = desktop.blockedBundleIDs
             settings.blockedURLPrefixes = desktop.blockedURLPrefixes
-            settings.logLevel = values.6
+            settings.logLevel = values.7
             settings.logContent = desktop.logContent
-            settings.fileMode = values.7
+            settings.fileMode = values.8
         }
 
         reloadTransferredSettings()
@@ -940,8 +966,9 @@ final class SettingsModel {
         hotkeyMode = settings.hotkeyMode
         cancelShortcut = settings.cancelShortcut
         finishAndSendAction = settings.finishAndSendAction
-        secondaryTrigger = settings.secondaryTrigger
-        secondaryStyle = settings.secondaryStyle
+        rewriteTrigger = settings.rewriteTrigger
+        rewriteStyle = settings.rewriteStyle
+        translateTrigger = settings.translateTrigger
         interactionSounds = settings.interactionSounds
         launchAtLogin = LaunchAtLogin.isEnabled
         groundingEnabled = settings.groundingEnabled

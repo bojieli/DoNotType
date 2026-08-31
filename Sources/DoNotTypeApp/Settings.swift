@@ -32,8 +32,12 @@ final class Settings {
         static let hotkeyMode = "hotkeyMode"
         static let cancelShortcut = "cancelShortcut"
         static let finishAndSendAction = "finishAndSendAction"
-        static let secondaryTrigger = "secondaryTrigger"
-        static let secondaryStyle = "secondaryStyle"
+        // The stored names still say "secondary" from when a rewrite was the only thing a
+        // second key could do. Renaming them would log every existing user out of their own
+        // binding to no benefit, so the spelling on disk stays and the property names moved.
+        static let rewriteTrigger = "secondaryTrigger"
+        static let rewriteStyle = "secondaryStyle"
+        static let translateTrigger = "translateTrigger"
         static let microphoneUID = "microphoneUID"
         static let interactionSounds = "interactionSounds"
         static let keytermBiasing = "keytermBiasing"
@@ -79,7 +83,7 @@ final class Settings {
             Key.cancelShortcut: CancelShortcut.escape.rawValue,
             // Finishing a message can send it to another person, so it must be a deliberate opt-in.
             Key.finishAndSendAction: FinishAndSendAction.disabled.rawValue,
-            Key.secondaryStyle: RewriteStyle.casual.rawValue,
+            Key.rewriteStyle: RewriteStyle.casual.rawValue,
             // Audible boundaries make it clear when capture has begun and ended, even when the
             // recording overlay is behind another window. Users can still turn them off below.
             Key.interactionSounds: true,
@@ -172,21 +176,31 @@ final class Settings {
         set { defaults.set(newValue, forKey: Key.interactionSounds) }
     }
 
-    /// Second key bound to a rewrite style. Off unless the user picks one, because a key that
-    /// silently rewrites what you said would be the exact failure this project exists to avoid.
-    var secondaryTrigger: HotkeyMonitor.Trigger? {
+    /// Key bound to a rewrite style. Off unless the user picks one, because a key that silently
+    /// rewrites what you said would be the exact failure this project exists to avoid.
+    var rewriteTrigger: HotkeyMonitor.Trigger? {
         get {
-            guard let raw = defaults.string(forKey: Key.secondaryTrigger) else { return nil }
+            guard let raw = defaults.string(forKey: Key.rewriteTrigger) else { return nil }
             return HotkeyMonitor.Trigger(rawValue: raw)
         }
-        set { defaults.set(newValue?.rawValue, forKey: Key.secondaryTrigger) }
+        set { defaults.set(newValue?.rawValue, forKey: Key.rewriteTrigger) }
     }
 
-    var secondaryStyle: RewriteStyle {
+    var rewriteStyle: RewriteStyle {
         get {
-            RewriteStyle(rawValue: defaults.string(forKey: Key.secondaryStyle) ?? "") ?? .casual
+            RewriteStyle(rawValue: defaults.string(forKey: Key.rewriteStyle) ?? "") ?? .casual
         }
-        set { defaults.set(newValue.rawValue, forKey: Key.secondaryStyle) }
+        set { defaults.set(newValue.rawValue, forKey: Key.rewriteStyle) }
+    }
+
+    /// Key bound to the configured target language. Off by default for the same reason the
+    /// rewrite key is: `translateTo` alone used to be enough to change what every key delivered.
+    var translateTrigger: HotkeyMonitor.Trigger? {
+        get {
+            guard let raw = defaults.string(forKey: Key.translateTrigger) else { return nil }
+            return HotkeyMonitor.Trigger(rawValue: raw)
+        }
+        set { defaults.set(newValue?.rawValue, forKey: Key.translateTrigger) }
     }
 
     var hotkeyMode: HotkeyMonitor.Mode {

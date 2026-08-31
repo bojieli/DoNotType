@@ -172,15 +172,24 @@ final class HotkeyMonitor {
     var cancelShortcut: CancelShortcut = .escape
     var finishAndSendAction: FinishAndSendAction = .disabled
 
-    /// Optional second key bound to a rewrite style.
+    /// Optional key bound to a rewrite style.
     ///
-    /// Two keys rather than a mode toggle because the choice is per-utterance, not per-session:
-    /// the same person wants verbatim for a chat message and formal for the email they write ten
-    /// seconds later. A toggle would make them remember which mode they left it in.
-    var secondaryTrigger: Trigger?
+    /// A key per mode rather than a mode toggle because the choice is per-utterance, not
+    /// per-session: the same person wants verbatim for a chat message and formal for the email
+    /// they write ten seconds later. A toggle would make them remember which mode they left it in.
+    var rewriteTrigger: Trigger?
 
-    /// Fires with `true` when the secondary key started the recording.
-    var onPressStyled: ((Bool) -> Void)?
+    /// Optional key bound to the configured target language.
+    ///
+    /// The third key exists because the alternative was a setting that quietly took the other two
+    /// over: a target language used to make *every* key translate, including the main one, which
+    /// is the single place this product broke its own promise that the main key is verbatim. The
+    /// phones answered the same question with a three-way chip; a desktop answers it with which
+    /// key is held. See `docs/PARITY.md`.
+    var translateTrigger: Trigger?
+
+    /// Fires with the mode whose key started the recording.
+    var onPressMode: ((LiveMode) -> Void)?
 
     var onPress: (() -> Void)?
     var onRelease: (() -> Void)?
@@ -211,8 +220,8 @@ final class HotkeyMonitor {
     private var pressedAt: CGEventTimestamp?
     /// Whether the in-flight recording began with this press, for `automatic` mode.
     private var startedByTap = false
-    /// Which key began the in-flight recording, so release routes to the same style.
-    private var usedSecondary = false
+    /// Which key began the in-flight recording, so release routes to the same mode.
+    private var activeMode: LiveMode = .dictate
     /// The full trigger that began the current gesture. Required for chord releases, which may
     /// arrive after their modifier flags have changed.
     private var activeTrigger: Trigger?
@@ -318,7 +327,7 @@ final class HotkeyMonitor {
 
             isHeld = true
             activeTrigger = match.trigger
-            usedSecondary = match.isSecondary
+            activeMode = match.mode
             onHoldChange?(true)
             handlePress(at: event.timestamp)
 
@@ -388,7 +397,7 @@ final class HotkeyMonitor {
                 if !isHeld {
                     isHeld = true
                     activeTrigger = match.trigger
-                    usedSecondary = match.isSecondary
+                    activeMode = match.mode
                     onHoldChange?(true)
                     handlePress(at: event.timestamp)
                 }
@@ -407,17 +416,27 @@ final class HotkeyMonitor {
         return false
     }
 
+    /// Which mode's key this keystroke is, if any.
+    ///
+    /// Ordered deliberately: the main shortcut wins if an imported or hand-edited settings file
+    /// contains a duplicate, and rewrite wins over translate on the same reasoning — a key that
+    /// silently translated when the user bound it to rewrite is the failure this whole change
+    /// exists to remove.
     private func matchingTrigger(
         keyCode: CGKeyCode, modifiers: CGEventFlags
-    ) -> (trigger: Trigger, isSecondary: Bool)? {
-        // The main shortcut wins if an imported or hand-edited settings file contains a duplicate.
+    ) -> (trigger: Trigger, mode: LiveMode)? {
         if trigger.keyCode == keyCode, trigger.modifiers == modifiers {
-            return (trigger, false)
+            return (trigger, .dictate)
         }
-        if let secondaryTrigger, secondaryTrigger.keyCode == keyCode,
-            secondaryTrigger.modifiers == modifiers
+        if let rewriteTrigger, rewriteTrigger.keyCode == keyCode,
+            rewriteTrigger.modifiers == modifiers
         {
-            return (secondaryTrigger, true)
+            return (rewriteTrigger, .rewrite)
+        }
+        if let translateTrigger, translateTrigger.keyCode == keyCode,
+            translateTrigger.modifiers == modifiers
+        {
+            return (translateTrigger, .translate)
         }
         return nil
     }
@@ -426,7 +445,7 @@ final class HotkeyMonitor {
 
     private func handlePress(at stamp: CGEventTimestamp) {
         pressedAt = stamp
-        onPressStyled?(usedSecondary)
+        onPressMode?(activeMode)
 
         let recording = isRecording()
         // Whether the release that follows is ending the recording this press started, or is

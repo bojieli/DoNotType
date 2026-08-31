@@ -43,8 +43,8 @@ final class DictationController {
     /// sit in every line without pushing the interesting fields off the end.
     static func short(_ id: UUID) -> String { String(id.uuidString.prefix(8)) }
 
-    /// Which key started the in-flight recording decides whether it is rewritten.
-    private var pendingStyle: RewriteStyle = .verbatim
+    /// Which key started the in-flight recording decides what happens to it.
+    private var pendingMode: LiveMode = .dictate
     /// Latched only when Return, rather than the normal trigger, finishes this recording.
     private var pendingFinishAndSend: FinishAndSendAction = .disabled
     private(set) var lastLearnedTerms: [String] = []
@@ -74,15 +74,14 @@ final class DictationController {
         hotkey.mode = Settings.shared.hotkeyMode
         hotkey.cancelShortcut = Settings.shared.cancelShortcut
         hotkey.finishAndSendAction = Settings.shared.finishAndSendAction
-        hotkey.secondaryTrigger = Settings.shared.secondaryTrigger
+        hotkey.rewriteTrigger = Settings.shared.rewriteTrigger
+        hotkey.translateTrigger = Settings.shared.translateTrigger
         hotkey.isRecording = { [weak self] in self?.state == .recording }
         hotkey.isDictationActive = { [weak self] in
             guard let self else { return false }
             return self.state == .recording || self.state == .transcribing
         }
-        hotkey.onPressStyled = { [weak self] isStyled in
-            self?.pendingStyle = isStyled ? Settings.shared.secondaryStyle : .verbatim
-        }
+        hotkey.onPressMode = { [weak self] mode in self?.pendingMode = mode }
         hotkey.onPress = { [weak self] in self?.beginRecording() }
         hotkey.onRelease = { [weak self] in self?.finishRecording() }
         hotkey.onHoldChange = { [weak self] held in self?.triggerHoldChanged(held) }
@@ -125,7 +124,8 @@ final class DictationController {
         hotkey.mode = Settings.shared.hotkeyMode
         hotkey.cancelShortcut = Settings.shared.cancelShortcut
         hotkey.finishAndSendAction = Settings.shared.finishAndSendAction
-        hotkey.secondaryTrigger = Settings.shared.secondaryTrigger
+        hotkey.rewriteTrigger = Settings.shared.rewriteTrigger
+        hotkey.translateTrigger = Settings.shared.translateTrigger
         _ = hotkey.start()
     }
 
@@ -205,7 +205,7 @@ final class DictationController {
                 [
                     "dictation": Self.short(pendingID),
                     "mode": Settings.shared.hotkeyMode.rawValue,
-                    "style": pendingStyle.rawValue,
+                    "live": pendingMode.rawValue,
                     "device": Settings.shared.microphoneUID ?? "system default",
                     "provider": Settings.shared.provider.rawValue,
                     "model": Settings.shared.model,
@@ -445,16 +445,15 @@ final class DictationController {
             return
         }
 
-        let style = pendingStyle
-        pendingStyle = .verbatim
+        let mode = pendingMode
+        pendingMode = .dictate
         let settings = Settings.shared
-        // A target language replaces the second stage rather than joining it. Two jobs in one
-        // request is exactly the combination this project has already measured as worse, and
-        // "formal French" is a feature request rather than a fix for the one that was asked for.
-        // The settings window says so beside the rewrite picker, through `RewriteAvailability`.
-        let stage: TranscriptMode = settings.translateTo.isEmpty
-            ? (style.isRewrite ? .rewrite(style) : .verbatim)
-            : .translate(settings.translateTo)
+        // Resolved by the rule all four clients share rather than by a conditional that only the
+        // desktops had. A target language used to be read here and applied to every dictation, so
+        // setting one took the main key away from verbatim; now it is what the translate key
+        // writes in, and nothing else. A rewrite and a translation still never combine — that is
+        // `LiveMode.stage`'s job, and it is the combination this project measured as worse.
+        let stage = mode.stage(style: settings.rewriteStyle, language: settings.translateTo)
         let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName
 
         guard let coordinator = makeCoordinator() else {
@@ -774,7 +773,7 @@ final class DictationController {
     }
 
     private func transcriptionCancelled() {
-        pendingStyle = .verbatim
+        pendingMode = .dictate
         log.info("transcription cancelled", ["dictation": Self.short(pendingID)])
         overlay.hide()
         state = .idle

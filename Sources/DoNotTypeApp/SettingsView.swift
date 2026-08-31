@@ -550,7 +550,7 @@ private struct GeneralTab: View {
                             get: { Optional(model.trigger) },
                             set: { if let value = $0 { model.trigger = value } }),
                         canClear: false,
-                        conflictingValue: model.secondaryTrigger,
+                        conflictingValues: [model.rewriteTrigger, model.translateTrigger],
                         setCaptureActive: model.setHotkeyCaptureActive)
                 }
                 Picker("Behaviour", selection: $model.hotkeyMode) {
@@ -641,38 +641,7 @@ private struct GeneralTab: View {
                 .foregroundStyle(.secondary)
             }
 
-            // Its own section, under Typography and above Rewrite, because it is the setting that
-            // *replaces* a rewrite rather than another shade of one.
-            Section("Translation") {
-                LabeledContent("Translate to") {
-                    TextField("Off — keep the language I spoke", text: $model.translateTo)
-                        .textFieldStyle(.roundedBorder)
-                }
-                if !TranslationTarget.suggestions.isEmpty {
-                    Picker("Common languages", selection: $model.translateTo) {
-                        Text("Off").tag("")
-                        ForEach(TranslationTarget.suggestions, id: \.self) { language in
-                            Text(language).tag(language)
-                        }
-                    }
-                }
-                if let problem = TranslationTarget.validationMessage(model.translateTo) {
-                    Label(problem, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Text(
-                    "Speak one language and get another at the cursor. This is the one setting "
-                        + "that makes the main key deliver something other than what you said — "
-                        + "and the verbatim transcript is still produced first, still stored, and "
-                        + "still one ⌘⌥Z away. The field is free text, like Model: the model is "
-                        + "the authority on which languages it can write. While a language is set "
-                        + "it is the second stage, so the rewrite styles below do not apply."
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            }
+            TranslationSection(model: model)
 
             RewriteSection(model: model)
 
@@ -1153,7 +1122,10 @@ private struct HistoryRow: View {
 private struct HotkeyRecorder: View {
     @Binding var value: HotkeyMonitor.Trigger?
     let canClear: Bool
-    let conflictingValue: HotkeyMonitor.Trigger?
+    /// Every key already bound to another mode. A list rather than one value because there are
+    /// three of them now, and a recorder that only knew about one would happily let Translate
+    /// steal the key Rewrite is using.
+    let conflictingValues: [HotkeyMonitor.Trigger?]
     let setCaptureActive: (Bool) -> Bool
 
     @State private var isCapturing = false
@@ -1342,8 +1314,8 @@ private struct HotkeyRecorder: View {
             issue = "Add ⌘, ⌥, or ⌃, or use a modifier or function key by itself."
             return
         }
-        guard trigger != conflictingValue else {
-            issue = "This hot key is already used by the other dictation action."
+        guard !conflictingValues.contains(trigger) else {
+            issue = "This hot key is already used by another dictation action."
             return
         }
         stopCapture()
@@ -1391,6 +1363,77 @@ private struct HotkeyRecorder: View {
 /// Shown even when it cannot run, greyed out with the reason. Hiding it is what made the feature
 /// look absent rather than unavailable, and "why is this off" is answerable while "where is it"
 /// is not.
+/// Its own section, under Typography and above Rewrite, because it is the setting that
+/// *replaces* a rewrite rather than another shade of one.
+///
+/// A key of its own, on the same reasoning as Rewrite's. A target language used to be enough on
+/// its own to change what every key delivered — the main one included — which made it the one
+/// setting in the product that could take verbatim away without being asked twice. It is now what
+/// the translate key writes in, and nothing at all until that key is bound.
+private struct TranslationSection: View {
+    @Bindable var model: SettingsModel
+
+    var body: some View {
+        let availability = model.translateAvailability
+
+        Section("Translation") {
+            LabeledContent("Translate hot key") {
+                HotkeyRecorder(
+                    value: $model.translateTrigger,
+                    canClear: true,
+                    conflictingValues: [model.trigger, model.rewriteTrigger],
+                    setCaptureActive: model.setHotkeyCaptureActive)
+            }
+
+            LabeledContent("Translate to") {
+                TextField("Not set — nothing to translate into", text: $model.translateTo)
+                    .textFieldStyle(.roundedBorder)
+            }
+            if !TranslationTarget.suggestions.isEmpty {
+                Picker("Common languages", selection: $model.translateTo) {
+                    Text("Not set").tag("")
+                    ForEach(TranslationTarget.suggestions, id: \.self) { language in
+                        Text(language).tag(language)
+                    }
+                }
+            }
+            if let problem = TranslationTarget.validationMessage(model.translateTo) {
+                Label(problem, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // Only once a key is bound. Before that this section is an offer, and an offer that
+            // opens with a warning about a language nobody has asked for yet reads as a fault.
+            if model.translateTrigger != nil, let reason = availability.reason {
+                Label(reason, systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if model.translateTrigger == nil {
+                Text(
+                    "Optional. Bind a third key and holding it dictates and then writes the same "
+                        + "thing in your target language. Your main key stays verbatim and your "
+                        + "rewrite key stays a rewrite — which key you hold decides, before you "
+                        + "speak."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            } else {
+                Text(
+                    "\(model.translateTrigger!.label) dictates and then writes it in "
+                        + "\(model.translateTo). The verbatim transcript is still produced "
+                        + "first, still stored, and still one ⌘⌥Z away. The field is free text, "
+                        + "like Model: the model is the authority on which languages it can write."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 private struct RewriteSection: View {
     @Bindable var model: SettingsModel
 
@@ -1398,23 +1441,23 @@ private struct RewriteSection: View {
         let availability = model.rewriteAvailability
 
         Section("Rewrite") {
-            LabeledContent("Second hot key") {
+            LabeledContent("Rewrite hot key") {
                 HotkeyRecorder(
-                    value: $model.secondaryTrigger,
+                    value: $model.rewriteTrigger,
                     canClear: true,
-                    conflictingValue: model.trigger,
+                    conflictingValues: [model.trigger, model.translateTrigger],
                     setCaptureActive: model.setHotkeyCaptureActive)
             }
             .disabled(!availability.isAvailable)
 
-            Picker("It produces", selection: $model.secondaryStyle) {
+            Picker("It produces", selection: $model.rewriteStyle) {
                 ForEach(RewriteStyle.allCases.filter(\.isRewrite), id: \.self) { style in
                     Text(style.label).tag(style)
                 }
             }
-            .disabled(!availability.isAvailable || model.secondaryTrigger == nil)
+            .disabled(!availability.isAvailable || model.rewriteTrigger == nil)
 
-            if model.secondaryStyle == .custom {
+            if model.rewriteStyle == .custom {
                 LabeledContent("Your style") {
                     TextField(
                         "Describe it, or paste a sentence written the way you want yours",
@@ -1434,7 +1477,7 @@ private struct RewriteSection: View {
                     .font(.footnote)
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
-            } else if model.secondaryTrigger == nil {
+            } else if model.rewriteTrigger == nil {
                 Text(
                     "Optional. Bind a second key and holding it dictates and then rewrites — for "
                         + "when you want an email rather than a transcript. Your main key always "
@@ -1445,7 +1488,7 @@ private struct RewriteSection: View {
             } else {
                 Text(
                     "\(model.trigger.label) transcribes verbatim; "
-                        + "\(model.secondaryTrigger!.label) rewrites. Which key you hold decides, "
+                        + "\(model.rewriteTrigger!.label) rewrites. Which key you hold decides, "
                         + "before you speak — there is no mode to leave switched on. The verbatim "
                         + "transcript is stored either way, so you can always see what you "
                         + "actually said."
