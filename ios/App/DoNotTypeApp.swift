@@ -164,30 +164,38 @@ struct ContentView: View {
         }
     }
 
-    /// The phone equivalent of the desktop's two hotkeys. This chooses the operation only; the
-    /// rewrite style is configured in Settings instead of being mixed with dictation fidelity.
+    /// The phone equivalent of the desktop's two hotkeys, plus the third thing a second stage can
+    /// be. This chooses the operation only; what Rewrite and Translate each produce is configured
+    /// in Settings, which is also where a target language is typed — a mode control that also
+    /// carried a language list would be answering two questions at once, and the keyboard's copy
+    /// of this control cannot type into itself at all.
     private var dictationModeBadge: some View {
         HStack(spacing: 3) {
-            modeButton("Dictate", rewrite: false)
-            modeButton("Rewrite", rewrite: true)
-                .disabled(!model.canRewrite)
+            ForEach(LiveMode.allCases, id: \.self) { mode in
+                modeButton(mode)
+            }
         }
         .padding(3)
         .background(.quaternary, in: Capsule())
     }
 
-    private func modeButton(_ title: String, rewrite: Bool) -> some View {
-        let selected = model.liveStyle.isRewrite == rewrite
-        return Button(title) { model.setRewriteModeEnabled(rewrite) }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(selected ? Color.white : Color.primary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(selected ? Color.accentColor : Color.clear, in: Capsule())
-            .buttonStyle(.plain)
-            .disabled(model.state == .transcribing)
-            .accessibilityIdentifier(rewrite ? "mode-rewrite" : "mode-dictate")
-            .accessibilityAddTraits(selected ? .isSelected : [])
+    private func modeButton(_ mode: LiveMode) -> some View {
+        let selected = model.liveMode == mode
+        let availability = model.availability(of: mode)
+        // Refused rather than stored when it cannot run: the model says why, in the sentence the
+        // other three clients use.
+        return Button(mode.label) { model.setLiveMode(mode) }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(selected ? Color.white : Color.primary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(selected ? Color.accentColor : Color.clear, in: Capsule())
+        .buttonStyle(.plain)
+        .disabled(model.state == .transcribing)
+        .opacity(availability.isAvailable ? 1 : 0.55)
+        .accessibilityIdentifier("mode-\(mode.rawValue)")
+        .accessibilityHint(availability.reason ?? "")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var recordButton: some View {

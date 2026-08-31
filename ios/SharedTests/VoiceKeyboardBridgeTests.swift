@@ -1,3 +1,4 @@
+import DoNotTypeCore
 import Foundation
 import XCTest
 
@@ -94,14 +95,64 @@ final class VoiceKeyboardBridgeTests: XCTestCase {
         XCTAssertEqual(bridge.keyboardSetupStatus.hasFullAccess, true)
     }
 
-    func testKeyboardPersistsTheDictateOrRewriteModeSeparatelyFromItsStyle() {
-        XCTAssertNil(bridge.rewriteModeEnabled)
+    func testKeyboardPersistsTheModeSeparatelyFromWhatEachModeProduces() {
+        XCTAssertNil(bridge.liveMode, "nil is an install that has never chosen, not Dictate")
 
-        bridge.setRewriteModeEnabled(true)
-        XCTAssertEqual(bridge.rewriteModeEnabled, true)
+        for mode in LiveMode.allCases {
+            bridge.setLiveMode(mode)
+            XCTAssertEqual(bridge.liveMode, mode)
+        }
+    }
 
-        bridge.setRewriteModeEnabled(false)
-        XCTAssertEqual(bridge.rewriteModeEnabled, false)
+    /// An install that used the two-state switch keeps whichever half of it it was on. Reading the
+    /// old key rather than resetting matters: the chip is the control people set once.
+    func testTheOldTwoStateSwitchMigratesIntoTheMode() {
+        defaults.set(true, forKey: "voiceKeyboard.rewriteModeEnabled")
+        XCTAssertEqual(bridge.liveMode, .rewrite)
+
+        defaults.set(false, forKey: "voiceKeyboard.rewriteModeEnabled")
+        XCTAssertEqual(bridge.liveMode, .dictate)
+
+        // A choice made since then wins over the migrated one.
+        bridge.setLiveMode(.translate)
+        XCTAssertEqual(bridge.liveMode, .translate)
+    }
+
+    /// The keyboard cannot read the app's Keychain, so the app publishes which case the shared rule
+    /// landed on and the keyboard rebuilds the sentence from it. The wording stays in one place.
+    func testTheKeyboardLearnsWhyASecondStageCannotRun() {
+        XCTAssertEqual(bridge.secondStageBlocker, .none)
+        XCTAssertTrue(
+            bridge.secondStageBlocker.availability(for: .rewrite, translationTarget: "")
+                .isAvailable)
+
+        bridge.publishSecondStageBlocker(SecondStageBlocker(.noKey(.rewriting)))
+        XCTAssertEqual(bridge.secondStageBlocker, .noKey)
+        XCTAssertEqual(
+            bridge.secondStageBlocker.availability(for: .translate, translationTarget: "French"),
+            .noKey(.translating),
+            "the job is whichever mode is asking, not the one the app happened to resolve")
+
+        bridge.publishSecondStageBlocker(
+            SecondStageBlocker(.backendCannotRewrite(.deepgram, .rewriting)))
+        XCTAssertEqual(bridge.secondStageBlocker, .backend(.deepgram))
+
+        bridge.publishSecondStageBlocker(SecondStageBlocker(.available))
+        XCTAssertEqual(bridge.secondStageBlocker, .none)
+    }
+
+    /// Dictation has no second stage to be missing, and Translate needs a language before it needs
+    /// a backend — the same order `LiveMode.availability` uses on Android.
+    func testTheKeyboardCanAlwaysDictateAndNeedsALanguageToTranslate() {
+        bridge.publishSecondStageBlocker(SecondStageBlocker(.noKey(.rewriting)))
+        XCTAssertTrue(
+            bridge.secondStageBlocker.availability(for: .dictate, translationTarget: "")
+                .isAvailable)
+
+        bridge.publishSecondStageBlocker(SecondStageBlocker(.available))
+        XCTAssertEqual(
+            bridge.secondStageBlocker.availability(for: .translate, translationTarget: " "),
+            .noTargetLanguage)
     }
 
     func testKeyboardPersistsAndClearsTheCallingApplication() {

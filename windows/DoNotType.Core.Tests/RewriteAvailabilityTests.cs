@@ -64,8 +64,12 @@ public class RewriteAvailabilityTests
     {
         RewriteAvailability[] unavailable =
         [
-            new RewriteAvailability.NoKey(),
-            new RewriteAvailability.BackendCannotRewrite(ProviderKind.Deepgram),
+            new RewriteAvailability.NoKey(SecondStageJob.Rewriting),
+            new RewriteAvailability.BackendCannotRewrite(
+                ProviderKind.Deepgram, SecondStageJob.Rewriting),
+            new RewriteAvailability.NoKey(SecondStageJob.Translating),
+            new RewriteAvailability.BackendCannotRewrite(
+                ProviderKind.Deepgram, SecondStageJob.Translating),
         ];
         foreach (var state in unavailable)
         {
@@ -73,6 +77,7 @@ public class RewriteAvailabilityTests
             Assert.Contains("Add a", state.Reason);
         }
         Assert.Empty(new RewriteAvailability.Available().Reason);
+        Assert.Contains("Settings", new RewriteAvailability.NoTargetLanguage().Reason);
     }
 
     /// <summary>
@@ -82,7 +87,8 @@ public class RewriteAvailabilityTests
     [Fact]
     public void TheReasonNamesTheBackendWithoutRepeatingItself()
     {
-        var reason = new RewriteAvailability.BackendCannotRewrite(ProviderKind.Deepgram).Reason;
+        var reason = new RewriteAvailability.BackendCannotRewrite(
+            ProviderKind.Deepgram, SecondStageJob.Rewriting).Reason;
         Assert.Contains("Deepgram", reason);
         Assert.DoesNotContain("transcription only", reason);
     }
@@ -96,10 +102,33 @@ public class RewriteAvailabilityTests
     {
         Assert.Equal(
             "Add an API key first — without one nothing can run, rewriting included.",
-            new RewriteAvailability.NoKey().Reason);
+            new RewriteAvailability.NoKey(SecondStageJob.Rewriting).Reason);
         Assert.Equal(
             "Deepgram only transcribes audio and cannot rewrite text. Add a key for a backend "
             + "that can, and rewriting will use it.",
-            new RewriteAvailability.BackendCannotRewrite(ProviderKind.Deepgram).Reason);
+            new RewriteAvailability.BackendCannotRewrite(
+                ProviderKind.Deepgram, SecondStageJob.Rewriting).Reason);
+    }
+
+    /// <summary>
+    /// The phones grew a third mode, and the two backend-shaped sentences have to name the job the
+    /// user actually chose: "cannot rewrite text" sends someone who asked for a translation to look
+    /// for the wrong setting. Windows has no mode chip -- a desktop chooses by which key it holds --
+    /// but it ships the same rule and the same wording.
+    /// </summary>
+    [Fact]
+    public void TheTranslationWordingMatchesTheOtherClients()
+    {
+        Assert.Equal(
+            "Add an API key first — without one nothing can run, translating included.",
+            new RewriteAvailability.NoKey(SecondStageJob.Translating).Reason);
+        Assert.Equal(
+            "Deepgram only transcribes audio and cannot translate text. Add a key for a backend "
+            + "that can, and translating will use it.",
+            new RewriteAvailability.BackendCannotRewrite(
+                ProviderKind.Deepgram, SecondStageJob.Translating).Reason);
+        Assert.Equal(
+            "Set a target language in Settings first, and Translate will write in it.",
+            new RewriteAvailability.NoTargetLanguage().Reason);
     }
 }

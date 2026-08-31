@@ -849,12 +849,12 @@ class SettingsActivity : AppCompatActivity() {
         // From the shared rule, so a phone and a laptop answer "can this rewrite" the same way.
         // Stated whether or not it can: a note that appears only on failure leaves the feature
         // undiscoverable in the ordinary case, which is how it came to look absent entirely.
-        val availability = RewriteAvailability.resolve(kind, Settings.translateTo) {
+        val availability = RewriteAvailability.resolve(kind) {
             !Settings.keyFor(it).isNullOrBlank()
         }
         rewriteStylePicker.isEnabled = availability.isAvailable
         rewriteNote.text = availability.reason
-            ?: "Use the small Dictate/Rewrite switch on the keyboard before you speak. This " +
+            ?: "Tap the mode chip on the keyboard before you speak and pick Rewrite. This " +
                 "setting controls what Rewrite produces; Fidelity only cleans the transcript. " +
                 "The verbatim transcript is kept either way."
 

@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import app.donottype.core.ChineseScript
 import app.donottype.core.DictationStyle
 import app.donottype.core.Fidelity
+import app.donottype.core.LiveMode
 import app.donottype.core.Log
 import app.donottype.core.LogLevel
 import app.donottype.core.LogRouter
@@ -42,6 +43,7 @@ object Settings {
     private const val KEY_CUSTOM_DICTATION_STYLE = "customDictationStyle"
     private const val KEY_CUSTOM_REWRITE_STYLE = "customRewriteStyle"
     private const val KEY_TRANSLATE_TO = "translateTo"
+    private const val KEY_LIVE_MODE = "liveMode"
     private const val KEY_GROUNDING = "grounding"
     private const val KEY_BLOCKED = "blockedPackages"
     private const val KEY_RETENTION = "retention"
@@ -219,10 +221,15 @@ object Settings {
             if (liveStyle.isRewrite) liveStyle = value
         }
 
+    /**
+     * Kept for the settings transfer, whose document carries a style rather than a mode so that an
+     * older client can still read a file this one writes. Everything else asks [liveMode].
+     */
     var rewriteModeEnabled: Boolean
-        get() = liveStyle.isRewrite
+        get() = liveMode == LiveMode.REWRITE
         set(value) {
             liveStyle = if (value) preferredRewriteStyle else RewriteStyle.VERBATIM
+            liveMode = if (value) LiveMode.REWRITE else LiveMode.DICTATE
         }
 
     var keytermBiasing: Boolean
@@ -330,6 +337,29 @@ object Settings {
             ChineseScript.DEFAULT
         }
         set(value) { if (ready) prefs.edit().putString(KEY_CHINESE_SCRIPT, value.id).apply() }
+
+    /**
+     * What the keyboard will do with the next dictation: dictate, rewrite or translate.
+     *
+     * Replaces the old `rewriteModeEnabled` boolean, which could not represent the third answer —
+     * translation was a settings flag that silently overrode the chip. See [LiveMode].
+     */
+    var liveMode: LiveMode
+        get() {
+            if (!ready) return LiveMode.DEFAULT
+            prefs.getString(KEY_LIVE_MODE, null)?.let { stored ->
+                LiveMode.entries.firstOrNull { it.id == stored }?.let { return it }
+            }
+            // An install that used the two-state switch keeps what it was on, including the target
+            // language that used to override it — which is what the older build actually did with
+            // these two settings.
+            return when {
+                translateTo.isNotEmpty() -> LiveMode.TRANSLATE
+                liveStyle.isRewrite -> LiveMode.REWRITE
+                else -> LiveMode.DICTATE
+            }
+        }
+        set(value) { if (ready) prefs.edit().putString(KEY_LIVE_MODE, value.id).apply() }
 
     /** How a dictation is written down: one of a few presets, or the user's own text below. */
     var dictationStyle: DictationStyle

@@ -12,6 +12,7 @@ import app.donottype.core.DictationStyle
 import app.donottype.core.Fidelity
 import app.donottype.core.LogRouter
 import app.donottype.core.ProviderKind
+import app.donottype.core.LiveMode
 import app.donottype.core.RewriteStyle
 import app.donottype.core.SummaryStyle
 import app.donottype.core.TranscriptMode
@@ -109,10 +110,10 @@ class SettingsActivityTest {
     }
 
     @Test
-    fun rewriteStyleIsConfiguredSeparatelyFromTheLiveDictateOrRewriteMode() {
+    fun rewriteStyleIsConfiguredSeparatelyFromTheLiveMode() {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
-                Settings.liveStyle = RewriteStyle.VERBATIM
+                Settings.liveMode = LiveMode.DICTATE
                 val root = activity.findViewById<ViewGroup>(android.R.id.content)
                 val picker = root.firstDescendant(Spinner::class.java) {
                     it.contentDescription == "rewrite-style"
@@ -140,8 +141,8 @@ class SettingsActivityTest {
                 assertEquals(RewriteStyle.CONCISE, Settings.preferredRewriteStyle)
                 assertEquals(
                     "changing rewrite formatting must not silently turn Rewrite on",
-                    RewriteStyle.VERBATIM,
-                    Settings.liveStyle,
+                    LiveMode.DICTATE,
+                    Settings.liveMode,
                 )
             }
         }

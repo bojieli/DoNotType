@@ -63,7 +63,7 @@ result pending rather than clearing it after an insertion attempt through a stal
 The extension uses a compact 205-point surface containing, in order:
 
 - status;
-- a Dictate/Rewrite mode switch;
+- a Dictate/Rewrite/Translate mode chip, which opens a menu;
 - a 170×58-point pill-shaped Speak control;
 - a utility row with Settings, Return, and Backspace.
 

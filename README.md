@@ -53,8 +53,9 @@ said. Voice is the fastest way in; text is the precise, inspectable way back.
 
 ## Dictation that stays yours
 
-Live dictation has two modes. **Dictate** keeps your wording and is the default. **Rewrite** can make
-the result formal, concise, or casual. The original transcript remains available in either mode.
+Live dictation has three modes. **Dictate** keeps your wording and is the default. **Rewrite** can
+make the result formal, concise, or casual. **Translate** writes it in another language. The
+original transcript remains available in every one of them.
 
 DoNotType uses the text on your screen to resolve spelling. It can pick up a project name, an
 acronym, or a version number that a model would otherwise guess at. The screen helps with spelling;
@@ -139,12 +140,18 @@ DoNotType captures screen context within a 500 ms budget while you are still spe
 not add another wait. It prefers accessibility text and uses a screenshot where the platform
 supports one. If the screen and the recording disagree, the recording wins.
 
-### Two dictation modes
+### Three dictation modes
 
 | Mode | Best for | Behavior |
 |---|---|---|
 | **Dictate** | Everyday dictation; the default | Returns the words you said, with screen context used to resolve spelling. |
 | **Rewrite** | Formal, concise, or casual text | Returns both the rewritten text and the original transcript. |
+| **Translate** | Speaking one language, typing another | Returns the target language and the original transcript. |
+
+On the phones these are one chip you tap before speaking — a menu on the keyboard, three segments on
+the app's own screen. The desktops answer the same question with the keyboard instead: the main key
+dictates and the second key rewrites, and a target language in Settings replaces what that second
+key produces.
 
 Changed your mind after the fact? `⌘⌥Z` on macOS or `Ctrl+Alt+Z` on Windows puts your own wording
 back.

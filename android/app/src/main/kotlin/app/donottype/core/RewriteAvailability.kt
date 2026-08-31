@@ -1,7 +1,20 @@
 package app.donottype.core
 
 /**
- * Whether the rewrite stage can run at all, and what to say when it cannot.
+ * Which of the two second-stage jobs is being asked about.
+ *
+ * Rewriting and translating have exactly the same requirements — both take the transcript and hand
+ * it back to a model as text — so they share one rule and differ only in the noun the sentence
+ * uses. Telling a user that a backend "cannot rewrite text" when they asked it to translate sends
+ * them to look for the wrong setting.
+ */
+enum class SecondStageJob(val gerund: String, val verb: String) {
+    REWRITING("rewriting", "rewrite"),
+    TRANSLATING("translating", "translate"),
+}
+
+/**
+ * Whether the second stage can run at all, and what to say when it cannot.
  *
  * Every client asked this question separately and got a different answer. macOS never asked and
  * offered the binding regardless; Windows warned but left the control enabled; this client and iOS
@@ -19,19 +32,22 @@ sealed class RewriteAvailability {
     data object Available : RewriteAvailability()
 
     /** No key for the selected backend, so nothing can run — not a rewrite, not a transcript. */
-    data object NoKey : RewriteAvailability()
+    data class NoKey(val job: SecondStageJob) : RewriteAvailability()
 
     /**
      * The selected backend turns audio into text and cannot turn text into text, and no other
      * configured backend can either.
      */
-    data class BackendCannotRewrite(val kind: ProviderKind) : RewriteAvailability()
+    data class BackendCannotRewrite(
+        val kind: ProviderKind,
+        val job: SecondStageJob,
+    ) : RewriteAvailability()
 
     /**
-     * A target language is set, so the second stage is a translation. Not a failure and not a
-     * missing backend — the user asked for one job rather than the other.
+     * Translate was chosen with no target language configured. Not a backend problem: the mode is
+     * runnable as soon as Settings says which language to write in.
      */
-    data class Translating(val language: String) : RewriteAvailability()
+    data object NoTargetLanguage : RewriteAvailability()
 
     val isAvailable: Boolean get() = this is Available
 
@@ -44,13 +60,13 @@ sealed class RewriteAvailability {
     val reason: String?
         get() = when (this) {
             is Available -> null
-            is NoKey -> "Add an API key first — without one nothing can run, rewriting included."
+            is NoKey ->
+                "Add an API key first — without one nothing can run, ${job.gerund} included."
             is BackendCannotRewrite ->
-                "${kind.plainName} only transcribes audio and cannot rewrite text. Add a key for " +
-                    "a backend that can, and rewriting will use it."
-            is Translating ->
-                "Dictations are being translated into $language, which is the second stage. " +
-                    "Clear the target language to rewrite instead."
+                "${kind.plainName} only transcribes audio and cannot ${job.verb} text. Add a key " +
+                    "for a backend that can, and ${job.gerund} will use it."
+            is NoTargetLanguage ->
+                "Set a target language in Settings first, and Translate will write in it."
         }
 
     companion object {
@@ -60,30 +76,24 @@ sealed class RewriteAvailability {
          * @param provider the selected backend.
          * @param hasKey whether a usable key exists for a backend. Passed in rather than read here
          *   so the Keychain, DPAPI and SharedPreferences all answer the same question.
-         * @param translatingInto the configured target language, or empty. Checked before the
-         *   backend questions on purpose: with a target set the rewrite stage is not going to run
-         *   whatever the backends can do, and reporting a key problem for a control that is
-         *   unavailable for an unrelated reason sends the user to fix the wrong thing.
+         * @param job which second stage is being asked about. Only the wording depends on it.
          */
         fun resolve(
             provider: ProviderKind,
-            translatingInto: String = "",
+            job: SecondStageJob = SecondStageJob.REWRITING,
             hasKey: (ProviderKind) -> Boolean,
         ): RewriteAvailability {
-            val target = TranslationTarget.sanitized(translatingInto)
-            if (target.isNotEmpty()) return Translating(target)
-
             // Asked first, and about the selected backend: with no key the dictation itself fails,
             // so a message about rewriting would answer the second question while the first is
             // still wrong.
-            if (!hasKey(provider)) return NoKey
+            if (!hasKey(provider)) return NoKey(job)
 
             if (provider.supportsTextGeneration) return Available
 
             // A recogniser with no text endpoint borrows a second stage from another configured
             // backend, which is the behaviour file transcription already had.
             val borrowed = ProviderKind.entries.any { it.supportsTextGeneration && hasKey(it) }
-            return if (borrowed) Available else BackendCannotRewrite(provider)
+            return if (borrowed) Available else BackendCannotRewrite(provider, job)
         }
     }
 }

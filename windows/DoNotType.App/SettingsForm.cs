@@ -950,7 +950,7 @@ public sealed class SettingsForm : Form
         // enabled, macOS never asked, and the mobiles asked a question about the kind of backend
         // rather than about whether one was usable.
         var kind = SelectedProvider();
-        var availability = RewriteAvailability.Resolve(kind, HasKeyFor, _settings.TranslateTo);
+        var availability = RewriteAvailability.ForSecondKey(kind, _settings.TranslateTo, HasKeyFor);
         _secondKeyNote.Text = availability.Reason;
         _secondKeyNote.Visible = _secondKeyNote.Text.Length > 0;
 

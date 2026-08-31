@@ -392,9 +392,10 @@ struct SettingsView: View {
             Text("Rewrite")
         } footer: {
             Text(
-                "The Dictate/Rewrite badge chooses the operation before you speak. This setting "
-                    + "chooses what Rewrite produces. Fidelity above only cleans the transcript; "
-                    + "rewriting may reword it. The verbatim transcript is always kept."
+                "The mode chip chooses the operation before you speak — Dictate, Rewrite or "
+                    + "Translate. This setting chooses what Rewrite produces. Fidelity above only "
+                    + "cleans the transcript; rewriting may reword it. The verbatim transcript is "
+                    + "always kept."
             )
         }
     }

@@ -126,13 +126,15 @@ final class DoNotTypeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["record"].isEnabled)
     }
 
-    /// Live dictation chooses only the operation. Formatting styles live in Settings, where they
-    /// cannot be mistaken for fidelity levels; a missing key is also explained there.
-    func testDictateAndRewriteAreSeparateFromTheRewriteStyleSetting() {
+    /// Live dictation chooses only the operation — all three of them. What each one produces
+    /// lives in Settings, where it cannot be mistaken for a fidelity level; a missing key is
+    /// explained there too.
+    func testTheThreeModesAreSeparateFromWhatEachOneProduces() {
         let app = launch(arguments: ["-ui-testing-no-api-key"])
         XCTAssertTrue(app.buttons["record"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["mode-dictate"].exists)
         XCTAssertTrue(app.buttons["mode-rewrite"].exists)
+        XCTAssertTrue(app.buttons["mode-translate"].exists)
         XCTAssertFalse(app.segmentedControls["style-picker"].exists)
 
         app.buttons["open-settings"].tap()

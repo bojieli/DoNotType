@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import app.donottype.core.AudioLevelMeter
+import app.donottype.core.LiveMode
 import app.donottype.ui.LevelMeterView
 import app.donottype.ui.RecordButtonView
 import androidx.test.core.app.ActivityScenario
@@ -163,6 +164,62 @@ class DictationActivityTest {
                         "the latest transcript still has to be scrollable to",
                         root.firstDescendant(ScrollView::class.java) { true }.isFillViewport)
                 }
+            }
+        }
+    }
+
+    /**
+     * The three modes are one control, and a mode that cannot run is refused rather than stored.
+     *
+     * The bug this replaces: the chip was a two-state Dictate/Rewrite toggle while a target
+     * language in Settings quietly overrode it, so the screen could show `Rewrite` over a
+     * dictation that came back translated. Translate with no language configured is the case that
+     * used to be unrepresentable, so it is the one asserted on.
+     */
+    @Test
+    fun theModeSegmentsOfferThreeAndRefuseOneThatCannotRun() {
+        withKey("k-mode-test") {
+            val language = Settings.translateTo
+            Settings.translateTo = ""
+            Settings.liveMode = LiveMode.DICTATE
+            try {
+                ActivityScenario.launch(DictationActivity::class.java).use { scenario ->
+                    scenario.onActivity { activity ->
+                        val root = activity.content()
+                        val segments = listOf("mode-dictate", "mode-rewrite", "mode-translate")
+                            .map { name ->
+                                root.firstDescendant(TextView::class.java) {
+                                    it.contentDescription == name
+                                }
+                            }
+                        assertEquals(
+                            listOf(
+                                LiveMode.DICTATE.label,
+                                LiveMode.REWRITE.label,
+                                LiveMode.TRANSLATE.label,
+                            ),
+                            segments.map { it.text.toString() },
+                        )
+
+                        val translate = segments[2]
+                        assertTrue(
+                            "with no target language there is nothing to translate into",
+                            !translate.isEnabled,
+                        )
+                        translate.performClick()
+                        assertEquals(
+                            "a mode that cannot run must not become the stored one",
+                            LiveMode.DICTATE,
+                            Settings.liveMode,
+                        )
+
+                        segments[1].performClick()
+                        assertEquals(LiveMode.REWRITE, Settings.liveMode)
+                    }
+                }
+            } finally {
+                Settings.translateTo = language
+                Settings.liveMode = LiveMode.DICTATE
             }
         }
     }

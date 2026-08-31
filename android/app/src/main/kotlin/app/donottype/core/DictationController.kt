@@ -242,7 +242,11 @@ class DictationController(
 
         // Read at the moment the recording ends: this accepts a mode correction made while the
         // user was speaking, while a tap during the request cannot change what it becomes.
-        val style = Settings.liveStyle
+        val style = if (Settings.liveMode == LiveMode.REWRITE) {
+            Settings.preferredRewriteStyle
+        } else {
+            RewriteStyle.VERBATIM
+        }
         val live = liveSession
         liveSession = null
 
