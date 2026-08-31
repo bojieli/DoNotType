@@ -346,10 +346,10 @@ public enum SecondStageBlocker: Equatable, Sendable {
     /// Resolved by the app, published for the keyboard.
     public init(_ availability: RewriteAvailability) {
         switch availability {
-        // `.translating` is a desktop answer — there a target language replaces what the second
-        // key produces. The phones have a mode for that, so it never reaches here, and it is not a
-        // backend problem in any case.
-        case .available, .noTargetLanguage, .translating: self = .none
+        // `.noTargetLanguage` is the mode's own problem rather than a backend's, and the picker
+        // already shows it where the mode is chosen — so there is nothing for the keyboard to say
+        // about the backend here.
+        case .available, .noTargetLanguage: self = .none
         case .noKey: self = .noKey
         case .backendCannotRewrite(let kind, _): self = .backend(kind)
         }
