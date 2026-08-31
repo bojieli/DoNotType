@@ -366,3 +366,59 @@ object Typography {
         (isCJK(left) && isLatinAlphanumeric(right)) ||
             (isLatinAlphanumeric(left) && isCJK(right))
 }
+
+/**
+ * The shape of a settings preview, and the words it is presented with.
+ *
+ * Hand-ported from `Sources/DoNotTypeCore/StylePreview.swift`, because the four clients have to
+ * describe the same thing the same way — somebody comparing a laptop to a phone is comparing the
+ * same product — and because *which baseline to use* is a rule rather than a preference.
+ *
+ * The preview exists because every control in a settings panel is a *cause* and what a user needs is
+ * the *effect*. The label that read `Chat — short lines, light punctuation` was describing its
+ * effect accurately while being read as a mood.
+ */
+object StylePreview {
+    /** Where the left-hand pane's text comes from. */
+    enum class Baseline(val label: String) {
+        /** A dictation already in History: a real past result, free, and the most honest "before". */
+        STORED("What you got"),
+
+        /**
+         * A clip just recorded, which has no past. The baseline is the same audio sent with the
+         * example box emptied — the one comparison that answers "what is my example doing".
+         */
+        WITHOUT_EXAMPLE("Without your example"),
+
+        /** A clip recorded while the box is empty. The second request would be the first again. */
+        NONE("Your transcript"),
+    }
+
+    const val STYLED_LABEL = "With these settings"
+
+    /**
+     * How many model requests a preview of a freshly recorded clip will cost.
+     *
+     * Stated as a function rather than assumed at each call site, because the answer is the
+     * difference between one request and two and the user is told which before pressing.
+     */
+    fun baselineForClip(example: String): Baseline =
+        if (Typography.sanitizedSample(example).isEmpty()) Baseline.NONE else Baseline.WITHOUT_EXAMPLE
+
+    /** What the button says it will cost. A preview is a real request, so it says so. */
+    fun costNote(baseline: Baseline): String = when (baseline) {
+        Baseline.STORED ->
+            "Sends your most recent recording again with the settings above, and shows both " +
+                "answers. One request."
+        Baseline.WITHOUT_EXAMPLE ->
+            "Records a clip, then transcribes it twice — once with your example and once without — " +
+                "so you can see what the example is doing. Two requests."
+        Baseline.NONE ->
+            "Records a clip and transcribes it with the settings above. One request."
+    }
+
+    /** Said where a preview cannot run at all, rather than leaving a control disabled in silence. */
+    const val NO_STORED_RECORDING =
+        "No kept recording to try this on. Record a clip instead, or turn on Keep audio and make a " +
+            "dictation."
+}

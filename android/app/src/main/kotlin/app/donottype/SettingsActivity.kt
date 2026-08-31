@@ -1,21 +1,5 @@
 package app.donottype
 
-import app.donottype.accessibility.ScreenReaderService
-import app.donottype.core.DictationService
-import app.donottype.core.ChineseScript
-import app.donottype.core.DictationPreset
-import app.donottype.core.Fidelity
-import app.donottype.core.ModelIdentifier
-import app.donottype.core.PerformanceStats
-import app.donottype.core.PersonalDictionary
-import app.donottype.core.ProviderKind
-import app.donottype.core.ProviderProbe
-import app.donottype.core.RetentionPolicy
-import app.donottype.core.RewriteAvailability
-import app.donottype.core.RewriteStyle
-import app.donottype.core.TranslationTarget
-import app.donottype.core.Typography
-import app.donottype.core.TypographySpacing
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -38,23 +22,42 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.textfield.TextInputLayout
+import app.donottype.accessibility.ScreenReaderService
+import app.donottype.audio.WavRecorder
+import app.donottype.core.ChineseScript
+import app.donottype.core.DictationPreset
+import app.donottype.core.DictationRecord
+import app.donottype.core.DictationService
+import app.donottype.core.FailureAdvice
+import app.donottype.core.Fidelity
+import app.donottype.core.HistoryStore
+import app.donottype.core.ModelIdentifier
+import app.donottype.core.PerformanceStats
+import app.donottype.core.PersonalDictionary
+import app.donottype.core.ProviderKind
+import app.donottype.core.ProviderProbe
+import app.donottype.core.RetentionPolicy
+import app.donottype.core.RewriteAvailability
+import app.donottype.core.RewriteStyle
+import app.donottype.core.StylePreview
+import app.donottype.core.TranslationTarget
+import app.donottype.core.Typography
+import app.donottype.core.TypographySpacing
 import app.donottype.ui.caption
 import app.donottype.ui.card
 import app.donottype.ui.cardHolding
 import app.donottype.ui.controlRow
 import app.donottype.ui.divider
-import app.donottype.ui.fieldContainer
 import app.donottype.ui.dp
+import app.donottype.ui.fieldContainer
 import app.donottype.ui.monospace
 import app.donottype.ui.primaryButton
 import app.donottype.ui.screenScaffold
@@ -68,7 +71,12 @@ import app.donottype.ui.setupRow
 import app.donottype.ui.switchRow
 import app.donottype.ui.textButton
 import app.donottype.ui.tonalButton
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Setup, settings and history.
@@ -104,6 +112,23 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var dictionaryContainer: LinearLayout
     private lateinit var dictionaryEntry: TextInputEditText
     private lateinit var dictationExampleField: TextInputEditText
+    /// The preview's own recorder, deliberately not the dictation controller's: a clip recorded in
+    /// this screen must not interrupt a dictation, and a dictation must not end a clip.
+    private val previewRecorder = WavRecorder()
+    /// Its own launcher: the press that was refused becomes the press that records, rather than
+    /// making somebody grant the permission and then find the button again.
+    private val microphoneForPreview = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) toggleClipPreview() else showPreviewProblem(
+            "Microphone access is needed to record a clip.",
+        )
+    }
+    private var clipButton: MaterialButton? = null
+    private var storedButton: MaterialButton? = null
+    private var previewBefore: TextView? = null
+    private var previewAfter: TextView? = null
+    private var previewNote: TextView? = null
     private lateinit var customRewriteStyleField: TextInputEditText
     private lateinit var translateField: TextInputEditText
     private lateinit var translateLayout: TextInputLayout
@@ -352,29 +377,34 @@ class SettingsActivity : AppCompatActivity() {
         fallbackNote = sectionFooter("")
         column.addView(fallbackNote)
 
-        // ---- Dictation ----
-        column.addView(sectionTitle("Fidelity"))
-        column.addView(card(controlRow(null, buildFidelityPicker())))
+        // ---- How your transcript is written ----
+        // One heading over four steps, because they are one question. This was three sections —
+        // Fidelity, then the style picker, then typography — and each had to end by pointing at
+        // another ("Fidelity above is the separate dial for…"), which is what a grouping does when
+        // it is wrong.
+        column.addView(sectionTitle("How your transcript is written"))
         column.addView(
-            sectionFooter("Even Tidy only changes typography. None of these reword you.")
+            sectionFooter("Nothing here may add, remove or reword anything you said.")
         )
 
-        // ---- Write it like this ----
-        // The one control for how a transcript is laid out. This replaced a five-item picker whose
-        // labels had to compress a whole instruction into a dash-clause, so `Chat — short lines,
-        // light punctuation` read as a mood and behaved as a rule. The instruction is the control
-        // now: a preset button fills the box, and what you are agreeing to is on screen in the
-        // words the model will get.
-        column.addView(sectionTitle("Write it like this"))
+        column.addView(stepTitle("Which of your words survive"))
+        column.addView(card(controlRow("Fidelity", buildFidelityPicker())))
+        column.addView(
+            sectionFooter(
+                "Even Tidy only changes punctuation. None of these make you sound more formal."
+            )
+        )
+
+        column.addView(stepTitle("What shape they take"))
         dictationExampleField = TextInputEditText(this).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
             setText(Settings.dictationExample)
         }
         column.addView(
             fieldContainer(
-                "Example",
+                "Write it like this",
                 dictationExampleField,
-                helper = "Empty sends nothing extra, which is the default. Up to "
+                helper = "A preset button fills this in and you can edit it. Up to "
                     + "${Typography.MAX_SAMPLE_CHARACTERS} characters, trimmed to that on save.",
             )
         )
@@ -391,18 +421,12 @@ class SettingsActivity : AppCompatActivity() {
         )
         column.addView(
             sectionFooter(
-                "Describe how you want your transcripts written, or paste a sentence written that "
-                    + "way. This is layout only — line breaks, punctuation, how long the lines "
-                    + "are. It may never add, remove or reword anything you said; Fidelity above "
-                    + "is the separate dial for how much of your own “um” survives."
+                "Layout only — line breaks, punctuation, how long the lines are. Empty sends "
+                    + "nothing extra."
             )
         )
 
-        // ---- Always ----
-        // Grouped by who keeps the promise rather than by what the setting is about, because that
-        // is the line that decides what can be a setting at all: both are things an example cannot
-        // carry, which is why they survive while the style picker does not.
-        column.addView(sectionTitle("Always"))
+        column.addView(stepTitle("What holds regardless"))
         column.addView(
             card(
                 controlRow("Chinese and Latin", buildSpacingPicker()),
@@ -412,11 +436,20 @@ class SettingsActivity : AppCompatActivity() {
         column.addView(
             sectionFooter(
                 "Spacing is applied here on the phone, after the transcript comes back — a "
-                    + "guarantee, the same on every dictation. The script is asked of the model on "
-                    + "every request — a request, not a guarantee. Neither is allowed to change a "
-                    + "word."
+                    + "guarantee. The script is asked of the model on every request — a request, "
+                    + "not a guarantee."
             )
         )
+
+        column.addView(stepTitle("What all of that actually produces"))
+        column.addView(cardHolding(buildPreviewRow()))
+        previewBefore = previewPane()
+        previewAfter = previewPane()
+        column.addView(previewBefore)
+        column.addView(previewAfter)
+        previewNote = sectionFooter("")
+        column.addView(previewNote)
+        refreshPreviewNote()
 
         // ---- Translation ----
         // Its own section, under Typography and above Rewrite, because it is the setting that
@@ -982,6 +1015,145 @@ class SettingsActivity : AppCompatActivity() {
      * Read through the same override machinery as every other part, so someone who has edited
      * `prompt/dictation-style/chat.md` gets their own words back when they press Chat.
      */
+    /// A labelled step inside the section, so one heading can hold four without the reader losing
+    /// which question each control is answering.
+    private fun stepTitle(text: String): TextView = sectionFooter(text).apply {
+        contentDescription = "step-$text"
+        setTypeface(typeface, android.graphics.Typeface.BOLD)
+    }
+
+    /// One half of the comparison, hidden until there is something to compare.
+    private fun previewPane(): TextView = sectionFooter("").apply { visibility = View.GONE }
+
+    private fun buildPreviewRow(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        addView(
+            primaryButton("Record a clip") { toggleClipPreview() }
+                .apply { contentDescription = "preview-clip" }
+                .also { clipButton = it }
+        )
+        addView(
+            tonalButton("Last dictation") { runStoredPreview() }
+                .apply { contentDescription = "preview-stored" }
+                .also { storedButton = it }
+        )
+    }
+
+    /// Starts capturing a clip, or stops and transcribes the one in flight.
+    ///
+    /// On a phone this is the half of preview that matters: keeping audio is off by default, so
+    /// most people have no stored recording to send again — and it is the more honest preview
+    /// anyway, being your voice now rather than one from a week ago.
+    private fun toggleClipPreview() {
+        if (previewRecorder.isRecording) {
+            val wav = previewRecorder.stop()
+            clipButton?.text = "Record a clip"
+            if (wav == null) {
+                showPreviewProblem("That clip was too short. Say a sentence or two.")
+                return
+            }
+            val example = Settings.dictationExample
+            val baseline = StylePreview.baselineForClip(example)
+            runPreview("The clip you just recorded", baseline) { service ->
+                val after = service.previewClip(wav, example).getOrThrow()
+                // Only when there is something to compare against: with an empty box the two
+                // requests would be the same request, and one answer twice is not a comparison.
+                val before = if (baseline == StylePreview.Baseline.WITHOUT_EXAMPLE) {
+                    service.previewClip(wav, "").getOrThrow()
+                } else {
+                    ""
+                }
+                before to after
+            }
+        } else {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                microphoneForPreview.launch(Manifest.permission.RECORD_AUDIO)
+                return
+            }
+            previewRecorder.start()
+            clipButton?.text = "Stop and transcribe"
+            refreshPreviewNote()
+        }
+    }
+
+    /// The most recent dictation whose audio is still on disk.
+    ///
+    /// Null on a fresh install, because keeping audio is off by default — which is why recording a
+    /// clip is the other button rather than a fallback.
+    private fun previewCandidate(): DictationRecord? =
+        HistoryStore(java.io.File(filesDir, "history")).all().firstOrNull {
+            it.status == DictationRecord.Status.COMPLETED &&
+                it.canRedo &&
+                it.text.isNotEmpty()
+        }
+
+    private fun runStoredPreview() {
+        val record = previewCandidate()
+        if (record == null) {
+            showPreviewProblem(StylePreview.NO_STORED_RECORDING)
+            return
+        }
+        val when0 = java.text.DateFormat.getDateTimeInstance(
+            java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT,
+        ).format(java.util.Date(record.createdAt))
+        runPreview("Your recording from $when0", StylePreview.Baseline.STORED) { service ->
+            record.deliveredText to service.preview(record).getOrThrow()
+        }
+    }
+
+    private fun runPreview(
+        source: String,
+        baseline: StylePreview.Baseline,
+        work: suspend (DictationService) -> Pair<String, String>,
+    ) {
+        setPreviewBusy(true)
+        lifecycleScope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) { work(DictationService(applicationContext)) }
+            }
+            setPreviewBusy(false)
+            result.onSuccess { (before, after) ->
+                if (baseline != StylePreview.Baseline.NONE) {
+                    previewBefore?.text = "${baseline.label}\n$before"
+                    previewBefore?.visibility = View.VISIBLE
+                } else {
+                    previewBefore?.visibility = View.GONE
+                }
+                previewAfter?.text = "${StylePreview.STYLED_LABEL}\n$after"
+                previewAfter?.visibility = View.VISIBLE
+                previewNote?.text = "$source. Nothing in History was changed."
+            }.onFailure { showPreviewProblem(FailureAdvice.describe(it).message) }
+        }
+    }
+
+    private fun setPreviewBusy(busy: Boolean) {
+        clipButton?.isEnabled = !busy
+        storedButton?.isEnabled = !busy && previewCandidate() != null
+        if (busy) previewNote?.text = "Transcribing…"
+    }
+
+    private fun showPreviewProblem(message: String) {
+        previewBefore?.visibility = View.GONE
+        previewAfter?.visibility = View.GONE
+        previewNote?.text = message
+    }
+
+    private fun refreshPreviewNote() {
+        previewNote?.text = if (previewRecorder.isRecording) {
+            "Recording. Say a sentence or two, then press Stop."
+        } else {
+            StylePreview.costNote(StylePreview.baselineForClip(Settings.dictationExample)) +
+                if (previewCandidate() != null) {
+                    " Or send your most recent kept recording again — one request."
+                } else {
+                    " " + StylePreview.NO_STORED_RECORDING
+                }
+        }
+        storedButton?.isEnabled = previewCandidate() != null
+    }
+
     private fun buildPresetRow(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         DictationPreset.entries.forEach { preset ->
