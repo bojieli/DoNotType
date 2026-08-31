@@ -6,6 +6,40 @@ measurement that justified them; see [docs/EVALUATION.md](docs/EVALUATION.md).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Release dates use the
 repository's local calendar date.
 
+## Unreleased
+
+### Changed
+
+- **Translate has a key of its own on the desktops, and the main key is verbatim again.** Setting a
+  target language used to be enough on its own to change what *every* key delivered: the main key
+  stopped giving back what was said, and the second key stopped rewriting. That was the one place
+  in the product where the promise the main key carries — you get your words — could be taken away
+  without being asked twice, and the settings window two panels down was still printing it. The
+  phones fixed the same defect one release earlier by making the mode a chip; the desktops fix it
+  the way a desktop already answers the question, with a third key. Bind it in Settings beside the
+  target language, and holding it dictates and then writes the same thing in that language. Nothing
+  is bound by default, so an unbound key means the target language does nothing at all.
+
+  The three keys are now one binding per `LiveMode` rather than a main key and a "secondary", and
+  the stage comes from `LiveMode.stage` — the resolver the phones' chip has used since 0.5.0 —
+  rather than from a conditional each desktop kept for itself and read mid-dictation. The two
+  availability sentences come from `LiveMode.availability` for the same reason, so a key and a chip
+  answer "can this run, and why not" with one rule instead of two; `RewriteAvailability.forSecondKey`
+  and its `translating` case existed only to explain the override in a sentence, and both are gone
+  with the thing they explained. A rewrite and a translation still never combine, which is that
+  resolver's job. `LiveMode` did not exist in C# at all — the desktops had been picking their mode
+  with a conditional while the phones had the type — so it is ported, with `LiveModeTests.cs`
+  asserting the same table the Swift and Kotlin suites do. Each recorder refuses a key another mode
+  already holds. Windows' tray and overlay now name the stage actually in flight rather than
+  re-deriving it from settings, which with three keys would have labelled a rewrite "Translating…"
+  for its whole second stage.
+
+  **Upgrading:** if you had set a target language on 0.5.0, your main key gives verbatim again and
+  Translate needs its key bound in Settings. Existing rewrite bindings and styles are untouched —
+  they are still stored under their old names, so nothing is re-learned. The settings-transfer
+  profile carries the new binding; a profile written before it existed leaves the receiving
+  device's binding alone rather than clearing it.
+
 ## 0.5.0 - 2026-08-31
 
 Five answers to "what happens to what I said" land together. A dictation can arrive in another

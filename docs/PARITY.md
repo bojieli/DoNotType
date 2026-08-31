@@ -22,7 +22,7 @@ is reachable by a user of that client, not merely present in its core library.
 | Push-to-talk / hands-free as a *setting* | ✅ | ✅ | — ¹ | — ¹ |
 | Rewrite a dictation | ✅ second hotkey | ✅ second hotkey | ✅ mode chip ²² | ✅ mode chip ²² |
 | Preset or custom writing style, per stage | ✅ | ✅ | ✅ | ✅ |
-| Translate a dictation | ✅ ²¹ | ✅ ²¹ | ✅ ²¹ ²² | ✅ ²¹ ²² |
+| Translate a dictation | ✅ third hotkey ²¹ | ✅ third hotkey ²¹ | ✅ mode chip ²¹ ²² | ✅ mode chip ²¹ ²² |
 | Says why a mode cannot run | ✅ | ✅ | ✅ | ✅ |
 | Summarise a dictation live | — ⁶ | — ⁶ | — ⁶ | — ⁶ |
 | Undo the last insertion | ✅ ⌘⇧Z | ✅ Ctrl+Shift+Z | — ² | — ² |
@@ -113,24 +113,33 @@ searching. Backspace sends `KEYCODE_DEL` rather than deleting a character count,
 editor knows whether the character before the cursor is one `char` or two, or whether there is a
 selection to remove instead.
 
-²¹ A target language in Settings, and it is the one setting in the product that makes the main
-control deliver something other than what was said. What it does not change is the promise
-underneath: the verbatim transcript is produced first, stored first, and recoverable — `⌘⌥Z` on
-macOS, `Ctrl+Alt+Z` on Windows, the History row on both phones. It **replaces** the rewrite stage
-rather than joining it, on all four: two jobs in one request is the combination this project
-measured as worse, and "formal French" is a feature request rather than a fix for the one that was
-asked for. Where the clients differ is in how that exclusivity is expressed. The phones make it a
-choice — see ²² — while the desktops, which pick the operation by *which key is held*, let a target
-language override the second key and say so beside the rewrite picker. The field is free text with a shape
-check, exactly like Model — the model is the authority on which languages it can write — with a
-list of common ones as a shortcut rather than a whitelist. `dnt transcribe --mode translate:English`
-is the same stage from a shell.
+²¹ A mode you choose before speaking, on all four, and a target language in Settings that says
+which language it writes in. What it never changes is the promise underneath: the verbatim
+transcript is produced first, stored first, and recoverable — `⌘⌥Z` on macOS, `Ctrl+Alt+Z` on
+Windows, the History row on both phones. It **replaces** the rewrite stage rather than joining it:
+two jobs in one request is the combination this project measured as worse, and "formal French" is a
+feature request rather than a fix for the one that was asked for. The clients express that
+exclusivity in the shape their input already has — the phones with the chip (see ²²), the desktops
+with a third key, because they pick the operation by *which key is held*.
+
+Until 0.5.0 the desktops had no third key, and a target language alone was enough to change what
+every key delivered: the main key stopped being verbatim, and the second key stopped rewriting,
+which `RewriteAvailability.forSecondKey` existed to explain in a sentence beside the rewrite
+picker. That was the one place the product broke its own promise about the main key, and it is the
+same defect the chip fixed on the phones one release earlier. Both the entry point and its
+apologetic case are gone; every client now asks `LiveMode.availability`, and an unbound translate
+key means the target language does nothing at all.
+
+The field is free text with a shape check, exactly like Model — the model is the authority on which
+languages it can write — with a list of common ones as a shortcut rather than a whitelist.
+`dnt transcribe --mode translate:English` is the same stage from a shell.
 
 ²² The phones choose the operation from one three-way chip — Dictate, Rewrite, Translate — before
 speaking: on the keyboard it opens a menu, on the app's own screen it is three segments. The
-desktops have no equivalent because they already answer the question with the keyboard: the main
-key is verbatim and the second key rewrites, so a persistent chip would be a second answer to a
-question already asked.
+desktops have no equivalent because they already answer the question with the keyboard: one key per
+mode, so a persistent chip would be a second answer to a question already asked. The three cases are
+the same `LiveMode` on all four, and so is the resolver that turns one into a stage — a key and a
+chip are two ways of choosing between the same three things, and they used to disagree.
 
 The chip replaced a two-state Dictate/Rewrite toggle that a target language in Settings silently
 overrode, so it could read `Rewrite` over a dictation that came back translated. All three
@@ -303,9 +312,11 @@ one screen further in on two of them.
   bounds that tail. Both services, both keys, and how long the primary gets alone are chosen by
   the user; history records which one actually answered, because a tool whose transcript quality
   varied invisibly would not be worth trusting.
-- **Hotkey.** Which key, whether a tap toggles or a hold talks, and an optional second key bound
-  to a rewrite (formal, concise, casual) for producing an email rather than a transcript. The
-  main key always stays verbatim. An opt-in finish-and-send action makes Return/Enter during
+- **Hotkey.** Which key, whether a tap toggles or a hold talks, and two optional further keys: one
+  bound to a rewrite (formal, concise, casual) for producing an email rather than a transcript, one
+  bound to the target language. Both are off until bound, and the main key always stays verbatim —
+  which key you hold decides, before you speak, and there is no mode left switched on. The
+  recorders refuse a key another mode already has. An opt-in finish-and-send action makes Return/Enter during
   recording insert and then submit with plain Return/Enter, `⌘ Return`, or `Ctrl+Enter`; the key
   continues to belong to the foreground app whenever recording is not active.
 - **Shortcuts.** Undo the last insertion, or revert a rewrite to what was actually said: `⌘⇧Z` /
@@ -329,9 +340,10 @@ one screen further in on two of them.
   three guesses. A custom style is substituted into the same host block as a preset, so the
   framing and the preservation rules cover the user's own text too. Both cross devices in the
   transfer profile.
-- **Translation.** Off by default. Set a target language and every dictation arrives in it, with
-  the verbatim transcript still first in History. See footnote ²¹ for why it replaces the rewrite
-  stage rather than stacking with it.
+- **Translation.** Off by default, in two halves that both have to be set: a target language, and
+  the control that runs it — the translate key on the desktops, the chip on the phones. The
+  verbatim transcript is still first in History either way. See footnote ²¹ for why it replaces the
+  rewrite stage rather than stacking with it, and for what it used to do instead.
 - **Fidelity.** `raw` keeps every filler and correction; `light` (default) removes empty fillers,
   repetitions, false starts, and superseded corrections; `tidy` also applies standard casing and
   punctuation without rephrasing.
