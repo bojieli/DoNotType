@@ -373,8 +373,7 @@ class DictationService(private val context: Context) {
         val key = Settings.apiKey?.takeIf { it.isNotBlank() }
             ?: throw ProviderException("No API key. Open DoNotType to add one.")
         val instruction = PromptAssets.systemInstruction(
-            context, Settings.fidelity, Settings.chineseScript, Settings.dictationStyle,
-                Settings.customDictationStyle)
+            context, Settings.fidelity, Settings.chineseScript, Settings.dictationExample)
         val client = ProviderFactory.create(Settings.provider, key, Settings.model)
 
         fun requestInputs(backend: TranscriptionProvider): Pair<List<InputPart>, List<String>> {
@@ -574,8 +573,7 @@ class DictationService(private val context: Context) {
 
             val result = client.transcribe(
                 PromptAssets.systemInstruction(
-                    context, record.fidelity, Settings.chineseScript,
-                    Settings.dictationStyle, Settings.customDictationStyle,
+                    context, record.fidelity, Settings.chineseScript, Settings.dictationExample,
                 ),
                 contextParts + InputPart.Audio(wav, "audio/wav"),
                 record.fidelity,

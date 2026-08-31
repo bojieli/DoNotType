@@ -3,7 +3,8 @@ package app.donottype
 import android.content.Context
 import android.content.SharedPreferences
 import app.donottype.core.ChineseScript
-import app.donottype.core.DictationStyle
+import app.donottype.core.DictationExample
+import app.donottype.core.DictationPreset
 import app.donottype.core.Fidelity
 import app.donottype.core.LiveMode
 import app.donottype.core.Log
@@ -39,8 +40,11 @@ object Settings {
     private const val KEY_FIDELITY = "fidelity"
     private const val KEY_TYPOGRAPHY_SPACING = "typographySpacing"
     private const val KEY_CHINESE_SCRIPT = "chineseScript"
-    private const val KEY_DICTATION_STYLE = "dictationStyle"
-    private const val KEY_CUSTOM_DICTATION_STYLE = "customDictationStyle"
+    private const val KEY_DICTATION_EXAMPLE = "dictationExample"
+    // Retired, read once by `migrateDictationExample` and then cleared. Kept as names here so the
+    // migration reads the same strings the old build wrote.
+    private const val KEY_LEGACY_DICTATION_STYLE = "dictationStyle"
+    private const val KEY_LEGACY_CUSTOM_DICTATION_STYLE = "customDictationStyle"
     private const val KEY_CUSTOM_REWRITE_STYLE = "customRewriteStyle"
     private const val KEY_TRANSLATE_TO = "translateTo"
     private const val KEY_LIVE_MODE = "liveMode"
@@ -72,6 +76,9 @@ object Settings {
     // settings without taking initialise()'s monitor (activity, file screen, and IME service).
     @Volatile private lateinit var prefs: SharedPreferences
     private lateinit var apiKeys: ApiKeyStore
+    /// Retained so a preset's text can be resolved without threading a Context through the
+    /// migration and the settings importer, neither of which has one to hand.
+    private lateinit var appContext: Context
 
     @Synchronized
     fun initialise(context: Context) {
@@ -79,6 +86,7 @@ object Settings {
         val localPreferences =
             context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         apiKeys = ApiKeyStore(localPreferences)
+        appContext = context.applicationContext
         // Publish the readiness sentinel last so a concurrent entry point cannot observe prefs
         // without the secure key store that all API-key access now requires.
         prefs = localPreferences
@@ -86,6 +94,13 @@ object Settings {
         // settings screen, the file screen and the keyboard service -- and the one that matters
         // most for debugging is the keyboard, which nobody remembers to wire up.
         startLogging(context)
+
+        // Same reasoning, and the same guard: this runs once per process, behind the
+        // already-initialised early return above, before any entry point can read the setting. An
+        // install that predates the example box still has the retired style pair, and the shared
+        // rule turns it into the text that pair was already sending -- so upgrading changes nothing
+        // about the request and everything about whether it can be seen.
+        migrateDictationExample()
     }
 
     private val ready: Boolean get() = ::prefs.isInitialized && ::apiKeys.isInitialized
@@ -361,32 +376,57 @@ object Settings {
         }
         set(value) { if (ready) prefs.edit().putString(KEY_LIVE_MODE, value.id).apply() }
 
-    /** How a dictation is written down: one of a few presets, or the user's own text below. */
-    var dictationStyle: DictationStyle
-        get() = if (ready) {
-            DictationStyle.from(prefs.getString(KEY_DICTATION_STYLE, null))
-        } else {
-            DictationStyle.DEFAULT
-        }
-        set(value) { if (ready) prefs.edit().putString(KEY_DICTATION_STYLE, value.id).apply() }
-
     /**
-     * The user's own dictation style — a description, or a sentence written the way they want
-     * theirs written.
+     * How the transcript should be written down — a description, or a sentence written the way the
+     * user wants theirs written. Empty sends nothing at all.
      *
-     * Sanitised on the way in rather than on the way out, so what the settings screen shows is what
-     * a request would carry. Kept even while a preset is selected: switching to Chat and back
-     * should not silently delete something somebody wrote.
+     * One string where there used to be a five-case enum and a text box that only one of the cases
+     * ever used. Sanitised on the way in rather than on the way out, so what the settings screen
+     * shows is what a request would carry.
      */
-    var customDictationStyle: String
-        get() = if (ready) prefs.getString(KEY_CUSTOM_DICTATION_STYLE, null).orEmpty() else ""
+    var dictationExample: String
+        get() = if (ready) prefs.getString(KEY_DICTATION_EXAMPLE, null).orEmpty() else ""
         set(value) {
             if (ready) {
                 prefs.edit()
-                    .putString(KEY_CUSTOM_DICTATION_STYLE, Typography.sanitizedSample(value))
+                    .putString(KEY_DICTATION_EXAMPLE, Typography.sanitizedSample(value))
                     .apply()
             }
         }
+
+    /**
+     * Turns a pre-example install's style setting into the text that setting was sending.
+     *
+     * Runs once, at launch, clearing the retired keys behind it so it cannot run twice and cannot
+     * resurrect a value the user has since edited. An example already set wins: overwriting a box
+     * somebody has typed into would be the one unforgivable outcome.
+     */
+    /**
+     * The text a preset button drops into the example box, or null before [initialise].
+     *
+     * Through [PromptAssets], so someone who has edited `prompt/dictation-style/chat.md` gets their
+     * own words when they press Chat.
+     */
+    fun presetText(preset: DictationPreset): String? =
+        if (::appContext.isInitialized) {
+            runCatching { PromptAssets.dictationPresetText(appContext, preset) }.getOrNull()
+        } else {
+            null
+        }
+
+    fun migrateDictationExample(presetText: (DictationPreset) -> String? = ::presetText) {
+        if (!ready) return
+        val legacyStyle = prefs.getString(KEY_LEGACY_DICTATION_STYLE, null)
+        val legacyCustom = prefs.getString(KEY_LEGACY_CUSTOM_DICTATION_STYLE, null)
+        if (legacyStyle == null && legacyCustom == null) return
+        prefs.edit()
+            .remove(KEY_LEGACY_DICTATION_STYLE)
+            .remove(KEY_LEGACY_CUSTOM_DICTATION_STYLE)
+            .apply()
+        if (dictationExample.isNotEmpty()) return
+        val migrated = DictationExample.migrating(legacyStyle, legacyCustom, presetText)
+        if (migrated.isNotEmpty()) dictationExample = migrated
+    }
 
     /**
      * The same, for the rewrite stage. Its own setting because the two are different jobs — this

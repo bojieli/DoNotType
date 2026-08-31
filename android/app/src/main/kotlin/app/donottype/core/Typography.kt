@@ -65,42 +65,66 @@ enum class ChineseScript(val id: String, val label: String) {
 }
 
 /**
- * How a dictation is written down, chosen from a short list or written by the user.
+ * A named starting point for the dictation example — a button, never a stored setting.
  *
- * Not what it says — that is [Fidelity], which decides how much of the speaker's own noise
- * survives, and neither of them may change a word. This is the shape of the written form: line
- * breaks, punctuation density, whether it reads like a chat message or a paragraph.
+ * This used to be `DictationStyle`, a five-case enum the user picked from and the app persisted.
+ * That shape is what made the control unusable: the label had to compress a whole instruction into
+ * a dash-clause, so `Chat — short lines, light punctuation` read as a mood and behaved as a rule,
+ * and somebody who wanted the mood got line breaks they never asked for and could not trace. The
+ * instruction was three files away from the only place it was described.
  *
- * [SPOKEN] is the default and sends **nothing**. That is load-bearing rather than tidy: every
- * measured number in `docs/PROMPT.md` describes the default request, and a clause added to it
- * unconditionally would invalidate the whole table at once.
+ * The instruction is the control now. A preset drops its text into the example box, where it can be
+ * read and edited before it is used, and what the user ends up with is a string rather than a case.
+ * Presets can therefore be added, renamed and reworded without migrating anybody.
  *
- * [CUSTOM] is the other half of the same control, and the reason this is an enum rather than a text
- * box: most people want one of a few answers and should get it in one tap, and the people who want
- * something else should not be limited to the few we thought of. The custom text goes through the
- * same host block as every preset.
+ * The absence of a style is the empty string, which sends nothing — the same default the retired
+ * `SPOKEN` had, and still what keeps every measured number in `docs/PROMPT.md` describing the
+ * request a fresh install actually makes.
+ *
+ * @property label the button's text. A name and nothing else: what it means is the text it drops in
+ *   the box, which is on screen the moment it is pressed.
+ * @property shape one line beside the button, for the gap between pressing and reading. Deliberately
+ *   about *shape*, never about feel — the old labels promised a register and delivered a layout
+ *   rule.
  */
-enum class DictationStyle(val id: String, val label: String) {
-    SPOKEN("spoken", "As spoken — however the model writes it"),
-    CHAT("chat", "Chat — short lines, light punctuation"),
-    NOTES("notes", "Notes — sentence case, one point per line"),
-    PROSE("prose", "Prose — complete sentences and paragraphs"),
-    CUSTOM("custom", "Custom — your own description or example");
-
-    /** Whether this style adds anything to the request. False only for [SPOKEN]. */
-    val isStyled: Boolean get() = this != SPOKEN
-
-    /**
-     * Whether the clause comes from a file in `prompt/dictation-style/`. False for [CUSTOM], whose
-     * clause is the user's own text, and for [SPOKEN], which has no clause at all.
-     */
-    val hasClauseFile: Boolean get() = isStyled && this != CUSTOM
+enum class DictationPreset(val id: String, val label: String, val shape: String) {
+    CHAT("chat", "Chat", "Short lines, one thought each"),
+    NOTES("notes", "Notes", "One point per line"),
+    PROSE("prose", "Prose", "Full sentences, paragraphs");
 
     companion object {
-        val DEFAULT = SPOKEN
+        /** Null rather than a default: an unknown name has no text to fill the box with. */
+        fun from(id: String?): DictationPreset? =
+            entries.firstOrNull { it.id == id?.trim()?.lowercase() }
+    }
+}
 
-        fun from(id: String?): DictationStyle =
-            entries.firstOrNull { it.id == id?.trim()?.lowercase() } ?: DEFAULT
+/**
+ * How an older install's dictation-style setting becomes an example.
+ *
+ * One named rule rather than the same three-branch conditional in four clients and two importers,
+ * hand-ported from the Swift. It is a rule and not a default because the whole point of the
+ * migration is that nobody's dictations change on upgrade: somebody who chose Chat had `chat.md`'s
+ * words in their request, so afterwards they have those same words in their box, byte for byte, and
+ * can now see and edit them.
+ */
+object DictationExample {
+    fun migrating(
+        legacyStyle: String?,
+        legacyCustom: String?,
+        presetText: (DictationPreset) -> String?,
+    ): String {
+        val name = legacyStyle?.trim()?.lowercase().orEmpty()
+        if (name == "custom") return Typography.sanitizedSample(legacyCustom.orEmpty())
+        val preset = DictationPreset.from(name)
+        if (preset != null) {
+            val text = presetText(preset)
+            if (text != null) return Typography.sanitizedSample(text)
+        }
+        // "spoken", absent, or a value this build does not know. All three mean the box is empty,
+        // which sends nothing — the behaviour SPOKEN had, and the safe answer for a name from a
+        // future build whose text this one cannot resolve.
+        return ""
     }
 }
 

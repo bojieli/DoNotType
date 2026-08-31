@@ -1,7 +1,6 @@
 package app.donottype
 
 import app.donottype.core.ChineseScript
-import app.donottype.core.DictationStyle
 import app.donottype.core.Fidelity
 import app.donottype.core.ProviderKind
 import app.donottype.core.RetentionPolicy
@@ -60,8 +59,9 @@ class SettingsTransferTest {
         val parsed = SettingsTransfer.parse(withBlock)
         assertEquals(TypographySpacing.TIGHT, parsed.typography?.spacing)
         assertEquals(ChineseScript.TRADITIONAL, parsed.typography?.script)
-        assertEquals(DictationStyle.CUSTOM, parsed.typography?.style)
-        assertEquals("中文 English。", parsed.typography?.customDictationStyle)
+        // The retired pair migrates to the text it was already sending: `custom` carried the
+        // user's own words, so the example box gets exactly those.
+        assertEquals("中文 English。", parsed.typography?.example)
         assertEquals("Warm but brief.", parsed.typography?.customRewriteStyle)
 
         assertThrows(IllegalArgumentException::class.java) {

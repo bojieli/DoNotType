@@ -3,7 +3,7 @@ package app.donottype
 import app.donottype.accessibility.ScreenReaderService
 import app.donottype.core.DictationService
 import app.donottype.core.ChineseScript
-import app.donottype.core.DictationStyle
+import app.donottype.core.DictationPreset
 import app.donottype.core.Fidelity
 import app.donottype.core.ModelIdentifier
 import app.donottype.core.PerformanceStats
@@ -103,7 +103,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var historySummary: TextView
     private lateinit var dictionaryContainer: LinearLayout
     private lateinit var dictionaryEntry: TextInputEditText
-    private lateinit var customDictationStyleField: TextInputEditText
+    private lateinit var dictationExampleField: TextInputEditText
     private lateinit var customRewriteStyleField: TextInputEditText
     private lateinit var translateField: TextInputEditText
     private lateinit var translateLayout: TextInputLayout
@@ -359,10 +359,50 @@ class SettingsActivity : AppCompatActivity() {
             sectionFooter("Even Tidy only changes typography. None of these reword you.")
         )
 
-        // ---- Typography ----
-        // Beneath Fidelity because it is the same kind of dial — how the words are written down,
-        // never which words — and above Rewrite, which is the first setting that may change them.
-        column.addView(sectionTitle("Typography"))
+        // ---- Write it like this ----
+        // The one control for how a transcript is laid out. This replaced a five-item picker whose
+        // labels had to compress a whole instruction into a dash-clause, so `Chat — short lines,
+        // light punctuation` read as a mood and behaved as a rule. The instruction is the control
+        // now: a preset button fills the box, and what you are agreeing to is on screen in the
+        // words the model will get.
+        column.addView(sectionTitle("Write it like this"))
+        dictationExampleField = TextInputEditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setText(Settings.dictationExample)
+        }
+        column.addView(
+            fieldContainer(
+                "Example",
+                dictationExampleField,
+                helper = "Empty sends nothing extra, which is the default. Up to "
+                    + "${Typography.MAX_SAMPLE_CHARACTERS} characters, trimmed to that on save.",
+            )
+        )
+        // Buttons rather than a picker: pressing one is not choosing a mode, it fills the field
+        // above, which can then be edited. A picker would show a selection that stops being true
+        // the moment somebody types.
+        column.addView(cardHolding(buildPresetRow()))
+        column.addView(
+            primaryButton("Save example") {
+                Settings.dictationExample = dictationExampleField.text.toString()
+                dictationExampleField.setText(Settings.dictationExample)
+                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+            }
+        )
+        column.addView(
+            sectionFooter(
+                "Describe how you want your transcripts written, or paste a sentence written that "
+                    + "way. This is layout only — line breaks, punctuation, how long the lines "
+                    + "are. It may never add, remove or reword anything you said; Fidelity above "
+                    + "is the separate dial for how much of your own “um” survives."
+            )
+        )
+
+        // ---- Always ----
+        // Grouped by who keeps the promise rather than by what the setting is about, because that
+        // is the line that decides what can be a setting at all: both are things an example cannot
+        // carry, which is why they survive while the style picker does not.
+        column.addView(sectionTitle("Always"))
         column.addView(
             card(
                 controlRow("Chinese and Latin", buildSpacingPicker()),
@@ -371,45 +411,10 @@ class SettingsActivity : AppCompatActivity() {
         )
         column.addView(
             sectionFooter(
-                "Spacing is applied to the finished transcript here on the phone, so it is the "
-                    + "same on every dictation. The script is asked of the model, which is why it "
-                    + "is a request rather than a guarantee — and why nothing here is allowed to "
-                    + "change a word."
-            )
-        )
-
-        // ---- Dictation style ----
-        // Two sections rather than one control with a mode switch, because the two stages are
-        // different jobs and get different answers: the dictation style may not reword, and the
-        // rewrite style below is there to.
-        column.addView(sectionTitle("Dictation style"))
-        column.addView(card(controlRow("Write it as", buildDictationStylePicker())))
-        customDictationStyleField = TextInputEditText(this).apply {
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            setText(Settings.customDictationStyle)
-        }
-        column.addView(
-            fieldContainer(
-                "Your style",
-                customDictationStyleField,
-                helper = "Used when Custom is selected. Up to "
-                    + "${Typography.MAX_SAMPLE_CHARACTERS} characters, trimmed to that on save.",
-            )
-        )
-        column.addView(
-            primaryButton("Save dictation style") {
-                Settings.customDictationStyle = customDictationStyleField.text.toString()
-                customDictationStyleField.setText(Settings.customDictationStyle)
-                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
-            }
-        )
-        column.addView(
-            sectionFooter(
-                "How a dictation is written down — line breaks, punctuation, whether it reads like "
-                    + "a chat message or a paragraph. Not what it says: none of these may add, "
-                    + "remove or reword anything, and Fidelity above is the separate dial for how "
-                    + "much of your own “um” survives. As spoken sends nothing extra, which is why "
-                    + "it is the default. Custom text is kept when you switch to a preset and back."
+                "Spacing is applied here on the phone, after the transcript comes back — a "
+                    + "guarantee, the same on every dictation. The script is asked of the model on "
+                    + "every request — a request, not a guarantee. Neither is allowed to change a "
+                    + "word."
             )
         )
 
@@ -972,30 +977,25 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     /**
-     * A shortcut rather than a whitelist: the field above accepts anything, and picking here only
-     * fills it in. "Off" is the first entry because empty is the default and the only value that
-     * changes nothing.
+     * The preset buttons, each of which fills the example box with its text.
+     *
+     * Read through the same override machinery as every other part, so someone who has edited
+     * `prompt/dictation-style/chat.md` gets their own words back when they press Chat.
      */
-    private fun buildDictationStylePicker(): Spinner {
-        val choices = DictationStyle.entries
-        return Spinner(this).apply {
-            adapter = ArrayAdapter(
-                this@SettingsActivity,
-                android.R.layout.simple_spinner_dropdown_item,
-                choices.map { it.label },
+    private fun buildPresetRow(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        DictationPreset.entries.forEach { preset ->
+            addView(
+                tonalButton(preset.label) {
+                    dictationExampleField.setText(
+                        PromptAssets.dictationPresetText(this@SettingsActivity, preset))
+                }.apply { contentDescription = "preset-${preset.id}" }
             )
-            setSelection(choices.indexOf(Settings.dictationStyle).coerceAtLeast(0))
-            contentDescription = "dictation-style"
-            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(
-                    parent: AdapterView<*>?, view: View?, position: Int, id: Long,
-                ) {
-                    Settings.dictationStyle = choices[position]
-                }
-
-                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-            }
         }
+        addView(
+            tonalButton("Clear") { dictationExampleField.setText("") }
+                .apply { contentDescription = "preset-clear" }
+        )
     }
 
     private fun buildTranslatePicker(): Spinner {

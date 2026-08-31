@@ -127,8 +127,7 @@ class FileTranscriber(
             }
 
             val instruction = PromptAssets.systemInstruction(
-                context, Settings.fidelity, Settings.chineseScript, Settings.dictationStyle,
-                Settings.customDictationStyle)
+                context, Settings.fidelity, Settings.chineseScript, Settings.dictationExample)
             val client = ProviderFactory.create(Settings.provider, key, Settings.model)
 
             val transcribeStart = System.currentTimeMillis()

@@ -1,7 +1,8 @@
 package app.donottype
 
 import app.donottype.core.ChineseScript
-import app.donottype.core.DictationStyle
+import app.donottype.core.DictationExample
+import app.donottype.core.DictationPreset
 import app.donottype.core.Fidelity
 import app.donottype.core.LogLevel
 import app.donottype.core.ProviderKind
@@ -47,8 +48,8 @@ object SettingsTransfer {
     data class TypographyValues(
         val spacing: TypographySpacing,
         val script: ChineseScript,
-        val style: DictationStyle,
-        val customDictationStyle: String,
+        /** What the example box should hold, already migrated when the profile predates it. */
+        val example: String,
         val customRewriteStyle: String,
         val translateTo: String,
     )
@@ -85,8 +86,14 @@ object SettingsTransfer {
                 JSONObject()
                     .put("spacing", Settings.typographySpacing.id)
                     .put("chineseScript", Settings.chineseScript.id)
-                    .put("dictationStyle", Settings.dictationStyle.id)
-                    .put("customDictationStyle", Settings.customDictationStyle)
+                    .put("dictationExample", Settings.dictationExample)
+                    // The retired pair too, so a profile made here still imports into a build that
+                    // predates the box: an example arrives there as `custom` with the same text.
+                    .put(
+                        "dictationStyle",
+                        if (Settings.dictationExample.isEmpty()) "spoken" else "custom",
+                    )
+                    .put("customDictationStyle", Settings.dictationExample)
                     .put("customRewriteStyle", Settings.customRewriteStyle)
                     .put("translateTo", Settings.translateTo),
             )
@@ -194,24 +201,24 @@ object SettingsTransfer {
             val scriptRaw = block.optString("chineseScript")
             val script = ChineseScript.entries.firstOrNull { it.id == scriptRaw }
                 ?: throw IllegalArgumentException("Unsupported Chinese script “$scriptRaw”.")
-            // Absent is "the profile predates styles", which keeps what this device has; present
-            // and unreadable is a document this client cannot honour.
-            val styleRaw = block.optString("dictationStyle")
-            val style = if (styleRaw.isEmpty()) {
-                Settings.dictationStyle
-            } else {
-                DictationStyle.entries.firstOrNull { it.id == styleRaw }
-                    ?: throw IllegalArgumentException("Unsupported dictation style “$styleRaw”.")
+            // A profile written before the example box carries the retired pair instead, and is
+            // migrated by the shared rule rather than rejected: those values were valid when they
+            // were written and mean something exact here.
+            val example = when {
+                block.has("dictationExample") ->
+                    app.donottype.core.Typography.sanitizedSample(
+                        block.optString("dictationExample"))
+                block.has("dictationStyle") || block.has("customDictationStyle") ->
+                    DictationExample.migrating(
+                        block.optString("dictationStyle").ifEmpty { null },
+                        block.optString("customDictationStyle").ifEmpty { null },
+                    ) { preset -> Settings.presetText(preset) }
+                else -> Settings.dictationExample
             }
             TypographyValues(
                 spacing,
                 script,
-                style,
-                if (block.has("customDictationStyle")) {
-                    block.optString("customDictationStyle")
-                } else {
-                    Settings.customDictationStyle
-                },
+                example,
                 if (block.has("customRewriteStyle")) {
                     block.optString("customRewriteStyle")
                 } else {
@@ -249,8 +256,7 @@ object SettingsTransfer {
         parsed.typography?.let { typography ->
             Settings.typographySpacing = typography.spacing
             Settings.chineseScript = typography.script
-            Settings.dictationStyle = typography.style
-            Settings.customDictationStyle = typography.customDictationStyle
+            Settings.dictationExample = typography.example
             Settings.customRewriteStyle = typography.customRewriteStyle
             Settings.translateTo = typography.translateTo
         }
