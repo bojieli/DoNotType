@@ -22,7 +22,8 @@ is reachable by a user of that client, not merely present in its core library.
 | Push-to-talk / hands-free as a *setting* | ✅ | ✅ | — ¹ | — ¹ |
 | Rewrite a dictation | ✅ second hotkey | ✅ second hotkey | ✅ mode chip ²² | ✅ mode chip ²² |
 | Write it like this (one example box) | ✅ | ✅ | ✅ | ✅ |
-| Preview these settings on your own recording | ✅ | — ²³ | — ²³ | — ²³ |
+| Preview these settings on your own recording | ✅ | ✅ | ✅ | ✅ |
+| …on a clip recorded there and then | ✅ | ✅ | ✅ | ✅ |
 | Translate a dictation | ✅ third hotkey ²¹ | ✅ third hotkey ²¹ | ✅ mode chip ²¹ ²² | ✅ mode chip ²¹ ²² |
 | Says why a mode cannot run | ✅ | ✅ | ✅ | ✅ |
 | Summarise a dictation live | — ⁶ | — ⁶ | — ⁶ | — ⁶ |
@@ -151,13 +152,22 @@ landed on and the extension rebuilds the sentence from it. The target language s
 both: a keyboard cannot type into its own popup, so a language list there would be a fixed handful
 quietly disagreeing with the free-text target the app already stores.
 
-²³ Built on macOS first, and a gap rather than an impossibility: all four clients already
-transcribe a stored recording again — that is what Redo is — so a preview is that request against
-the settings currently in the window, with nothing written back. The reason it exists is that every
-other control in that panel is a *cause* while what a user needs to know is the *effect*, and no
-label can close that gap: the one reading `Chat — short lines, light punctuation` was describing its
-effect accurately while being read as a mood. Keeping audio is off by default, so the honest version
-of this also needs a record-a-clip path, which no client has yet.
+²³ Two ways in, on all four. **Record a clip** captures a few seconds there and then; **Last
+dictation** re-sends the most recent kept recording. The clip is the one that works on a fresh
+install, because keeping audio is off by default — and it is the more honest preview anyway, being
+your voice now rather than one from a week ago. Neither writes anything back to History: a preview
+that updated the row would rewrite the thing being compared against.
+
+The baseline in the left pane differs by source, and the rule is stated once in `StylePreview`
+rather than decided four times. A stored dictation already has a real past result, which is free.
+A clip has none, so the baseline is the same audio sent with the example box emptied — the one
+comparison that answers "what is my example actually doing" — which costs a second request, and the
+sentence under the buttons says so before they are pressed. With an empty box that second request
+would be the first request again, so it is not made.
+
+It exists because every other control in that panel is a *cause* while what a user needs is the
+*effect*, and no label closes that gap: the one reading `Chat — short lines, light punctuation` was
+describing its effect accurately while being read as a mood.
 
 ²⁰ A visible control, on the phone's keyboard and on its dictation screen, in both halves of a
 dictation: `Discard recording` while the microphone is open, `Cancel transcription` once the
@@ -333,9 +343,13 @@ one screen further in on two of them.
   verbatim transcript is always kept. Not `Ctrl+Z`, which belongs to whatever is being typed into.
 - **Audio.** Pin a microphone rather than following the system default; start/stop tones are on by
   default and can be disabled.
-- **Always.** The settings that are promises rather than preferences, grouped on all four clients
-  by *who keeps the promise*, because that is the line deciding what can be a setting at all — both
-  are things an example cannot carry. *Chinese and Latin* is arithmetic performed on the device
+- **How your transcript is written.** One heading on all four clients over four named steps —
+  *which of your words survive* (Fidelity), *what shape they take* (the example box), *what holds
+  regardless*, *what all of that actually produces* (the preview). These used to be three or four
+  separate sections, with Fidelity up among the hot keys, and each one ended by pointing at another
+  ("Fidelity above is the separate dial for…"), which is what a grouping does when it is wrong. The
+  third step is grouped by *who keeps the promise*, because that is the line deciding what can be a
+  setting at all — both are things an example cannot carry. *Chinese and Latin* is arithmetic performed on the device
   after the transcript comes back, so it is a guarantee: one space at the boundary (the default),
   none, or whatever the model wrote. *Chinese script* is one sentence added to the request, so it is
   a request and the panel says so. Both are sent only when set, leaving the default request
@@ -354,12 +368,8 @@ one screen further in on two of them.
   changes; a preset whose file cannot be read leaves the old setting alone and retries next launch
   rather than clearing it. *Rewrite style* keeps its enum — it is a stage rather than a layout —
   and still offers Formal, Concise, Casual and Custom.
-- **Preview.** ✅ macOS. Sends your most recent kept recording again with the settings currently in
-  the window and shows both answers side by side, writing nothing back to History. It exists
-  because every other control is a *cause* and what a user needs is the *effect*; the report that
-  produced it was diagnosed by pulling a file out of the audio folder and running it twice by hand.
-  Not yet on Windows, iOS or Android — a gap rather than an impossibility, and all three already
-  have the stored-audio redo it is built from.
+- **Preview.** On all four. See footnote ²³ — the report that produced it was diagnosed by pulling
+  a file out of the audio folder and running it twice by hand, and this is that as a button.
 - **Translation.** Off by default, in two halves that both have to be set: a target language, and
   the control that runs it — the translate key on the desktops, the chip on the phones. The
   verbatim transcript is still first in History either way. See footnote ²¹ for why it replaces the

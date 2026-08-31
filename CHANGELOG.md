@@ -27,14 +27,25 @@ repository's local calendar date.
   nothing, so a fresh install's request is still the one every measured number in `docs/PROMPT.md`
   describes.
 
-  **Preview** answers the question the settings could not. It sends your most recent kept recording
-  again with the settings currently in the window and shows both answers side by side, writing
-  nothing back to History. Every other control there is a *cause*, and what you need is the
+  **Preview** answers the question the settings could not, on all four clients. *Record a clip*
+  captures a few seconds there and then; *Last dictation* re-sends your most recent kept recording.
+  Neither writes anything back to History. The clip is the one that works on a fresh install —
+  keeping audio is off by default — and it is the more honest preview anyway, being your voice now
+  rather than one from a week ago. For a clip the left-hand pane is the same audio sent with the box
+  emptied, which is the comparison that answers "what is my example doing" and costs a second
+  request; the sentence under the buttons says so before you press, and with an empty box that
+  second request is not made. Every other control there is a *cause*, and what you need is the
   *effect*; the report that prompted all of this was diagnosed by pulling a file out of the audio
-  folder and running it twice by hand, and this is that as a button. macOS first.
+  folder and running it twice by hand, and this is that as a button.
 
-  The typography section splits into *Write it like this* and *Always*, and the second is grouped by
-  **who keeps the promise** rather than by what the setting is about. Chinese and Latin spacing is
+  The settings themselves are one heading now — **How your transcript is written** — over four named
+  steps: *which of your words survive*, *what shape they take*, *what holds regardless*, *what all
+  of that actually produces*. They used to be three or four separate sections with Fidelity up among
+  the hot keys, and each ended by pointing at another ("Fidelity above is the separate dial for…"),
+  which is what a grouping does when it is wrong. The hot-key section becomes *Recording*, because
+  with Fidelity gone everything left in it is about how a recording starts, stops, cancels and
+  submits. The third step is grouped by **who keeps the promise** rather than by what the setting is
+  about. Chinese and Latin spacing is
   arithmetic performed on your device, so it says *a guarantee*; Chinese script is a sentence added
   to the request, so it says *a request, not a guarantee*. That distinction has been true in the
   code since typography shipped and invisible in the window, and it is the line that decides what
