@@ -386,25 +386,32 @@ final class DoNotTypeUITests: XCTestCase {
     /// an iPhone 16 and below the fold on a 17, which is a fact about the device rather than about
     /// the app. `waitForExistence` cannot fix that, because a row a lazy `List` has not built does
     /// not exist to wait for.
-    /// The dictation style is the setting this app's whole formatting story now hangs off, and it
-    /// is two controls rather than one: a preset picker, and a box that only matters for Custom.
-    /// Both have to survive leaving the screen, which is where a setting that saves on change but
-    /// never reloads would look fine and be lost.
-    func testDictationStyleSelectionPersists() {
+    /// The example box is the setting this app's whole formatting story now hangs off, and the
+    /// preset button is the only thing that makes it discoverable. Pressing Chat has to put
+    /// readable text in the box — the entire point of the control is that the instruction is
+    /// visible before it is used — and it has to survive leaving the screen, which is where a
+    /// setting that saves on change but never reloads would look fine and be lost.
+    func testAPresetFillsTheExampleBoxAndPersists() {
         let app = launch()
         app.buttons["open-settings"].tap()
 
-        let picker = app.buttons["dictation-style"]
-        XCTAssertTrue(reveal(picker, in: app), "the dictation style picker should be reachable")
-        picker.tap()
-        app.buttons["Chat — short lines, light punctuation"].tap()
+        let box = app.textFields["dictation-example"]
+        XCTAssertTrue(reveal(box, in: app), "the example box should be reachable")
+        let chat = app.buttons["preset-chat"]
+        XCTAssertTrue(reveal(chat, in: app), "the Chat preset should be reachable")
+        chat.tap()
+
+        XCTAssertTrue(
+            box.value as? String != "" && (box.value as? String)?.isEmpty == false,
+            "pressing a preset must put its text in the box, not just select it")
+        let filled = box.value as? String ?? ""
 
         app.navigationBars["Settings"].buttons.firstMatch.tap()
         app.buttons["open-settings"].tap()
-        XCTAssertTrue(reveal(picker, in: app), "and still reachable after coming back")
-        XCTAssertTrue(
-            picker.label.contains("Chat"),
-            "the dictation style should still read Chat, was \(picker.label)")
+        XCTAssertTrue(reveal(box, in: app), "and still reachable after coming back")
+        XCTAssertEqual(
+            box.value as? String, filled,
+            "the example should still be the text Chat put there")
     }
 
     func testFidelitySelectionPersists() {

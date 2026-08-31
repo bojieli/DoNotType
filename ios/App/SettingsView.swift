@@ -23,8 +23,8 @@ struct SettingsView: View {
             setupSection
             providerSection
             dictationSection
-            typographySection
-            dictationStyleSection
+            dictationExampleSection
+            alwaysSection
             translationSection
             rewriteSection
             dictionarySection
@@ -254,9 +254,11 @@ struct SettingsView: View {
         }
     }
 
-    /// Beneath Fidelity because it is the same kind of dial — how the words are written down,
-    /// never which words — and above Rewrite, which is the first setting that may change them.
-    private var typographySection: some View {
+    /// The settings that are promises rather than preferences, grouped by *who keeps the
+    /// promise* — the distinction that decides whether a thing can be a setting at all. Both are
+    /// things an example cannot carry, which is why they survive as settings while the style
+    /// dropdown does not.
+    private var alwaysSection: some View {
         Section {
             Picker("Chinese and Latin", selection: $model.typographySpacing) {
                 ForEach(TypographySpacing.allCases, id: \.self) { spacing in
@@ -273,53 +275,60 @@ struct SettingsView: View {
             .accessibilityIdentifier("chinese-script")
 
         } header: {
-            Text("Typography")
+            Text("Always")
         } footer: {
             Text(
-                "Spacing is applied to the finished transcript on this phone, so it is the same "
-                    + "on every dictation. The script is asked of the model, which is why it is a "
-                    + "request rather than a guarantee — and why nothing here is allowed to change "
-                    + "a word."
+                "Spacing is applied on this phone, after the transcript comes back — a guarantee, "
+                    + "the same on every dictation. The script is asked of the model on every "
+                    + "request — a request, not a guarantee. Neither is allowed to change a word."
             )
         }
     }
 
-    /// Two sections rather than one control with a mode switch, because the two stages are
-    /// different jobs and get different answers: the dictation style may not reword, and the
-    /// rewrite style is there to.
-    private var dictationStyleSection: some View {
+    /// "Write it like this" — the one control for how a transcript is laid out.
+    ///
+    /// This replaced a five-case picker whose labels had to compress a whole instruction into a
+    /// dash-clause, so `Chat — short lines, light punctuation` read as a mood and behaved as a
+    /// rule. The instruction is the control now: a preset button fills the box, and what you are
+    /// agreeing to is on screen in the words the model will get.
+    private var dictationExampleSection: some View {
         Section {
-            Picker("Write it as", selection: $model.dictationStyle) {
-                ForEach(DictationStyle.allCases, id: \.self) { style in
-                    Text(style.label).tag(style)
+            // Buttons rather than a picker: pressing one is not choosing a mode, it fills a field
+            // you may then edit — and a picker would show a selection that stops being true the
+            // moment somebody types.
+            HStack(spacing: 8) {
+                ForEach(DictationPreset.allCases, id: \.self) { preset in
+                    Button(preset.label) { model.applyPreset(preset) }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("preset-\(preset.rawValue)")
                 }
+                Button("Clear") { model.dictationExample = "" }
+                    .buttonStyle(.bordered)
+                    .disabled(model.dictationExample.isEmpty)
+                    .accessibilityIdentifier("preset-clear")
             }
-            .accessibilityIdentifier("dictation-style")
 
-            if model.dictationStyle == .custom {
-                VStack(alignment: .leading, spacing: 4) {
-                    TextField(
-                        "Describe it, or paste a sentence written the way you want yours",
-                        text: $model.customDictationStyle, axis: .vertical
-                    )
-                    .lineLimit(3...8)
-                    .accessibilityIdentifier("custom-dictation-style")
-                    // No silent caps: the field trims, so it says where.
-                    Text("Up to \(Typography.maxSampleCharacters) characters.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            VStack(alignment: .leading, spacing: 4) {
+                TextField(
+                    "Empty — however the model would write it",
+                    text: $model.dictationExample, axis: .vertical
+                )
+                .lineLimit(4...12)
+                .accessibilityIdentifier("dictation-example")
+                // No silent caps: the field trims, so it says where.
+                Text("Up to \(Typography.maxSampleCharacters) characters.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         } header: {
-            Text("Dictation style")
+            Text("Write it like this")
         } footer: {
             Text(
-                "How a dictation is written down — line breaks, punctuation, whether it reads "
-                    + "like a chat message or a paragraph. Not what it says: none of these may "
-                    + "add, remove or reword anything, and Fidelity above is the separate dial "
-                    + "for how much of your own “um” survives. As spoken sends nothing extra, "
-                    + "which is why it is the default. Custom text is kept when you switch to a "
-                    + "preset and back."
+                "Describe how you want your transcripts written, or paste a sentence written "
+                    + "that way. This is layout only — line breaks, punctuation, how long the "
+                    + "lines are. It may never add, remove or reword anything you said; Fidelity "
+                    + "above is the separate dial for how much of your own “um” survives. Empty "
+                    + "sends nothing extra, which is the default."
             )
         }
     }

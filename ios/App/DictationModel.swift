@@ -323,25 +323,55 @@ final class DictationModel {
         }
     }
 
-    /// How a dictation is written down: one of a few presets, or the user's own text below.
-    var dictationStyle: DictationStyle {
-        didSet { UserDefaults.standard.set(dictationStyle.rawValue, forKey: "dictationStyle") }
-    }
-
-    /// The user's own dictation style — a description, or a sentence written the way they want
-    /// theirs written.
+    /// How the transcript should be written down — a description, or a sentence written the way
+    /// the user wants theirs written. Empty sends nothing at all.
     ///
     /// Sanitised on the way in rather than on the way out, so what the settings screen shows is
-    /// what a request would carry. Kept even while a preset is selected: switching to Chat and
-    /// back should not silently delete something somebody wrote.
-    var customDictationStyle: String {
+    /// what a request would carry.
+    var dictationExample: String {
         didSet {
-            let cleaned = Typography.sanitizedSample(customDictationStyle)
-            if cleaned != customDictationStyle {
-                customDictationStyle = cleaned
+            let cleaned = Typography.sanitizedSample(dictationExample)
+            if cleaned != dictationExample {
+                dictationExample = cleaned
                 return
             }
-            UserDefaults.standard.set(cleaned, forKey: "customDictationStyle")
+            UserDefaults.standard.set(cleaned, forKey: "dictationExample")
+        }
+    }
+
+    /// Turns a pre-example install's style setting into the text that setting was sending.
+    ///
+    /// Runs once, at launch, clearing the retired keys behind it so it cannot run twice and cannot
+    /// resurrect a value the user has since edited. An example already set wins: overwriting a box
+    /// somebody has typed into would be the one unforgivable outcome.
+    private func migrateDictationExample() {
+        let defaults = UserDefaults.standard
+        let legacyStyle = defaults.string(forKey: "dictationStyle")
+        let legacyCustom = defaults.string(forKey: "customDictationStyle")
+        guard legacyStyle != nil || legacyCustom != nil else { return }
+        defer {
+            defaults.removeObject(forKey: "dictationStyle")
+            defaults.removeObject(forKey: "customDictationStyle")
+        }
+        guard dictationExample.isEmpty else { return }
+        let migrated = DictationExample.migrating(
+            legacyStyle: legacyStyle, legacyCustom: legacyCustom, presetText: presetText)
+        guard !migrated.isEmpty else { return }
+        dictationExample = migrated
+    }
+
+    /// Drops a preset's text into the example box, where it can be read and edited before use.
+    func applyPreset(_ preset: DictationPreset) {
+        guard let text = presetText(preset) else { return }
+        dictationExample = text
+    }
+
+    /// Resolves a preset's text for the button, the migration and the importer, or nil when the
+    /// bundle is unreadable — in which case a legacy style migrates to an empty box, which sends
+    /// nothing.
+    func presetText(_ preset: DictationPreset) -> String? {
+        Self.bundledPromptURL.flatMap {
+            try? prompts.builder(bundled: $0).dictationPresetText(preset)
         }
     }
 
@@ -442,9 +472,7 @@ final class DictationModel {
             ?? .default
         chineseScript =
             ChineseScript(rawValue: defaults.string(forKey: "chineseScript") ?? "") ?? .default
-        dictationStyle =
-            DictationStyle(rawValue: defaults.string(forKey: "dictationStyle") ?? "") ?? .default
-        customDictationStyle = defaults.string(forKey: "customDictationStyle") ?? ""
+        dictationExample = defaults.string(forKey: "dictationExample") ?? ""
         customRewriteStyle = defaults.string(forKey: "customRewriteStyle") ?? ""
         translateTo = TranslationTarget.sanitized(defaults.string(forKey: "translateTo") ?? "")
         let storedLiveStyle =
@@ -480,6 +508,13 @@ final class DictationModel {
         prompts = PromptStore(directory: directory.appendingPathComponent("Prompt"))
         applyDictionary(dictionaryStore.load())
         loadPrompt()
+
+        // After `prompts`, because resolving a preset's text needs it, and before the first
+        // request can read the setting. An install that predates the example box still has the
+        // retired style pair; the shared rule turns it into the text that pair was already
+        // sending, so upgrading changes nothing about the request and everything about whether it
+        // can be seen.
+        migrateDictationExample()
 
         // Before the first request, and before anything else can log. On a phone there is no
         // Console and no shell, so a log file in the shared container is the only evidence a bug
@@ -578,8 +613,11 @@ final class DictationModel {
             typography: .init(
                 spacing: typographySpacing.rawValue,
                 chineseScript: chineseScript.rawValue,
-                dictationStyle: dictationStyle.rawValue,
-                customDictationStyle: customDictationStyle,
+                dictationExample: dictationExample,
+                // The retired pair too, so a profile made here still imports into a build that
+                // predates the box: an example arrives there as `custom` with the same text.
+                dictationStyle: dictationExample.isEmpty ? "spoken" : "custom",
+                customDictationStyle: dictationExample,
                 customRewriteStyle: customRewriteStyle,
                 translateTo: translateTo),
             iOS: .init(liveStyle: (liveMode == .rewrite ? preferredRewriteStyle : .verbatim)
@@ -612,17 +650,21 @@ final class DictationModel {
             }
             // Absent is "the profile predates styles", which keeps what this device has; present
             // and unreadable fails the whole import rather than being silently defaulted.
-            var style = dictationStyle
-            if let raw = typography.dictationStyle {
-                guard let parsed = DictationStyle(rawValue: raw) else {
-                    throw SettingsTransferApplyError.unsupportedValue(
-                        field: "typography.dictationStyle", value: raw)
-                }
-                style = parsed
+            // A profile written before the example box carries the retired pair instead, and is
+            // migrated by the shared rule rather than rejected.
+            let example: String
+            if let stored = typography.dictationExample {
+                example = Typography.sanitizedSample(stored)
+            } else if typography.dictationStyle != nil || typography.customDictationStyle != nil {
+                example = DictationExample.migrating(
+                    legacyStyle: typography.dictationStyle,
+                    legacyCustom: typography.customDictationStyle,
+                    presetText: presetText)
+            } else {
+                example = dictationExample
             }
             importedTypography = ImportedTypography(
-                spacing: spacing, script: script, style: style,
-                customDictation: typography.customDictationStyle ?? customDictationStyle,
+                spacing: spacing, script: script, example: example,
                 customRewrite: typography.customRewriteStyle ?? customRewriteStyle,
                 translateTo: typography.translateTo ?? "")
         }
@@ -667,10 +709,8 @@ final class DictationModel {
         if let typography = importedTypography {
             defaults.set(typography.spacing.rawValue, forKey: "typographySpacing")
             defaults.set(typography.script.rawValue, forKey: "chineseScript")
-            defaults.set(typography.style.rawValue, forKey: "dictationStyle")
             defaults.set(
-                Typography.sanitizedSample(typography.customDictation),
-                forKey: "customDictationStyle")
+                Typography.sanitizedSample(typography.example), forKey: "dictationExample")
             defaults.set(
                 Typography.sanitizedSample(typography.customRewrite),
                 forKey: "customRewriteStyle")
@@ -692,8 +732,7 @@ final class DictationModel {
         if let typography = importedTypography {
             typographySpacing = typography.spacing
             chineseScript = typography.script
-            dictationStyle = typography.style
-            customDictationStyle = typography.customDictation
+            dictationExample = typography.example
             customRewriteStyle = typography.customRewrite
             translateTo = typography.translateTo
         }
@@ -736,8 +775,7 @@ final class DictationModel {
 
         let builder = prompts.builder(bundled: promptURL)
         guard let instruction = try? builder.systemInstruction(
-            fidelity: fidelity, script: chineseScript,
-                    dictationStyle: dictationStyle, customDictationStyle: customDictationStyle)
+            fidelity: fidelity, script: chineseScript, dictationExample: dictationExample)
         else { return nil }
 
         let service = TranscriptionService(
@@ -1817,7 +1855,7 @@ final class DictationModel {
             let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(
                     fidelity: fidelity, script: chineseScript,
-                    dictationStyle: dictationStyle, customDictationStyle: customDictationStyle)
+                    dictationExample: dictationExample)
         else { return FallbackTranscriber(primary: primary) }
 
         return FallbackTranscriber(
@@ -1835,7 +1873,7 @@ final class DictationModel {
             let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(
                     fidelity: fidelity, script: chineseScript,
-                    dictationStyle: dictationStyle, customDictationStyle: customDictationStyle)
+                    dictationExample: dictationExample)
         else { return nil }
 
         guard let backend = try? ProviderFactory.make(
