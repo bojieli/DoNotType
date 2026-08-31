@@ -8,7 +8,8 @@ import org.junit.Test
 
 /**
  * The keyboard's mode picker, asserted in the same shape as
- * `Tests/DoNotTypeCoreTests/LiveModeTests.swift` and `windows/DoNotType.Core.Tests/CoreTests.cs`.
+ * `Tests/DoNotTypeCoreTests/LiveModeTests.swift` and
+ * `windows/DoNotType.Core.Tests/LiveModeTests.cs`.
  *
  * The table is duplicated rather than shared on purpose: a fixture read from disk would be read by
  * whichever platform remembered to read it, and this is the file that says a phone and a laptop are
