@@ -149,9 +149,9 @@ supports one. If the screen and the recording disagree, the recording wins.
 | **Translate** | Speaking one language, typing another | Returns the target language and the original transcript. |
 
 On the phones these are one chip you tap before speaking — a menu on the keyboard, three segments on
-the app's own screen. The desktops answer the same question with the keyboard instead: the main key
-dictates and the second key rewrites, and a target language in Settings replaces what that second
-key produces.
+the app's own screen. The desktops answer the same question with the keyboard instead: one key per
+mode, bound in Settings. The main key dictates and always stays verbatim; a second key rewrites and
+a third writes in the target language, and neither exists until you bind it.
 
 Changed your mind after the fact? `⌘⌥Z` on macOS or `Ctrl+Alt+Z` on Windows puts your own wording
 back.
