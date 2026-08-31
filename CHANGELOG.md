@@ -6,9 +6,41 @@ measurement that justified them; see [docs/EVALUATION.md](docs/EVALUATION.md).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Release dates use the
 repository's local calendar date.
 
-## Unreleased
+## 0.5.0 - 2026-08-31
+
+Five answers to "what happens to what I said" land together. A dictation can arrive in another
+language, written in a style you picked or wrote yourself, spaced by a rule rather than by whatever
+the model felt like — and on the phones you can switch between those answers from one chip without
+leaving the text field. A recording you did not mean can be thrown away on every client instead of
+paid for. The promise underneath is unchanged, and is what makes the rest safe: the verbatim
+transcript is still produced first, still stored first, and still recoverable. Minor rather than
+patch: these are new capabilities across all four clients, and nothing about how a dictation is
+captured or sent changes.
 
 ### Added
+
+- **One chip, three modes, on both phones.** The mode control was a two-state Dictate/Rewrite
+  toggle, and a target language set in Settings quietly overrode it — so the chip could read
+  `Rewrite` over a dictation that came back translated, and moving between the two meant leaving the
+  text field, opening the app, and coming back. It is now a three-way picker: a menu on each
+  keyboard, three segments on each app's own screen. `TranscriptMode` has had exactly these three
+  cases all along; `LiveMode` names them for what the user is choosing and resolves the stage in one
+  place, so "both at once" is unconstructible rather than merely avoided. The picker offers only the
+  choice — the target language stays in Settings, because a keyboard cannot type into its own popup
+  and any list offered there would be a fixed handful quietly disagreeing with the free-text target
+  the app already stores. A mode that cannot run is shown disabled with the sentence saying why,
+  which is what an unavailable rewrite already did: rewriting and translating need exactly the same
+  thing — a backend that takes text and gives text back — so they share one rule and differ only in
+  the noun, because telling somebody their backend "cannot rewrite text" when they asked for a
+  translation sends them to fix the wrong setting. Translate with no language set is the state the
+  old toggle could not represent at all, and it now has its own sentence. On iOS the extension
+  cannot read the app's Keychain, so it could never say why a rewrite would not run and simply
+  offered it; the app now publishes which case the shared rule landed on and the keyboard rebuilds
+  the sentence from it, so the wording still lives in one place. The desktops keep what they had —
+  they pick the operation by *which key is held*, so a persistent chip would answer a question the
+  keyboard has already answered — and there a target language still replaces what the second key
+  produces, and the settings window still says so. Upgrading reads the old settings: a target
+  language means Translate, a rewrite style means Rewrite, anything else is Dictate.
 
 - **A writing style you can pick or write, on each stage separately.** Two settings, because they
   are two jobs with opposite permissions: a *dictation style* decides how the words are written
@@ -30,8 +62,9 @@ repository's local calendar date.
   profile. This generalises the formatting example added earlier in the same series: same idea, now
   with presets beside it and a matching control on the rewrite stage.
 
-- **Speak one language, type another.** A target language in Settings, off by default, and every
-  dictation arrives in it — on all four clients, and from `dnt transcribe --mode translate:English`.
+- **Speak one language, type another.** A target language in Settings, off by default — on the
+  desktops every dictation then arrives in it, and on the phones it is what the chip's Translate
+  mode writes in. All four clients, and `dnt transcribe --mode translate:English` from a shell.
   It is the one setting in the product that makes the main control deliver something other than what
   was said, so it is worth being exact about what it does not change: the verbatim transcript is
   still produced first, still stored first, and still recoverable with `⌘⌥Z`, `Ctrl+Alt+Z` or the
