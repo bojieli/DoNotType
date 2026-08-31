@@ -22,9 +22,13 @@ public enum PromptPart: Sendable, Hashable, Codable {
     case style(RewriteStyle)
     /// One of the summary styles, substituted into `summary`.
     case summaryStyle(SummaryStyle)
-    /// One of the dictation-style clauses, substituted into `dictationStyle`. Never `.spoken`,
-    /// which sends nothing, and never `.custom`, whose clause is the user's own text.
-    case dictationStyle(DictationStyle)
+    /// One of the named starting points for the dictation example.
+    ///
+    /// Reaches the model the long way round: a preset's text is copied into the user's example box
+    /// and it is the *box* that is substituted into `dictationStyleBlock`. So it is still a clause
+    /// — one line, framed by the same host — but the user reads and may edit it in between, which
+    /// is the whole point of the control.
+    case dictationPreset(DictationPreset)
     /// How the transcript is written down. Appended to the transcription contract, and only when
     /// the user has asked for a script — so the shipped default request is unchanged by its
     /// existence, and the measured numbers in `docs/PROMPT.md` still describe it.
@@ -45,7 +49,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
         [.system, .rewrite, .summary, .translate, .typography, .dictationStyleBlock]
         + Fidelity.allCases.map(PromptPart.fidelity)
         + RewriteStyle.allCases.filter(\.hasClauseFile).map(PromptPart.style)
-        + DictationStyle.allCases.filter(\.hasClauseFile).map(PromptPart.dictationStyle)
+        + DictationPreset.allCases.map(PromptPart.dictationPreset)
         + SummaryStyle.allCases.map(PromptPart.summaryStyle)
         + ChineseScript.allCases.filter { !$0.isDefault }.map(PromptPart.script)
 
@@ -60,7 +64,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .style(let style): "style/\(style.rawValue).md"
         case .summaryStyle(let style): "summary-style/\(style.rawValue).md"
         case .translate: "translate.md"
-        case .dictationStyle(let style): "dictation-style/\(style.rawValue).md"
+        case .dictationPreset(let preset): "dictation-style/\(preset.rawValue).md"
         case .typography: "typography.md"
         case .script(let script): "script/\(script.rawValue).md"
         case .dictationStyleBlock: "dictation-style.md"
@@ -77,7 +81,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .translate: "{{TARGET_LANGUAGE}}"
         case .typography: "{{SCRIPT_RULE}}"
         case .dictationStyleBlock: "{{DICTATION_STYLE_RULE}}"
-        case .fidelity, .style, .summaryStyle, .script, .dictationStyle: nil
+        case .fidelity, .style, .summaryStyle, .script, .dictationPreset: nil
         }
     }
 
@@ -92,7 +96,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
     public var isClause: Bool {
         switch self {
         case .system, .rewrite, .summary, .translate, .typography, .dictationStyleBlock: false
-        case .fidelity, .style, .summaryStyle, .script, .dictationStyle: true
+        case .fidelity, .style, .summaryStyle, .script, .dictationPreset: true
         }
     }
 
@@ -104,7 +108,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .style: .rewrite
         case .summaryStyle: .summary
         case .script: .typography
-        case .dictationStyle: .dictationStyleBlock
+        case .dictationPreset: .dictationStyleBlock
         }
     }
 
@@ -118,7 +122,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .style: "Rewrite styles"
         case .summaryStyle: "Summary styles"
         case .script: "Chinese script"
-        case .dictationStyle: "Dictation styles"
+        case .dictationPreset: "Example presets"
         }
     }
 
@@ -134,7 +138,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .style(let style): style.rawValue
         case .summaryStyle(let style): style.rawValue
         case .script(let script): script.rawValue
-        case .dictationStyle(let style): style.rawValue
+        case .dictationPreset(let preset): preset.rawValue
         }
     }
 
@@ -148,12 +152,14 @@ public enum PromptPart: Sendable, Hashable, Codable {
             "Sent only when a target language is set. Must contain {{TARGET_LANGUAGE}}."
         case .typography: "Sent only when a Chinese script is chosen. Must contain {{SCRIPT_RULE}}."
         case .dictationStyleBlock:
-            "Sent only when a dictation style is chosen. Must contain {{DICTATION_STYLE_RULE}}."
+            "Sent only when the example box has something in it. "
+                + "Must contain {{DICTATION_STYLE_RULE}}."
         case .fidelity: "Substituted into the transcription block."
         case .style: "Substituted into the rewrite block."
         case .summaryStyle: "Substituted into the summary block."
         case .script: "Substituted into the formatting block."
-        case .dictationStyle: "Substituted into the dictation style block."
+        case .dictationPreset:
+            "Filled into the example box when its button is pressed. Not sent on its own."
         }
     }
 
@@ -170,7 +176,7 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case .style(let style): "style:\(style.rawValue)"
         case .summaryStyle(let style): "summary-style:\(style.rawValue)"
         case .script(let script): "script:\(script.rawValue)"
-        case .dictationStyle(let style): "dictation-style:\(style.rawValue)"
+        case .dictationPreset(let preset): "dictation-style:\(preset.rawValue)"
         }
     }
 
@@ -187,10 +193,8 @@ public enum PromptPart: Sendable, Hashable, Codable {
         case ("typography", nil): self = .typography
         case ("sample", nil), ("dictation-style", nil): self = .dictationStyleBlock
         case ("dictation-style", let name?):
-            guard let value = DictationStyle(rawValue: name), value.hasClauseFile else {
-                return nil
-            }
-            self = .dictationStyle(value)
+            guard let value = DictationPreset(rawValue: name) else { return nil }
+            self = .dictationPreset(value)
         case ("script", let name?):
             guard let value = ChineseScript(rawValue: name), !value.isDefault else { return nil }
             self = .script(value)

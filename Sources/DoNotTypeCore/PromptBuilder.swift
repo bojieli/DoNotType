@@ -150,19 +150,22 @@ public struct PromptBuilder: Sendable {
     /// request would silently invalidate all of them.
     ///
     /// The two blocks are separate parts because they are separately owned. `typography` is the
-    /// project's text, editable and restorable like every other part; the sample is the user's own
+    /// project's text, editable and restorable like every other part; the example is the user's own
     /// sentence, dropped into a block that frames it as an example and not as speech.
+    ///
+    /// - Parameter dictationExample: what the user has in the example box. Empty — the default —
+    ///   appends nothing at all, which is what keeps a fresh install's request identical to the one
+    ///   every number in `docs/PROMPT.md` was measured against.
     public func systemInstruction(
         fidelity: Fidelity = .default,
         script: ChineseScript = .default,
-        dictationStyle: DictationStyle = .default,
-        customDictationStyle: String = ""
+        dictationExample: String = ""
     ) throws -> String {
         var instruction = try systemInstruction(fidelity: fidelity)
         if !script.isDefault {
             instruction += "\n\n" + (try assemble(.typography, filling: .script(script)))
         }
-        if let clause = try dictationStyleClause(dictationStyle, custom: customDictationStyle) {
+        if let clause = dictationExampleClause(dictationExample) {
             instruction += "\n\n"
                 + (try assemble(
                     .dictationStyleBlock, replacing: ["{{DICTATION_STYLE_RULE}}": clause]))
@@ -170,24 +173,23 @@ public struct PromptBuilder: Sendable {
         return instruction
     }
 
-    /// The clause a dictation style contributes, or nil when it contributes nothing.
+    /// The clause the example box contributes, or nil when it contributes nothing.
     ///
-    /// One function for both halves of the control, because the host block — and with it the
-    /// "never change a word" rule and the "this is not speech" framing — has to wrap the user's own
-    /// text exactly as it wraps a preset. A custom style that bypassed the block would be user text
-    /// sitting unframed in a system instruction.
-    public func dictationStyleClause(
-        _ style: DictationStyle, custom: String
-    ) throws -> String? {
-        switch style {
-        case .spoken:
-            return nil
-        case .custom:
-            let text = Typography.sanitizedSample(custom)
-            return text.isEmpty ? nil : text
-        default:
-            return try source.text(for: .dictationStyle(style))
-        }
+    /// There is one path now rather than a preset path and a custom path. A preset's text reaches
+    /// this function having already been copied into the box, so it goes through the same host
+    /// block, the same sanitiser and the same length cap as something the user typed — which is
+    /// what makes "edit the preset before using it" a real offer rather than a mode.
+    public func dictationExampleClause(_ example: String) -> String? {
+        let text = Typography.sanitizedSample(example)
+        return text.isEmpty ? nil : text
+    }
+
+    /// The text a preset button drops into the example box.
+    ///
+    /// Read through the same override machinery as every other part, so someone who has edited
+    /// `prompt/dictation-style/chat.md` gets their own words when they press Chat.
+    public func dictationPresetText(_ preset: DictationPreset) throws -> String {
+        try source.text(for: .dictationPreset(preset))
     }
 
     /// System instruction for the second-stage rewrite.

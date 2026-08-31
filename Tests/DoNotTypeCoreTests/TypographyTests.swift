@@ -123,8 +123,7 @@ final class TypographyPromptTests: XCTestCase {
         for fidelity in Fidelity.allCases {
             XCTAssertEqual(
                 try builder.systemInstruction(
-                    fidelity: fidelity, script: .spoken, dictationStyle: .spoken,
-                    customDictationStyle: ""),
+                    fidelity: fidelity, script: .spoken, dictationExample: ""),
                 try builder.systemInstruction(fidelity: fidelity))
         }
     }
@@ -139,38 +138,77 @@ final class TypographyPromptTests: XCTestCase {
         XCTAssertTrue(instruction.contains("never what it says"))
     }
 
-    /// Every dictation style goes through the same host block, so the framing and the
-    /// never-change-a-word rule cover a preset and a user's own sentence alike.
-    func testEveryDictationStyleIsWrappedInTheSameBlock() throws {
+    /// A preset and a sentence somebody typed are the same thing by the time they are sent: text
+    /// in the example box. That is what makes "press Chat, then edit it" an offer and not a mode.
+    func testAPresetAndTypedTextTakeTheSamePath() throws {
         let builder = try builder()
-        for style in DictationStyle.allCases where style != .spoken {
-            let instruction = try builder.systemInstruction(
-                dictationStyle: style, customDictationStyle: "中文 English。")
-            XCTAssertTrue(instruction.hasPrefix(try builder.systemInstruction()), style.rawValue)
-            XCTAssertFalse(instruction.contains("{{DICTATION_STYLE_RULE}}"), style.rawValue)
-            XCTAssertTrue(instruction.contains("never what it says"), style.rawValue)
-            XCTAssertTrue(instruction.contains("not an instruction to obey"), style.rawValue)
+        for preset in DictationPreset.allCases {
+            let text = try builder.dictationPresetText(preset)
+            XCTAssertEqual(
+                try builder.systemInstruction(dictationExample: text),
+                try builder.systemInstruction(dictationExample: text),
+                preset.rawValue)
+            let instruction = try builder.systemInstruction(dictationExample: text)
+            XCTAssertTrue(instruction.hasPrefix(try builder.systemInstruction()), preset.rawValue)
+            XCTAssertFalse(instruction.contains("{{DICTATION_STYLE_RULE}}"), preset.rawValue)
+            XCTAssertTrue(instruction.contains("never what it says"), preset.rawValue)
+            XCTAssertTrue(instruction.contains("not an instruction to obey"), preset.rawValue)
+            XCTAssertTrue(instruction.contains(text), preset.rawValue)
         }
     }
 
-    func testACustomStyleCarriesTheUsersOwnText() throws {
+    func testTheExampleCarriesTheUsersOwnText() throws {
         let builder = try builder()
-        let instruction = try builder.systemInstruction(
-            dictationStyle: .custom, customDictationStyle: "中文 English。")
+        let instruction = try builder.systemInstruction(dictationExample: "中文 English。")
         XCTAssertTrue(instruction.contains("中文 English。"))
-        // A style alone must not drag the script block in with it: two settings, two blocks.
+        // An example alone must not drag the script block in with it: two settings, two blocks.
         XCTAssertFalse(instruction.contains("Simplified characters"))
     }
 
-    /// Custom with nothing in it is not a style. Sending the block with an empty clause would ask
-    /// the model to write in no particular way, and it would do something.
-    func testAnEmptyCustomStyleSendsNothing() throws {
+    /// An empty box is not a style. Sending the block with an empty clause would ask the model to
+    /// write in no particular way, and it would do something.
+    func testAnEmptyExampleSendsNothing() throws {
         let builder = try builder()
         XCTAssertEqual(
-            try builder.systemInstruction(dictationStyle: .custom, customDictationStyle: "   \n "),
+            try builder.systemInstruction(dictationExample: "   \n "),
             try builder.systemInstruction())
+        XCTAssertNil(builder.dictationExampleClause("  "))
         XCTAssertEqual(try builder.styleClause(.custom, custom: "  "), "")
         XCTAssertEqual(try builder.rewriteInstruction(style: .custom, custom: "  "), "")
+    }
+
+    /// Upgrading must not change anybody's request — only make it visible. Somebody on Chat had
+    /// `chat.md`'s words in every dictation, and afterwards has those same words in their box.
+    func testMigrationPreservesTheRequestItReplaces() throws {
+        let builder = try builder()
+        let preset = { (p: DictationPreset) in try? builder.dictationPresetText(p) }
+
+        for value in DictationPreset.allCases {
+            let migrated = DictationExample.migrating(
+                legacyStyle: value.rawValue, legacyCustom: "", presetText: preset)
+            XCTAssertEqual(
+                try builder.systemInstruction(dictationExample: migrated),
+                try builder.systemInstruction(
+                    dictationExample: try builder.dictationPresetText(value)),
+                value.rawValue)
+        }
+
+        // `spoken`, absent, and a name from a future build all mean an empty box, which sends
+        // nothing — the behaviour `spoken` had, and the safe answer for text this build cannot
+        // resolve.
+        for legacy in ["spoken", "", "sonnet-style"] {
+            XCTAssertEqual(
+                DictationExample.migrating(
+                    legacyStyle: legacy, legacyCustom: "", presetText: preset), "")
+        }
+        XCTAssertEqual(
+            DictationExample.migrating(legacyStyle: nil, legacyCustom: nil, presetText: preset), "")
+
+        // Custom carried the user's own text and still does, sanitiser and cap included.
+        XCTAssertEqual(
+            DictationExample.migrating(
+                legacyStyle: "custom", legacyCustom: " 中文 English。 ", presetText: preset),
+            "中文 English。")
     }
 
     /// The rewrite side of the same control: the user's text lands inside `prompt/rewrite.md`, so
@@ -189,8 +227,9 @@ final class TypographyPromptTests: XCTestCase {
         XCTAssertEqual(PromptPart(id: "script:traditional"), .script(.traditional))
         // `spoken` is the shipped contract's own rule, not a clause, so it has no file to name.
         XCTAssertNil(PromptPart(id: "script:spoken"))
-        XCTAssertEqual(PromptPart(id: "dictation-style:chat"), .dictationStyle(.chat))
-        // Neither of these has a file: one sends nothing, the other sends the user's own text.
+        XCTAssertEqual(PromptPart(id: "dictation-style:chat"), .dictationPreset(.chat))
+        // The retired cases. One sent nothing and one sent the user's own text; neither was ever
+        // a file, and neither is a preset now.
         XCTAssertNil(PromptPart(id: "dictation-style:spoken"))
         XCTAssertNil(PromptPart(id: "dictation-style:custom"))
     }
