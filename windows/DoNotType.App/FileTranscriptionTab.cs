@@ -164,8 +164,7 @@ internal sealed class FileTranscriptionTab
         var service = new TranscriptionService(
             ProviderFactory.Create(_settings.Provider, key, _settings.Model),
             builder.SystemInstruction(
-                    _settings.Fidelity, _settings.ChineseScript, _settings.DictationStyle,
-                _settings.CustomDictationStyle))
+                    _settings.Fidelity, _settings.ChineseScript, _settings.DictationExample))
         {
             Fidelity = _settings.Fidelity,
             Typography = _settings.TypographySpacing,
@@ -232,8 +231,7 @@ internal sealed class FileTranscriptionTab
             return new TranscriptionService(
                 ProviderFactory.Create(kind, key, _settings.ModelFor(kind)),
                 builder.SystemInstruction(
-                    _settings.Fidelity, _settings.ChineseScript, _settings.DictationStyle,
-                _settings.CustomDictationStyle))
+                    _settings.Fidelity, _settings.ChineseScript, _settings.DictationExample))
             {
                 Fidelity = _settings.Fidelity,
                 Typography = _settings.TypographySpacing,

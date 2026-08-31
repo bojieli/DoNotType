@@ -80,9 +80,12 @@ public sealed class SettingsForm : Form
         new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _chineseScript =
         new() { DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly ComboBox _dictationStyle =
-        new() { DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly TextBox _customDictationStyle = new() { Multiline = true, Height = 60 };
+    private readonly TextBox _dictationExample =
+        new() { Multiline = true, Height = 96, ScrollBars = ScrollBars.Vertical };
+    private readonly FlowLayoutPanel _presets =
+        new() { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
+    /// <summary>What each preset will do to the shape of the text, before it is pressed.</summary>
+    private readonly ToolTip _presetTips = new();
     private readonly TextBox _customRewriteStyle = new() { Multiline = true, Height = 60 };
     private readonly ComboBox _translateTo = new() { DropDownStyle = ComboBoxStyle.DropDown };
     private readonly CheckBox _grounding = new() { Text = "Ground transcription in screen text", AutoSize = true };
@@ -246,30 +249,32 @@ public sealed class SettingsForm : Form
             + "changes typography — none "
             + "of the fidelity settings reword you."));
 
-        // Between Fidelity and Rewrite because it is the same kind of dial as Fidelity — how the
-        // words are written down, never which words — and Rewrite is the first section below it
-        // that may change them.
-        layout.Controls.Add(Heading("Typography"));
+        // The one control for how a transcript is laid out. This replaced a five-item dropdown
+        // whose labels had to compress a whole instruction into a dash-clause, so "Chat — short
+        // lines, light punctuation" read as a mood and behaved as a rule. The instruction is the
+        // control now: a preset button fills the box, and what you are agreeing to is on screen in
+        // the words the model will get.
+        layout.Controls.Add(Heading("Write it like this"));
+        layout.Controls.Add(Labelled("Start from", _presets));
+        layout.Controls.Add(Labelled("Example", _dictationExample));
+        layout.Controls.Add(Caption(
+            "Describe how you want your transcripts written, or paste a sentence written that "
+            + "way. This is layout only — line breaks, punctuation, how long the lines are. It "
+            + "may never add, remove or reword anything you said; Fidelity above is the separate "
+            + "dial for how much of your own \"um\" survives. Empty sends nothing extra, which is "
+            + $"the default. Trimmed to {Typography.MaxSampleCharacters} characters."));
+
+        // Grouped by who keeps the promise rather than by what the setting is about, because that
+        // is the line that decides what can be a setting at all: both are things an example cannot
+        // carry, which is why they survive while the style dropdown does not.
+        layout.Controls.Add(Heading("Always"));
         layout.Controls.Add(Labelled("Chinese and Latin", _typographySpacing));
+        layout.Controls.Add(Caption(
+            "Applied on this PC, after the transcript comes back. A guarantee."));
         layout.Controls.Add(Labelled("Chinese script", _chineseScript));
         layout.Controls.Add(Caption(
-            "Spacing is applied to the finished transcript on this PC, so it is the same on every "
-            + "dictation, in history and at the cursor. The script is asked of the model — a "
-            + "request rather than a guarantee — and nothing here is allowed to change a word."));
-
-        // Two sections rather than one control with a mode switch, because the two stages are
-        // different jobs and get different answers: the dictation style may not reword, and the
-        // rewrite style is there to.
-        layout.Controls.Add(Heading("Dictation style"));
-        layout.Controls.Add(Labelled("Write it as", _dictationStyle));
-        layout.Controls.Add(Labelled("Your style", _customDictationStyle));
-        layout.Controls.Add(Caption(
-            "How a dictation is written down — line breaks, punctuation, whether it reads like a "
-            + "chat message or a paragraph. Not what it says: none of these may add, remove or "
-            + "reword anything, and Fidelity above is the separate dial for how much of your own "
-            + "\"um\" survives. As spoken sends nothing extra, which is why it is the default. "
-            + $"Custom text is trimmed to {Typography.MaxSampleCharacters} characters and is kept "
-            + "when you switch to a preset and back."));
+            "Asked of the model, on every request. A request, not a guarantee. Neither is allowed "
+            + "to change a word."));
 
         // Its own heading, under Typography and above Rewrite, because it is the setting that
         // *replaces* a rewrite rather than another shade of one.
@@ -895,6 +900,28 @@ public sealed class SettingsForm : Form
     /// first breaks that identity, and the failure would have been silent — the wrong backend
     /// described in the note, and the wrong one saved.
     /// </summary>
+    /// <summary>The text a preset button drops into the example box, or null when unreadable.</summary>
+    /// <remarks>
+    /// Through the store rather than the shipped directory, so somebody who has edited
+    /// prompt/dictation-style/chat.md gets their own words back when they press Chat.
+    /// </remarks>
+    internal static string? PresetTextForMigration(DictationPreset preset) => PresetText(preset);
+
+    private static string? PresetText(DictationPreset preset)
+    {
+        if (PromptBuilder.FindPromptDirectory() is not { } path) return null;
+        try
+        {
+            return new PromptStore(HistoryStore.DefaultDirectory())
+                .Builder(path)
+                .DictationPresetText(preset);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
     private ProviderKind SelectedProvider()
     {
         var index = Math.Max(_provider.SelectedIndex, 0);
@@ -1152,12 +1179,30 @@ public sealed class SettingsForm : Form
             _chineseScript.Items.Add(script.Label());
         }
         _chineseScript.SelectedIndex = (int)_settings.ChineseScript;
-        foreach (var style in Enum.GetValues<DictationStyle>())
+        _dictationExample.Text = _settings.DictationExample;
+        // Buttons rather than a dropdown: pressing one is not choosing a mode, it fills a field
+        // you may then edit — and a dropdown would show a selection that stops being true the
+        // moment somebody types in the box.
+        foreach (var preset in Enum.GetValues<DictationPreset>())
         {
-            _dictationStyle.Items.Add(style.Label());
+            var button = new Button
+            {
+                Text = preset.Label(),
+                AutoSize = true,
+                Margin = new Padding(0, 0, 6, 0),
+            };
+            _presetTips.SetToolTip(button, preset.Shape());
+            var captured = preset;
+            button.Click += (_, _) =>
+            {
+                if (PresetText(captured) is { } text) _dictationExample.Text = text;
+            };
+            _presets.Controls.Add(button);
         }
-        _dictationStyle.SelectedIndex = (int)_settings.DictationStyle;
-        _customDictationStyle.Text = _settings.CustomDictationStyle;
+
+        var clear = new Button { Text = "Clear", AutoSize = true, Margin = Padding.Empty };
+        clear.Click += (_, _) => _dictationExample.Text = string.Empty;
+        _presets.Controls.Add(clear);
         _customRewriteStyle.Text = _settings.CustomRewriteStyle;
         // Editable rather than a fixed list: the suggestions are a shortcut, never a whitelist.
         foreach (var language in TranslationTarget.Suggestions) _translateTo.Items.Add(language);
@@ -1243,11 +1288,8 @@ public sealed class SettingsForm : Form
         _settings.ChineseScript = (ChineseScript)_chineseScript.SelectedIndex;
         // Cleaned on the way in, and written back to the box, so what the window shows is what a
         // request would carry rather than what was pasted into it.
-        _settings.DictationStyle = (DictationStyle)_dictationStyle.SelectedIndex;
-        // Cleaned on the way in, and written back to the box, so what the window shows is what a
-        // request would carry rather than what was pasted into it.
-        _settings.CustomDictationStyle = Typography.SanitizedSample(_customDictationStyle.Text);
-        _customDictationStyle.Text = _settings.CustomDictationStyle;
+        _settings.DictationExample = Typography.SanitizedSample(_dictationExample.Text);
+        _dictationExample.Text = _settings.DictationExample;
         _settings.CustomRewriteStyle = Typography.SanitizedSample(_customRewriteStyle.Text);
         _customRewriteStyle.Text = _settings.CustomRewriteStyle;
         _settings.TranslateTo = TranslationTarget.Sanitized(_translateTo.Text);
@@ -1297,8 +1339,7 @@ public sealed class SettingsForm : Form
         _fidelity.SelectedIndex = (int)_settings.Fidelity;
         _typographySpacing.SelectedIndex = (int)_settings.TypographySpacing;
         _chineseScript.SelectedIndex = (int)_settings.ChineseScript;
-        _dictationStyle.SelectedIndex = (int)_settings.DictationStyle;
-        _customDictationStyle.Text = _settings.CustomDictationStyle;
+        _dictationExample.Text = _settings.DictationExample;
         _customRewriteStyle.Text = _settings.CustomRewriteStyle;
         _translateTo.Text = _settings.TranslateTo;
         _grounding.Checked = _settings.GroundingEnabled;

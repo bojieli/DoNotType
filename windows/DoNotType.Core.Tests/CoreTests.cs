@@ -1428,45 +1428,78 @@ public sealed class DictationStyleTests
         {
             Assert.Equal(
                 builder.SystemInstruction(fidelity),
-                builder.SystemInstruction(
-                    fidelity, ChineseScript.Spoken, DictationStyle.Spoken, string.Empty));
+                builder.SystemInstruction(fidelity, ChineseScript.Spoken, string.Empty));
         }
     }
 
     /// <summary>
-    /// Every style goes through the same host block, so the framing and the never-change-a-word
-    /// rule cover a preset and a user's own sentence alike.
+    /// A preset and a sentence somebody typed are the same thing by the time they are sent: text
+    /// in the example box. That is what makes "press Chat, then edit it" an offer and not a mode.
     /// </summary>
     [Theory]
-    [InlineData(DictationStyle.Chat)]
-    [InlineData(DictationStyle.Notes)]
-    [InlineData(DictationStyle.Prose)]
-    [InlineData(DictationStyle.Custom)]
-    public void EveryStyleIsWrappedInTheSameBlock(DictationStyle style)
+    [InlineData(DictationPreset.Chat)]
+    [InlineData(DictationPreset.Notes)]
+    [InlineData(DictationPreset.Prose)]
+    public void APresetAndTypedTextTakeTheSamePath(DictationPreset preset)
     {
         var builder = Builder();
-        var instruction = builder.SystemInstruction(
-            Fidelity.Light, ChineseScript.Spoken, style, "中文 English。");
+        var text = builder.DictationPresetText(preset);
+        var instruction = builder.SystemInstruction(Fidelity.Light, ChineseScript.Spoken, text);
         Assert.StartsWith(builder.SystemInstruction(Fidelity.Light), instruction);
         Assert.DoesNotContain("{{DICTATION_STYLE_RULE}}", instruction);
         Assert.Contains("never what it says", instruction);
         Assert.Contains("not an instruction to obey", instruction);
+        Assert.Contains(text, instruction);
     }
 
     /// <summary>
-    /// Custom with nothing in it is not a style. Sending the block with an empty clause would ask
-    /// the model to write in no particular way, and it would do something.
+    /// An empty box is not a style. Sending the block with an empty clause would ask the model to
+    /// write in no particular way, and it would do something.
     /// </summary>
     [Fact]
-    public void AnEmptyCustomStyleSendsNothing()
+    public void AnEmptyExampleSendsNothing()
     {
         var builder = Builder();
         Assert.Equal(
             builder.SystemInstruction(Fidelity.Light),
-            builder.SystemInstruction(
-                Fidelity.Light, ChineseScript.Spoken, DictationStyle.Custom, "   \n "));
+            builder.SystemInstruction(Fidelity.Light, ChineseScript.Spoken, "   \n "));
+        Assert.Equal(string.Empty, builder.DictationExampleClause("  "));
         Assert.Equal(string.Empty, builder.StyleClause(RewriteStyle.Custom, "  "));
         Assert.Equal(string.Empty, builder.RewriteInstruction(RewriteStyle.Custom, "  "));
+    }
+
+    /// <summary>
+    /// Upgrading must not change anybody's request — only make it visible. Somebody on Chat had
+    /// chat.md's words in every dictation, and afterwards has those same words in their box.
+    /// </summary>
+    [Fact]
+    public void MigrationPreservesTheRequestItReplaces()
+    {
+        var builder = Builder();
+        string? Preset(DictationPreset p) => builder.DictationPresetText(p);
+
+        foreach (var preset in Enum.GetValues<DictationPreset>())
+        {
+            var migrated = DictationExample.Migrating(preset.Id(), string.Empty, Preset);
+            Assert.Equal(
+                builder.SystemInstruction(
+                    Fidelity.Light, ChineseScript.Spoken, builder.DictationPresetText(preset)),
+                builder.SystemInstruction(Fidelity.Light, ChineseScript.Spoken, migrated));
+        }
+
+        // "spoken", absent, and a name from a future build all mean an empty box, which sends
+        // nothing -- the behaviour Spoken had, and the safe answer for text this build cannot
+        // resolve.
+        foreach (var legacy in new[] { "spoken", "", "sonnet-style" })
+        {
+            Assert.Equal(string.Empty, DictationExample.Migrating(legacy, string.Empty, Preset));
+        }
+        Assert.Equal(string.Empty, DictationExample.Migrating(null, null, Preset));
+
+        // Custom carried the user's own text and still does, sanitiser and cap included.
+        Assert.Equal(
+            "中文 English。",
+            DictationExample.Migrating("custom", " 中文 English。 ", Preset));
     }
 
     /// <summary>
@@ -1486,13 +1519,15 @@ public sealed class DictationStyleTests
     [Fact]
     public void SpellingsRoundTripAndUnknownValuesFallBack()
     {
-        foreach (var style in Enum.GetValues<DictationStyle>())
+        foreach (var preset in Enum.GetValues<DictationPreset>())
         {
-            Assert.Equal(style, DictationStyleExtensions.ParseDictationStyle(style.Id()));
+            Assert.Equal(preset, DictationPresetExtensions.ParsePreset(preset.Id()));
         }
-        Assert.Equal(
-            DictationStyle.Spoken, DictationStyleExtensions.ParseDictationStyle("nonsense"));
-        Assert.Equal(DictationStyle.Spoken, DictationStyleExtensions.ParseDictationStyle(null));
-        Assert.Equal(DictationStyle.Chat, DictationStyleExtensions.ParseDictationStyle(" CHAT "));
+        // Null rather than a default: an unknown name has no text to fill the box with, and the
+        // migration turns that into an empty box, which sends nothing.
+        Assert.Null(DictationPresetExtensions.ParsePreset("nonsense"));
+        Assert.Null(DictationPresetExtensions.ParsePreset(null));
+        Assert.Null(DictationPresetExtensions.ParsePreset("spoken"));
+        Assert.Equal(DictationPreset.Chat, DictationPresetExtensions.ParsePreset(" CHAT "));
     }
 }

@@ -614,8 +614,7 @@ public sealed class DictationController : IDisposable
             var service = new TranscriptionService(
                 ProviderFactory.Create(_settings.Provider, key, _settings.Model),
                 Prompt(promptPath).SystemInstruction(
-                _settings.Fidelity, _settings.ChineseScript, _settings.DictationStyle,
-                _settings.CustomDictationStyle))
+                _settings.Fidelity, _settings.ChineseScript, _settings.DictationExample))
             {
                 Fidelity = _settings.Fidelity,
                 Typography = _settings.TypographySpacing,
@@ -674,8 +673,7 @@ public sealed class DictationController : IDisposable
         var secondary = new TranscriptionService(
             ProviderFactory.Create(kind.Value, key, _settings.ModelFor(kind.Value)),
             Prompt(promptPath).SystemInstruction(
-                _settings.Fidelity, _settings.ChineseScript, _settings.DictationStyle,
-                _settings.CustomDictationStyle))
+                _settings.Fidelity, _settings.ChineseScript, _settings.DictationExample))
         {
             Fidelity = _settings.Fidelity,
             Typography = _settings.TypographySpacing,
@@ -759,8 +757,7 @@ public sealed class DictationController : IDisposable
         var service = new TranscriptionService(
             provider,
             Prompt(promptPath).SystemInstruction(
-                _settings.Fidelity, _settings.ChineseScript, _settings.DictationStyle,
-                _settings.CustomDictationStyle))
+                _settings.Fidelity, _settings.ChineseScript, _settings.DictationExample))
         {
             // Carried separately as well as baked into the prompt, because a recognition backend
             // has no system instruction to read it out of.
@@ -1156,8 +1153,7 @@ public sealed class DictationController : IDisposable
         var service = new TranscriptionService(
             ProviderFactory.Create(_settings.Provider, key, _settings.Model),
             Prompt(promptPath).SystemInstruction(
-                record.Fidelity, _settings.ChineseScript, _settings.DictationStyle,
-                _settings.CustomDictationStyle))
+                record.Fidelity, _settings.ChineseScript, _settings.DictationExample))
         {
             Fidelity = record.Fidelity,
             Typography = _settings.TypographySpacing,

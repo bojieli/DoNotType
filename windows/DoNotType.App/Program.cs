@@ -60,6 +60,12 @@ internal sealed class TrayApplication : ApplicationContext
 
         MigrateLegacyPrompt();
 
+        // Before the first dictation can read it. An install that predates the example box still
+        // has the retired style pair, and the shared rule turns it into the text that pair was
+        // already sending — so upgrading changes nothing about the request and everything about
+        // whether it can be seen.
+        _settings.MigrateDictationExample(SettingsForm.PresetTextForMigration);
+
         _controller = new DictationController(_settings);
         _controller.StateChanged += OnStateChanged;
         _controller.TriggerHoldChanged += held => BeginInvokeOnTray(() =>

@@ -257,9 +257,16 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
     public static PromptPart Of(SummaryStyle style) =>
         new($"summary-style:{style.Id()}", $"summary-style/{style.Id()}.md", null, "Summary styles", style.Id());
 
-    public static PromptPart Of(DictationStyle style) =>
-        new($"dictation-style:{style.Id()}", $"dictation-style/{style.Id()}.md", null,
-            "Dictation styles", style.Id());
+    /// <summary>A named starting point for the example box.</summary>
+    /// <remarks>
+    /// Reaches the model the long way round: a preset's text is copied into the user's example box
+    /// and it is the <em>box</em> that is substituted into <see cref="DictationStyleBlock"/>. So it
+    /// is still a clause — one line, framed by the same host — but the user reads and may edit it
+    /// in between, which is the whole point of the control.
+    /// </remarks>
+    public static PromptPart Of(DictationPreset preset) =>
+        new($"dictation-style:{preset.Id()}", $"dictation-style/{preset.Id()}.md", null,
+            "Example presets", preset.Id());
 
     public static PromptPart Of(ChineseScript script) =>
         new($"script:{script.Id()}", $"script/{script.Id()}.md", null, "Chinese script", script.Id());
@@ -275,7 +282,7 @@ public sealed record PromptPart(string Id, string RelativePath, string? Placehol
         };
         parts.AddRange(Enum.GetValues<Fidelity>().Select(Of));
         parts.AddRange(Enum.GetValues<RewriteStyle>().Where(s => s.HasClauseFile()).Select(Of));
-        parts.AddRange(Enum.GetValues<DictationStyle>().Where(s => s.HasClauseFile()).Select(Of));
+        parts.AddRange(Enum.GetValues<DictationPreset>().Select(Of));
         parts.AddRange(Enum.GetValues<SummaryStyle>().Select(Of));
         parts.AddRange(
             Enum.GetValues<ChineseScript>().Where(s => s != ChineseScript.Spoken).Select(Of));
@@ -425,8 +432,11 @@ public sealed class PromptBuilder(PromptSource source)
     /// every number in docs/PROMPT.md describes the default request, and a new clause on every
     /// request would silently invalidate all of them.
     /// </remarks>
+    /// <param name="dictationExample">
+    /// What the user has in the example box. Empty -- the default -- appends nothing at all.
+    /// </param>
     public string SystemInstruction(
-        Fidelity fidelity, ChineseScript script, DictationStyle style, string customStyle)
+        Fidelity fidelity, ChineseScript script, string dictationExample)
     {
         var instruction = SystemInstruction(fidelity);
         if (script != ChineseScript.Spoken)
@@ -434,7 +444,7 @@ public sealed class PromptBuilder(PromptSource source)
             instruction += "\n\n" + Assemble(PromptPart.Typography, PromptPart.Of(script));
         }
 
-        var clause = DictationStyleClause(style, customStyle);
+        var clause = DictationExampleClause(dictationExample);
         if (clause.Length > 0)
         {
             instruction += "\n\n"
@@ -445,20 +455,23 @@ public sealed class PromptBuilder(PromptSource source)
     }
 
     /// <summary>
-    /// The clause a dictation style contributes, or empty when it contributes nothing.
+    /// The clause the example box contributes, or empty when it contributes nothing.
     /// </summary>
     /// <remarks>
-    /// One method for both halves of the control, because the host block — and with it the "never
-    /// change a word" rule and the "this is not speech" framing — has to wrap the user's own text
-    /// exactly as it wraps a preset. A custom style that bypassed the block would be user text
-    /// sitting unframed in a system instruction.
+    /// There is one path now rather than a preset path and a custom path. A preset's text reaches
+    /// this method having already been copied into the box, so it goes through the same host block,
+    /// the same sanitiser and the same length cap as something the user typed — which is what makes
+    /// "edit the preset before using it" a real offer rather than a mode.
     /// </remarks>
-    public string DictationStyleClause(DictationStyle style, string customStyle) => style switch
-    {
-        DictationStyle.Spoken => string.Empty,
-        DictationStyle.Custom => Typography.SanitizedSample(customStyle),
-        _ => Source.TextFor(PromptPart.Of(style)),
-    };
+    public string DictationExampleClause(string example) => Typography.SanitizedSample(example);
+
+    /// <summary>The text a preset button drops into the example box.</summary>
+    /// <remarks>
+    /// Read through the same override machinery as every other part, so someone who has edited
+    /// prompt/dictation-style/chat.md gets their own words when they press Chat.
+    /// </remarks>
+    public string DictationPresetText(DictationPreset preset) =>
+        Source.TextFor(PromptPart.Of(preset));
 
     /// <summary>The style rule alone, for a rewrite folded into the audio request.</summary>
     /// <param name="custom">

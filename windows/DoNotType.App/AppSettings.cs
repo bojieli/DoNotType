@@ -32,19 +32,49 @@ public sealed class AppSettings
     public ChineseScript ChineseScript { get; set; } = ChineseScript.Spoken;
 
     /// <summary>
-    /// How a dictation is written down: one of a few presets, or the user's own text below.
-    /// </summary>
-    public DictationStyle DictationStyle { get; set; } = DictationStyle.Spoken;
-
-    /// <summary>
-    /// The user's own dictation style — a description, or a sentence written the way they want
-    /// theirs written.
+    /// How the transcript should be written down — a description, or a sentence written the way
+    /// the user wants theirs written. Empty sends nothing at all.
     /// </summary>
     /// <remarks>
-    /// Kept even while a preset is selected: switching to Chat and back should not silently delete
-    /// something somebody wrote.
+    /// One string where there used to be a five-case enum and a text box that only one of the
+    /// cases ever used. A preset button fills it; everything after that is text.
     /// </remarks>
-    public string CustomDictationStyle { get; set; } = string.Empty;
+    public string DictationExample { get; set; } = string.Empty;
+
+    /// <summary>Retired, read once by <see cref="MigrateDictationExample"/> and then cleared.</summary>
+    [JsonPropertyName("DictationStyle")]
+    public string? LegacyDictationStyle { get; set; }
+
+    /// <summary>Retired. See <see cref="LegacyDictationStyle"/>.</summary>
+    [JsonPropertyName("CustomDictationStyle")]
+    public string? LegacyCustomDictationStyle { get; set; }
+
+    /// <summary>
+    /// Turns a pre-example install's style setting into the text that setting was sending.
+    /// </summary>
+    /// <remarks>
+    /// Runs once, at launch, and clears the old fields so it cannot run twice and cannot resurrect
+    /// a value the user has since edited. Nobody's dictations change: someone who had chosen Chat
+    /// had chat.md's words in every request, and afterwards has those same words in their box,
+    /// where they can finally see them.
+    /// </remarks>
+    public void MigrateDictationExample(Func<DictationPreset, string?> presetText)
+    {
+        if (LegacyDictationStyle is null && LegacyCustomDictationStyle is null) return;
+        var legacyStyle = LegacyDictationStyle;
+        var legacyCustom = LegacyCustomDictationStyle;
+        LegacyDictationStyle = null;
+        LegacyCustomDictationStyle = null;
+
+        // An example already set wins. The migration is for an install that has never seen the box,
+        // and overwriting a box somebody has typed into would be the one unforgivable outcome.
+        if (DictationExample.Length == 0)
+        {
+            DictationExample =
+                DoNotType.Core.DictationExample.Migrating(legacyStyle, legacyCustom, presetText);
+        }
+        Save();
+    }
 
     /// <summary>
     /// The same, for the rewrite stage. Its own setting because the two are different jobs — this

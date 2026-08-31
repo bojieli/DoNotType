@@ -333,73 +333,98 @@ public static class ChineseScriptExtensions
     };
 }
 
-/// <summary>
-/// How a dictation is written down, chosen from a short list or written by the user.
-/// </summary>
+/// <summary>A named starting point for the dictation example — a button, never a stored setting.</summary>
 /// <remarks>
 /// <para>
-/// Not what it says — that is <see cref="Fidelity"/>, which decides how much of the speaker's own
-/// noise survives, and neither of them may change a word. This is the shape of the written form:
-/// line breaks, punctuation density, whether it reads like a chat message or a paragraph.
+/// This used to be <c>DictationStyle</c>, a five-case enum the user picked from and the app
+/// persisted. That shape is what made the control unusable: the label had to compress a whole
+/// instruction into a dash-clause, so "Chat — short lines, light punctuation" read as a mood and
+/// behaved as a rule, and somebody who wanted the mood got line breaks they never asked for and
+/// could not trace. The instruction was three files away from the only place it was described.
 /// </para>
 /// <para>
-/// <see cref="Spoken"/> is the default and sends <b>nothing</b>. That is load-bearing rather than
-/// tidy: every measured number in docs/PROMPT.md describes the default request, and a clause added
-/// to it unconditionally would invalidate the whole table at once.
+/// The instruction is the control now. A preset drops its text into the example box, where it can
+/// be read and edited before it is used, and what the user ends up with is a string rather than a
+/// case. Presets can therefore be added, renamed and reworded without migrating anybody.
 /// </para>
 /// <para>
-/// <see cref="Custom"/> is the other half of the same control, and the reason this is an enum
-/// rather than a text box: most people want one of a few answers and should get it in one tap, and
-/// the people who want something else should not be limited to the few we thought of. The custom
-/// text goes through the same host block as every preset.
+/// The absence of a style is the empty string, which sends nothing — the same default the retired
+/// <c>Spoken</c> had, and still what keeps every measured number in docs/PROMPT.md describing the
+/// request a fresh install actually makes.
 /// </para>
 /// </remarks>
-public enum DictationStyle
+public enum DictationPreset
 {
-    Spoken,
     Chat,
     Notes,
     Prose,
-    Custom,
 }
 
-public static class DictationStyleExtensions
+public static class DictationPresetExtensions
 {
-    public static string Id(this DictationStyle style) => style switch
+    public static string Id(this DictationPreset preset) => preset switch
     {
-        DictationStyle.Chat => "chat",
-        DictationStyle.Notes => "notes",
-        DictationStyle.Prose => "prose",
-        DictationStyle.Custom => "custom",
-        _ => "spoken",
+        DictationPreset.Notes => "notes",
+        DictationPreset.Prose => "prose",
+        _ => "chat",
     };
 
-    public static DictationStyle ParseDictationStyle(string? id) => id?.Trim().ToLowerInvariant() switch
+    public static DictationPreset? ParsePreset(string? id) => id?.Trim().ToLowerInvariant() switch
     {
-        "chat" => DictationStyle.Chat,
-        "notes" => DictationStyle.Notes,
-        "prose" => DictationStyle.Prose,
-        "custom" => DictationStyle.Custom,
-        "spoken" => DictationStyle.Spoken,
-        _ => DictationStyle.Spoken,
+        "chat" => DictationPreset.Chat,
+        "notes" => DictationPreset.Notes,
+        "prose" => DictationPreset.Prose,
+        _ => null,
     };
-
-    /// <summary>Whether this style adds anything to the request. False only for Spoken.</summary>
-    public static bool IsStyled(this DictationStyle style) => style != DictationStyle.Spoken;
 
     /// <summary>
-    /// Whether the clause comes from a file in prompt/dictation-style/. False for Custom, whose
-    /// clause is the user's own text, and for Spoken, which has no clause at all.
+    /// The button's text. A name and nothing else: what it means is the text it drops in the box,
+    /// which is on screen the moment it is pressed.
     /// </summary>
-    public static bool HasClauseFile(this DictationStyle style) =>
-        style.IsStyled() && style != DictationStyle.Custom;
-
-    public static string Label(this DictationStyle style) => style switch
+    public static string Label(this DictationPreset preset) => preset switch
     {
-        DictationStyle.Chat => "Chat — short lines, light punctuation",
-        DictationStyle.Notes => "Notes — sentence case, one point per line",
-        DictationStyle.Prose => "Prose — complete sentences and paragraphs",
-        DictationStyle.Custom => "Custom — your own description or example",
-        _ => "As spoken — however the model writes it",
+        DictationPreset.Notes => "Notes",
+        DictationPreset.Prose => "Prose",
+        _ => "Chat",
     };
+
+    /// <summary>One line beside the button, for the gap between pressing and reading.</summary>
+    /// <remarks>
+    /// Deliberately about <em>shape</em>, never about feel. The old labels promised a register and
+    /// delivered a layout rule; these say what the text will physically look like.
+    /// </remarks>
+    public static string Shape(this DictationPreset preset) => preset switch
+    {
+        DictationPreset.Notes => "One point per line",
+        DictationPreset.Prose => "Full sentences, paragraphs",
+        _ => "Short lines, one thought each",
+    };
+}
+
+/// <summary>How an older install's dictation-style setting becomes an example.</summary>
+/// <remarks>
+/// One named rule rather than the same three-branch conditional in four clients and two importers,
+/// hand-ported from the Swift. It is a rule and not a default because the whole point of the
+/// migration is that nobody's dictations change on upgrade: somebody who chose Chat had chat.md's
+/// words in their request, so afterwards they have those same words in their box, byte for byte,
+/// and can now see and edit them.
+/// </remarks>
+public static class DictationExample
+{
+    public static string Migrating(
+        string? legacyStyle, string? legacyCustom, Func<DictationPreset, string?> presetText)
+    {
+        var name = (legacyStyle ?? string.Empty).Trim().ToLowerInvariant();
+        if (name == "custom") return Typography.SanitizedSample(legacyCustom ?? string.Empty);
+        if (DictationPresetExtensions.ParsePreset(name) is { } preset
+            && presetText(preset) is { } text)
+        {
+            return Typography.SanitizedSample(text);
+        }
+
+        // "spoken", absent, or a value this build does not know. All three mean the box is empty,
+        // which sends nothing -- the behaviour Spoken had, and the safe answer for a name from a
+        // future build whose text this one cannot resolve.
+        return string.Empty;
+    }
 }
