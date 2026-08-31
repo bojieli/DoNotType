@@ -102,30 +102,22 @@ final class RewriteAvailabilityTests: XCTestCase {
             "Set a target language in Settings first, and Translate will write in it.")
     }
 
-    /// The desktops have no mode chip: they choose by which key is held, so a target language
-    /// still replaces what the second key produces there, and the settings window has to say so.
-    /// The phones never ask this — their picker makes the three exclusive by construction.
-    func testTheDesktopSecondKeyReportsATargetLanguageInstead() {
+    /// The rule every client asks, through the mode rather than through a desktop-only entry
+    /// point. A target language used to be reported *here*, as a reason the second key could not
+    /// rewrite, because on a desktop it silently replaced what that key produced. It is a key of
+    /// its own now, so a rewrite key with a target language set is simply a rewrite key.
+    func testATargetLanguageNoLongerDisplacesTheRewriteKey() {
         let keyed: (ProviderKind) -> Bool = { _ in true }
         XCTAssertEqual(
-            RewriteAvailability.forSecondKey(
-                provider: .google, translatingInto: "French", hasKey: keyed),
-            .translating("French"))
+            LiveMode.rewrite.availability(provider: .google, language: "French", hasKey: keyed),
+            .available)
         XCTAssertEqual(
-            RewriteAvailability.forSecondKey(
-                provider: .google, translatingInto: "  ", hasKey: keyed),
-            .available,
+            LiveMode.translate.availability(provider: .google, language: "French", hasKey: keyed),
+            .available)
+        XCTAssertEqual(
+            LiveMode.translate.availability(provider: .google, language: "  ", hasKey: keyed),
+            .noTargetLanguage,
             "whitespace is not a target language")
-        XCTAssertEqual(
-            RewriteAvailability.forSecondKey(provider: .google, translatingInto: "French") { _ in
-                false
-            },
-            .translating("French"),
-            "a target language is reported before a key problem the user cannot act on here")
-        XCTAssertEqual(
-            RewriteAvailability.translating("French").reason,
-            "Dictations are being translated into French, which is the second stage. Clear the "
-                + "target language to rewrite instead.")
     }
 
     /// The picker asks the mode, not the rule, and the two backend-shaped answers come back worded
