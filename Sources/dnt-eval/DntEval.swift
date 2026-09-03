@@ -48,6 +48,21 @@ struct ProviderOptions: ParsableArguments {
         help: "Path to the prompt/ directory. Found by walking up from cwd if omitted.")
     var prompt: String?
 
+    /// What sits in the example box for this run.
+    ///
+    /// Defaults to *nothing*, which is no longer the same as the default a fresh install has. That
+    /// is deliberate: every row already in `docs/PROMPT.md` was measured against the empty request,
+    /// and silently changing what this flag's absence means would re-point all of them at a
+    /// question they never answered. A run that wants the shipped default asks for it by name, and
+    /// the changelog says which run is which.
+    @Option(
+        name: .long,
+        help: ArgumentHelp(
+            "What the example box holds: a preset name (prose, chat, notes), `none`, or literal "
+                + "text. Defaults to none — a fresh install is seeded with prose, so measuring "
+                + "the shipped default means passing it."))
+    var example: String = "none"
+
     @Option(
         name: .long,
         help: """
@@ -89,13 +104,34 @@ struct ProviderOptions: ParsableArguments {
     }
 
     func resolveSystemInstruction() throws -> String {
+        let builder = try promptBuilder()
+        return try builder.systemInstruction(
+            fidelity: try resolveFidelity(),
+            dictationExample: try resolveDictationExample(builder))
+    }
+
+    func promptBuilder() throws -> PromptBuilder {
         let url =
             prompt.map { URL(fileURLWithPath: $0) }
             ?? PromptBuilder.findPromptDirectory()
         guard let url else {
             throw ValidationError("Could not find the prompt/ directory — pass --prompt.")
         }
-        return try PromptBuilder(directory: url).systemInstruction(fidelity: try resolveFidelity())
+        return PromptBuilder(directory: url)
+    }
+
+    /// A preset name resolves to that preset's shipped text; anything else is taken literally.
+    ///
+    /// Literal text is accepted because "does *this* wording regress spelling" is the question
+    /// somebody will actually want to ask of a style they are about to ship, and making them edit
+    /// a file in `prompt/` first would measure a different tree.
+    func resolveDictationExample(_ builder: PromptBuilder) throws -> String {
+        let trimmed = example.trimmed
+        if trimmed.isEmpty || trimmed.lowercased() == "none" { return "" }
+        if let preset = DictationPreset(rawValue: trimmed.lowercased()) {
+            return try builder.dictationPresetText(preset)
+        }
+        return trimmed
     }
 
     func resolveCassetteMode() throws -> CassetteStore.Mode {
