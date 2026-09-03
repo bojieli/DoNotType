@@ -118,7 +118,7 @@ tasks.named("preBuild") { dependsOn(syncContract) }
 dependencies {
     // 1.19 requires compileSdk 37. Keep the newest line compatible with the app's API 35 build;
     // compileSdk can move independently later without opting users into a new target SDK.
-    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("com.google.android.material:material:1.14.0")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.29.0")
