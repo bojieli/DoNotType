@@ -15,6 +15,8 @@ public struct PerformanceStats: Sendable, Equatable {
     public var completed: Int = 0
     public var failed: Int = 0
     public var pending: Int = 0
+    /// Cancelled mid-transcription by the user. Not a failure: nothing went wrong.
+    public var cancelled: Int = 0
     /// Dictations that needed at least one retry — the honest measure of network trouble.
     public var retried: Int = 0
 
@@ -71,7 +73,9 @@ public struct PerformanceStats: Sendable, Equatable {
             switch record.status {
             case .completed: stats.completed += 1
             case .failed: stats.failed += 1
-            case .pending: stats.pending += 1
+            // An in-flight placeholder is a queue of one, gone within seconds either way.
+            case .pending, .transcribing: stats.pending += 1
+            case .cancelled: stats.cancelled += 1
             }
             if record.retryCount > 0 { stats.retried += 1 }
 

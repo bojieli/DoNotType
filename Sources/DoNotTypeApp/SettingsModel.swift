@@ -1085,7 +1085,9 @@ final class SettingsModel {
     }
 
     /// Counted over everything, not the filtered view — a queue you cannot see is still a queue.
-    var retryableCount: Int { allRecords.count(where: \.canRetry) }
+    /// Matches the set `HistoryStore.retryable()` hands to bulk retry: a cancelled dictation is
+    /// retryable from its own row, but it was cancelled on purpose, so it is not counted here.
+    var retryableCount: Int { allRecords.count { $0.canRetry && $0.status != .cancelled } }
 
     // MARK: - Actions
 

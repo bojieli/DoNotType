@@ -15,8 +15,19 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         case failed
         /// Recorded but not yet sent — the app quit mid-flight, or the network was down.
         case pending
+        /// Transcription is under way: a placeholder written when the recording ends, replaced
+        /// by the outcome. Persisted across a quit it loads back as `cancelled`.
+        case transcribing
+        /// The user cancelled before the transcript arrived. Audio is retained so it can be
+        /// retried from its history row, deliberately — never by the automatic drain.
+        case cancelled
 
-        public var isRetryable: Bool { self != .completed }
+        public var isRetryable: Bool {
+            switch self {
+            case .failed, .pending, .cancelled: true
+            case .completed, .transcribing: false
+            }
+        }
     }
 
     public let id: UUID
@@ -223,6 +234,8 @@ public struct DictationRecord: Codable, Sendable, Identifiable, Equatable {
         case .completed: deliveredText
         case .failed: errorMessage ?? "Failed"
         case .pending: "Waiting to send"
+        case .transcribing: "Transcribing…"
+        case .cancelled: "Cancelled"
         }
     }
 }

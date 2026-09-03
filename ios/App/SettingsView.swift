@@ -1097,6 +1097,8 @@ private struct HistoryRow: View {
         case .completed: "checkmark.circle.fill"
         case .failed: "exclamationmark.triangle.fill"
         case .pending: "clock.fill"
+        case .transcribing: "ellipsis.circle.fill"
+        case .cancelled: "xmark.circle.fill"
         }
     }
 
@@ -1105,6 +1107,8 @@ private struct HistoryRow: View {
         case .completed: .green
         case .failed: .red
         case .pending: .orange
+        case .transcribing: .blue
+        case .cancelled: .gray
         }
     }
 }

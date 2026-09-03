@@ -8,6 +8,18 @@ repository's local calendar date.
 
 ## Unreleased
 
+### Added
+
+- **A dictation is in History from the moment transcription starts.** The row used to appear only
+  when the transcript landed, failed, or queued offline — so cancelling mid-wait, or hitting a
+  missing API key, erased all trace of the recording. Now the entry is written first, marked
+  *Transcribing…*, and updated in place: the transcript when it arrives, *Failed* with its audio
+  kept when it doesn't, and *Cancelled* when the user bails out. A cancelled row keeps its
+  recording and its per-row Retry, but the launch-time drain and bulk retry leave it alone — it
+  was cancelled on purpose. Quitting mid-transcription loads the placeholder back as cancelled,
+  never as something still under way. (macOS; the new statuses decode everywhere, but the other
+  platforms' pipelines are unchanged.)
+
 ### Changed
 
 - **The dictation style becomes an example you can read, and a preview you can run.** Five settings

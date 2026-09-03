@@ -381,7 +381,11 @@ one screen further in on two of them.
 - **History.** Search, filters, per-item retry and delete, retention policy, per-dictation
   timings, and a Context Inspector showing exactly what was sent with any dictation. While a
   recording is kept, its row can transcribe it again — the fix for a transcript that arrived and
-  arrived wrong — and save the recording itself to a file.
+  arrived wrong — and save the recording itself to a file. On macOS a dictation appears the
+  moment transcription starts, as an in-flight row that becomes the transcript — or a
+  **cancelled** row, retryable from its own button, if the user bails out. The other platforms
+  write a row only once a dictation has finished or failed, so the `transcribing` and `cancelled`
+  statuses exist only in histories the macOS app has written.
 - **Stats.** Median and p95 wait, wait per second spoken, success rate, retries, and a per-model
   breakdown measured on the microphone and network in use rather than on a vendor's benchmark.
 - **Prompt.** The contract is editable in place on any platform, validated before saving, and
