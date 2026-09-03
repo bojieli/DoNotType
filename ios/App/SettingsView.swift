@@ -22,9 +22,7 @@ struct SettingsView: View {
             transferSection
             setupSection
             providerSection
-            dictationSection
-            typographySection
-            dictationStyleSection
+            transcriptStyleSection
             translationSection
             rewriteSection
             dictionarySection
@@ -239,88 +237,163 @@ struct SettingsView: View {
         }
     }
 
-    private var dictationSection: some View {
+    /// Everything that decides what a finished transcript looks like, in one place.
+    ///
+    /// This was three separate sections — Fidelity, then typography, then a style picker — and the
+    /// split was the problem rather than the labels: each part had to end by pointing at another
+    /// ("Fidelity above is the separate dial for…"), which is what a grouping does when it is
+    /// wrong. They are one question asked in four steps, and the steps are the subheadings.
+    ///
+    /// The last step is the one that makes the rest usable. Every control above it is a *cause* and
+    /// what somebody needs is the *effect*; the label that read `Chat — short lines, light
+    /// punctuation` was describing its effect accurately while being read as a mood.
+    private var transcriptStyleSection: some View {
         Section {
+            Text("Nothing here may add, remove or reword anything you said.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            subheading("Which of your words survive")
             Picker("Fidelity", selection: $model.fidelity) {
                 Text("Raw — every um and false start").tag(Fidelity.raw)
                 Text("Light — drop fillers, keep your words").tag(Fidelity.light)
                 Text("Tidy — light, plus punctuation").tag(Fidelity.tidy)
             }
             .accessibilityIdentifier("fidelity")
-        } header: {
-            Text("Dictation")
-        } footer: {
-            Text("Even Tidy only changes typography. None of these reword you.")
-        }
-    }
+            Text("Even Tidy only changes punctuation. None of these make you sound more formal.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
-    /// Beneath Fidelity because it is the same kind of dial — how the words are written down,
-    /// never which words — and above Rewrite, which is the first setting that may change them.
-    private var typographySection: some View {
-        Section {
+            subheading("What shape they take")
+            // Buttons rather than a picker: pressing one is not choosing a mode, it fills a field
+            // you may then edit — and a picker would show a selection that stops being true the
+            // moment somebody types.
+            HStack(spacing: 8) {
+                ForEach(DictationPreset.allCases, id: \.self) { preset in
+                    Button(preset.label) { model.applyPreset(preset) }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("preset-\(preset.rawValue)")
+                }
+                Button("Clear") { model.dictationExample = "" }
+                    .buttonStyle(.bordered)
+                    .disabled(model.dictationExample.isEmpty)
+                    .accessibilityIdentifier("preset-clear")
+            }
+            TextField(
+                "Empty — however the model would write it",
+                text: $model.dictationExample, axis: .vertical
+            )
+            .lineLimit(4...12)
+            .accessibilityIdentifier("dictation-example")
+            Text(
+                "Describe how you want your transcripts written, or paste a sentence written that "
+                    + "way — a preset button fills this in and you can edit it. Layout only: line "
+                    + "breaks, punctuation, how long the lines are. Up to "
+                    + "\(Typography.maxSampleCharacters) characters."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            subheading("What holds regardless")
             Picker("Chinese and Latin", selection: $model.typographySpacing) {
                 ForEach(TypographySpacing.allCases, id: \.self) { spacing in
                     Text(spacing.label).tag(spacing)
                 }
             }
             .accessibilityIdentifier("typography-spacing")
-
+            Text("Applied on this phone after the transcript comes back — a guarantee.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Picker("Chinese script", selection: $model.chineseScript) {
                 ForEach(ChineseScript.allCases, id: \.self) { script in
                     Text(script.label).tag(script)
                 }
             }
             .accessibilityIdentifier("chinese-script")
+            Text("Asked of the model on every request — a request, not a guarantee.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
+            subheading("What all of that actually produces")
+            previewControls
         } header: {
-            Text("Typography")
-        } footer: {
-            Text(
-                "Spacing is applied to the finished transcript on this phone, so it is the same "
-                    + "on every dictation. The script is asked of the model, which is why it is a "
-                    + "request rather than a guarantee — and why nothing here is allowed to change "
-                    + "a word."
-            )
+            Text("How your transcript is written")
         }
     }
 
-    /// Two sections rather than one control with a mode switch, because the two stages are
-    /// different jobs and get different answers: the dictation style may not reword, and the
-    /// rewrite style is there to.
-    private var dictationStyleSection: some View {
-        Section {
-            Picker("Write it as", selection: $model.dictationStyle) {
-                ForEach(DictationStyle.allCases, id: \.self) { style in
-                    Text(style.label).tag(style)
-                }
-            }
-            .accessibilityIdentifier("dictation-style")
+    /// A labelled step inside the section, so one heading can hold four without the reader losing
+    /// which question each control answers.
+    private func subheading(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .listRowSeparator(.hidden)
+    }
 
-            if model.dictationStyle == .custom {
-                VStack(alignment: .leading, spacing: 4) {
-                    TextField(
-                        "Describe it, or paste a sentence written the way you want yours",
-                        text: $model.customDictationStyle, axis: .vertical
-                    )
-                    .lineLimit(3...8)
-                    .accessibilityIdentifier("custom-dictation-style")
-                    // No silent caps: the field trims, so it says where.
-                    Text("Up to \(Typography.maxSampleCharacters) characters.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+    @ViewBuilder
+    private var previewControls: some View {
+        HStack(spacing: 8) {
+            Button(model.isRecordingClip ? "Stop and transcribe" : "Record a clip") {
+                Task { await model.toggleClipPreview() }
             }
-        } header: {
-            Text("Dictation style")
-        } footer: {
+            .buttonStyle(.borderedProminent)
+            .disabled(model.isPreviewing)
+            .accessibilityIdentifier("preview-clip")
+
+            Button("Last dictation") {
+                Task { await model.runStoredPreview() }
+            }
+            .buttonStyle(.bordered)
+            .disabled(model.isPreviewing || model.isRecordingClip || !model.canPreviewStored)
+
+            if model.isPreviewing { ProgressView() }
+        }
+
+        if let preview = model.preview {
+            // Stacked rather than side by side: a phone has no room for two columns of prose, and
+            // the comparison survives the stacking because each pane is labelled.
+            if preview.baseline != .none {
+                previewPane(title: preview.baseline.label, text: preview.before)
+            }
+            previewPane(title: StylePreview.styledLabel, text: preview.after)
+            Text("\(preview.source). Nothing in History was changed.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("Clear preview") { model.clearPreview() }
+                .buttonStyle(.bordered)
+        }
+
+        if let problem = model.previewProblem {
+            Label(problem, systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if model.isRecordingClip {
+            Text("Recording. Say a sentence or two, then press Stop.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
             Text(
-                "How a dictation is written down — line breaks, punctuation, whether it reads "
-                    + "like a chat message or a paragraph. Not what it says: none of these may "
-                    + "add, remove or reword anything, and Fidelity above is the separate dial "
-                    + "for how much of your own “um” survives. As spoken sends nothing extra, "
-                    + "which is why it is the default. Custom text is kept when you switch to a "
-                    + "preset and back."
+                StylePreview.costNote(for: model.clipBaseline)
+                    + (model.canPreviewStored
+                        ? " Or send your most recent kept recording again — one request."
+                        : " " + StylePreview.noStoredRecording)
             )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private func previewPane(title: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(text.isEmpty ? "—" : text)
+                .font(.callout)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -1024,6 +1097,8 @@ private struct HistoryRow: View {
         case .completed: "checkmark.circle.fill"
         case .failed: "exclamationmark.triangle.fill"
         case .pending: "clock.fill"
+        case .transcribing: "ellipsis.circle.fill"
+        case .cancelled: "xmark.circle.fill"
         }
     }
 
@@ -1032,6 +1107,8 @@ private struct HistoryRow: View {
         case .completed: .green
         case .failed: .red
         case .pending: .orange
+        case .transcribing: .blue
+        case .cancelled: .gray
         }
     }
 }

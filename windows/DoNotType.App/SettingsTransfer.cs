@@ -63,8 +63,14 @@ public static class SettingsTransfer
         [JsonPropertyName("spacing")] public string Spacing { get; set; } = "spaced";
         [JsonPropertyName("chineseScript")] public string ChineseScript { get; set; } = "spoken";
         /// <summary>
-        /// Which dictation style is selected. Absent in a profile written before styles existed,
-        /// which then keeps whatever the importing device already had.
+        /// What the example box holds. Absent in a profile written before the box replaced the
+        /// style dropdown, in which case the two legacy fields below are migrated instead.
+        /// </summary>
+        [JsonPropertyName("dictationExample")] public string? DictationExample { get; set; }
+
+        /// <summary>
+        /// Retired. Still written, so a profile made here imports correctly into an older build;
+        /// still read, so one made there imports correctly here.
         /// </summary>
         [JsonPropertyName("dictationStyle")] public string? DictationStyle { get; set; }
 
@@ -104,6 +110,13 @@ public static class SettingsTransfer
         [JsonPropertyName("finishAndSendAction")] public string FinishAndSendAction { get; set; } = "disabled";
         [JsonPropertyName("secondaryTrigger")] public string? SecondaryTrigger { get; set; }
         [JsonPropertyName("secondaryStyle")] public string SecondaryStyle { get; set; } = "formal";
+
+        /// <summary>
+        /// The key bound to Translate. Absent in a profile written before Translate had a key of
+        /// its own, when a target language overrode both of the other keys instead — so an old
+        /// document leaves the importing device's binding alone rather than clearing it.
+        /// </summary>
+        [JsonPropertyName("translateTrigger")] public string? TranslateTrigger { get; set; }
         [JsonPropertyName("interactionSounds")] public bool InteractionSounds { get; set; } = true;
         [JsonPropertyName("groundingEnabled")] public bool GroundingEnabled { get; set; } = true;
         [JsonPropertyName("keytermBiasing")] public bool KeytermBiasing { get; set; }
@@ -161,8 +174,11 @@ public static class SettingsTransfer
             {
                 Spacing = DoNotType.Core.Typography.Spelling(settings.TypographySpacing),
                 ChineseScript = settings.ChineseScript.Id(),
-                DictationStyle = settings.DictationStyle.Id(),
-                CustomDictationStyle = settings.CustomDictationStyle,
+                DictationExample = settings.DictationExample,
+                // The retired pair too, so a profile made here still imports into a build that
+                // predates the box: an example arrives there as `custom` with the same text.
+                DictationStyle = settings.DictationExample.Length == 0 ? "spoken" : "custom",
+                CustomDictationStyle = settings.DictationExample,
                 CustomRewriteStyle = settings.CustomRewriteStyle,
                 TranslateTo = settings.TranslateTo,
             },
@@ -173,9 +189,12 @@ public static class SettingsTransfer
                 CancelShortcut = settings.CancelShortcut == DoNotType.Core.CancelShortcut.Escape
                     ? "escape" : "disabled",
                 FinishAndSendAction = LowerCamel(settings.FinishAndSendAction),
-                SecondaryTrigger = settings.SecondaryTrigger is { } secondary
+                SecondaryTrigger = settings.RewriteTrigger is { } secondary
                     ? LowerCamel(secondary) : null,
-                SecondaryStyle = settings.SecondaryStyle.Id(),
+                SecondaryStyle = settings.RewriteStyle.Id(),
+                TranslateTrigger = settings.TranslateTrigger is { } translateKey
+                    ? translateKey.ToString()
+                    : null,
                 InteractionSounds = settings.InteractionSounds,
                 GroundingEnabled = settings.GroundingEnabled,
                 KeytermBiasing = settings.KeytermBiasing,
@@ -332,6 +351,10 @@ public static class SettingsTransfer
         RewriteStyle? secondaryStyle = windows is null
             ? null : ParseStyle(windows.SecondaryStyle)
                 ?? throw Unsupported("windows.secondaryStyle", windows.SecondaryStyle);
+        HotkeyMonitor.Trigger? translateKey = windows?.TranslateTrigger is { Length: > 0 } rawTranslate
+            ? ParseEnum<HotkeyMonitor.Trigger>(rawTranslate)
+                ?? throw Unsupported("windows.translateTrigger", rawTranslate)
+            : null;
         LogLevel? logLevel = windows is null
             ? null : LogLevelExtensions.Parse(windows.LogLevel)
                 ?? throw Unsupported("windows.logLevel", windows.LogLevel);
@@ -364,15 +387,22 @@ public static class SettingsTransfer
         {
             settings.TypographySpacing = importedSpacing;
             settings.ChineseScript = importedScript;
-            // Absent is "the profile predates styles", which keeps what this device has.
-            if (document.Typography?.DictationStyle is { Length: > 0 } styleId)
+            // A profile written before the example box carries the retired pair instead, and is
+            // migrated by the shared rule rather than ignored.
+            if (document.Typography?.DictationExample is { } storedExample)
             {
-                settings.DictationStyle = DictationStyleExtensions.ParseDictationStyle(styleId);
+                settings.DictationExample =
+                    DoNotType.Core.Typography.SanitizedSample(storedExample);
             }
-            if (document.Typography?.CustomDictationStyle is { } customDictation)
+            else if (document.Typography?.DictationStyle is { Length: > 0 }
+                || document.Typography?.CustomDictationStyle is not null)
             {
-                settings.CustomDictationStyle =
-                    DoNotType.Core.Typography.SanitizedSample(customDictation);
+                // A document is applied once and then gone, so there is nothing to retry later:
+                // an unresolvable preset becomes an empty box, which sends nothing.
+                settings.DictationExample = DoNotType.Core.DictationExample.Migrating(
+                    document.Typography?.DictationStyle,
+                    document.Typography?.CustomDictationStyle,
+                    PresetText) ?? string.Empty;
             }
             if (document.Typography?.CustomRewriteStyle is { } customRewrite)
             {
@@ -389,8 +419,9 @@ public static class SettingsTransfer
             settings.HotkeyMode = mode!.Value;
             settings.CancelShortcut = cancel!.Value;
             settings.FinishAndSendAction = finish!.Value;
-            settings.SecondaryTrigger = secondary;
-            settings.SecondaryStyle = secondaryStyle!.Value;
+            settings.RewriteTrigger = secondary;
+            settings.RewriteStyle = secondaryStyle!.Value;
+            settings.TranslateTrigger = translateKey;
             settings.InteractionSounds = windows.InteractionSounds;
             settings.GroundingEnabled = windows.GroundingEnabled;
             settings.KeytermBiasing = windows.KeytermBiasing;
@@ -411,9 +442,32 @@ public static class SettingsTransfer
             if (TranscriptMode.Parse(desktop.FileMode) is { } desktopMode)
                 settings.FileMode = desktopMode.Id;
             if (desktop.SecondaryStyle is { } rawStyle && ParseStyle(rawStyle) is { } style)
-                settings.SecondaryStyle = style;
+                settings.RewriteStyle = style;
         }
         settings.Save();
+    }
+
+    /// <summary>
+    /// A preset's text, for migrating a profile that predates the example box.
+    /// </summary>
+    /// <remarks>
+    /// Through the store, so somebody who has edited prompt/dictation-style/chat.md gets their own
+    /// words. Null when the directory cannot be found, in which case the migration produces an
+    /// empty box -- which sends nothing, the safest thing to do with text we cannot resolve.
+    /// </remarks>
+    private static string? PresetText(DictationPreset preset)
+    {
+        if (PromptBuilder.FindPromptDirectory() is not { } path) return null;
+        try
+        {
+            return new PromptStore(HistoryStore.DefaultDirectory())
+                .Builder(path)
+                .DictationPresetText(preset);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
     }
 
     private static void Validate(Document document)

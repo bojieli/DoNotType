@@ -32,19 +32,88 @@ public sealed class AppSettings
     public ChineseScript ChineseScript { get; set; } = ChineseScript.Spoken;
 
     /// <summary>
-    /// How a dictation is written down: one of a few presets, or the user's own text below.
-    /// </summary>
-    public DictationStyle DictationStyle { get; set; } = DictationStyle.Spoken;
-
-    /// <summary>
-    /// The user's own dictation style — a description, or a sentence written the way they want
-    /// theirs written.
+    /// How the transcript should be written down — a description, or a sentence written the way
+    /// the user wants theirs written. Empty sends nothing at all.
     /// </summary>
     /// <remarks>
-    /// Kept even while a preset is selected: switching to Chat and back should not silently delete
-    /// something somebody wrote.
+    /// One string where there used to be a five-case enum and a text box that only one of the
+    /// cases ever used. A preset button fills it; everything after that is text.
     /// </remarks>
-    public string CustomDictationStyle { get; set; } = string.Empty;
+    public string DictationExample { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether <see cref="DictationExample"/> has ever been written, as distinct from being empty.
+    /// </summary>
+    /// <remarks>
+    /// A separate flag because JSON cannot tell an absent string from an empty one once the object
+    /// is deserialised with a default. Empty means somebody pressed Clear and meant it; absent
+    /// means a fresh install that has not been seeded yet.
+    /// </remarks>
+    public bool HasDictationExample { get; set; }
+
+    /// <summary>Gives a brand-new install the default example, once.</summary>
+    /// <remarks>
+    /// After the migration, so an upgrading install is never mistaken for a new one, and only when
+    /// the value has never been written -- putting words back that somebody had just removed is the
+    /// same unforgivable outcome the migration guards against.
+    /// </remarks>
+    public void SeedDictationExample(Func<DictationPreset, string?> presetText)
+    {
+        var stored = HasDictationExample ? DictationExample : null;
+        if (DoNotType.Core.DictationExample.Seeding(stored, presetText) is not { } seeded) return;
+        DictationExample = seeded;
+        HasDictationExample = true;
+        Save();
+    }
+
+    /// <summary>Retired, read once by <see cref="MigrateDictationExample"/> and then cleared.</summary>
+    [JsonPropertyName("DictationStyle")]
+    public string? LegacyDictationStyle { get; set; }
+
+    /// <summary>Retired. See <see cref="LegacyDictationStyle"/>.</summary>
+    [JsonPropertyName("CustomDictationStyle")]
+    public string? LegacyCustomDictationStyle { get; set; }
+
+    /// <summary>
+    /// Turns a pre-example install's style setting into the text that setting was sending.
+    /// </summary>
+    /// <remarks>
+    /// Runs once, at launch, and clears the old fields so it cannot run twice and cannot resurrect
+    /// a value the user has since edited. Nobody's dictations change: someone who had chosen Chat
+    /// had chat.md's words in every request, and afterwards has those same words in their box,
+    /// where they can finally see them.
+    /// </remarks>
+    public void MigrateDictationExample(Func<DictationPreset, string?> presetText)
+    {
+        if (LegacyDictationStyle is null && LegacyCustomDictationStyle is null) return;
+
+        // An example already set wins. The migration is for an install that has never seen the box,
+        // and overwriting a box somebody has typed into would be the one unforgivable outcome.
+        if (DictationExample.Length > 0)
+        {
+            LegacyDictationStyle = null;
+            LegacyCustomDictationStyle = null;
+            HasDictationExample = true;
+            Save();
+            return;
+        }
+
+        // Null is "not knowable yet", never "no style". Clearing the retired fields on an
+        // unreadable prompt directory would throw away the only record of what the user chose,
+        // permanently, over something that will probably work on the next launch.
+        var migrated = DoNotType.Core.DictationExample.Migrating(
+            LegacyDictationStyle, LegacyCustomDictationStyle, presetText);
+        if (migrated is null) return;
+
+        LegacyDictationStyle = null;
+        LegacyCustomDictationStyle = null;
+        // Written even when empty, and that is load-bearing: it records that this install has made
+        // its choice, so SeedDictationExample leaves it alone. Someone upgrading from "As spoken"
+        // was sending nothing and goes on sending nothing.
+        DictationExample = migrated;
+        HasDictationExample = true;
+        Save();
+    }
 
     /// <summary>
     /// The same, for the rewrite stage. Its own setting because the two are different jobs — this
@@ -53,13 +122,15 @@ public sealed class AppSettings
     public string CustomRewriteStyle { get; set; } = string.Empty;
 
     /// <summary>
-    /// The language dictations are written in, or empty for the one that was spoken.
+    /// The language <see cref="TranslateTrigger"/> writes in, or empty when none is set.
     /// </summary>
     /// <remarks>
-    /// Empty by default, and that default is the product: this is the one setting that makes the
-    /// main key deliver something other than what was said. What it does not change is the promise
-    /// underneath — the verbatim transcript is still produced first and still stored, so
-    /// Ctrl+Alt+Z puts the spoken words back exactly as it does after a rewrite.
+    /// This used to be enough on its own to change what every key delivered, the main one
+    /// included, which made it the one setting that could take verbatim away without being asked
+    /// twice. It is now what the translate key writes in and nothing else, so an unbound key means
+    /// this setting does nothing. The promise underneath never changed: the verbatim transcript is
+    /// produced first and stored first, so Ctrl+Alt+Z puts the spoken words back exactly as it
+    /// does after a rewrite.
     /// </remarks>
     public string TranslateTo { get; set; } = string.Empty;
 
@@ -71,10 +142,7 @@ public sealed class AppSettings
     /// resolves what to call it while it is in flight, and those two answering differently is how
     /// an overlay comes to say "Loosening…" over a translation.
     /// </remarks>
-    public TranscriptMode SecondStageFor(RewriteStyle style) =>
-        TranslateTo.Length > 0
-            ? TranscriptMode.Translate(TranslateTo)
-            : style.IsRewrite() ? TranscriptMode.Rewrite(style) : TranscriptMode.Verbatim;
+    public TranscriptMode SecondStageFor(LiveMode mode) => mode.Stage(RewriteStyle, TranslateTo);
     public HotkeyMonitor.Trigger Trigger { get; set; } = HotkeyMonitor.Trigger.RightControl;
     public HotkeyMonitor.Mode HotkeyMode { get; set; } = HotkeyMonitor.Mode.Automatic;
     public CancelShortcut CancelShortcut { get; set; } = DoNotType.Core.CancelShortcut.Escape;
@@ -83,18 +151,34 @@ public sealed class AppSettings
         DoNotType.Core.FinishAndSendAction.Disabled;
 
     /// <summary>
-    /// A second key that dictates and then rewrites, or null for one key and verbatim only.
+    /// A key that dictates and then rewrites, or null for verbatim only.
     /// </summary>
     /// <remarks>
     /// Off by default. A rewrite changes the delivered wording, so it is opt-in — but when it is
     /// on, the choice is made by which key you hold, before speaking, rather than by a setting
     /// somebody has to remember they changed. Model-backed short dictations return both versions
     /// in one request; split or recognition paths retain the compatibility second stage.
+    ///
+    /// The stored names still say "secondary" from when a rewrite was the only thing a second key
+    /// could do. Renaming them on disk would log every existing user out of their own binding to
+    /// no benefit, so the spelling in settings.json stays and the property names moved.
     /// </remarks>
-    public HotkeyMonitor.Trigger? SecondaryTrigger { get; set; }
+    [JsonPropertyName("SecondaryTrigger")]
+    public HotkeyMonitor.Trigger? RewriteTrigger { get; set; }
 
-    /// <summary>What the second key produces. Never verbatim: that is what the first key is for.</summary>
-    public RewriteStyle SecondaryStyle { get; set; } = RewriteStyle.Casual;
+    /// <summary>What the rewrite key produces. Never verbatim: that is the main key's job.</summary>
+    [JsonPropertyName("SecondaryStyle")]
+    public RewriteStyle RewriteStyle { get; set; } = DoNotType.Core.RewriteStyle.Casual;
+
+    /// <summary>
+    /// A key that dictates and then writes it in <see cref="TranslateTo"/>, or null.
+    /// </summary>
+    /// <remarks>
+    /// Off by default for the same reason the rewrite key is, and it is the control that took the
+    /// override out of <see cref="TranslateTo"/>: a mode that changes what is delivered should be
+    /// chosen by which key is held, before speaking, on every one of the three.
+    /// </remarks>
+    public HotkeyMonitor.Trigger? TranslateTrigger { get; set; }
     public bool GroundingEnabled { get; set; } = true;
     public RetentionPolicy Retention { get; set; } = RetentionPolicy.Forever;
     public bool KeepAudio { get; set; }

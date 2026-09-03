@@ -56,6 +56,11 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
         public var finishAndSendAction: String
         public var secondaryTrigger: String?
         public var secondaryStyle: String
+        /// The key bound to Translate. Absent in a profile written before Translate had a key of
+        /// its own, when a target language in `Typography` overrode both of the other keys
+        /// instead — so an old document leaves the importing device's binding alone rather than
+        /// clearing it.
+        public var translateTrigger: String?
         public var interactionSounds: Bool
         public var launchAtLogin: Bool
         public var groundingEnabled: Bool
@@ -70,6 +75,7 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
         public init(
             trigger: String, hotkeyMode: String, cancelShortcut: String,
             finishAndSendAction: String, secondaryTrigger: String?, secondaryStyle: String,
+            translateTrigger: String? = nil,
             interactionSounds: Bool, launchAtLogin: Bool, groundingEnabled: Bool,
             screenshotEnabled: Bool, keytermBiasing: Bool, blockedBundleIDs: [String],
             blockedURLPrefixes: [String], logLevel: String, logContent: Bool, fileMode: String
@@ -80,6 +86,7 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
             self.finishAndSendAction = finishAndSendAction
             self.secondaryTrigger = secondaryTrigger
             self.secondaryStyle = secondaryStyle
+            self.translateTrigger = translateTrigger
             self.interactionSounds = interactionSounds
             self.launchAtLogin = launchAtLogin
             self.groundingEnabled = groundingEnabled
@@ -103,8 +110,13 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
     public struct Typography: Codable, Equatable, Sendable {
         public var spacing: String
         public var chineseScript: String
-        /// Which dictation style is selected. Absent in a profile written before styles existed,
-        /// which then keeps whatever the importing device already had.
+        /// What the example box holds. Absent in a profile written before the box replaced the
+        /// style dropdown, in which case the two legacy fields below are migrated instead.
+        public var dictationExample: String?
+        /// Retired. Still **written**, so a profile made here imports correctly into an older
+        /// build: an example arrives there as `custom` with the same text, which is the same
+        /// request. Still **read**, so a profile made there imports correctly here — see
+        /// `DictationExample.migrating`.
         public var dictationStyle: String?
         /// The user's own style text for each stage. Two fields rather than one, because the two
         /// stages are different jobs: the dictation style may not reword and the rewrite style is
@@ -118,6 +130,7 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
 
         public init(
             spacing: String, chineseScript: String,
+            dictationExample: String? = nil,
             dictationStyle: String? = nil,
             customDictationStyle: String? = nil,
             customRewriteStyle: String? = nil,
@@ -125,6 +138,7 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
         ) {
             self.spacing = spacing
             self.chineseScript = chineseScript
+            self.dictationExample = dictationExample
             self.dictationStyle = dictationStyle
             self.customDictationStyle = customDictationStyle
             self.customRewriteStyle = customRewriteStyle
@@ -132,7 +146,7 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
         }
     }
 
-    /// The phone chooses a rewrite style in the UI; desktop chooses it with a second hotkey.
+    /// The phone chooses its mode from the chip; a desktop chooses it with which key it holds.
     public struct IOS: Codable, Equatable, Sendable {
         public var liveStyle: String
 
@@ -240,19 +254,19 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
 public struct ImportedTypography: Sendable, Equatable {
     public var spacing: TypographySpacing
     public var script: ChineseScript
-    public var style: DictationStyle
-    public var customDictation: String
+    /// What the example box should hold — already migrated from the legacy pair when the profile
+    /// predates it, so an applying client has one string and no branch.
+    public var example: String
     public var customRewrite: String
     public var translateTo: String
 
     public init(
-        spacing: TypographySpacing, script: ChineseScript, style: DictationStyle,
-        customDictation: String, customRewrite: String, translateTo: String
+        spacing: TypographySpacing, script: ChineseScript, example: String,
+        customRewrite: String, translateTo: String
     ) {
         self.spacing = spacing
         self.script = script
-        self.style = style
-        self.customDictation = customDictation
+        self.example = example
         self.customRewrite = customRewrite
         self.translateTo = translateTo
     }

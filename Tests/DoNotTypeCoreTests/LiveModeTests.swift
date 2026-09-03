@@ -2,12 +2,13 @@ import XCTest
 
 @testable import DoNotTypeCore
 
-/// The phone keyboards' mode picker.
+/// The three modes a dictation can be started in — a chip on the phones, a key each on the
+/// desktops.
 ///
 /// The same cases are asserted in `android/app/src/test/kotlin/app/donottype/core/LiveModeTest.kt`
-/// and `windows/DoNotType.Core.Tests/CoreTests.cs` — see `docs/PARITY.md`. Windows has no picker,
-/// but it ships the settings transfer that carries the value between the phones, so it has to
-/// agree about the spellings.
+/// and `windows/DoNotType.Core.Tests/LiveModeTests.cs` — see `docs/PARITY.md`. Windows has no
+/// picker, but it binds one key per mode and ships the settings transfer that carries the value
+/// between clients, so it has to agree about the spellings.
 final class LiveModeTests: XCTestCase {
 
     /// The persisted spelling is what the settings transfer writes, so a rename here silently

@@ -6,6 +6,106 @@ measurement that justified them; see [docs/EVALUATION.md](docs/EVALUATION.md).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Release dates use the
 repository's local calendar date.
 
+## Unreleased
+
+### Added
+
+- **A dictation is in History from the moment transcription starts.** The row used to appear only
+  when the transcript landed, failed, or queued offline — so cancelling mid-wait, or hitting a
+  missing API key, erased all trace of the recording. Now the entry is written first, marked
+  *Transcribing…*, and updated in place: the transcript when it arrives, *Failed* with its audio
+  kept when it doesn't, and *Cancelled* when the user bails out. A cancelled row keeps its
+  recording and its per-row Retry, but the launch-time drain and bulk retry leave it alone — it
+  was cancelled on purpose. Quitting mid-transcription loads the placeholder back as cancelled,
+  never as something still under way. (macOS; the new statuses decode everywhere, but the other
+  platforms' pipelines are unchanged.)
+
+### Changed
+
+- **The dictation style becomes an example you can read, and a preview you can run.** Five settings
+  described how a transcript would be written down and none of them showed you. The dropdown had to
+  compress a whole instruction into a dash-clause, so `Chat — short lines, light punctuation` read
+  as a mood and behaved as a rule: choosing it for the register got you a line break per sentence,
+  and nothing on screen — not the label, not History — could tell you which setting was responsible.
+  The words actually being sent lived three files away from the only place they were described.
+
+  The instruction is the control now. *Write it like this* is one text box with Chat, Notes and
+  Prose buttons that **fill** it, and a Clear that empties it. Pressing Chat puts
+  `prompt/dictation-style/chat.md`'s own words in the box, where you read them, edit them, or throw
+  them away before they are ever used. Presets stopped being stored values and became buttons, so
+  they can be added, renamed and reworded without migrating anybody; typed text and pressed text go
+  through the same host block, the same sanitiser and the same 500-character cap, which is what
+  makes "start from Chat and change it" an offer rather than a mode. Empty is the default and sends
+  nothing, so a fresh install's request is still the one every measured number in `docs/PROMPT.md`
+  describes.
+
+  **Preview** answers the question the settings could not, on all four clients. *Record a clip*
+  captures a few seconds there and then; *Last dictation* re-sends your most recent kept recording.
+  Neither writes anything back to History. The clip is the one that works on a fresh install —
+  keeping audio is off by default — and it is the more honest preview anyway, being your voice now
+  rather than one from a week ago. For a clip the left-hand pane is the same audio sent with the box
+  emptied, which is the comparison that answers "what is my example doing" and costs a second
+  request; the sentence under the buttons says so before you press, and with an empty box that
+  second request is not made. Every other control there is a *cause*, and what you need is the
+  *effect*; the report that prompted all of this was diagnosed by pulling a file out of the audio
+  folder and running it twice by hand, and this is that as a button.
+
+  The settings themselves are one heading now — **How your transcript is written** — over four named
+  steps: *which of your words survive*, *what shape they take*, *what holds regardless*, *what all
+  of that actually produces*. They used to be three or four separate sections with Fidelity up among
+  the hot keys, and each ended by pointing at another ("Fidelity above is the separate dial for…"),
+  which is what a grouping does when it is wrong. The hot-key section becomes *Recording*, because
+  with Fidelity gone everything left in it is about how a recording starts, stops, cancels and
+  submits. The third step is grouped by **who keeps the promise** rather than by what the setting is
+  about. Chinese and Latin spacing is
+  arithmetic performed on your device, so it says *a guarantee*; Chinese script is a sentence added
+  to the request, so it says *a request, not a guarantee*. That distinction has been true in the
+  code since typography shipped and invisible in the window, and it is the line that decides what
+  can be a setting at all: both are things an example cannot carry, which is why they survive while
+  the style dropdown does not.
+
+  History rows now record the example, the script and the spacing that were in force. The row kept
+  fidelity and the rewrite style and nothing about layout, which is why answering "what produced
+  this?" meant reading `defaults`.
+
+  **Upgrading changes no request.** The old setting becomes the text it was already sending —
+  someone on Chat gets `chat.md`'s words in their box, byte for byte, and can finally see them.
+  Someone on the default had nothing appended and still does. A settings profile carries the new
+  field and the retired pair together, so it imports correctly in both directions. If a preset's
+  file cannot be read the old setting is left alone and retried on the next launch rather than
+  cleared, because "unreadable" and "no style" produce the same empty box and only one of them may
+  destroy what you chose.
+
+- **Translate has a key of its own on the desktops, and the main key is verbatim again.** Setting a
+  target language used to be enough on its own to change what *every* key delivered: the main key
+  stopped giving back what was said, and the second key stopped rewriting. That was the one place
+  in the product where the promise the main key carries — you get your words — could be taken away
+  without being asked twice, and the settings window two panels down was still printing it. The
+  phones fixed the same defect one release earlier by making the mode a chip; the desktops fix it
+  the way a desktop already answers the question, with a third key. Bind it in Settings beside the
+  target language, and holding it dictates and then writes the same thing in that language. Nothing
+  is bound by default, so an unbound key means the target language does nothing at all.
+
+  The three keys are now one binding per `LiveMode` rather than a main key and a "secondary", and
+  the stage comes from `LiveMode.stage` — the resolver the phones' chip has used since 0.5.0 —
+  rather than from a conditional each desktop kept for itself and read mid-dictation. The two
+  availability sentences come from `LiveMode.availability` for the same reason, so a key and a chip
+  answer "can this run, and why not" with one rule instead of two; `RewriteAvailability.forSecondKey`
+  and its `translating` case existed only to explain the override in a sentence, and both are gone
+  with the thing they explained. A rewrite and a translation still never combine, which is that
+  resolver's job. `LiveMode` did not exist in C# at all — the desktops had been picking their mode
+  with a conditional while the phones had the type — so it is ported, with `LiveModeTests.cs`
+  asserting the same table the Swift and Kotlin suites do. Each recorder refuses a key another mode
+  already holds. Windows' tray and overlay now name the stage actually in flight rather than
+  re-deriving it from settings, which with three keys would have labelled a rewrite "Translating…"
+  for its whole second stage.
+
+  **Upgrading:** if you had set a target language on 0.5.0, your main key gives verbatim again and
+  Translate needs its key bound in Settings. Existing rewrite bindings and styles are untouched —
+  they are still stored under their old names, so nothing is re-learned. The settings-transfer
+  profile carries the new binding; a profile written before it existed leaves the receiving
+  device's binding alone rather than clearing it.
+
 ## 0.5.0 - 2026-08-31
 
 Five answers to "what happens to what I said" land together. A dictation can arrive in another

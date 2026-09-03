@@ -65,42 +65,97 @@ enum class ChineseScript(val id: String, val label: String) {
 }
 
 /**
- * How a dictation is written down, chosen from a short list or written by the user.
+ * A named starting point for the dictation example — a button, never a stored setting.
  *
- * Not what it says — that is [Fidelity], which decides how much of the speaker's own noise
- * survives, and neither of them may change a word. This is the shape of the written form: line
- * breaks, punctuation density, whether it reads like a chat message or a paragraph.
+ * This used to be `DictationStyle`, a five-case enum the user picked from and the app persisted.
+ * That shape is what made the control unusable: the label had to compress a whole instruction into
+ * a dash-clause, so `Chat — short lines, light punctuation` read as a mood and behaved as a rule,
+ * and somebody who wanted the mood got line breaks they never asked for and could not trace. The
+ * instruction was three files away from the only place it was described.
  *
- * [SPOKEN] is the default and sends **nothing**. That is load-bearing rather than tidy: every
- * measured number in `docs/PROMPT.md` describes the default request, and a clause added to it
- * unconditionally would invalidate the whole table at once.
+ * The instruction is the control now. A preset drops its text into the example box, where it can be
+ * read and edited before it is used, and what the user ends up with is a string rather than a case.
+ * Presets can therefore be added, renamed and reworded without migrating anybody.
  *
- * [CUSTOM] is the other half of the same control, and the reason this is an enum rather than a text
- * box: most people want one of a few answers and should get it in one tap, and the people who want
- * something else should not be limited to the few we thought of. The custom text goes through the
- * same host block as every preset.
+ * The absence of a style is the empty string, which sends nothing — the same default the retired
+ * `SPOKEN` had, and still what keeps every measured number in `docs/PROMPT.md` describing the
+ * request a fresh install actually makes.
+ *
+ * @property label the button's text. A name and nothing else: what it means is the text it drops in
+ *   the box, which is on screen the moment it is pressed.
+ * @property shape one line beside the button, for the gap between pressing and reading. Deliberately
+ *   about *shape*, never about feel — the old labels promised a register and delivered a layout
+ *   rule.
  */
-enum class DictationStyle(val id: String, val label: String) {
-    SPOKEN("spoken", "As spoken — however the model writes it"),
-    CHAT("chat", "Chat — short lines, light punctuation"),
-    NOTES("notes", "Notes — sentence case, one point per line"),
-    PROSE("prose", "Prose — complete sentences and paragraphs"),
-    CUSTOM("custom", "Custom — your own description or example");
-
-    /** Whether this style adds anything to the request. False only for [SPOKEN]. */
-    val isStyled: Boolean get() = this != SPOKEN
-
-    /**
-     * Whether the clause comes from a file in `prompt/dictation-style/`. False for [CUSTOM], whose
-     * clause is the user's own text, and for [SPOKEN], which has no clause at all.
-     */
-    val hasClauseFile: Boolean get() = isStyled && this != CUSTOM
+enum class DictationPreset(val id: String, val label: String, val shape: String) {
+    /** First, and what a new install starts with. See [DictationExample.seeding]. */
+    PROSE("prose", "Prose", "Full sentences, paragraphs"),
+    CHAT("chat", "Chat", "Short lines, one thought each"),
+    NOTES("notes", "Notes", "One point per line");
 
     companion object {
-        val DEFAULT = SPOKEN
+        /** Null rather than a default: an unknown name has no text to fill the box with. */
+        fun from(id: String?): DictationPreset? =
+            entries.firstOrNull { it.id == id?.trim()?.lowercase() }
+    }
+}
 
-        fun from(id: String?): DictationStyle =
-            entries.firstOrNull { it.id == id?.trim()?.lowercase() } ?: DEFAULT
+/**
+ * How an older install's dictation-style setting becomes an example.
+ *
+ * One named rule rather than the same three-branch conditional in four clients and two importers,
+ * hand-ported from the Swift. It is a rule and not a default because the whole point of the
+ * migration is that nobody's dictations change on upgrade: somebody who chose Chat had `chat.md`'s
+ * words in their request, so afterwards they have those same words in their box, byte for byte, and
+ * can now see and edit them.
+ */
+object DictationExample {
+    /**
+     * What a brand-new install starts with.
+     *
+     * Empty used to be the default, and it had one real virtue: the shipped request was the one
+     * every measured number in `docs/PROMPT.md` described. It also meant a fresh install's
+     * transcripts were laid out however the model felt like that day, which is the complaint the
+     * whole formatting series started from — a default of "no answer" is still an answer, and it was
+     * the least predictable one available.
+     */
+    val DEFAULT_PRESET = DictationPreset.PROSE
+
+    /**
+     * The example a fresh install starts with, or null when there is nothing to do.
+     *
+     * @param stored the persisted value, or null when the key has never been written. The
+     *   distinction is the whole function: an empty string is somebody who pressed Clear and meant
+     *   it, and seeding over that would put words back they had just removed.
+     */
+    fun seeding(stored: String?, presetText: (DictationPreset) -> String?): String? {
+        if (stored != null) return null
+        val text = presetText(DEFAULT_PRESET) ?: return null
+        return Typography.sanitizedSample(text)
+    }
+
+    /**
+     * @return the text for the box, or **null** when the answer is not knowable yet — a preset this
+     *   build recognises whose file could not be read. Null is not "no style": a caller that
+     *   treated it as one would clear the retired keys and destroy the only record of what the user
+     *   had chosen, over something as temporary as an unreadable asset. Keep them and try again.
+     */
+    fun migrating(
+        legacyStyle: String?,
+        legacyCustom: String?,
+        presetText: (DictationPreset) -> String?,
+    ): String? {
+        val name = legacyStyle?.trim()?.lowercase().orEmpty()
+        if (name == "custom") return Typography.sanitizedSample(legacyCustom.orEmpty())
+        val preset = DictationPreset.from(name)
+        if (preset != null) {
+            val text = presetText(preset) ?: return null
+            return Typography.sanitizedSample(text)
+        }
+        // "spoken", absent, or a value this build does not know. All three mean the box is empty,
+        // which sends nothing — the behaviour SPOKEN had, and the safe answer for a name this build
+        // could not resolve even with the files in front of it.
+        return ""
     }
 }
 
@@ -310,4 +365,60 @@ object Typography {
     private fun isScriptBoundary(left: Int, right: Int): Boolean =
         (isCJK(left) && isLatinAlphanumeric(right)) ||
             (isLatinAlphanumeric(left) && isCJK(right))
+}
+
+/**
+ * The shape of a settings preview, and the words it is presented with.
+ *
+ * Hand-ported from `Sources/DoNotTypeCore/StylePreview.swift`, because the four clients have to
+ * describe the same thing the same way — somebody comparing a laptop to a phone is comparing the
+ * same product — and because *which baseline to use* is a rule rather than a preference.
+ *
+ * The preview exists because every control in a settings panel is a *cause* and what a user needs is
+ * the *effect*. The label that read `Chat — short lines, light punctuation` was describing its
+ * effect accurately while being read as a mood.
+ */
+object StylePreview {
+    /** Where the left-hand pane's text comes from. */
+    enum class Baseline(val label: String) {
+        /** A dictation already in History: a real past result, free, and the most honest "before". */
+        STORED("What you got"),
+
+        /**
+         * A clip just recorded, which has no past. The baseline is the same audio sent with the
+         * example box emptied — the one comparison that answers "what is my example doing".
+         */
+        WITHOUT_EXAMPLE("Without your example"),
+
+        /** A clip recorded while the box is empty. The second request would be the first again. */
+        NONE("Your transcript"),
+    }
+
+    const val STYLED_LABEL = "With these settings"
+
+    /**
+     * How many model requests a preview of a freshly recorded clip will cost.
+     *
+     * Stated as a function rather than assumed at each call site, because the answer is the
+     * difference between one request and two and the user is told which before pressing.
+     */
+    fun baselineForClip(example: String): Baseline =
+        if (Typography.sanitizedSample(example).isEmpty()) Baseline.NONE else Baseline.WITHOUT_EXAMPLE
+
+    /** What the button says it will cost. A preview is a real request, so it says so. */
+    fun costNote(baseline: Baseline): String = when (baseline) {
+        Baseline.STORED ->
+            "Sends your most recent recording again with the settings above, and shows both " +
+                "answers. One request."
+        Baseline.WITHOUT_EXAMPLE ->
+            "Records a clip, then transcribes it twice — once with your example and once without — " +
+                "so you can see what the example is doing. Two requests."
+        Baseline.NONE ->
+            "Records a clip and transcribes it with the settings above. One request."
+    }
+
+    /** Said where a preview cannot run at all, rather than leaving a control disabled in silence. */
+    const val NO_STORED_RECORDING =
+        "No kept recording to try this on. Record a clip instead, or turn on Keep audio and make a " +
+            "dictation."
 }

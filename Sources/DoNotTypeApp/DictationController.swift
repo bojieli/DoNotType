@@ -43,8 +43,8 @@ final class DictationController {
     /// sit in every line without pushing the interesting fields off the end.
     static func short(_ id: UUID) -> String { String(id.uuidString.prefix(8)) }
 
-    /// Which key started the in-flight recording decides whether it is rewritten.
-    private var pendingStyle: RewriteStyle = .verbatim
+    /// Which key started the in-flight recording decides what happens to it.
+    private var pendingMode: LiveMode = .dictate
     /// Latched only when Return, rather than the normal trigger, finishes this recording.
     private var pendingFinishAndSend: FinishAndSendAction = .disabled
     private(set) var lastLearnedTerms: [String] = []
@@ -74,15 +74,14 @@ final class DictationController {
         hotkey.mode = Settings.shared.hotkeyMode
         hotkey.cancelShortcut = Settings.shared.cancelShortcut
         hotkey.finishAndSendAction = Settings.shared.finishAndSendAction
-        hotkey.secondaryTrigger = Settings.shared.secondaryTrigger
+        hotkey.rewriteTrigger = Settings.shared.rewriteTrigger
+        hotkey.translateTrigger = Settings.shared.translateTrigger
         hotkey.isRecording = { [weak self] in self?.state == .recording }
         hotkey.isDictationActive = { [weak self] in
             guard let self else { return false }
             return self.state == .recording || self.state == .transcribing
         }
-        hotkey.onPressStyled = { [weak self] isStyled in
-            self?.pendingStyle = isStyled ? Settings.shared.secondaryStyle : .verbatim
-        }
+        hotkey.onPressMode = { [weak self] mode in self?.pendingMode = mode }
         hotkey.onPress = { [weak self] in self?.beginRecording() }
         hotkey.onRelease = { [weak self] in self?.finishRecording() }
         hotkey.onHoldChange = { [weak self] held in self?.triggerHoldChanged(held) }
@@ -125,7 +124,8 @@ final class DictationController {
         hotkey.mode = Settings.shared.hotkeyMode
         hotkey.cancelShortcut = Settings.shared.cancelShortcut
         hotkey.finishAndSendAction = Settings.shared.finishAndSendAction
-        hotkey.secondaryTrigger = Settings.shared.secondaryTrigger
+        hotkey.rewriteTrigger = Settings.shared.rewriteTrigger
+        hotkey.translateTrigger = Settings.shared.translateTrigger
         _ = hotkey.start()
     }
 
@@ -205,7 +205,7 @@ final class DictationController {
                 [
                     "dictation": Self.short(pendingID),
                     "mode": Settings.shared.hotkeyMode.rawValue,
-                    "style": pendingStyle.rawValue,
+                    "live": pendingMode.rawValue,
                     "device": Settings.shared.microphoneUID ?? "system default",
                     "provider": Settings.shared.provider.rawValue,
                     "model": Settings.shared.model,
@@ -415,11 +415,6 @@ final class DictationController {
             defer { transcriptionTask = nil }
             await withTaskCancellationHandler {
                 let context = await contextTask?.value
-                guard !Task.isCancelled else {
-                    try? FileManager.default.removeItem(at: audio.url)
-                    transcriptionCancelled()
-                    return
-                }
                 if let session = pipeline?.session { await session.setContext(context) }
                 await transcribe(
                     audio: audio, context: context, releasedAt: releasedAt, livePipeline: pipeline,
@@ -440,50 +435,70 @@ final class DictationController {
     ) async {
         defer { try? FileManager.default.removeItem(at: audio.url) }
 
-        guard !Task.isCancelled else {
-            transcriptionCancelled()
-            return
-        }
-
-        let style = pendingStyle
-        pendingStyle = .verbatim
         let settings = Settings.shared
-        // A target language replaces the second stage rather than joining it. Two jobs in one
-        // request is exactly the combination this project has already measured as worse, and
-        // "formal French" is a feature request rather than a fix for the one that was asked for.
-        // The settings window says so beside the rewrite picker, through `RewriteAvailability`.
-        let stage: TranscriptMode = settings.translateTo.isEmpty
-            ? (style.isRewrite ? .rewrite(style) : .verbatim)
-            : .translate(settings.translateTo)
         let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName
 
-        guard let coordinator = makeCoordinator() else {
-            fail("No API key. Open Settings to add one.")
-            return
-        }
-
+        // The history row is written first, as a placeholder, so a dictation is on record from
+        // the moment transcription starts: the row becomes the transcript, a failure, or a
+        // cancelled entry, but it never silently never existed. The store keeps the audio with
+        // the placeholder, so the later updates below carry no audio of their own.
         var record = DictationRecord(
             id: dictationID,
-            status: .pending,
+            status: .transcribing,
             provider: settings.provider.rawValue,
             model: settings.model,
             fidelity: settings.fidelity,
+            // Recorded on the row so History can answer "what produced this" without asking the
+            // settings, which have since moved on.
+            dictationExample: settings.dictationExample.isEmpty
+                ? nil : settings.dictationExample,
+            chineseScript: settings.chineseScript,
+            typographySpacing: settings.typographySpacing,
             appName: context?.appName ?? frontmost,
             windowTitle: context?.windowTitle,
             durationSeconds: audio.durationSeconds ?? 0,
             context: context)
+        record = await store.insert(record, audio: try? Data(contentsOf: audio.url))
+        onHistoryChange?()
+
+        guard !Task.isCancelled else {
+            await markPlaceholderCancelled(record)
+            transcriptionCancelled()
+            return
+        }
+
+        let mode = pendingMode
+        pendingMode = .dictate
+        // Resolved by the rule all four clients share rather than by a conditional that only the
+        // desktops had. A target language used to be read here and applied to every dictation, so
+        // setting one took the main key away from verbatim; now it is what the translate key
+        // writes in, and nothing else. A rewrite and a translation still never combine — that is
+        // `LiveMode.stage`'s job, and it is the combination this project measured as worse.
+        let stage = mode.stage(style: settings.rewriteStyle, language: settings.translateTo)
+
+        // A missing key is a failure like any other: the placeholder above becomes a retryable
+        // row rather than a dictation that vanished.
+        guard let coordinator = makeCoordinator() else {
+            record.status = .failed
+            record.errorMessage = "No API key. Open Settings to add one."
+            await store.update(record)
+            onHistoryChange?()
+            fail("No API key. Open Settings to add one.")
+            return
+        }
 
         // Offline is worth knowing *before* spending fifteen seconds on a timeout: the dictation
         // goes straight to the queue and the user is told it is safe rather than lost.
         let isOnline = await Reachability.shared.isOnline
         guard !Task.isCancelled else {
+            await markPlaceholderCancelled(record)
             transcriptionCancelled()
             return
         }
         if !isOnline {
             record.status = .pending
             record.errorMessage = "Offline when recorded."
-            await store.insert(record, audio: try? Data(contentsOf: audio.url))
+            await store.update(record)
             onHistoryChange?()
             fail("Offline — saved, and it will send itself when you reconnect.")
             return
@@ -566,13 +581,15 @@ final class DictationController {
             guard !text.isEmpty else {
                 // Live segmentation can legitimately produce no qualified chunks even though the
                 // pipeline existed. Do not turn that into the same silent disappearance the local
-                // VAD gate is intended to explain.
+                // VAD gate is intended to explain — and remove the placeholder, so a recording
+                // with nothing in it does not clutter the history either.
                 log.info("nothing was said", ["dictation": Self.short(dictationID)])
+                await store.delete(id: record.id)
+                onHistoryChange?()
                 notice("No speech detected — recording wasn’t sent")
                 return
             }
 
-            record.status = .completed
             record.text = text
 
             // The rewrite is a second pass over a transcript that already exists, so the verbatim
@@ -641,7 +658,13 @@ final class DictationController {
 
             try Task.checkCancellation()
             record.latencySeconds = Date().timeIntervalSince(releasedAt)
-            await store.insert(record, audio: settings.keepAudio ? try? Data(contentsOf: audio.url) : nil)
+            // Completed only here, beside the write: a cancellation arriving earlier finds the
+            // row still a placeholder and marks it cancelled, while one arriving after must not
+            // clobber an entry that has already landed.
+            record.status = .completed
+            // The placeholder already holds the audio; the update releases it unless the
+            // keep-audio setting is on.
+            await store.update(record)
             onHistoryChange?()
 
             try Task.checkCancellation()
@@ -740,9 +763,11 @@ final class DictationController {
             overlay.confirmInserted(
                 characters: delivered.count, rewriteFailed: rewriteFailed, submission: submission)
         } catch is CancellationError {
+            await markPlaceholderCancelled(record)
             transcriptionCancelled()
         } catch {
             if Task.isCancelled {
+                await markPlaceholderCancelled(record)
                 transcriptionCancelled()
                 return
             }
@@ -766,15 +791,26 @@ final class DictationController {
             record.status = .failed
             record.errorMessage = advice.message
             record.errorDetail = detail
-            await store.insert(record, audio: try? Data(contentsOf: audio.url))
+            await store.update(record)
             onHistoryChange?()
 
             fail(advice.message)
         }
     }
 
+    /// Turns the placeholder into a cancelled row, keeping its audio so the per-row Retry can
+    /// still send it later. A row already written as completed is past this — cancellation must
+    /// not clobber it.
+    private func markPlaceholderCancelled(_ record: DictationRecord) async {
+        guard record.status == .transcribing else { return }
+        var cancelled = record
+        cancelled.status = .cancelled
+        await store.update(cancelled)
+        onHistoryChange?()
+    }
+
     private func transcriptionCancelled() {
-        pendingStyle = .verbatim
+        pendingMode = .dictate
         log.info("transcription cancelled", ["dictation": Self.short(pendingID)])
         overlay.hide()
         state = .idle
@@ -870,8 +906,7 @@ final class DictationController {
                 .builder(bundled: promptURL)
                 .systemInstruction(
                     fidelity: settings.fidelity, script: settings.chineseScript,
-                    dictationStyle: settings.dictationStyle,
-                    customDictationStyle: settings.customDictationStyle)
+                    dictationExample: settings.dictationExample)
         else {
             return FallbackTranscriber(primary: primary)
         }
@@ -915,8 +950,7 @@ final class DictationController {
                 .builder(bundled: promptURL)
                 .systemInstruction(
                     fidelity: settings.fidelity, script: settings.chineseScript,
-                    dictationStyle: settings.dictationStyle,
-                    customDictationStyle: settings.customDictationStyle)
+                    dictationExample: settings.dictationExample)
         else { return nil }
 
         return RetryCoordinator(

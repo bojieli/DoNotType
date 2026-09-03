@@ -36,9 +36,11 @@ public enum SecondStageJob: Sendable, Equatable {
 /// offered a rewrite that could not run. The default provider moving from a recogniser to a model
 /// turned that from latent to visible.
 ///
-/// One rule, in the core, hand-ported to C# and Kotlin with the strings word-identical. The reason
-/// text is the whole point: a control that is greyed out without saying why is barely better than
-/// one that is missing, and a missing one is how this feature came to look absent entirely.
+/// One rule, in the core, hand-ported to C# and Kotlin with the strings word-identical, and asked
+/// through `LiveMode.availability` by every client — a desktop key and a phone chip are two ways of
+/// choosing between the same three modes. The reason text is the whole point: a control that is
+/// greyed out without saying why is barely better than one that is missing, and a missing one is
+/// how this feature came to look absent entirely.
 public enum RewriteAvailability: Sendable, Equatable {
     case available
     /// No key for the selected backend, so nothing can run — not a rewrite, not a transcript.
@@ -49,9 +51,6 @@ public enum RewriteAvailability: Sendable, Equatable {
     /// Translate was chosen with no target language configured. Not a backend problem: the mode is
     /// runnable as soon as Settings says which language to write in.
     case noTargetLanguage
-    /// A target language is set on a desktop, where it replaces whatever the second key would
-    /// otherwise have produced. Not a failure and not a missing backend — see `forSecondKey`.
-    case translating(String)
 
     public var isAvailable: Bool { self == .available }
 
@@ -70,9 +69,6 @@ public enum RewriteAvailability: Sendable, Equatable {
                 + "a backend that can, and \(job.gerund) will use it."
         case .noTargetLanguage:
             "Set a target language in Settings first, and Translate will write in it."
-        case .translating(let language):
-            "Dictations are being translated into \(language), which is the second stage. Clear "
-                + "the target language to rewrite instead."
         }
     }
 
@@ -100,23 +96,5 @@ public enum RewriteAvailability: Sendable, Equatable {
         // backend, which is the behaviour file transcription already had.
         let borrowed = ProviderKind.allCases.first { $0.supportsTextGeneration && hasKey($0) }
         return borrowed == nil ? .backendCannotRewrite(provider, job) : .available
-    }
-
-    /// What a desktop's second hot key can do.
-    ///
-    /// The desktops choose the operation by *which key is held*, so they have no mode chip and no
-    /// way to show that a target language has replaced what the second key produces — on those two
-    /// clients a target language still overrides both keys. The phones do not use this: there the
-    /// picker makes the three modes exclusive by construction, which is what it is for.
-    ///
-    /// Checked before the backend questions on purpose: with a target set the rewrite stage is not
-    /// going to run whatever the backends can do, and reporting a key problem for a control that is
-    /// unavailable for an unrelated reason sends the user to fix the wrong thing.
-    public static func forSecondKey(
-        provider: ProviderKind, translatingInto: String, hasKey: (ProviderKind) -> Bool
-    ) -> RewriteAvailability {
-        let target = TranslationTarget.sanitized(translatingInto)
-        if !target.isEmpty { return .translating(target) }
-        return resolve(provider: provider, job: .rewriting, hasKey: hasKey)
     }
 }

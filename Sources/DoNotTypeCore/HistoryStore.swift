@@ -62,9 +62,13 @@ public actor HistoryStore {
     }
 
     /// Everything that failed or never got sent, oldest first — the natural order to retry in.
+    ///
+    /// A `cancelled` dictation is retryable from its row but excluded here: cancellation was a
+    /// decision, so it is not for a launch-time drain or a bulk retry to second-guess.
     public func retryable() -> [DictationRecord] {
         loadIfNeeded()
-        return records.filter(\.canRetry).sorted { $0.createdAt < $1.createdAt }
+        return records.filter { $0.canRetry && $0.status != .cancelled }
+            .sorted { $0.createdAt < $1.createdAt }
     }
 
     // MARK: - Mutation
@@ -83,9 +87,11 @@ public actor HistoryStore {
             return stored
         }
 
-        // Audio is kept whenever the entry might still need retrying, regardless of the
-        // completed-audio setting: without it, "Retry" is a button that cannot work.
-        let needsAudio = record.status.isRetryable || keepAudioForCompleted
+        // Audio is kept for everything short of a completed entry, regardless of the
+        // completed-audio setting: a placeholder is still transcribing, and failed, pending and
+        // cancelled entries are all retryable — without the recording, "Retry" is a button that
+        // cannot work.
+        let needsAudio = record.status != .completed || keepAudioForCompleted
         var writtenAudioURL: URL?
         if let audio, needsAudio {
             let name = "\(record.id.uuidString).wav"
@@ -210,8 +216,22 @@ public actor HistoryStore {
                     ["type": String(describing: type(of: error))])
             }
         }
+        if indexReadable { normalizeInFlightPlaceholders() }
         if indexReadable { removeOrphanedAudio() }
         applyRetention()
+    }
+
+    /// A row still marked `transcribing` on disk means the app quit or crashed mid-flight — the
+    /// transcription is not under way any more, so the placeholder becomes what it effectively
+    /// is: cancelled. Left alone it would show as "ongoing" forever, and an in-flight placeholder
+    /// must never be retried automatically.
+    private func normalizeInFlightPlaceholders() {
+        var changed = false
+        for index in records.indices where records[index].status == .transcribing {
+            records[index].status = .cancelled
+            changed = true
+        }
+        if changed { _ = persist() }
     }
 
     private func applyRetention() {

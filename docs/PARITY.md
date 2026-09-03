@@ -21,8 +21,10 @@ is reachable by a user of that client, not merely present in its core library.
 | Finish recording, insert, and submit | ✅ Return / ⌘Return / Off ¹⁵ | ✅ Enter / Ctrl+Enter / Off ¹⁵ | — ¹⁵ | — ¹⁵ |
 | Push-to-talk / hands-free as a *setting* | ✅ | ✅ | — ¹ | — ¹ |
 | Rewrite a dictation | ✅ second hotkey | ✅ second hotkey | ✅ mode chip ²² | ✅ mode chip ²² |
-| Preset or custom writing style, per stage | ✅ | ✅ | ✅ | ✅ |
-| Translate a dictation | ✅ ²¹ | ✅ ²¹ | ✅ ²¹ ²² | ✅ ²¹ ²² |
+| Write it like this (one example box) | ✅ | ✅ | ✅ | ✅ |
+| Preview these settings on your own recording | ✅ | ✅ | ✅ | ✅ |
+| …on a clip recorded there and then | ✅ | ✅ | ✅ | ✅ |
+| Translate a dictation | ✅ third hotkey ²¹ | ✅ third hotkey ²¹ | ✅ mode chip ²¹ ²² | ✅ mode chip ²¹ ²² |
 | Says why a mode cannot run | ✅ | ✅ | ✅ | ✅ |
 | Summarise a dictation live | — ⁶ | — ⁶ | — ⁶ | — ⁶ |
 | Undo the last insertion | ✅ ⌘⇧Z | ✅ Ctrl+Shift+Z | — ² | — ² |
@@ -113,24 +115,33 @@ searching. Backspace sends `KEYCODE_DEL` rather than deleting a character count,
 editor knows whether the character before the cursor is one `char` or two, or whether there is a
 selection to remove instead.
 
-²¹ A target language in Settings, and it is the one setting in the product that makes the main
-control deliver something other than what was said. What it does not change is the promise
-underneath: the verbatim transcript is produced first, stored first, and recoverable — `⌘⌥Z` on
-macOS, `Ctrl+Alt+Z` on Windows, the History row on both phones. It **replaces** the rewrite stage
-rather than joining it, on all four: two jobs in one request is the combination this project
-measured as worse, and "formal French" is a feature request rather than a fix for the one that was
-asked for. Where the clients differ is in how that exclusivity is expressed. The phones make it a
-choice — see ²² — while the desktops, which pick the operation by *which key is held*, let a target
-language override the second key and say so beside the rewrite picker. The field is free text with a shape
-check, exactly like Model — the model is the authority on which languages it can write — with a
-list of common ones as a shortcut rather than a whitelist. `dnt transcribe --mode translate:English`
-is the same stage from a shell.
+²¹ A mode you choose before speaking, on all four, and a target language in Settings that says
+which language it writes in. What it never changes is the promise underneath: the verbatim
+transcript is produced first, stored first, and recoverable — `⌘⌥Z` on macOS, `Ctrl+Alt+Z` on
+Windows, the History row on both phones. It **replaces** the rewrite stage rather than joining it:
+two jobs in one request is the combination this project measured as worse, and "formal French" is a
+feature request rather than a fix for the one that was asked for. The clients express that
+exclusivity in the shape their input already has — the phones with the chip (see ²²), the desktops
+with a third key, because they pick the operation by *which key is held*.
+
+Until 0.5.0 the desktops had no third key, and a target language alone was enough to change what
+every key delivered: the main key stopped being verbatim, and the second key stopped rewriting,
+which `RewriteAvailability.forSecondKey` existed to explain in a sentence beside the rewrite
+picker. That was the one place the product broke its own promise about the main key, and it is the
+same defect the chip fixed on the phones one release earlier. Both the entry point and its
+apologetic case are gone; every client now asks `LiveMode.availability`, and an unbound translate
+key means the target language does nothing at all.
+
+The field is free text with a shape check, exactly like Model — the model is the authority on which
+languages it can write — with a list of common ones as a shortcut rather than a whitelist.
+`dnt transcribe --mode translate:English` is the same stage from a shell.
 
 ²² The phones choose the operation from one three-way chip — Dictate, Rewrite, Translate — before
 speaking: on the keyboard it opens a menu, on the app's own screen it is three segments. The
-desktops have no equivalent because they already answer the question with the keyboard: the main
-key is verbatim and the second key rewrites, so a persistent chip would be a second answer to a
-question already asked.
+desktops have no equivalent because they already answer the question with the keyboard: one key per
+mode, so a persistent chip would be a second answer to a question already asked. The three cases are
+the same `LiveMode` on all four, and so is the resolver that turns one into a stage — a key and a
+chip are two ways of choosing between the same three things, and they used to disagree.
 
 The chip replaced a two-state Dictate/Rewrite toggle that a target language in Settings silently
 overrode, so it could read `Rewrite` over a dictation that came back translated. All three
@@ -140,6 +151,23 @@ keyboards cannot read the Keychain, so on iOS the containing app publishes which
 landed on and the extension rebuilds the sentence from it. The target language stays in Settings on
 both: a keyboard cannot type into its own popup, so a language list there would be a fixed handful
 quietly disagreeing with the free-text target the app already stores.
+
+²³ Two ways in, on all four. **Record a clip** captures a few seconds there and then; **Last
+dictation** re-sends the most recent kept recording. The clip is the one that works on a fresh
+install, because keeping audio is off by default — and it is the more honest preview anyway, being
+your voice now rather than one from a week ago. Neither writes anything back to History: a preview
+that updated the row would rewrite the thing being compared against.
+
+The baseline in the left pane differs by source, and the rule is stated once in `StylePreview`
+rather than decided four times. A stored dictation already has a real past result, which is free.
+A clip has none, so the baseline is the same audio sent with the example box emptied — the one
+comparison that answers "what is my example actually doing" — which costs a second request, and the
+sentence under the buttons says so before they are pressed. With an empty box that second request
+would be the first request again, so it is not made.
+
+It exists because every other control in that panel is a *cause* while what a user needs is the
+*effect*, and no label closes that gap: the one reading `Chat — short lines, light punctuation` was
+describing its effect accurately while being read as a mood.
 
 ²⁰ A visible control, on the phone's keyboard and on its dictation screen, in both halves of a
 dictation: `Discard recording` while the microphone is open, `Cancel transcription` once the
@@ -303,9 +331,11 @@ one screen further in on two of them.
   bounds that tail. Both services, both keys, and how long the primary gets alone are chosen by
   the user; history records which one actually answered, because a tool whose transcript quality
   varied invisibly would not be worth trusting.
-- **Hotkey.** Which key, whether a tap toggles or a hold talks, and an optional second key bound
-  to a rewrite (formal, concise, casual) for producing an email rather than a transcript. The
-  main key always stays verbatim. An opt-in finish-and-send action makes Return/Enter during
+- **Hotkey.** Which key, whether a tap toggles or a hold talks, and two optional further keys: one
+  bound to a rewrite (formal, concise, casual) for producing an email rather than a transcript, one
+  bound to the target language. Both are off until bound, and the main key always stays verbatim —
+  which key you hold decides, before you speak, and there is no mode left switched on. The
+  recorders refuse a key another mode already has. An opt-in finish-and-send action makes Return/Enter during
   recording insert and then submit with plain Return/Enter, `⌘ Return`, or `Ctrl+Enter`; the key
   continues to belong to the foreground app whenever recording is not active.
 - **Shortcuts.** Undo the last insertion, or revert a rewrite to what was actually said: `⌘⇧Z` /
@@ -313,25 +343,37 @@ one screen further in on two of them.
   verbatim transcript is always kept. Not `Ctrl+Z`, which belongs to whatever is being typed into.
 - **Audio.** Pin a microphone rather than following the system default; start/stop tones are on by
   default and can be disabled.
-- **Typography.** Three settings on all four clients, in one section between Fidelity and
-  Rewrite, because they are the same kind of dial as Fidelity — how the words are written down,
-  never which words. *Chinese and Latin* is deterministic and applied locally to the finished
-  transcript, so it is the same on every dictation, in history and at the cursor: one space at the
-  boundary (the default), none, or whatever the model wrote. *Chinese script* and a free-text
-  *formatting example* are asked of the model, and are sent only when set — the default request is
-  byte-identical to the one this feature did not exist for. The example is capped at 500 characters
-  and the field says so. All three cross devices in the settings-transfer profile.
-- **Writing style.** One control on each stage, filled either way. *Dictation style* — As spoken
-  (the default, which sends nothing), Chat, Notes, Prose, or Custom — decides how the words are
-  written down and may not change one of them. *Rewrite style* — Formal, Concise, Casual, or
-  Custom — decides how they are said again, and is the stage allowed to reword. Two settings
-  because they are two jobs with opposite permissions, and Custom on each because three presets are
-  three guesses. A custom style is substituted into the same host block as a preset, so the
-  framing and the preservation rules cover the user's own text too. Both cross devices in the
-  transfer profile.
-- **Translation.** Off by default. Set a target language and every dictation arrives in it, with
-  the verbatim transcript still first in History. See footnote ²¹ for why it replaces the rewrite
-  stage rather than stacking with it.
+- **How your transcript is written.** One heading on all four clients over four named steps —
+  *which of your words survive* (Fidelity), *what shape they take* (the example box), *what holds
+  regardless*, *what all of that actually produces* (the preview). These used to be three or four
+  separate sections, with Fidelity up among the hot keys, and each one ended by pointing at another
+  ("Fidelity above is the separate dial for…"), which is what a grouping does when it is wrong. The
+  third step is grouped by *who keeps the promise*, because that is the line deciding what can be a
+  setting at all — both are things an example cannot carry. *Chinese and Latin* is arithmetic performed on the device
+  after the transcript comes back, so it is a guarantee: one space at the boundary (the default),
+  none, or whatever the model wrote. *Chinese script* is one sentence added to the request, so it is
+  a request and the panel says so. Both are sent only when set, leaving the default request
+  byte-identical to the one these features did not exist for, and both cross devices in the
+  settings-transfer profile.
+- **Write it like this.** One text box on all four clients, with Chat / Notes / Prose buttons that
+  *fill* it and a Clear that empties it. Empty is the default and sends nothing. This replaced a
+  five-case dropdown, and the reason is the whole design: a label has to compress an instruction
+  into a dash-clause, so `Chat — short lines, light punctuation` read as a mood and behaved as a
+  rule, and somebody who wanted the mood got line breaks they had not asked for with nothing on
+  screen to explain why. A preset is a button rather than a stored value now — pressing it puts
+  `prompt/dictation-style/chat.md`'s own words in the box, where they can be read and edited before
+  use — so presets can be added, renamed and reworded without migrating anybody. The box goes
+  through the same host block, sanitiser and 500-character cap whether its text was typed or
+  pressed. Upgrading turns the old setting into the text it was already sending, so no request
+  changes; a preset whose file cannot be read leaves the old setting alone and retries next launch
+  rather than clearing it. *Rewrite style* keeps its enum — it is a stage rather than a layout —
+  and still offers Formal, Concise, Casual and Custom.
+- **Preview.** On all four. See footnote ²³ — the report that produced it was diagnosed by pulling
+  a file out of the audio folder and running it twice by hand, and this is that as a button.
+- **Translation.** Off by default, in two halves that both have to be set: a target language, and
+  the control that runs it — the translate key on the desktops, the chip on the phones. The
+  verbatim transcript is still first in History either way. See footnote ²¹ for why it replaces the
+  rewrite stage rather than stacking with it, and for what it used to do instead.
 - **Fidelity.** `raw` keeps every filler and correction; `light` (default) removes empty fillers,
   repetitions, false starts, and superseded corrections; `tidy` also applies standard casing and
   punctuation without rephrasing.
@@ -339,7 +381,11 @@ one screen further in on two of them.
 - **History.** Search, filters, per-item retry and delete, retention policy, per-dictation
   timings, and a Context Inspector showing exactly what was sent with any dictation. While a
   recording is kept, its row can transcribe it again — the fix for a transcript that arrived and
-  arrived wrong — and save the recording itself to a file.
+  arrived wrong — and save the recording itself to a file. On macOS a dictation appears the
+  moment transcription starts, as an in-flight row that becomes the transcript — or a
+  **cancelled** row, retryable from its own button, if the user bails out. The other platforms
+  write a row only once a dictation has finished or failed, so the `transcribing` and `cancelled`
+  statuses exist only in histories the macOS app has written.
 - **Stats.** Median and p95 wait, wait per second spoken, success rate, retries, and a per-model
   breakdown measured on the microphone and network in use rather than on a vendor's benchmark.
 - **Prompt.** The contract is editable in place on any platform, validated before saving, and

@@ -323,25 +323,80 @@ final class DictationModel {
         }
     }
 
-    /// How a dictation is written down: one of a few presets, or the user's own text below.
-    var dictationStyle: DictationStyle {
-        didSet { UserDefaults.standard.set(dictationStyle.rawValue, forKey: "dictationStyle") }
-    }
-
-    /// The user's own dictation style — a description, or a sentence written the way they want
-    /// theirs written.
+    /// How the transcript should be written down — a description, or a sentence written the way
+    /// the user wants theirs written. Empty sends nothing at all.
     ///
     /// Sanitised on the way in rather than on the way out, so what the settings screen shows is
-    /// what a request would carry. Kept even while a preset is selected: switching to Chat and
-    /// back should not silently delete something somebody wrote.
-    var customDictationStyle: String {
+    /// what a request would carry.
+    var dictationExample: String {
         didSet {
-            let cleaned = Typography.sanitizedSample(customDictationStyle)
-            if cleaned != customDictationStyle {
-                customDictationStyle = cleaned
+            let cleaned = Typography.sanitizedSample(dictationExample)
+            if cleaned != dictationExample {
+                dictationExample = cleaned
                 return
             }
-            UserDefaults.standard.set(cleaned, forKey: "customDictationStyle")
+            UserDefaults.standard.set(cleaned, forKey: "dictationExample")
+        }
+    }
+
+    /// Turns a pre-example install's style setting into the text that setting was sending.
+    ///
+    /// Runs once, at launch, clearing the retired keys behind it so it cannot run twice and cannot
+    /// resurrect a value the user has since edited. An example already set wins: overwriting a box
+    /// somebody has typed into would be the one unforgivable outcome.
+    private func migrateDictationExample() {
+        let defaults = UserDefaults.standard
+        let legacyStyle = defaults.string(forKey: "dictationStyle")
+        let legacyCustom = defaults.string(forKey: "customDictationStyle")
+        guard legacyStyle != nil || legacyCustom != nil else { return }
+
+        func clearLegacyKeys() {
+            defaults.removeObject(forKey: "dictationStyle")
+            defaults.removeObject(forKey: "customDictationStyle")
+        }
+
+        guard dictationExample.isEmpty else {
+            clearLegacyKeys()
+            return
+        }
+        // Nil is "not knowable yet", never "no style". Clearing the keys on an unreadable bundle
+        // would throw away the only record of what the user chose, permanently.
+        guard let migrated = DictationExample.migrating(
+            legacyStyle: legacyStyle, legacyCustom: legacyCustom, presetText: presetText)
+        else { return }
+        clearLegacyKeys()
+        // Written even when empty, and that is load-bearing: it records that this install has made
+        // its choice, so `seedDictationExample` leaves it alone. Someone upgrading from "As spoken"
+        // was sending nothing and goes on sending nothing.
+        dictationExample = migrated
+    }
+
+    /// Gives a brand-new install the default example, once.
+    ///
+    /// After the migration, so an upgrading install is never mistaken for a new one, and only when
+    /// the key has never been written — an empty string is somebody who pressed Clear, and putting
+    /// words back they had just removed is the same unforgivable outcome the migration guards
+    /// against.
+    private func seedDictationExample() {
+        guard let seeded = DictationExample.seeding(
+            stored: UserDefaults.standard.string(forKey: "dictationExample"),
+            presetText: presetText)
+        else { return }
+        dictationExample = seeded
+    }
+
+    /// Drops a preset's text into the example box, where it can be read and edited before use.
+    func applyPreset(_ preset: DictationPreset) {
+        guard let text = presetText(preset) else { return }
+        dictationExample = text
+    }
+
+    /// Resolves a preset's text for the button, the migration and the importer, or nil when the
+    /// bundle is unreadable — in which case a legacy style migrates to an empty box, which sends
+    /// nothing.
+    func presetText(_ preset: DictationPreset) -> String? {
+        Self.bundledPromptURL.flatMap {
+            try? prompts.builder(bundled: $0).dictationPresetText(preset)
         }
     }
 
@@ -442,9 +497,7 @@ final class DictationModel {
             ?? .default
         chineseScript =
             ChineseScript(rawValue: defaults.string(forKey: "chineseScript") ?? "") ?? .default
-        dictationStyle =
-            DictationStyle(rawValue: defaults.string(forKey: "dictationStyle") ?? "") ?? .default
-        customDictationStyle = defaults.string(forKey: "customDictationStyle") ?? ""
+        dictationExample = defaults.string(forKey: "dictationExample") ?? ""
         customRewriteStyle = defaults.string(forKey: "customRewriteStyle") ?? ""
         translateTo = TranslationTarget.sanitized(defaults.string(forKey: "translateTo") ?? "")
         let storedLiveStyle =
@@ -480,6 +533,15 @@ final class DictationModel {
         prompts = PromptStore(directory: directory.appendingPathComponent("Prompt"))
         applyDictionary(dictionaryStore.load())
         loadPrompt()
+
+        // After `prompts`, because resolving a preset's text needs it, and before the first
+        // request can read the setting. An install that predates the example box still has the
+        // retired style pair; the shared rule turns it into the text that pair was already
+        // sending, so upgrading changes nothing about the request and everything about whether it
+        // can be seen.
+        migrateDictationExample()
+        // After the migration, so an upgrading install is never mistaken for a new one.
+        seedDictationExample()
 
         // Before the first request, and before anything else can log. On a phone there is no
         // Console and no shell, so a log file in the shared container is the only evidence a bug
@@ -578,8 +640,11 @@ final class DictationModel {
             typography: .init(
                 spacing: typographySpacing.rawValue,
                 chineseScript: chineseScript.rawValue,
-                dictationStyle: dictationStyle.rawValue,
-                customDictationStyle: customDictationStyle,
+                dictationExample: dictationExample,
+                // The retired pair too, so a profile made here still imports into a build that
+                // predates the box: an example arrives there as `custom` with the same text.
+                dictationStyle: dictationExample.isEmpty ? "spoken" : "custom",
+                customDictationStyle: dictationExample,
                 customRewriteStyle: customRewriteStyle,
                 translateTo: translateTo),
             iOS: .init(liveStyle: (liveMode == .rewrite ? preferredRewriteStyle : .verbatim)
@@ -612,17 +677,23 @@ final class DictationModel {
             }
             // Absent is "the profile predates styles", which keeps what this device has; present
             // and unreadable fails the whole import rather than being silently defaulted.
-            var style = dictationStyle
-            if let raw = typography.dictationStyle {
-                guard let parsed = DictationStyle(rawValue: raw) else {
-                    throw SettingsTransferApplyError.unsupportedValue(
-                        field: "typography.dictationStyle", value: raw)
-                }
-                style = parsed
+            // A profile written before the example box carries the retired pair instead, and is
+            // migrated by the shared rule rather than rejected.
+            let example: String
+            if let stored = typography.dictationExample {
+                example = Typography.sanitizedSample(stored)
+            } else if typography.dictationStyle != nil || typography.customDictationStyle != nil {
+                // A document is applied once and then gone, so there is nothing to retry later:
+                // an unresolvable preset becomes an empty box, which sends nothing.
+                example = DictationExample.migrating(
+                    legacyStyle: typography.dictationStyle,
+                    legacyCustom: typography.customDictationStyle,
+                    presetText: presetText) ?? ""
+            } else {
+                example = dictationExample
             }
             importedTypography = ImportedTypography(
-                spacing: spacing, script: script, style: style,
-                customDictation: typography.customDictationStyle ?? customDictationStyle,
+                spacing: spacing, script: script, example: example,
                 customRewrite: typography.customRewriteStyle ?? customRewriteStyle,
                 translateTo: typography.translateTo ?? "")
         }
@@ -667,10 +738,8 @@ final class DictationModel {
         if let typography = importedTypography {
             defaults.set(typography.spacing.rawValue, forKey: "typographySpacing")
             defaults.set(typography.script.rawValue, forKey: "chineseScript")
-            defaults.set(typography.style.rawValue, forKey: "dictationStyle")
             defaults.set(
-                Typography.sanitizedSample(typography.customDictation),
-                forKey: "customDictationStyle")
+                Typography.sanitizedSample(typography.example), forKey: "dictationExample")
             defaults.set(
                 Typography.sanitizedSample(typography.customRewrite),
                 forKey: "customRewriteStyle")
@@ -692,8 +761,7 @@ final class DictationModel {
         if let typography = importedTypography {
             typographySpacing = typography.spacing
             chineseScript = typography.script
-            dictationStyle = typography.style
-            customDictationStyle = typography.customDictation
+            dictationExample = typography.example
             customRewriteStyle = typography.customRewrite
             translateTo = typography.translateTo
         }
@@ -736,8 +804,7 @@ final class DictationModel {
 
         let builder = prompts.builder(bundled: promptURL)
         guard let instruction = try? builder.systemInstruction(
-            fidelity: fidelity, script: chineseScript,
-                    dictationStyle: dictationStyle, customDictationStyle: customDictationStyle)
+            fidelity: fidelity, script: chineseScript, dictationExample: dictationExample)
         else { return nil }
 
         let service = TranscriptionService(
@@ -1081,21 +1148,7 @@ final class DictationModel {
         }
 
         do {
-            if !recorder.isMonitoring {
-                let session = AVAudioSession.sharedInstance()
-                // allowBluetoothHFP is the iOS 26 SDK's name for allowBluetooth; the CI image's
-                // Xcode 16.4 SDK only has the old one. The compiler version tracks the SDK here.
-                #if compiler(>=6.2)
-                try session.setCategory(
-                    .playAndRecord, mode: .measurement,
-                    options: [.defaultToSpeaker, .mixWithOthers, .allowBluetoothHFP])
-                #else
-                try session.setCategory(
-                    .playAndRecord, mode: .measurement,
-                    options: [.defaultToSpeaker, .mixWithOthers, .allowBluetooth])
-                #endif
-                try session.setActive(true)
-            }
+            try activateAudioSessionIfNeeded()
 
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("dnt-\(UUID().uuidString).wav")
@@ -1389,6 +1442,28 @@ final class DictationModel {
             self.deactivateAudioSession()
             self.voiceKeyboardBridge.endSession()
         }
+    }
+
+    /// Claims the microphone route, unless the engine already has it.
+    ///
+    /// Extracted so a preview clip takes the same route with the same options a dictation does — a
+    /// preview recorded through a different category would be answering a question about a
+    /// different recording.
+    func activateAudioSessionIfNeeded() throws {
+        guard !recorder.isMonitoring else { return }
+        let session = AVAudioSession.sharedInstance()
+        // allowBluetoothHFP is the iOS 26 SDK's name for allowBluetooth; the CI image's
+        // Xcode 16.4 SDK only has the old one. The compiler version tracks the SDK here.
+        #if compiler(>=6.2)
+        try session.setCategory(
+            .playAndRecord, mode: .measurement,
+            options: [.defaultToSpeaker, .mixWithOthers, .allowBluetoothHFP])
+        #else
+        try session.setCategory(
+            .playAndRecord, mode: .measurement,
+            options: [.defaultToSpeaker, .mixWithOthers, .allowBluetooth])
+        #endif
+        try session.setActive(true)
     }
 
     /// Releases the route immediately so music, calls, and other audio regain their prior session.
@@ -1817,7 +1892,7 @@ final class DictationModel {
             let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(
                     fidelity: fidelity, script: chineseScript,
-                    dictationStyle: dictationStyle, customDictationStyle: customDictationStyle)
+                    dictationExample: dictationExample)
         else { return FallbackTranscriber(primary: primary) }
 
         return FallbackTranscriber(
@@ -1829,13 +1904,156 @@ final class DictationModel {
             hedgeAfter: .seconds(fallbackAfterSeconds))
     }
 
+    // MARK: - Preview
+
+    /// What the settings currently on screen would do to a dictation.
+    ///
+    /// Every other control in that screen is a *cause*, and what somebody needs is the *effect*. No
+    /// label closes that gap: the one that read `Chat — short lines, light punctuation` was
+    /// describing its effect accurately while being read as a mood, and the line breaks that
+    /// followed were untraceable from anything on screen.
+    struct Preview: Equatable {
+        var baseline: StylePreview.Baseline
+        var before: String
+        var after: String
+        var source: String
+    }
+
+    private(set) var preview: Preview?
+    private(set) var isPreviewing = false
+    private(set) var isRecordingClip = false
+    private(set) var previewProblem: String?
+
+    /// Whether a stored recording exists to try this on. False on a fresh install, because keeping
+    /// audio is off by default — which is why recording a clip is the other button, not a fallback.
+    var canPreviewStored: Bool { previewCandidate != nil }
+
+    var clipBaseline: StylePreview.Baseline {
+        StylePreview.baseline(forClipWithExample: dictationExample)
+    }
+
+    private var previewCandidate: DictationRecord? {
+        records.first {
+            $0.status == DictationRecord.Status.completed && $0.canRedo && !$0.text.isEmpty
+        }
+    }
+
+    func runStoredPreview() async {
+        guard let record = previewCandidate else {
+            previewProblem = StylePreview.noStoredRecording
+            return
+        }
+        guard let coordinator = makeCoordinator() else {
+            previewProblem = "No API key set."
+            return
+        }
+        isPreviewing = true
+        previewProblem = nil
+        defer { isPreviewing = false }
+        do {
+            let after = try await coordinator.preview(record)
+            let when = record.createdAt.formatted(date: .abbreviated, time: .shortened)
+            preview = Preview(
+                baseline: .stored, before: record.deliveredText, after: after,
+                source: "Your recording from \(when)")
+        } catch {
+            previewProblem = error.localizedDescription
+        }
+    }
+
+    /// Starts capturing a clip to preview. The second press transcribes it.
+    ///
+    /// On a phone this is the half that matters most: keeping audio is off by default, so most
+    /// people have no stored recording to send again — and this is the more honest preview anyway,
+    /// being your voice now rather than one from a week ago.
+    func toggleClipPreview() async {
+        if isRecordingClip {
+            await finishClipPreview()
+        } else {
+            await startClipPreview()
+        }
+    }
+
+    private func startClipPreview() async {
+        previewProblem = nil
+        guard !recorder.isRecording else {
+            previewProblem = "A dictation is already recording."
+            return
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("preview-\(UUID().uuidString).wav")
+        do {
+            try activateAudioSessionIfNeeded()
+            try recorder.start(url: url)
+            isRecordingClip = true
+        } catch {
+            previewProblem = error.localizedDescription
+        }
+    }
+
+    private func finishClipPreview() async {
+        isRecordingClip = false
+        guard let url = recorder.stop(), let audio = try? AudioFile(contentsOf: url) else {
+            previewProblem = "That clip was too short. Say a sentence or two."
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        guard let styled = makePreviewService(example: dictationExample) else {
+            previewProblem = "No API key set."
+            return
+        }
+        isPreviewing = true
+        defer { isPreviewing = false }
+
+        let baseline = clipBaseline
+        do {
+            let after = try await styled.transcribe(audio: audio, context: nil)
+                .transcript.transcript.trimmed
+            // Only when there is something to compare against: with an empty box the two requests
+            // would be the same request, and showing one answer twice is not a comparison.
+            let before = baseline == .withoutExample
+                ? try await makePreviewService(example: "")?
+                    .transcribe(audio: audio, context: nil).transcript.transcript.trimmed ?? ""
+                : ""
+            preview = Preview(
+                baseline: baseline, before: before, after: after,
+                source: "The clip you just recorded")
+        } catch {
+            previewProblem = error.localizedDescription
+        }
+    }
+
+    /// The same service a dictation would use, with the example overridden.
+    ///
+    /// The override is the point of the baseline request: same audio, same fidelity, same script,
+    /// one thing different.
+    private func makePreviewService(example: String) -> TranscriptionService? {
+        guard hasAPIKey,
+            let promptURL = Self.bundledPromptURL,
+            let instruction = try? prompts.builder(bundled: promptURL)
+                .systemInstruction(
+                    fidelity: fidelity, script: chineseScript, dictationExample: example),
+            let backend = try? ProviderFactory.make(
+                provider, apiKey: apiKey, endpoint: endpoint)
+        else { return nil }
+        return TranscriptionService(
+            provider: backend, model: model, systemInstruction: instruction, fidelity: fidelity,
+            personalDictionary: personalDictionaryTerms, typography: typographySpacing)
+    }
+
+    func clearPreview() {
+        preview = nil
+        previewProblem = nil
+    }
+
     private func makeCoordinator() -> RetryCoordinator? {
         guard hasAPIKey,
             let promptURL = Self.bundledPromptURL,
             let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(
                     fidelity: fidelity, script: chineseScript,
-                    dictationStyle: dictationStyle, customDictationStyle: customDictationStyle)
+                    dictationExample: dictationExample)
         else { return nil }
 
         guard let backend = try? ProviderFactory.make(

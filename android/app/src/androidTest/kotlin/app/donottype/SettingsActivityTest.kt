@@ -8,7 +8,8 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ScrollView
 import android.widget.Spinner
-import app.donottype.core.DictationStyle
+import app.donottype.core.DictationPreset
+import com.google.android.material.textfield.TextInputEditText
 import app.donottype.core.Fidelity
 import app.donottype.core.LogRouter
 import app.donottype.core.ProviderKind
@@ -149,32 +150,41 @@ class SettingsActivityTest {
     }
 
     /**
-     * The other half of the same control, on the other stage.
+     * The claim the whole control rests on: pressing a preset puts *readable text* in the box.
      *
-     * Two assertions, and the second is the one worth having: choosing a preset must not wipe the
-     * custom text, or somebody who tries Chat and comes back finds their own sentence gone.
+     * This is the one thing the old picker could not do. It stored a case, and the words that case
+     * actually sent lived three files away — so somebody could choose Chat, get line breaks they
+     * never asked for, and have nothing on screen to explain why. Asserting the box is non-empty
+     * and matches the shipped clause is asserting that the instruction is visible before it is
+     * used. The instrumentation suite is where this can be checked at all, because resolving a
+     * part needs a Context and an APK.
      */
     @Test
-    fun theDictationStylePickerOffersEveryStyleAndKeepsCustomText() {
+    fun aPresetButtonFillsTheExampleBoxWithItsShippedText() {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
-                Settings.customDictationStyle = "短句。每句一行。"
+                Settings.dictationExample = ""
                 val root = activity.findViewById<ViewGroup>(android.R.id.content)
-                val picker = root.firstDescendant(Spinner::class.java) {
-                    it.contentDescription == "dictation-style"
+                val chat = root.firstDescendant(android.widget.Button::class.java) {
+                    it.contentDescription == "preset-chat"
                 }
-                val labels = (0 until picker.adapter.count)
-                    .map { picker.adapter.getItem(it).toString() }
-                assertEquals(DictationStyle.entries.map { it.label }, labels)
+                chat.performClick()
 
-                val chat = labels.indexOf(DictationStyle.CHAT.label)
-                picker.onItemSelectedListener!!.onItemSelected(picker, null, chat, chat.toLong())
-                assertEquals(DictationStyle.CHAT, Settings.dictationStyle)
+                val shipped = PromptAssets.dictationPresetText(activity, DictationPreset.CHAT)
+                val box = root.firstDescendant(TextInputEditText::class.java) {
+                    it.text.toString().isNotEmpty()
+                }
                 assertEquals(
-                    "picking a preset must not throw away what the user wrote",
-                    "短句。每句一行。",
-                    Settings.customDictationStyle,
+                    "pressing a preset must put its text in the box, not just select it",
+                    shipped,
+                    box.text.toString(),
                 )
+
+                val clear = root.firstDescendant(android.widget.Button::class.java) {
+                    it.contentDescription == "preset-clear"
+                }
+                clear.performClick()
+                assertEquals("", box.text.toString())
             }
         }
     }

@@ -206,8 +206,7 @@ struct BackendOptions: ParsableArguments {
             systemInstruction: try promptBuilder().systemInstruction(
                 fidelity: try resolveFidelity(),
                 script: AppPreferences.chineseScript,
-                dictationStyle: AppPreferences.dictationStyle,
-                customDictationStyle: AppPreferences.customDictationStyle),
+                dictationExample: AppPreferences.dictationExample(using: try promptBuilder())),
             fidelity: try resolveFidelity(),
             keytermBiasing: keyterms,
             typography: AppPreferences.typographySpacing)
@@ -240,8 +239,7 @@ struct BackendOptions: ParsableArguments {
             systemInstruction: try promptBuilder().systemInstruction(
                 fidelity: try resolveFidelity(),
                 script: AppPreferences.chineseScript,
-                dictationStyle: AppPreferences.dictationStyle,
-                customDictationStyle: AppPreferences.customDictationStyle),
+                dictationExample: AppPreferences.dictationExample(using: try promptBuilder())),
             fidelity: try resolveFidelity(),
             typography: AppPreferences.typographySpacing)
         return (service, resolved.source)
@@ -319,15 +317,24 @@ enum AppPreferences {
         return value
     }
 
-    static var dictationStyle: DictationStyle {
-        guard let raw = defaults?.string(forKey: "dictationStyle"),
-            let value = DictationStyle(rawValue: raw)
-        else { return .default }
-        return value
-    }
-
-    static var customDictationStyle: String {
-        defaults?.string(forKey: "customDictationStyle") ?? ""
+    /// What the app's example box holds, migrating an install the app has not opened since the
+    /// box replaced the style dropdown.
+    ///
+    /// The fallback is not belt-and-braces: `dnt` and the app read the same defaults, and a CLI run
+    /// before the app's own one-time migration would otherwise send nothing where the app sends a
+    /// style. Two clients disagreeing about the request is the thing this whole directory exists to
+    /// prevent.
+    static func dictationExample(using builder: PromptBuilder) -> String {
+        if let stored = defaults?.string(forKey: "dictationExample") {
+            return Typography.sanitizedSample(stored)
+        }
+        // Nil means the preset's file could not be read. The CLI writes nothing back either way,
+        // so there is nothing to preserve here — an empty box sends nothing, which is the safe
+        // request to make when the instruction cannot be resolved.
+        return DictationExample.migrating(
+            legacyStyle: defaults?.string(forKey: "dictationStyle"),
+            legacyCustom: defaults?.string(forKey: "customDictationStyle"),
+            presetText: { try? builder.dictationPresetText($0) }) ?? ""
     }
 
     static var customRewriteStyle: String {

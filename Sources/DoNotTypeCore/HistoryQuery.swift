@@ -51,7 +51,9 @@ public struct HistoryQuery: Sendable, Equatable {
                 switch status {
                 case .all: true
                 case .completed: record.status == .completed
-                case .needsAttention: record.status != .completed
+                // "Needs retry" is the retryable set: failed, pending and cancelled. An
+                // in-flight placeholder wants nothing from the user, so it stays out.
+                case .needsAttention: record.status.isRetryable
                 }
             }
             .filter { record in

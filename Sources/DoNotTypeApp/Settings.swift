@@ -18,8 +18,11 @@ final class Settings {
         static let fidelity = "fidelity"
         static let typographySpacing = "typographySpacing"
         static let chineseScript = "chineseScript"
-        static let dictationStyle = "dictationStyle"
-        static let customDictationStyle = "customDictationStyle"
+        static let dictationExample = "dictationExample"
+        // Retired, read once by `migrateDictationExample()` and then cleared. Kept as names here
+        // so the migration reads the same strings the old build wrote.
+        static let legacyDictationStyle = "dictationStyle"
+        static let legacyCustomDictationStyle = "customDictationStyle"
         static let customRewriteStyle = "customRewriteStyle"
         static let translateTo = "translateTo"
         static let trigger = "trigger"
@@ -32,8 +35,12 @@ final class Settings {
         static let hotkeyMode = "hotkeyMode"
         static let cancelShortcut = "cancelShortcut"
         static let finishAndSendAction = "finishAndSendAction"
-        static let secondaryTrigger = "secondaryTrigger"
-        static let secondaryStyle = "secondaryStyle"
+        // The stored names still say "secondary" from when a rewrite was the only thing a
+        // second key could do. Renaming them would log every existing user out of their own
+        // binding to no benefit, so the spelling on disk stays and the property names moved.
+        static let rewriteTrigger = "secondaryTrigger"
+        static let rewriteStyle = "secondaryStyle"
+        static let translateTrigger = "translateTrigger"
         static let microphoneUID = "microphoneUID"
         static let interactionSounds = "interactionSounds"
         static let keytermBiasing = "keytermBiasing"
@@ -79,7 +86,7 @@ final class Settings {
             Key.cancelShortcut: CancelShortcut.escape.rawValue,
             // Finishing a message can send it to another person, so it must be a deliberate opt-in.
             Key.finishAndSendAction: FinishAndSendAction.disabled.rawValue,
-            Key.secondaryStyle: RewriteStyle.casual.rawValue,
+            Key.rewriteStyle: RewriteStyle.casual.rawValue,
             // Audible boundaries make it clear when capture has begun and ended, even when the
             // recording overlay is behind another window. Users can still turn them off below.
             Key.interactionSounds: true,
@@ -172,21 +179,31 @@ final class Settings {
         set { defaults.set(newValue, forKey: Key.interactionSounds) }
     }
 
-    /// Second key bound to a rewrite style. Off unless the user picks one, because a key that
-    /// silently rewrites what you said would be the exact failure this project exists to avoid.
-    var secondaryTrigger: HotkeyMonitor.Trigger? {
+    /// Key bound to a rewrite style. Off unless the user picks one, because a key that silently
+    /// rewrites what you said would be the exact failure this project exists to avoid.
+    var rewriteTrigger: HotkeyMonitor.Trigger? {
         get {
-            guard let raw = defaults.string(forKey: Key.secondaryTrigger) else { return nil }
+            guard let raw = defaults.string(forKey: Key.rewriteTrigger) else { return nil }
             return HotkeyMonitor.Trigger(rawValue: raw)
         }
-        set { defaults.set(newValue?.rawValue, forKey: Key.secondaryTrigger) }
+        set { defaults.set(newValue?.rawValue, forKey: Key.rewriteTrigger) }
     }
 
-    var secondaryStyle: RewriteStyle {
+    var rewriteStyle: RewriteStyle {
         get {
-            RewriteStyle(rawValue: defaults.string(forKey: Key.secondaryStyle) ?? "") ?? .casual
+            RewriteStyle(rawValue: defaults.string(forKey: Key.rewriteStyle) ?? "") ?? .casual
         }
-        set { defaults.set(newValue.rawValue, forKey: Key.secondaryStyle) }
+        set { defaults.set(newValue.rawValue, forKey: Key.rewriteStyle) }
+    }
+
+    /// Key bound to the configured target language. Off by default for the same reason the
+    /// rewrite key is: `translateTo` alone used to be enough to change what every key delivered.
+    var translateTrigger: HotkeyMonitor.Trigger? {
+        get {
+            guard let raw = defaults.string(forKey: Key.translateTrigger) else { return nil }
+            return HotkeyMonitor.Trigger(rawValue: raw)
+        }
+        set { defaults.set(newValue?.rawValue, forKey: Key.translateTrigger) }
     }
 
     var hotkeyMode: HotkeyMonitor.Mode {
@@ -366,23 +383,65 @@ final class Settings {
         set { defaults.set(newValue.rawValue, forKey: Key.chineseScript) }
     }
 
-    /// How a dictation is written down: one of a few presets, or the user's own text below.
-    var dictationStyle: DictationStyle {
-        get {
-            DictationStyle(rawValue: defaults.string(forKey: Key.dictationStyle) ?? "") ?? .default
-        }
-        set { defaults.set(newValue.rawValue, forKey: Key.dictationStyle) }
+    /// How the transcript should be written down — a description, or a sentence written the way
+    /// the user wants theirs written. Empty sends nothing at all.
+    ///
+    /// One string where there used to be a five-case enum and a text box that only one of the
+    /// cases used. Sanitised on the way in rather than on the way out, so what the settings window
+    /// shows is what a request would carry.
+    var dictationExample: String {
+        get { defaults.string(forKey: Key.dictationExample) ?? "" }
+        set { defaults.set(Typography.sanitizedSample(newValue), forKey: Key.dictationExample) }
     }
 
-    /// The user's own dictation style — a description, or a sentence written the way they want
-    /// theirs written.
+    /// Turns a pre-example install's style setting into the text that setting was sending.
     ///
-    /// Sanitised on the way in rather than on the way out, so what the settings window shows is
-    /// what a request would carry. Kept even while a preset is selected: switching to Chat and back
-    /// should not silently delete something somebody wrote.
-    var customDictationStyle: String {
-        get { defaults.string(forKey: Key.customDictationStyle) ?? "" }
-        set { defaults.set(Typography.sanitizedSample(newValue), forKey: Key.customDictationStyle) }
+    /// Runs once, at launch, and clears the old keys so it cannot run twice and cannot resurrect a
+    /// value the user has since edited. Nobody's dictations change: someone who had chosen Chat had
+    /// `chat.md`'s words in every request, and afterwards has those same words in their box, where
+    /// they can finally see them. Someone on the default had nothing appended and still does.
+    ///
+    /// - Parameter presetText: resolves a preset to its text. Passed in because `Settings` has no
+    ///   prompt directory of its own, and the one in force may be the user's override.
+    func migrateDictationExample(presetText: (DictationPreset) -> String?) {
+        let legacyStyle = defaults.string(forKey: Key.legacyDictationStyle)
+        let legacyCustom = defaults.string(forKey: Key.legacyCustomDictationStyle)
+        guard legacyStyle != nil || legacyCustom != nil else { return }
+
+        func clearLegacyKeys() {
+            defaults.removeObject(forKey: Key.legacyDictationStyle)
+            defaults.removeObject(forKey: Key.legacyCustomDictationStyle)
+        }
+
+        // An example already set wins. The migration is for an install that has never seen the box,
+        // and overwriting a box somebody has typed into would be the one unforgivable outcome.
+        guard (defaults.string(forKey: Key.dictationExample) ?? "").isEmpty else {
+            clearLegacyKeys()
+            return
+        }
+        // Nil is "not knowable yet", never "no style". Clearing the keys on an unreadable prompt
+        // directory would throw away the only record of what the user chose, permanently, over
+        // something that will probably work on the next launch.
+        guard let migrated = DictationExample.migrating(
+            legacyStyle: legacyStyle, legacyCustom: legacyCustom, presetText: presetText)
+        else { return }
+        clearLegacyKeys()
+        // Written even when empty, and that is load-bearing: it records that this install has made
+        // its choice, so `seedDictationExample` leaves it alone. Someone upgrading from "As spoken"
+        // was sending nothing and goes on sending nothing.
+        dictationExample = migrated
+    }
+
+    /// Gives a brand-new install the default example, once.
+    ///
+    /// After the migration, and only when the key has never been written — an empty string is
+    /// somebody who pressed Clear, and putting words back they had just removed is the same
+    /// unforgivable outcome the migration guards against.
+    func seedDictationExample(presetText: (DictationPreset) -> String?) {
+        guard let seeded = DictationExample.seeding(
+            stored: defaults.string(forKey: Key.dictationExample), presetText: presetText)
+        else { return }
+        dictationExample = seeded
     }
 
     /// The same, for the rewrite stage. Its own setting because the two are different jobs — this

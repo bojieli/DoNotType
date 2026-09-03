@@ -5,7 +5,7 @@ import app.donottype.core.ChineseScript
 import app.donottype.core.Fidelity
 import app.donottype.core.RewriteStyle
 import app.donottype.core.SummaryStyle
-import app.donottype.core.DictationStyle
+import app.donottype.core.DictationPreset
 import app.donottype.core.TranscriptMode
 import app.donottype.core.TranslationTarget
 import app.donottype.core.Typography
@@ -108,10 +108,18 @@ data class PromptPart(
                 "Summary styles", style.id,
             )
 
-        fun of(style: DictationStyle) =
+        /**
+         * A named starting point for the example box.
+         *
+         * Reaches the model the long way round: a preset's text is copied into the user's example
+         * box and it is the *box* that is substituted into [DICTATION_STYLE_BLOCK]. So it is still
+         * a clause — one line, framed by the same host — but the user reads and may edit it in
+         * between, which is the whole point of the control.
+         */
+        fun of(preset: DictationPreset) =
             PromptPart(
-                "dictation-style:${style.id}", "dictation-style/${style.id}.md", null,
-                "Dictation styles", style.id,
+                "dictation-style:${preset.id}", "dictation-style/${preset.id}.md", null,
+                "Example presets", preset.id,
             )
 
         fun of(script: ChineseScript) =
@@ -129,7 +137,7 @@ data class PromptPart(
             add(DICTATION_STYLE_BLOCK)
             Fidelity.entries.forEach { add(of(it)) }
             RewriteStyle.entries.filter { it.hasClauseFile }.forEach { add(of(it)) }
-            DictationStyle.entries.filter { it.hasClauseFile }.forEach { add(of(it)) }
+            DictationPreset.entries.forEach { add(of(it)) }
             SummaryStyle.entries.forEach { add(of(it)) }
             ChineseScript.entries.filterNot { it.isDefault }.forEach { add(of(it)) }
         }
@@ -282,14 +290,13 @@ object PromptAssets {
         context: Context,
         fidelity: Fidelity,
         script: ChineseScript,
-        style: DictationStyle,
-        customStyle: String,
+        dictationExample: String,
     ): String {
         var instruction = systemInstruction(context, fidelity)
         if (!script.isDefault) {
             instruction += "\n\n" + assemble(context, PromptPart.TYPOGRAPHY, PromptPart.of(script))
         }
-        val clause = dictationStyleClause(context, style, customStyle)
+        val clause = dictationExampleClause(dictationExample)
         if (!clause.isNullOrEmpty()) {
             instruction += "\n\n" +
                 text(context, PromptPart.DICTATION_STYLE_BLOCK)
@@ -299,22 +306,24 @@ object PromptAssets {
     }
 
     /**
-     * The clause a dictation style contributes, or null when it contributes nothing.
+     * The clause the example box contributes, or null when it contributes nothing.
      *
-     * One function for both halves of the control, because the host block — and with it the "never
-     * change a word" rule and the "this is not speech" framing — has to wrap the user's own text
-     * exactly as it wraps a preset. A custom style that bypassed the block would be user text
-     * sitting unframed in a system instruction.
+     * There is one path now rather than a preset path and a custom path. A preset's text reaches
+     * this function having already been copied into the box, so it goes through the same host
+     * block, the same sanitiser and the same length cap as something the user typed — which is what
+     * makes "press Chat, then edit it" an offer rather than a mode.
      */
-    fun dictationStyleClause(
-        context: Context,
-        style: DictationStyle,
-        customStyle: String,
-    ): String? = when (style) {
-        DictationStyle.SPOKEN -> null
-        DictationStyle.CUSTOM -> Typography.sanitizedSample(customStyle).ifEmpty { null }
-        else -> text(context, PromptPart.of(style))
-    }
+    fun dictationExampleClause(example: String): String? =
+        Typography.sanitizedSample(example).ifEmpty { null }
+
+    /**
+     * The text a preset button drops into the example box.
+     *
+     * Read through the same override machinery as every other part, so someone who has edited
+     * `prompt/dictation-style/chat.md` gets their own words when they press Chat.
+     */
+    fun dictationPresetText(context: Context, preset: DictationPreset): String =
+        text(context, PromptPart.of(preset))
 
     /**
      * The style rule alone, for folding a rewrite into the request that carries the audio.

@@ -83,18 +83,25 @@ final class SettingsModel {
         didSet { Settings.shared.chineseScript = chineseScript }
     }
 
-    var dictationStyle: DictationStyle {
-        didSet { Settings.shared.dictationStyle = dictationStyle }
-    }
-
     /// Saved as typed, like every other field in this window, and cleaned by the setter — so the
     /// box shows the text a request would carry rather than the text that was pasted into it.
-    var customDictationStyle: String {
+    var dictationExample: String {
         didSet {
-            Settings.shared.customDictationStyle = customDictationStyle
-            let cleaned = Settings.shared.customDictationStyle
-            if cleaned != customDictationStyle { customDictationStyle = cleaned }
+            Settings.shared.dictationExample = dictationExample
+            let cleaned = Settings.shared.dictationExample
+            if cleaned != dictationExample { dictationExample = cleaned }
         }
+    }
+
+    /// Drops a preset's text into the example box, where it can be read and edited before use.
+    ///
+    /// Through the store rather than the bundle, so somebody who has edited
+    /// `prompt/dictation-style/chat.md` gets their own words back when they press Chat.
+    func applyPreset(_ preset: DictationPreset) {
+        guard let promptURL = Self.bundledPromptURL(),
+            let text = try? prompts.builder(bundled: promptURL).dictationPresetText(preset)
+        else { return }
+        dictationExample = text
     }
 
     var customRewriteStyle: String {
@@ -315,23 +322,37 @@ final class SettingsModel {
         }
     }
 
-    var secondaryTrigger: HotkeyMonitor.Trigger? {
+    var rewriteTrigger: HotkeyMonitor.Trigger? {
         didSet {
-            Settings.shared.secondaryTrigger = secondaryTrigger
+            Settings.shared.rewriteTrigger = rewriteTrigger
             onHotkeyChange?()
         }
     }
 
-    var secondaryStyle: RewriteStyle {
-        didSet { Settings.shared.secondaryStyle = secondaryStyle }
+    var rewriteStyle: RewriteStyle {
+        didSet { Settings.shared.rewriteStyle = rewriteStyle }
+    }
+
+    var translateTrigger: HotkeyMonitor.Trigger? {
+        didSet {
+            Settings.shared.translateTrigger = translateTrigger
+            onHotkeyChange?()
+        }
     }
 
     /// Whether a rewrite can run at all, and what to say when it cannot.
     ///
     /// Read from the same rule every client uses, rather than asked locally — this window used to
-    /// not ask at all, and offered the binding whatever was configured.
-    var rewriteAvailability: RewriteAvailability {
-        RewriteAvailability.forSecondKey(provider: provider, translatingInto: translateTo) { kind in
+    /// not ask at all, and offered the binding whatever was configured. It is `LiveMode`'s rule
+    /// now, the one the phones' chip already used: a desktop key and a phone chip are two ways of
+    /// choosing between the same three modes, and they were answering with two rules.
+    var rewriteAvailability: RewriteAvailability { availability(of: .rewrite) }
+
+    /// The same question for the translate key, which additionally needs a target language.
+    var translateAvailability: RewriteAvailability { availability(of: .translate) }
+
+    private func availability(of mode: LiveMode) -> RewriteAvailability {
+        mode.availability(provider: provider, language: translateTo) { kind in
             !(Settings.shared.resolvedAPIKey(for: kind) ?? "").isEmpty
         }
     }
@@ -642,6 +663,9 @@ final class SettingsModel {
     }
 
     let store: HistoryStore
+    /// The preview's own recorder, deliberately not the dictation controller's: a clip recorded in
+    /// this window must not interrupt a dictation in flight, and a dictation must not end a clip.
+    private let clipRecorder = AudioRecorder()
     let prompts: PromptStore
 
     init(store: HistoryStore) {
@@ -656,8 +680,7 @@ final class SettingsModel {
         fidelity = settings.fidelity
         typographySpacing = settings.typographySpacing
         chineseScript = settings.chineseScript
-        dictationStyle = settings.dictationStyle
-        customDictationStyle = settings.customDictationStyle
+        dictationExample = settings.dictationExample
         customRewriteStyle = settings.customRewriteStyle
         translateTo = settings.translateTo
         keytermBiasing = settings.keytermBiasing
@@ -671,8 +694,9 @@ final class SettingsModel {
         hotkeyMode = settings.hotkeyMode
         cancelShortcut = settings.cancelShortcut
         finishAndSendAction = settings.finishAndSendAction
-        secondaryTrigger = settings.secondaryTrigger
-        secondaryStyle = settings.secondaryStyle
+        rewriteTrigger = settings.rewriteTrigger
+        rewriteStyle = settings.rewriteStyle
+        translateTrigger = settings.translateTrigger
         microphoneUID = settings.microphoneUID
         interactionSounds = settings.interactionSounds
         launchAtLogin = LaunchAtLogin.isEnabled
@@ -734,8 +758,12 @@ final class SettingsModel {
             typography: .init(
                 spacing: settings.typographySpacing.rawValue,
                 chineseScript: settings.chineseScript.rawValue,
-                dictationStyle: settings.dictationStyle.rawValue,
-                customDictationStyle: settings.customDictationStyle,
+                dictationExample: settings.dictationExample,
+                // Written as the retired pair too, so this profile still imports correctly into a
+                // build that predates the box: an example arrives there as `custom` with the same
+                // text, which is the same request.
+                dictationStyle: settings.dictationExample.isEmpty ? "spoken" : "custom",
+                customDictationStyle: settings.dictationExample,
                 customRewriteStyle: settings.customRewriteStyle,
                 translateTo: settings.translateTo),
             desktop: .init(
@@ -743,8 +771,9 @@ final class SettingsModel {
                 hotkeyMode: settings.hotkeyMode.rawValue,
                 cancelShortcut: settings.cancelShortcut.rawValue,
                 finishAndSendAction: settings.finishAndSendAction.rawValue,
-                secondaryTrigger: settings.secondaryTrigger?.rawValue,
-                secondaryStyle: settings.secondaryStyle.rawValue,
+                secondaryTrigger: settings.rewriteTrigger?.rawValue,
+                secondaryStyle: settings.rewriteStyle.rawValue,
+                translateTrigger: settings.translateTrigger?.rawValue,
                 interactionSounds: settings.interactionSounds,
                 launchAtLogin: LaunchAtLogin.isEnabled,
                 groundingEnabled: settings.groundingEnabled,
@@ -783,18 +812,28 @@ final class SettingsModel {
             // Absent is "the profile predates styles", which keeps what this device has; present
             // and unreadable is a document this client cannot honour, and fails the whole import
             // rather than being silently defaulted.
-            var style = Settings.shared.dictationStyle
-            if let raw = typography.dictationStyle {
-                guard let parsed = DictationStyle(rawValue: raw) else {
-                    throw SettingsTransferApplyError.unsupportedValue(
-                        field: "typography.dictationStyle", value: raw)
-                }
-                style = parsed
+            // A profile written before the example box carries the retired pair instead, and is
+            // migrated by the shared rule rather than rejected: those values were valid when they
+            // were written and mean something exact here.
+            let example: String
+            if let stored = typography.dictationExample {
+                example = Typography.sanitizedSample(stored)
+            } else if typography.dictationStyle != nil || typography.customDictationStyle != nil {
+                // A document is applied once and then gone, so there is nothing to retry later:
+                // an unresolvable preset becomes an empty box, which sends nothing.
+                example = DictationExample.migrating(
+                    legacyStyle: typography.dictationStyle,
+                    legacyCustom: typography.customDictationStyle,
+                    presetText: { preset in
+                        Self.bundledPromptURL().flatMap {
+                            try? prompts.builder(bundled: $0).dictationPresetText(preset)
+                        }
+                    }) ?? ""
+            } else {
+                example = Settings.shared.dictationExample
             }
             importedTypography = ImportedTypography(
-                spacing: spacing, script: script, style: style,
-                customDictation: typography.customDictationStyle
-                    ?? Settings.shared.customDictationStyle,
+                spacing: spacing, script: script, example: example,
                 customRewrite: typography.customRewriteStyle
                     ?? Settings.shared.customRewriteStyle,
                 translateTo: typography.translateTo ?? "")
@@ -818,7 +857,8 @@ final class SettingsModel {
 
         var desktopValues: (
             HotkeyMonitor.Trigger, HotkeyMonitor.Mode, CancelShortcut, FinishAndSendAction,
-            HotkeyMonitor.Trigger?, RewriteStyle, LogLevel, TranscriptMode
+            HotkeyMonitor.Trigger?, RewriteStyle, HotkeyMonitor.Trigger?, LogLevel,
+            TranscriptMode
         )?
         if let desktop = document.desktop {
             guard let trigger = HotkeyMonitor.Trigger(rawValue: desktop.trigger) else {
@@ -837,16 +877,23 @@ final class SettingsModel {
                 throw SettingsTransferApplyError.unsupportedValue(
                     field: "desktop.finishAndSendAction", value: desktop.finishAndSendAction)
             }
-            let secondaryTrigger: HotkeyMonitor.Trigger? = try desktop.secondaryTrigger.map { raw in
+            let rewriteTrigger: HotkeyMonitor.Trigger? = try desktop.secondaryTrigger.map { raw in
                 guard let value = HotkeyMonitor.Trigger(rawValue: raw) else {
                     throw SettingsTransferApplyError.unsupportedValue(
                         field: "desktop.secondaryTrigger", value: raw)
                 }
                 return value
             }
+            let translateTrigger: HotkeyMonitor.Trigger? = try desktop.translateTrigger.map { raw in
+                guard let value = HotkeyMonitor.Trigger(rawValue: raw) else {
+                    throw SettingsTransferApplyError.unsupportedValue(
+                        field: "desktop.translateTrigger", value: raw)
+                }
+                return value
+            }
             // "bullets" predates the rename to casual; a transfer document crosses versions,
             // so the retired spelling degrades to the default instead of failing the import.
-            guard let secondaryStyle = RewriteStyle(rawValue: desktop.secondaryStyle)
+            guard let rewriteStyle = RewriteStyle(rawValue: desktop.secondaryStyle)
                 ?? (desktop.secondaryStyle == "bullets" ? .casual : nil)
             else {
                 throw SettingsTransferApplyError.unsupportedValue(
@@ -861,7 +908,8 @@ final class SettingsModel {
                     field: "desktop.fileMode", value: desktop.fileMode)
             }
             desktopValues = (
-                trigger, mode, cancel, finish, secondaryTrigger, secondaryStyle, logLevel, fileMode)
+                trigger, mode, cancel, finish, rewriteTrigger, rewriteStyle, translateTrigger,
+                logLevel, fileMode)
         }
 
         let settings = Settings.shared
@@ -884,8 +932,7 @@ final class SettingsModel {
         if let typography = importedTypography {
             settings.typographySpacing = typography.spacing
             settings.chineseScript = typography.script
-            settings.dictationStyle = typography.style
-            settings.customDictationStyle = typography.customDictation
+            settings.dictationExample = typography.example
             settings.customRewriteStyle = typography.customRewrite
             settings.translateTo = typography.translateTo
         }
@@ -895,8 +942,9 @@ final class SettingsModel {
             settings.hotkeyMode = values.1
             settings.cancelShortcut = values.2
             settings.finishAndSendAction = values.3
-            settings.secondaryTrigger = values.4
-            settings.secondaryStyle = values.5
+            settings.rewriteTrigger = values.4
+            settings.rewriteStyle = values.5
+            settings.translateTrigger = values.6
             settings.interactionSounds = desktop.interactionSounds
             LaunchAtLogin.set(desktop.launchAtLogin)
             settings.groundingEnabled = desktop.groundingEnabled
@@ -904,9 +952,9 @@ final class SettingsModel {
             settings.keytermBiasing = desktop.keytermBiasing
             settings.blockedBundleIDs = desktop.blockedBundleIDs
             settings.blockedURLPrefixes = desktop.blockedURLPrefixes
-            settings.logLevel = values.6
+            settings.logLevel = values.7
             settings.logContent = desktop.logContent
-            settings.fileMode = values.7
+            settings.fileMode = values.8
         }
 
         reloadTransferredSettings()
@@ -925,8 +973,7 @@ final class SettingsModel {
         fidelity = settings.fidelity
         typographySpacing = settings.typographySpacing
         chineseScript = settings.chineseScript
-        dictationStyle = settings.dictationStyle
-        customDictationStyle = settings.customDictationStyle
+        dictationExample = settings.dictationExample
         customRewriteStyle = settings.customRewriteStyle
         translateTo = settings.translateTo
         keytermBiasing = settings.keytermBiasing
@@ -940,8 +987,9 @@ final class SettingsModel {
         hotkeyMode = settings.hotkeyMode
         cancelShortcut = settings.cancelShortcut
         finishAndSendAction = settings.finishAndSendAction
-        secondaryTrigger = settings.secondaryTrigger
-        secondaryStyle = settings.secondaryStyle
+        rewriteTrigger = settings.rewriteTrigger
+        rewriteStyle = settings.rewriteStyle
+        translateTrigger = settings.translateTrigger
         interactionSounds = settings.interactionSounds
         launchAtLogin = LaunchAtLogin.isEnabled
         groundingEnabled = settings.groundingEnabled
@@ -1037,7 +1085,9 @@ final class SettingsModel {
     }
 
     /// Counted over everything, not the filtered view — a queue you cannot see is still a queue.
-    var retryableCount: Int { allRecords.count(where: \.canRetry) }
+    /// Matches the set `HistoryStore.retryable()` hands to bulk retry: a cancelled dictation is
+    /// retryable from its own row, but it was cancelled on purpose, so it is not counted here.
+    var retryableCount: Int { allRecords.count { $0.canRetry && $0.status != .cancelled } }
 
     // MARK: - Actions
 
@@ -1140,6 +1190,158 @@ final class SettingsModel {
         await refresh()
     }
 
+    // MARK: - Preview
+
+    /// What the settings currently in this window would do to a dictation you have already made.
+    ///
+    /// The reason this exists: every control above is a *cause*, and what somebody wants to know is
+    /// the *effect*. A dropdown label can only ever describe the effect, and the one that said
+    /// "Chat — short lines, light punctuation" was describing it accurately while somebody read it
+    /// as a mood and got line breaks they had not asked for. A preview is not a better description;
+    /// it is the thing itself, in the user's own voice.
+    struct Preview: Equatable {
+        var baseline: StylePreview.Baseline
+        var before: String
+        var after: String
+        /// Where the audio came from, for the line under the panes.
+        var source: String
+    }
+
+    private(set) var preview: Preview?
+    private(set) var isPreviewing = false
+    private(set) var isRecordingClip = false
+    private(set) var previewProblem: String?
+
+    /// Whether there is a stored recording to try this on at all.
+    ///
+    /// False on a fresh install, because keeping audio is off by default — so this is a real state
+    /// and not an edge case, and it gets a sentence rather than a disabled button with no reason.
+    /// Recording a clip works regardless, which is why that is the other button and not a fallback.
+    var canPreviewStored: Bool { previewCandidate != nil }
+
+    /// What pressing "Record a clip" will cost, so the panel can say so before it is pressed.
+    var clipBaseline: StylePreview.Baseline {
+        StylePreview.baseline(forClipWithExample: dictationExample)
+    }
+
+    private var previewCandidate: DictationRecord? {
+        records.first {
+            $0.status == DictationRecord.Status.completed && $0.canRedo && !$0.text.isEmpty
+        }
+    }
+
+    /// Runs the current settings over the most recent dictation whose audio is still on disk.
+    ///
+    /// A real request, deliberately: the question is what the model does with this instruction, and
+    /// the only thing that answers it is the model. It is a button rather than something that fires
+    /// as the box is typed into, because each press costs a call.
+    func runStoredPreview() async {
+        guard let record = previewCandidate else {
+            previewProblem = StylePreview.noStoredRecording
+            return
+        }
+        guard let coordinator = makeCoordinator() else {
+            previewProblem = "No API key set."
+            return
+        }
+        isPreviewing = true
+        previewProblem = nil
+        defer { isPreviewing = false }
+        do {
+            let after = try await coordinator.preview(record)
+            let when = record.createdAt.formatted(date: .abbreviated, time: .shortened)
+            preview = Preview(
+                baseline: .stored, before: record.deliveredText, after: after,
+                source: "Your recording from \(when)"
+                    + (record.appName.map { " in \($0)" } ?? ""))
+        } catch {
+            previewProblem = error.localizedDescription
+        }
+    }
+
+    /// Starts capturing a clip to preview. The second press transcribes it.
+    ///
+    /// The other half of the feature, and on a fresh install the only half that works: keeping
+    /// audio is off by default, so most people have no stored recording to send again. It is also
+    /// the more honest preview — your voice, now, rather than one from a week ago.
+    func toggleClipPreview() async {
+        if isRecordingClip {
+            await finishClipPreview()
+        } else {
+            startClipPreview()
+        }
+    }
+
+    private func startClipPreview() {
+        previewProblem = nil
+        clipRecorder.preferredDeviceUID = microphoneUID
+        do {
+            try clipRecorder.start()
+            isRecordingClip = true
+        } catch {
+            previewProblem = error.localizedDescription
+        }
+    }
+
+    private func finishClipPreview() async {
+        isRecordingClip = false
+        let audio: AudioFile
+        do {
+            audio = try clipRecorder.stop()
+        } catch {
+            previewProblem = error.localizedDescription
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: audio.url) }
+
+        guard let styled = makeService(example: dictationExample) else {
+            previewProblem = "No API key set."
+            return
+        }
+        isPreviewing = true
+        defer { isPreviewing = false }
+
+        let baseline = clipBaseline
+        do {
+            let after = try await styled.transcribe(audio: audio, context: nil)
+                .transcript.transcript.trimmed
+            // Only when there is something to compare against. With an empty box the two requests
+            // would be the same request, and charging for it twice to show one answer twice is not
+            // a comparison.
+            let before = baseline == .withoutExample
+                ? try await makeService(example: "")?.transcribe(audio: audio, context: nil)
+                    .transcript.transcript.trimmed ?? ""
+                : ""
+            preview = Preview(
+                baseline: baseline, before: before, after: after,
+                source: "The clip you just recorded")
+        } catch {
+            previewProblem = error.localizedDescription
+        }
+    }
+
+    /// A transcription service built from the settings in this window, with the example overridden.
+    ///
+    /// The override is the whole point of the baseline request: same audio, same fidelity, same
+    /// script, one thing different.
+    private func makeService(example: String) -> TranscriptionService? {
+        guard let key = Settings.shared.resolvedAPIKey(), !key.isEmpty,
+            let backend = try? Settings.shared.makeProvider(provider, apiKey: key),
+            let promptURL = Self.bundledPromptURL(),
+            let instruction = try? prompts.builder(bundled: promptURL)
+                .systemInstruction(
+                    fidelity: fidelity, script: chineseScript, dictationExample: example)
+        else { return nil }
+        return TranscriptionService(
+            provider: backend, model: model, systemInstruction: instruction,
+            fidelity: fidelity, typography: typographySpacing)
+    }
+
+    func clearPreview() {
+        preview = nil
+        previewProblem = nil
+    }
+
     /// Transcribes a stored recording again, for a dictation that arrived and arrived wrong.
     ///
     /// The same request Retry makes, and deliberately not the same ending: a retry is recovering
@@ -1224,8 +1426,7 @@ final class SettingsModel {
             let instruction = try? prompts.builder(bundled: promptURL)
                 .systemInstruction(
                     fidelity: fidelity, script: chineseScript,
-                    dictationStyle: dictationStyle,
-                    customDictationStyle: customDictationStyle)
+                    dictationExample: dictationExample)
         else { return nil }
 
         return RetryCoordinator(

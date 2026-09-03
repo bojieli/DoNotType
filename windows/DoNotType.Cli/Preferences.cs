@@ -79,10 +79,27 @@ public static class Preferences
             ? value
             : ChineseScript.Spoken;
 
-    public static DictationStyle DictationStyle =>
-        DictationStyleExtensions.ParseDictationStyle(String("DictationStyle"));
-
-    public static string CustomDictationStyle => String("CustomDictationStyle") ?? string.Empty;
+    /// <summary>
+    /// What the app's example box holds, migrating an install the app has not opened since the box
+    /// replaced the style dropdown.
+    /// </summary>
+    /// <remarks>
+    /// The fallback is not belt-and-braces: the CLI and the app read the same settings file, and a
+    /// CLI run before the app's own one-time migration would otherwise send nothing where the app
+    /// sends a style. Two clients disagreeing about the request is what the shared core exists to
+    /// prevent.
+    /// </remarks>
+    public static string DictationExample(Func<DictationPreset, string?> presetText)
+    {
+        if (String("DictationExample") is { } stored)
+        {
+            return Typography.SanitizedSample(stored);
+        }
+        // The CLI writes nothing back either way, so there is nothing to preserve here: an empty
+        // box sends nothing, which is the safe request when the instruction cannot be resolved.
+        return Core.DictationExample.Migrating(
+            String("DictationStyle"), String("CustomDictationStyle"), presetText) ?? string.Empty;
+    }
 
     public static string CustomRewriteStyle => String("CustomRewriteStyle") ?? string.Empty;
 

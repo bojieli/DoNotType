@@ -22,6 +22,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // already exist, and every key is registered for redaction here.
         Settings.shared.startLogging()
 
+        // Before the first dictation can read it. An install that predates the example box still
+        // has the retired style setting, and the migration turns it into the text that setting was
+        // already sending — so upgrading changes nothing about the request and everything about
+        // whether you can see it.
+        let presetText: (DictationPreset) -> String? = { preset in
+            SettingsModel.bundledPromptURL().flatMap {
+                try? PromptStore(directory: HistoryStore.defaultDirectory())
+                    .builder(bundled: $0)
+                    .dictationPresetText(preset)
+            }
+        }
+        Settings.shared.migrateDictationExample(presetText: presetText)
+        // After the migration, so an upgrading install is never mistaken for a new one.
+        Settings.shared.seedDictationExample(presetText: presetText)
+
         // An invisible menu bar, purely so ⌘V reaches the key field. See `MainMenu`.
         NSApp.mainMenu = MainMenu.make()
 

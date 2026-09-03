@@ -29,7 +29,7 @@ struct HistoryCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Substring to match in the text, error or app name.")
         var query: String?
 
-        @Option(name: .long, help: "completed, failed, pending or all.")
+        @Option(name: .long, help: "completed, failed, pending, transcribing, cancelled or all.")
         var status = "all"
 
         @Flag(name: .long, help: "Only transcripts made from files rather than the microphone.")
@@ -51,7 +51,8 @@ struct HistoryCommand: AsyncParsableCommand {
             if status != "all" {
                 guard let wanted = DictationRecord.Status(rawValue: status) else {
                     throw ValidationError(
-                        "Unknown status '\(status)'. Options: completed, failed, pending, all.")
+                        "Unknown status '\(status)'. Options: completed, failed, pending, "
+                            + "transcribing, cancelled, all.")
                 }
                 records = records.filter { $0.status == wanted }
             }
@@ -78,6 +79,8 @@ struct HistoryCommand: AsyncParsableCommand {
                 case .completed: marker = "✓"
                 case .failed: marker = "✗"
                 case .pending: marker = "…"
+                case .transcribing: marker = "»"
+                case .cancelled: marker = "⊘"
                 }
                 var tags = [record.resolvedMode.rawValue]
                 if let source = record.sourceFileName { tags.append(source) }

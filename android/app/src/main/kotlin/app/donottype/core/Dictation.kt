@@ -373,8 +373,7 @@ class DictationService(private val context: Context) {
         val key = Settings.apiKey?.takeIf { it.isNotBlank() }
             ?: throw ProviderException("No API key. Open DoNotType to add one.")
         val instruction = PromptAssets.systemInstruction(
-            context, Settings.fidelity, Settings.chineseScript, Settings.dictationStyle,
-                Settings.customDictationStyle)
+            context, Settings.fidelity, Settings.chineseScript, Settings.dictationExample)
         val client = ProviderFactory.create(Settings.provider, key, Settings.model)
 
         fun requestInputs(backend: TranscriptionProvider): Pair<List<InputPart>, List<String>> {
@@ -528,6 +527,53 @@ class DictationService(private val context: Context) {
     }
 
     /**
+     * Transcribes a stored recording again and writes **nothing** back.
+     *
+     * The same request [retry] makes, against whatever settings are configured now, and that is the
+     * whole feature: a settings screen can answer "what would this do to my speech" with the user's
+     * own voice instead of a label they have to simulate in their head.
+     *
+     * Separate from [retry] rather than a flag on it, because writing back is not an incidental
+     * detail of that function — it is what a retry is *for*, and a preview that updated the row
+     * would rewrite the history somebody is trying to compare against.
+     */
+    suspend fun preview(record: DictationRecord): Result<String> {
+        val wav = history.audioFor(record)
+            ?: return Result.failure(ProviderException("The recording is no longer on disk."))
+        return previewClip(wav, Settings.dictationExample, record.fidelity)
+    }
+
+    /**
+     * Transcribes raw audio with one example, touching no stored state at all.
+     *
+     * The example is a parameter rather than read from [Settings] because the baseline request is
+     * the same audio with the box emptied — same fidelity, same script, one thing different — and
+     * that comparison is the only thing that answers "what is my example actually doing".
+     */
+    suspend fun previewClip(
+        wav: ByteArray,
+        example: String,
+        fidelity: Fidelity = Settings.fidelity,
+    ): Result<String> {
+        val key = Settings.apiKey
+        if (key.isNullOrBlank()) return Result.failure(ProviderException("No API key."))
+        return try {
+            val client = ProviderFactory.create(Settings.provider, key, Settings.model)
+            val result = client.transcribe(
+                PromptAssets.systemInstruction(
+                    context, fidelity, Settings.chineseScript, example,
+                ),
+                listOf(InputPart.Audio(wav, "audio/wav")),
+                fidelity,
+                emptyList(),
+            )
+            Result.success(result.transcript.transcript.trim())
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    /**
      * Transcribes a stored recording again.
      *
      * Both the retry of a dictation that failed and the redo of one the user thinks came back
@@ -574,8 +620,7 @@ class DictationService(private val context: Context) {
 
             val result = client.transcribe(
                 PromptAssets.systemInstruction(
-                    context, record.fidelity, Settings.chineseScript,
-                    Settings.dictationStyle, Settings.customDictationStyle,
+                    context, record.fidelity, Settings.chineseScript, Settings.dictationExample,
                 ),
                 contextParts + InputPart.Audio(wav, "audio/wav"),
                 record.fidelity,

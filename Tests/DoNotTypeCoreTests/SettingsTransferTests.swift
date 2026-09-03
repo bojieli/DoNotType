@@ -39,7 +39,8 @@ struct SettingsTransferTests {
         withTypography.typography = .init(
             spacing: TypographySpacing.tight.rawValue,
             chineseScript: ChineseScript.traditional.rawValue,
-            dictationStyle: DictationStyle.custom.rawValue,
+            dictationExample: "中文 English。",
+            dictationStyle: "custom",
             customDictationStyle: "中文 English。",
             customRewriteStyle: "Warm but brief.",
             translateTo: "English")

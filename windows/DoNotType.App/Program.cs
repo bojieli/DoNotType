@@ -60,6 +60,14 @@ internal sealed class TrayApplication : ApplicationContext
 
         MigrateLegacyPrompt();
 
+        // Before the first dictation can read it. An install that predates the example box still
+        // has the retired style pair, and the shared rule turns it into the text that pair was
+        // already sending — so upgrading changes nothing about the request and everything about
+        // whether it can be seen.
+        _settings.MigrateDictationExample(SettingsForm.PresetTextForMigration);
+        // After the migration, so an upgrading install is never mistaken for a new one.
+        _settings.SeedDictationExample(SettingsForm.PresetTextForMigration);
+
         _controller = new DictationController(_settings);
         _controller.StateChanged += OnStateChanged;
         _controller.TriggerHoldChanged += held => BeginInvokeOnTray(() =>
@@ -214,7 +222,7 @@ internal sealed class TrayApplication : ApplicationContext
                     _levelTimer.Stop();
                     SetOverlayPhase(
                         RecordingOverlay.Phase.Deriving,
-                        _settings.SecondStageFor(_settings.SecondaryStyle).ProgressLabel,
+                        _controller.PendingStage.ProgressLabel,
                         _controller.WillSubmit ? "Will send" : null);
                     break;
                 case DictationController.State.Failed:
@@ -298,8 +306,7 @@ internal sealed class TrayApplication : ApplicationContext
         {
             DictationController.State.Recording => "Recording… release to transcribe",
             DictationController.State.Transcribing => "Transcribing…",
-            DictationController.State.Deriving =>
-                _settings.SecondStageFor(_settings.SecondaryStyle).ProgressLabel,
+            DictationController.State.Deriving => _controller.PendingStage.ProgressLabel,
             DictationController.State.Failed => Truncate(_controller.LastError ?? "Failed", 60),
             _ => $"Hold {HotkeyMonitor.Label(_settings.Trigger)} to dictate",
         };

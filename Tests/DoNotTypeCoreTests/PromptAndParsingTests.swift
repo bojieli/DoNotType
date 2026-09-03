@@ -90,6 +90,42 @@ final class PromptBuilderTests: XCTestCase {
         }
     }
 
+    /// A host part reaches the model with its own line breaks intact, so every one of them is an
+    /// instruction to the model about how to lay text out.
+    ///
+    /// The parts used to be wrapped at about 100 columns like the rest of the repository, which put
+    /// a break in the middle of four sentences the model was reading — and a model shown a
+    /// hard-wrapped instruction writes hard-wrapped transcripts. Clause parts never had the problem
+    /// because the loader joins them, which is exactly why the wrapping in *those* files is
+    /// harmless and stays.
+    ///
+    /// The rule is that a newline in a host part is a paragraph break or a list-item boundary and
+    /// nothing else. Asserted here rather than as a line-length limit, because the mistake is not a
+    /// long line — it is a sentence continued on the next one.
+    func testHostPartsBreakLinesOnlyBetweenBlocks() throws {
+        let builder = try shipped()
+        let startsBlock = { (line: String) in
+            let trimmed = line.trimmed
+            return trimmed.hasPrefix("- ") || trimmed.range(of: #"^\d+\. "#, options: .regularExpression) != nil
+        }
+
+        for part in PromptPart.allCases where !part.isClause {
+            let lines = try builder.text(for: part).components(separatedBy: "\n")
+            for (index, line) in lines.enumerated() where index + 1 < lines.count {
+                let next = lines[index + 1]
+                guard !line.trimmed.isEmpty, !next.trimmed.isEmpty else { continue }
+                XCTAssertTrue(
+                    startsBlock(next),
+                    """
+                    \(part.relativePath) wraps a block across lines, which asks the model to wrap \
+                    its transcript the same way. Join it into one line:
+                      \(line)
+                      \(next)
+                    """)
+            }
+        }
+    }
+
     /// Every part a picker can reach must exist, or choosing it fails at request time.
     func testEveryPartResolves() throws {
         try shipped().validate()

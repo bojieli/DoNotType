@@ -35,9 +35,11 @@ public static class SecondStageJobExtensions
 /// backend and not about whether one is usable -- so a fresh install with no key at all offered a
 /// rewrite that could not run.
 ///
-/// One rule, hand-ported from the Swift with the strings word-identical. The reason text is the
-/// whole point: a control greyed out without saying why is barely better than one that is missing,
-/// and a missing one is how this feature came to look absent entirely.
+/// One rule, hand-ported from the Swift with the strings word-identical, and asked through
+/// <see cref="LiveModeExtensions.Availability"/> by every client -- a desktop key and a phone chip
+/// are two ways of choosing between the same three modes. The reason text is the whole point: a
+/// control greyed out without saying why is barely better than one that is missing, and a missing
+/// one is how this feature came to look absent entirely.
 /// </remarks>
 public abstract record RewriteAvailability
 {
@@ -60,13 +62,6 @@ public abstract record RewriteAvailability
     /// </summary>
     public sealed record NoTargetLanguage : RewriteAvailability;
 
-    /// <summary>
-    /// A target language is set on a desktop, where it replaces whatever the second key would
-    /// otherwise have produced. Not a failure and not a missing backend -- see
-    /// <see cref="ForSecondKey"/>.
-    /// </summary>
-    public sealed record Translating(string Language) : RewriteAvailability;
-
     public bool IsAvailable => this is Available;
 
     /// <summary>
@@ -85,9 +80,6 @@ public abstract record RewriteAvailability
             + $"text. Add a key for a backend that can, and {cannot.Job.Gerund()} will use it.",
         NoTargetLanguage =>
             "Set a target language in Settings first, and Translate will write in it.",
-        Translating translating =>
-            $"Dictations are being translated into {translating.Language}, which is the second "
-            + "stage. Clear the target language to rewrite instead.",
         _ => string.Empty,
     };
 
@@ -116,24 +108,5 @@ public abstract record RewriteAvailability
         var borrowed = Enum.GetValues<ProviderKind>()
             .Any(kind => kind.SupportsTextGeneration() && hasKey(kind));
         return borrowed ? new Available() : new BackendCannotRewrite(provider, job);
-    }
-
-    /// <summary>What a desktop's second hot key can do.</summary>
-    /// <remarks>
-    /// The desktops choose the operation by <em>which key is held</em>, so they have no mode chip
-    /// and no way to show that a target language has replaced what the second key produces -- on
-    /// those two clients a target language still overrides both keys. The phones do not use this:
-    /// there the picker makes the three modes exclusive by construction.
-    ///
-    /// Checked before the backend questions on purpose: with a target set the rewrite stage is not
-    /// going to run whatever the backends can do, and reporting a key problem for a control that is
-    /// unavailable for an unrelated reason sends the user to fix the wrong thing.
-    /// </remarks>
-    public static RewriteAvailability ForSecondKey(
-        ProviderKind provider, string translatingInto, Func<ProviderKind, bool> hasKey)
-    {
-        var target = TranslationTarget.Sanitized(translatingInto);
-        if (target.Length > 0) return new Translating(target);
-        return Resolve(provider, hasKey, SecondStageJob.Rewriting);
     }
 }

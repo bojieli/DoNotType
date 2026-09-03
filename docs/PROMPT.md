@@ -237,17 +237,24 @@ style clause is blank asks the model to write in no particular way, and it would
 
 ## The formatting blocks
 
-Two parts that are **absent from the default request**, and that is the whole design.
+Two parts that are **absent unless asked for**, and that is the whole design.
 
 [`prompt/typography.md`](../prompt/typography.md) is appended to the transcription instruction only
-when the user has chosen a Chinese script; [`prompt/dictation-style.md`](../prompt/dictation-style.md) only
-when they have chosen a dictation style. Choosing neither — the default — sends the same bytes this
-project sent before either file existed, which is asserted directly in the suites
-(`testTheDefaultRequestIsUnchangedByThisFeatureExisting`) rather than argued for here.
+when the user has chosen a Chinese script; [`prompt/dictation-style.md`](../prompt/dictation-style.md)
+only when the example box has something in it. With neither set, the request is byte-identical to
+the one this project sent before either file existed, which is asserted directly in the suites
+(`testTheDefaultRequestIsUnchangedByTheseFeaturesExisting`) rather than argued for here.
 
-That is not tidiness. Every number in the changelog below describes the default request. A clause
-added to it unconditionally would invalidate all of them at once, and the honest response would be
-to re-run the whole table rather than to add a row.
+That is not tidiness. Every number in the changelog below was measured against that request, and a
+clause added to it unconditionally would invalidate all of them at once.
+
+> **A new install no longer sends it.** Since the example box replaced the style dropdown, a fresh
+> install is seeded with `prompt/dictation-style/prose.md` rather than left empty — an empty default
+> is still an answer, and it was the least predictable one available. So the numbers below describe
+> the request as *measured*, which is now the request an install makes only after the box is
+> cleared. Upgrading installs are untouched: whatever they were sending, they go on sending. The
+> re-measurement against the seeded default is owed, and clearing the box reproduces the table's
+> conditions exactly in the meantime.
 
 **What each block is allowed to do.** Both open by restating the rule they could otherwise be read
 as relaxing: formatting governs how the transcript is written down, never what it says, and nothing

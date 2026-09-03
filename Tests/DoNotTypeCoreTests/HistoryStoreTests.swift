@@ -85,6 +85,108 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(queue.map(\.id), [older.id, newer.id])
     }
 
+    /// A placeholder is written the moment transcription starts, and its audio must survive with
+    /// it — the row is what a later cancellation or failure turns into something retryable.
+    func testTranscribingPlaceholderKeepsItsAudio() async {
+        let store = HistoryStore(directory: directory)
+        await store.configure(retention: .forever, keepAudioForCompleted: false)
+
+        let stored = await store.insert(makeRecord(status: .transcribing), audio: Data([1, 2, 3]))
+
+        XCTAssertNotNil(stored.audioFileName)
+        let audioURL = await store.audioURL(for: stored)
+        XCTAssertNotNil(audioURL)
+        // But it is not retryable while it is still in flight.
+        XCTAssertFalse(stored.canRetry)
+    }
+
+    /// The placeholder finishing releases the recording it was holding, exactly as a succeeded
+    /// retry does.
+    func testCompletingAPlaceholderReleasesItsAudio() async {
+        let store = HistoryStore(directory: directory)
+        await store.configure(retention: .forever, keepAudioForCompleted: false)
+
+        var record = await store.insert(makeRecord(status: .transcribing), audio: Data([1, 2, 3]))
+        let audioBeforeUpdate = await store.audioURL(for: record)
+        XCTAssertNotNil(audioBeforeUpdate)
+
+        record.status = .completed
+        record.text = "transcribed"
+        await store.update(record)
+
+        let refreshed = await store.record(id: record.id)
+        XCTAssertEqual(refreshed?.status, .completed)
+        XCTAssertNil(refreshed?.audioFileName)
+        let bytes = await store.audioBytes()
+        XCTAssertEqual(bytes, 0)
+    }
+
+    func testCompletingAPlaceholderKeepsAudioWhenKeepAudioIsOn() async {
+        let store = HistoryStore(directory: directory)
+        await store.configure(retention: .forever, keepAudioForCompleted: true)
+
+        var record = await store.insert(makeRecord(status: .transcribing), audio: Data([1, 2, 3]))
+        record.status = .completed
+        record.text = "transcribed"
+        await store.update(record)
+
+        let refreshed = await store.record(id: record.id)
+        XCTAssertEqual(refreshed?.status, .completed)
+        XCTAssertNotNil(refreshed?.audioFileName)
+        let keptAudio = await store.audioURL(for: record)
+        XCTAssertNotNil(keptAudio)
+    }
+
+    /// A cancelled dictation keeps its recording, so the per-row Retry can still send it.
+    func testCancellingAPlaceholderKeepsAudioAndStaysRetryable() async {
+        let store = HistoryStore(directory: directory)
+        await store.configure(retention: .forever, keepAudioForCompleted: false)
+
+        var record = await store.insert(makeRecord(status: .transcribing), audio: Data([1, 2, 3]))
+        record.status = .cancelled
+        await store.update(record)
+
+        let refreshed = await store.record(id: record.id)
+        XCTAssertEqual(refreshed?.status, .cancelled)
+        XCTAssertEqual(refreshed?.canRetry, true)
+        let keptAudio = await store.audioURL(for: record)
+        XCTAssertNotNil(keptAudio)
+    }
+
+    /// A row still marked transcribing on disk means the app quit mid-flight: it loads back as
+    /// cancelled, never as something still under way.
+    func testInFlightPlaceholderLoadsBackAsCancelled() async {
+        let first = HistoryStore(directory: directory)
+        await first.configure(retention: .forever, keepAudioForCompleted: false)
+        let placeholder = await first.insert(
+            makeRecord(status: .transcribing), audio: Data([1, 2, 3]))
+
+        let second = HistoryStore(directory: directory)
+        await second.configure(retention: .forever, keepAudioForCompleted: false)
+        let restored = await second.record(id: placeholder.id)
+
+        XCTAssertEqual(restored?.status, .cancelled)
+        XCTAssertEqual(restored?.canRetry, true)
+        let keptAudio = await second.audioURL(for: placeholder)
+        XCTAssertNotNil(keptAudio)
+    }
+
+    /// The automatic drain retries what failed or never sent — never what the user cancelled.
+    func testRetryableExcludesCancelledButIncludesFailedAndPending() async {
+        let store = HistoryStore(directory: directory)
+        await store.configure(retention: .forever, keepAudioForCompleted: false)
+
+        let failed = await store.insert(makeRecord(status: .failed), audio: Data([1]))
+        let pending = await store.insert(makeRecord(status: .pending), audio: Data([1]))
+        let cancelled = await store.insert(makeRecord(status: .cancelled), audio: Data([1]))
+
+        let queue = await store.retryable()
+        XCTAssertEqual(Set(queue.map(\.id)), [failed.id, pending.id])
+        XCTAssertFalse(queue.contains { $0.id == cancelled.id })
+        // The cancelled row itself still offers its own Retry button.
+        XCTAssertTrue(cancelled.canRetry)
+    }
+
     func testNeverRetentionWritesNothingToDisk() async {
         let store = HistoryStore(directory: directory)
         await store.configure(retention: .never, keepAudioForCompleted: false)
