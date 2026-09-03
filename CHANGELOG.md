@@ -6,7 +6,15 @@ measurement that justified them; see [docs/EVALUATION.md](docs/EVALUATION.md).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Release dates use the
 repository's local calendar date.
 
-## Unreleased
+## 0.6.0 - 2026-09-03
+
+Three ways the app used to keep its workings to itself now show them. A recording is on the
+History list from the moment transcription starts, so a cancelled or failed dictation is a row
+with its audio and a Retry button rather than a silence. The dictation style stops being a
+dropdown of moods and becomes the instruction itself, in a box you can read and a preview you can
+run before it ever touches a dictation. And Translate gets a key of its own on the desktops, so
+setting a target language can no longer take the main key's promise away — the main key gives
+back what you said, always.
 
 ### Added
 
