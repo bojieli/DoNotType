@@ -10,8 +10,8 @@
 # release, so nobody hand-copies a sha256 — a cask with a stale hash fails at install time with a
 # message about a corrupt download, which is a bad way to learn that a field was forgotten.
 cask "donottype" do
-  version "0.5.0"
-  sha256 "85fa4adc43f1800623f6185a57433878e6a2d2c63af342bdc98d83cf7aaaf64b"
+  version "0.6.0"
+  sha256 "48fe9f0ea21d3cbcf5099f9db82916a74a0f340f66428d49c41696de69f909de"
 
   url "https://github.com/bojieli/DoNotType/releases/download/v#{version}/DoNotType-macOS.zip",
       verified: "github.com/bojieli/DoNotType/"
