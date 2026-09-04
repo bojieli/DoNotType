@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using DoNotType.Core;
 using Xunit;
 
@@ -47,17 +48,30 @@ public class FallbackTranscriberTests
         Assert.Equal("secondary", outcome.Attribution.Provider);
     }
 
-    /// <summary>Nothing left to wait for: a failing primary hands over immediately.</summary>
+    /// <summary>
+    /// Nothing left to wait for: a failing primary hands over immediately.
+    ///
+    /// <para>The elapsed time is the claim here, not which transcript came back — "secondary"
+    /// arrives either way, just eight seconds later. This case passed against a Swift port that
+    /// always slept the full delay, because only the transcript was ever checked. This port has
+    /// always hedged on failure; the assertion is what stops it from quietly regressing to
+    /// match.</para>
+    /// </summary>
     [Fact]
     public async Task AFailingPrimaryFallsBackWithoutWaitingOutTheDelay()
     {
+        var clock = Stopwatch.StartNew();
         var outcome = await new FallbackTranscriber(
             Backend(5, "", new ProviderException("boom")), "primary", "p-model",
             Backend(10, "secondary"), "secondary", "s-model",
-            TimeSpan.FromSeconds(5)).TranscribeAsync();
+            TimeSpan.FromSeconds(8)).TranscribeAsync();
+        clock.Stop();
 
         Assert.Equal("secondary", outcome.Result.Transcript.Text);
         Assert.True(outcome.Attribution.WasFallback);
+        Assert.True(
+            clock.Elapsed < TimeSpan.FromSeconds(1),
+            $"the hedge waited out its delay after the primary had already failed ({clock.Elapsed})");
     }
 
     /// <summary>The primary's error explains the user's configuration, so it is the one shown.</summary>

@@ -6,6 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.system.measureTimeMillis
 
 /**
  * The Kotlin port of `FallbackTranscriber` has to behave like the Swift one.
@@ -58,14 +59,24 @@ class FallbackTranscriberTest {
     /** Nothing left to wait for: a failing primary hands over without burning the delay. */
     @Test
     fun `a failing primary falls back without waiting out the delay`() = runBlocking {
-        val outcome = FallbackTranscriber(
-            primary = backend(5, "", ProviderException("boom")),
-            secondary = backend(10, "secondary"),
-            hedgeAfterMillis = 5_000,
-        ).transcribe("primary", "p-model", "secondary", "s-model")
+        lateinit var outcome: FallbackTranscriber.Outcome
+        val elapsedMillis = measureTimeMillis {
+            outcome = FallbackTranscriber(
+                primary = backend(5, "", ProviderException("boom")),
+                secondary = backend(10, "secondary"),
+                hedgeAfterMillis = 8_000,
+            ).transcribe("primary", "p-model", "secondary", "s-model")
+        }
 
         assertEquals("secondary", outcome.result.transcript.transcript)
         assertTrue(outcome.attribution.wasFallback)
+        // The elapsed time is the claim, not which transcript came back: "secondary" arrives
+        // either way, just eight seconds later. This case passed against a Swift port that always
+        // slept the full delay, because only the transcript was ever checked.
+        assertTrue(
+            "the hedge waited out its delay after the primary had already failed ($elapsedMillis ms)",
+            elapsedMillis < 1_000,
+        )
     }
 
     /** The primary's error explains the user's configuration, so it is the one they see. */
