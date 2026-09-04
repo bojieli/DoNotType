@@ -94,18 +94,30 @@ public struct FallbackTranscriber: Sendable {
         }
 
         return try await withThrowingTaskGroup(of: Outcome?.self) { group in
+            // Opened when the primary fails, so the hedge stops waiting on a backend that is not
+            // going to answer. Only failure yields here. A primary that *succeeds* has to leave
+            // the hedge asleep, because the winner cancelling its siblings is the whole reason a
+            // normal dictation never pays for a second request.
+            let (primaryFailed, reportPrimaryFailure) = AsyncStream<Void>.makeStream()
+
             group.addTask {
-                Outcome(
-                    result: try await primary.transcribeLong(
-                        audio: audio, context: context, styled: styled,
-                        onProgress: onProgress),
-                    attribution: attribution(primary, wasFallback: false))
+                do {
+                    return Outcome(
+                        result: try await primary.transcribeLong(
+                            audio: audio, context: context, styled: styled,
+                            onProgress: onProgress),
+                        attribution: attribution(primary, wasFallback: false))
+                } catch {
+                    // Cancellation is the hedge having already won, not the primary failing.
+                    if !(error is CancellationError) { reportPrimaryFailure.yield() }
+                    throw error
+                }
             }
             group.addTask {
                 // The hedge. Sleeping inside the group rather than scheduling separately means
                 // cancellation of the winner's siblings also cancels a hedge that never fired,
                 // so a fast primary costs nothing at all — not even a pending timer.
-                try? await Task.sleep(for: hedgeAfter)
+                await Self.waitToHedge(for: hedgeAfter, orUntil: primaryFailed)
                 try Task.checkCancellation()
                 // Logged at info: this is the app spending a second request on the user's behalf,
                 // and a fallback that fires on every dictation is a misconfigured `hedgeAfter`
@@ -151,6 +163,26 @@ public struct FallbackTranscriber: Sendable {
             group.cancelAll()
             _ = secondaryError
             throw primaryError ?? ProviderError.emptyOutput
+        }
+    }
+
+    /// Waits out the hedge delay, or gives up on it the moment the primary fails.
+    ///
+    /// Racing the two legs inside a child group is what keeps both cancellable: `Task.sleep`
+    /// throws when cancelled and an `AsyncStream` iterator returns nil, so the group always
+    /// drains. Awaiting the signal directly would pin the hedge to something that never arrives
+    /// on the common path, where the primary answers and no failure is ever reported.
+    private static func waitToHedge(
+        for delay: Duration, orUntil primaryFailed: AsyncStream<Void>
+    ) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { try? await Task.sleep(for: delay) }
+            group.addTask {
+                var failures = primaryFailed.makeAsyncIterator()
+                _ = await failures.next()
+            }
+            _ = await group.next()
+            group.cancelAll()
         }
     }
 
