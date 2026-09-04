@@ -28,7 +28,9 @@ public sealed class FallbackTranscriber(
 {
     private readonly TimeSpan _hedgeAfter = hedgeAfter ?? TimeSpan.FromSeconds(8);
 
-    /// <param name="WasFallback">True when the primary stalled and the secondary answered first.</param>
+    private static readonly Log Log = new("fallback");
+
+    /// <param name="WasFallback">True when the primary stalled or failed and the secondary answered first.</param>
     public readonly record struct Attribution(string Provider, string Model, bool WasFallback);
 
     public readonly record struct Outcome(TranscriptionResult Result, Attribution Attribution);
@@ -102,17 +104,45 @@ public sealed class FallbackTranscriber(
         TaskCompletionSource<Exception> primaryFailed,
         CancellationToken cancellationToken)
     {
+        bool primaryHadFailed;
         try
         {
             // Wait out the hedge delay, but cut it short if the primary has already failed —
             // there is then nothing left to wait for.
             var delay = Task.Delay(_hedgeAfter, cancellationToken);
-            await Task.WhenAny(delay, primaryFailed.Task).ConfigureAwait(false);
+            var first = await Task.WhenAny(delay, primaryFailed.Task).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
+            primaryHadFailed = first == primaryFailed.Task;
         }
         catch (OperationCanceledException)
         {
             return null;
+        }
+
+        // Logged at info: this is the app spending a second request on the user's behalf, and a
+        // fallback that fires on every dictation is a misconfigured delay rather than a working
+        // feature. It should be visible without turning anything on.
+        //
+        // Which of the two started it is the difference between "the primary is slow" and "the
+        // primary is broken", and those want opposite responses from whoever reads the log. Only
+        // the stall waited, so only the stall reports a delay.
+        if (primaryHadFailed)
+        {
+            Log.Info(() => "primary failed; starting the fallback", new Dictionary<string, string>
+            {
+                ["primary"] = primaryName,
+                ["fallback"] = secondaryName,
+            });
+        }
+        else
+        {
+            Log.Info(() => "primary stalled; starting the fallback", new Dictionary<string, string>
+            {
+                ["primary"] = primaryName,
+                ["fallback"] = secondaryName,
+                ["afterMs"] = ((long)_hedgeAfter.TotalMilliseconds).ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+            });
         }
 
         return await RunAsync(secondary!, attribution, new TaskCompletionSource<Exception>(),

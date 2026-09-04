@@ -30,7 +30,7 @@ public struct FallbackTranscriber: Sendable {
     public struct Attribution: Sendable, Equatable {
         public var provider: String
         public var model: String
-        /// True when the primary stalled and the secondary answered first.
+        /// True when the primary stalled or failed and the secondary answered first.
         public var wasFallback: Bool
 
         public init(provider: String, model: String, wasFallback: Bool) {
@@ -117,17 +117,32 @@ public struct FallbackTranscriber: Sendable {
                 // The hedge. Sleeping inside the group rather than scheduling separately means
                 // cancellation of the winner's siblings also cancels a hedge that never fired,
                 // so a fast primary costs nothing at all — not even a pending timer.
-                await Self.waitToHedge(for: hedgeAfter, orUntil: primaryFailed)
+                let trigger = await Self.waitToHedge(for: hedgeAfter, orUntil: primaryFailed)
                 try Task.checkCancellation()
                 // Logged at info: this is the app spending a second request on the user's behalf,
                 // and a fallback that fires on every dictation is a misconfigured `hedgeAfter`
                 // rather than a working feature. It should be visible without turning anything on.
-                Self.log.info(
-                    "primary stalled; starting the fallback",
-                    [
-                        "primary": primary.provider.name, "fallback": secondary.provider.name,
-                        "after": "\(hedgeAfter)",
-                    ])
+                //
+                // Which of the two started it is the difference between "the primary is slow" and
+                // "the primary is broken", and those want opposite responses from whoever reads
+                // the log. Only the stall waited, so only the stall reports a delay.
+                switch trigger {
+                case .delayElapsed:
+                    Self.log.info(
+                        "primary stalled; starting the fallback",
+                        [
+                            "primary": primary.provider.name,
+                            "fallback": secondary.provider.name,
+                            "afterMs": String(Self.milliseconds(hedgeAfter)),
+                        ])
+                case .primaryFailed:
+                    Self.log.info(
+                        "primary failed; starting the fallback",
+                        [
+                            "primary": primary.provider.name,
+                            "fallback": secondary.provider.name,
+                        ])
+                }
                 return Outcome(
                     result: try await secondary.transcribeLong(
                         audio: audio, context: context, styled: styled,
@@ -166,6 +181,12 @@ public struct FallbackTranscriber: Sendable {
         }
     }
 
+    /// What stopped the hedge waiting, which is what the log line reports.
+    private enum HedgeTrigger {
+        case delayElapsed
+        case primaryFailed
+    }
+
     /// Waits out the hedge delay, or gives up on it the moment the primary fails.
     ///
     /// Racing the two legs inside a child group is what keeps both cancellable: `Task.sleep`
@@ -174,16 +195,28 @@ public struct FallbackTranscriber: Sendable {
     /// on the common path, where the primary answers and no failure is ever reported.
     private static func waitToHedge(
         for delay: Duration, orUntil primaryFailed: AsyncStream<Void>
-    ) async {
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { try? await Task.sleep(for: delay) }
+    ) async -> HedgeTrigger {
+        await withTaskGroup(of: HedgeTrigger.self) { group in
+            group.addTask {
+                try? await Task.sleep(for: delay)
+                return .delayElapsed
+            }
             group.addTask {
                 var failures = primaryFailed.makeAsyncIterator()
                 _ = await failures.next()
+                return .primaryFailed
             }
-            _ = await group.next()
+            let trigger = await group.next() ?? .delayElapsed
             group.cancelAll()
+            return trigger
         }
+    }
+
+    /// Whole milliseconds, so the delay reads as the same number the other ports log rather than
+    /// as a `Duration` description no other platform produces.
+    private static func milliseconds(_ duration: Duration) -> Int64 {
+        let parts = duration.components
+        return parts.seconds * 1000 + parts.attoseconds / 1_000_000_000_000_000
     }
 
     private func attribution(
