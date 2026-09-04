@@ -59,16 +59,35 @@ final class FallbackTranscriberTests: XCTestCase {
     }
 
     /// Nothing to wait for: a primary that fails hands over rather than burning the hedge delay.
+    ///
+    /// The delay is a realistic eight seconds and the elapsed time is asserted, because neither
+    /// was true before and the gap that hid was a real one. With a 20 ms hedge and only the
+    /// transcript checked, this test passed against an implementation that always slept the full
+    /// delay: "secondary" comes back either way, just six seconds later. Which backend answered
+    /// is not the claim being made here — *when* it started is.
+    ///
+    /// The failure is a 400 rather than a 500 so that `isTransient` is false and no retry backoff
+    /// lands inside the measurement. That is also the shape of the failure this was written for:
+    /// Gemini answering `HTTP 400: This API is not available in your current location` in about a
+    /// second, after which there is nothing left to wait for.
     func testAFailingPrimaryFallsBackWithoutWaitingOutTheDelay() async throws {
         let hedger = FallbackTranscriber(
             primary: service(
                 "primary", delay: .milliseconds(5), text: "",
-                failure: ProviderError.http(status: 500, body: "boom")),
+                failure: ProviderError.http(status: 400, body: "location not supported")),
             secondary: service("secondary", delay: .milliseconds(10), text: "secondary"),
-            hedgeAfter: .milliseconds(20))
+            hedgeAfter: .seconds(8))
 
+        let clock = ContinuousClock()
+        let started = clock.now
         let outcome = try await hedger.transcribe(audio: audio, context: nil)
+        let elapsed = clock.now - started
+
         XCTAssertEqual(outcome.result.transcript.transcript, "secondary")
+        XCTAssertTrue(outcome.attribution.wasFallback)
+        XCTAssertLessThan(
+            elapsed, .seconds(1),
+            "the hedge waited out its delay after the primary had already failed")
     }
 
     /// The primary's error is the one that explains the user's configuration, so it is the one
