@@ -208,7 +208,8 @@ dictate into, so the fallback has not been needed; it is a gap rather than an im
 | Verbatim, rewrite, summary modes | ✅ | ✅ | ✅ | ✅ |
 | Split long recordings on silence | ✅ | ✅ | ✅ | ✅ |
 | Re-send a stalled request to the same backend | ✅ | ✅ | ✅ | ✅ |
-| Fallback backend when the primary stalls | ✅ | ✅ | ✅ | ✅ |
+| Fallback backend when the primary stalls or fails | ✅ | ✅ | ✅ | ✅ |
+| [Names which of the two started it](#fallback-log-messages) in the log | ✅ | ✅ | ✅ | ✅ |
 | Compress the upload with Opus | ✅ | ✅ | ✅ | ✅ |
 
 ## Other capabilities
@@ -431,14 +432,37 @@ Historical divergence: `rewrite:` and `summary:` used to differ — macOS took t
 rejected it, Android rejected it. No dependent behavior exposed the difference, so it was not
 detected until the parsers were compared directly.
 
+## Fallback log messages
+
+What the hedge logs when it starts the second backend, identically on all three clients that have
+one. Both spellings are repeated verbatim in each platform's test suite.
+
+| Message | Logged when | Fields |
+|---|---|---|
+| `primary stalled; starting the fallback` | the hedge delay elapsed with the primary still running | `primary`, `fallback`, `afterMs` |
+| `primary failed; starting the fallback` | the primary threw, cutting the delay short | `primary`, `fallback` |
+
+Only the stall waited, so only the stall reports a delay. Reporting `afterMs=8000` on a handover
+that happened at 1.7 s describes a wait that never took place.
+
+The distinction is the point: "the primary is slow" and "the primary is broken" want opposite
+responses from whoever reads the log. One message covering both sent readers looking for a slow
+backend when the real cause was a geoblocked one that had been failing in about a second.
+
+Historical divergence, all three different: Windows logged nothing at all — the hedge fired
+silently there, on the one platform whose users cannot fall back to reading a macOS log. macOS and
+Android both called a hard failure a stall. macOS spelled the delay field `after` and formatted it
+as a `Duration` description (`8.0 seconds`) where Android already used `afterMs`.
+
 ## Drift prevention
 
 Ports are by hand, so these tables drift unless they are checked. Three of the mechanisms that
 stop it:
 
 - **Parity tests.** The [mode grammar table](#mode-spellings) is repeated verbatim in each
-  language's test suite, and so are the numeric guard's cases. A shared fixture file would be read
-  by whichever platform remembered to read it.
+  language's test suite, and so are the numeric guard's cases and the
+  [fallback log messages](#fallback-log-messages). A shared fixture file would be read by
+  whichever platform remembered to read it.
 - **Text checked by diffing, not by reading.** For `FailureAdvice`, every case was printed through
   all three implementations and diffed. Reading code side by side finds structural differences and
   misses a word.

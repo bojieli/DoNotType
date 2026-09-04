@@ -21,6 +21,31 @@ private struct SlowProvider: TranscriptionProvider {
 
 final class FallbackTranscriberTests: XCTestCase {
     private let audio = AudioFile(data: Data("wav".utf8), mimeType: "audio/wav")
+    private var sink: MemoryLogSink!
+
+    /// The two spellings the hedge can log, repeated verbatim in each platform's test suite
+    /// rather than shared from one file, per `docs/PARITY.md`.
+    private enum HedgeLog {
+        static let stalled = "primary stalled; starting the fallback"
+        static let failed = "primary failed; starting the fallback"
+    }
+
+    override func setUp() {
+        super.setUp()
+        sink = MemoryLogSink()
+        LogRouter.shared.install(sinks: [sink], level: .trace)
+        LogRouter.shared.clearBuffer()
+    }
+
+    override func tearDown() {
+        LogRouter.shared.install(sinks: [], level: .off)
+        super.tearDown()
+    }
+
+    /// The line that announced the handover, which is the first thing the category logs.
+    private var handoverLine: LogEvent? {
+        sink.events.first { $0.category == "fallback" }
+    }
 
     private func service(
         _ name: String, delay: Duration, text: String, failure: (any Error)? = nil
@@ -110,6 +135,42 @@ final class FallbackTranscriberTests: XCTestCase {
         } catch {
             XCTFail("expected the primary's error, got \(error)")
         }
+    }
+
+    /// A stall and a failure are different problems, so the log has to name which one happened.
+    ///
+    /// "The primary is slow" and "the primary is broken" want opposite responses from whoever
+    /// reads the log, and for as long as both said "stalled" the log pointed at the wrong one.
+    func testAStalledPrimaryIsLoggedAsAStall() async throws {
+        let hedger = FallbackTranscriber(
+            primary: service("primary", delay: .seconds(30), text: "primary"),
+            secondary: service("secondary", delay: .milliseconds(10), text: "secondary"),
+            hedgeAfter: .milliseconds(20))
+
+        _ = try await hedger.transcribe(audio: audio, context: nil)
+
+        XCTAssertEqual(handoverLine?.message, HedgeLog.stalled)
+        XCTAssertEqual(handoverLine?.fields["primary"], "primary")
+        XCTAssertEqual(handoverLine?.fields["fallback"], "secondary")
+        XCTAssertEqual(handoverLine?.fields["afterMs"], "20")
+    }
+
+    /// The delay is deliberately absent: nothing waited it out, so reporting it would describe a
+    /// wait that never happened. That is exactly what the old single message did.
+    func testAFailedPrimaryIsLoggedAsAFailureAndReportsNoDelay() async throws {
+        let hedger = FallbackTranscriber(
+            primary: service(
+                "primary", delay: .milliseconds(5), text: "",
+                failure: ProviderError.http(status: 400, body: "location not supported")),
+            secondary: service("secondary", delay: .milliseconds(10), text: "secondary"),
+            hedgeAfter: .seconds(8))
+
+        _ = try await hedger.transcribe(audio: audio, context: nil)
+
+        XCTAssertEqual(handoverLine?.message, HedgeLog.failed)
+        XCTAssertEqual(handoverLine?.fields["primary"], "primary")
+        XCTAssertEqual(handoverLine?.fields["fallback"], "secondary")
+        XCTAssertNil(handoverLine?.fields["afterMs"], "nothing waited, so there is no delay")
     }
 
     /// No secondary configured is the default, and must behave exactly as before this type existed.

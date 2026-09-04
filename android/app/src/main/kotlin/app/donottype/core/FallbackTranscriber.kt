@@ -78,18 +78,28 @@ class FallbackTranscriber(
         }
         val second = async {
             // Wait out the hedge delay, but cut it short if the primary has already failed —
-            // there is then nothing left to wait for.
-            withTimeoutOrNull(hedgeAfterMillis) { primaryError.await() }
+            // there is then nothing left to wait for. Null means the delay won.
+            val failure = withTimeoutOrNull(hedgeAfterMillis) { primaryError.await() }
             // Logged at info: this is the app spending a second request on the user's behalf, and
             // a fallback that fires on every dictation is a misconfigured delay rather than a
             // working feature. It should be visible without turning anything on.
-            log.info(
-                mapOf(
-                    "primary" to primaryName,
-                    "fallback" to secondaryName,
-                    "afterMs" to hedgeAfterMillis.toString(),
-                ),
-            ) { "primary stalled; starting the fallback" }
+            //
+            // Which of the two started it is the difference between "the primary is slow" and
+            // "the primary is broken", and those want opposite responses from whoever reads the
+            // log. Only the stall waited, so only the stall reports a delay.
+            if (failure == null) {
+                log.info(
+                    mapOf(
+                        "primary" to primaryName,
+                        "fallback" to secondaryName,
+                        "afterMs" to hedgeAfterMillis.toString(),
+                    ),
+                ) { "primary stalled; starting the fallback" }
+            } else {
+                log.info(
+                    mapOf("primary" to primaryName, "fallback" to secondaryName),
+                ) { "primary failed; starting the fallback" }
+            }
             try {
                 Outcome(fallback.transcribe(), Attribution(secondaryName, secondaryModel, true))
             } catch (cancellation: CancellationException) {

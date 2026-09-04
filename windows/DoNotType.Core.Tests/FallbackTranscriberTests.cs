@@ -9,8 +9,25 @@ namespace DoNotType.Core.Tests;
 /// that fires at a different moment on one platform means that app has a different latency profile
 /// from the one the evaluation describes.
 /// </summary>
-public class FallbackTranscriberTests
+public class FallbackTranscriberTests : IDisposable
 {
+    /// <summary>
+    /// The two spellings the hedge can log, repeated verbatim in each platform's test suite
+    /// rather than shared from one file, per <c>docs/PARITY.md</c>.
+    /// </summary>
+    private const string StalledMessage = "primary stalled; starting the fallback";
+
+    private const string FailedMessage = "primary failed; starting the fallback";
+
+    private readonly MemoryLogSink _sink = new();
+
+    public FallbackTranscriberTests() => LogRouter.Install([_sink], LogLevel.Trace);
+
+    public void Dispose() => LogRouter.Install([], LogLevel.Off);
+
+    /// <summary>The line that announced the handover, the first thing the category logs.</summary>
+    private LogEvent? HandoverLine => _sink.Events.FirstOrDefault(e => e.Category == "fallback");
+
     private static Func<CancellationToken, Task<TranscriptionResult>> Backend(
         int delayMs, string text, Exception? failure = null) =>
         async token =>
@@ -32,6 +49,45 @@ public class FallbackTranscriberTests
         Assert.Equal("primary", outcome.Result.Transcript.Text);
         Assert.False(outcome.Attribution.WasFallback);
         Assert.Equal("primary", outcome.Attribution.Provider);
+    }
+
+    /// <summary>
+    /// A stall and a failure are different problems, so the log has to name which one happened.
+    ///
+    /// <para>"The primary is slow" and "the primary is broken" want opposite responses from
+    /// whoever reads the log. This port logged neither until now — the hedge fired silently on
+    /// Windows, so the one platform whose users cannot read a macOS log got no line at all.</para>
+    /// </summary>
+    [Fact]
+    public async Task AStalledPrimaryIsLoggedAsAStall()
+    {
+        await new FallbackTranscriber(
+            Backend(30_000, "primary"), "primary", "p-model",
+            Backend(10, "secondary"), "secondary", "s-model",
+            TimeSpan.FromMilliseconds(20)).TranscribeAsync();
+
+        Assert.Equal(StalledMessage, HandoverLine?.Message);
+        Assert.Equal("primary", HandoverLine?.Fields["primary"]);
+        Assert.Equal("secondary", HandoverLine?.Fields["fallback"]);
+        Assert.Equal("20", HandoverLine?.Fields["afterMs"]);
+    }
+
+    /// <summary>
+    /// The delay is deliberately absent: nothing waited it out, so reporting it would describe a
+    /// wait that never happened.
+    /// </summary>
+    [Fact]
+    public async Task AFailedPrimaryIsLoggedAsAFailureAndReportsNoDelay()
+    {
+        await new FallbackTranscriber(
+            Backend(5, "", new ProviderException("boom")), "primary", "p-model",
+            Backend(10, "secondary"), "secondary", "s-model",
+            TimeSpan.FromSeconds(8)).TranscribeAsync();
+
+        Assert.Equal(FailedMessage, HandoverLine?.Message);
+        Assert.Equal("primary", HandoverLine?.Fields["primary"]);
+        Assert.Equal("secondary", HandoverLine?.Fields["fallback"]);
+        Assert.False(HandoverLine?.Fields.ContainsKey("afterMs"));
     }
 
     /// <summary>The case this exists for: the primary stalls, the hedge fires.</summary>
