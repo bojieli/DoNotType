@@ -1351,10 +1351,18 @@ private struct TranscriptStyleSection: View {
                         .disabled(model.dictationExample.isEmpty)
                 }
             }
+            // The sentence goes in `prompt:`, not in the title. A TextField's first argument is
+            // its *label*, which a Form renders beside or above the field and keeps there whatever
+            // the field contains — so a title reading "Empty — …" sat above a box with text in it
+            // and flatly contradicted the thing it was describing. `prompt:` is the placeholder:
+            // it shows only while the box is empty, which is the one moment the sentence is true.
             TextField(
-                "Empty — however the model would write it",
-                text: $model.dictationExample, axis: .vertical
+                "Your example",
+                text: $model.dictationExample,
+                prompt: Text("Empty — however the model would write it"),
+                axis: .vertical
             )
+            .labelsHidden()
             .lineLimit(4...12)
             .textFieldStyle(.roundedBorder)
             .accessibilityIdentifier("dictation-example")
