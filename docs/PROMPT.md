@@ -253,8 +253,8 @@ clause added to it unconditionally would invalidate all of them at once.
 > is still an answer, and it was the least predictable one available. So the numbers below describe
 > the request as *measured*, which is now the request an install makes only after the box is
 > cleared. Upgrading installs are untouched: whatever they were sending, they go on sending. The
-> re-measurement against the seeded default is owed, and clearing the box reproduces the table's
-> conditions exactly in the meantime.
+> re-measurement against the seeded default was owed and is now the 2026-09-06 pair below;
+> clearing the box still reproduces the table's original conditions exactly.
 
 **What each block is allowed to do.** Both open by restating the rule they could otherwise be read
 as relaxing: formatting governs how the transcript is written down, never what it says, and nothing
@@ -280,6 +280,8 @@ screen context broke it. That is the failure this contract exists to prevent, an
 
 | Date | Change | Provider / model | runs | matched | improved | regressed |
 |------|--------|------------------|------|---------|----------|-----------|
+| 2026-09-06 | Prose example reworded to stop asking for paragraph breaks | **gemini** · gemini-3.6-flash | 48 | 38 | 8 | **2** |
+| 2026-09-06 | The seeded prose default as it shipped in 0.6.0 (control) | **gemini** · gemini-3.6-flash | 48 | 38 | 7 | **3** |
 | 2026-08-30 | Writing styles added; default request byte-identical (control) | **gemini** · gemini-3.5-flash | 48 | 38 | 8 | **2** |
 | 2026-08-30 | Translation stage added; transcription request untouched (control) | **gemini** · gemini-3.5-flash | 48 | 36 | 9 | **3** |
 | 2026-08-30 | Formatting blocks added; default request byte-identical (control) | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
@@ -290,6 +292,54 @@ screen context broke it. That is the failure this contract exists to prevent, an
 | 2026-08-17 | Pre-change 972-word control | **gemini** · gemini-3.5-flash | 48 | 38 | 7 | **2** |
 | 2026-08-09 | Initial contract | **gemini** · gemini-3.6-flash | 15 | 15 | 0 | **0** |
 | 2026-08-09 | Initial contract | openrouter · google/gemini-3.6-flash | 15 | 12 | 0 | 1 |
+
+### 2026-09-06 — the prose example stops asking for line breaks
+
+The previous entry closed by saying that a change to the *text* of a formatting block needs its own
+measurement. This is that change, and this is that measurement.
+
+`prompt/dictation-style/prose.md` ended with *"and paragraph breaks where the speaker changed
+subject"*. Seeded into every new install since 0.6.0, it turned out to be an instruction the model
+obeys at hesitation pauses rather than at subject changes — which in spontaneous speech is most
+pauses. The complaint that surfaced it was a 65-second Mandarin dictation that came back in 19
+fragments, 8 of them splitting a sentence in half.
+
+**Measured on real dictations rather than on the near-miss corpus**, because the near-miss suite
+scores spelling under screen context and says nothing about layout. Ten recordings were replayed
+from the maintainer's own history with the screen context each one originally carried, six passes
+per wording, through `dnt transcribe --example`:
+
+| wording | runs | line breaks | mid-sentence | runs affected |
+|---|---|---|---|---|
+| `...and paragraph breaks where the speaker changed subject.` | 60 | 82 | 26 | 24 |
+| `...in one unbroken paragraph. Never emit a line break.` | 60 | 0 | 0 | 0 |
+
+**An empty box was not the alternative.** It also produces no line breaks, but on two of the five
+Mandarin recordings the model then dropped nearly all punctuation — 1.0 and 0.0 marks per hundred
+characters, a wall of text. The prose clause earns its place; only its paragraph half was harmful.
+This is the same finding as the seeding decision above, from the other direction.
+
+**Naming the failure made it worse.** A variant saying *"never in the middle of a sentence"* and
+*"a pause is punctuation, never a line break"* produced more mid-sentence breaks than the wording
+it was meant to fix, not fewer. That is the effect already recorded in `ContextEncoder.footer`,
+where an instruction illustrating the rule with a concrete wrong value made substitution worse:
+naming the wrong answer appears to prime it. The wording that shipped does not mention the failure,
+it just declines to ask for the behaviour.
+
+**Cost on the near-miss suite: none that this suite can see.** The reworded example and the 0.6.0
+default were each run at three passes on the same day — 38 matched out of 48 both times, regressed
+3 against 2. Both movements are inside the per-pass range the runner prints, and both runs are
+committed as scorecards (`2026-09-06-prose-unbroken.json`, `2026-09-06-prose-paragraphs-control.json`)
+so the grading can be re-checked without re-billing the suite.
+
+The control run is also the re-measurement owed since the box began being seeded: it is the request
+a 0.6.0 install actually makes, rather than the empty-box request every older row above describes.
+
+**Existing installs do not pick this up on their own.** The example box stores a *copy* of the
+preset's text and is seeded once, when the key has never been written, so an install that already
+has the old sentence keeps sending it. Pressing **Prose** again in Settings replaces it. That is
+the same property that makes the box editable at all, and it is why this is a fix somebody has to
+accept rather than one that arrives silently.
 
 ### 2026-08-30 — the writing styles, and a third control run
 
