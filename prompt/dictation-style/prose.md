@@ -1,2 +1,2 @@
-Write it as prose: complete sentences, standard punctuation, and paragraph breaks where the speaker
-changed subject.
+Write it as prose: complete sentences and standard punctuation, in one unbroken paragraph. Never
+emit a line break.
