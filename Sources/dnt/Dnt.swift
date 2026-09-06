@@ -123,6 +123,18 @@ struct BackendOptions: ParsableArguments {
             """)
     var keyterms = false
 
+    /// Overrides what the app's example box holds, for this run only.
+    ///
+    /// Nothing is written back: the point is to answer "what would this wording do to my own
+    /// audio" without first changing the setting the app is dictating with. `dnt-eval` has the
+    /// same flag against the near-miss corpus; this one points it at a real recording.
+    @Option(
+        name: .long,
+        help: ArgumentHelp(
+            "Override the example box: a preset name (prose, chat, notes), `none`, or literal "
+                + "text. Defaults to whatever the app is set to."))
+    var example: String?
+
     func resolveProvider() throws -> ProviderKind {
         guard let provider else { return AppPreferences.provider }
         guard let kind = ProviderKind(persistedValue: provider) else {
@@ -145,6 +157,21 @@ struct BackendOptions: ParsableArguments {
 
     func resolveModel(for kind: ProviderKind) -> String {
         model ?? AppPreferences.model(for: kind)
+    }
+
+    /// What to send as the dictation-style example.
+    ///
+    /// A preset name resolves to that preset's text — the user's own copy of it when they have
+    /// edited one, since the builder is the same one the app reads. Anything else is taken
+    /// literally, so a wording being considered can be measured before it is written to a file.
+    func resolveDictationExample(_ builder: PromptBuilder) throws -> String {
+        guard let example else { return AppPreferences.dictationExample(using: builder) }
+        let trimmed = example.trimmed
+        if trimmed.isEmpty || trimmed.lowercased() == "none" { return "" }
+        if let preset = DictationPreset(rawValue: trimmed.lowercased()) {
+            return try builder.dictationPresetText(preset)
+        }
+        return trimmed
     }
 
     func promptURL() throws -> URL {
@@ -206,7 +233,7 @@ struct BackendOptions: ParsableArguments {
             systemInstruction: try promptBuilder().systemInstruction(
                 fidelity: try resolveFidelity(),
                 script: AppPreferences.chineseScript,
-                dictationExample: AppPreferences.dictationExample(using: try promptBuilder())),
+                dictationExample: try resolveDictationExample(try promptBuilder())),
             fidelity: try resolveFidelity(),
             keytermBiasing: keyterms,
             typography: AppPreferences.typographySpacing)
@@ -239,7 +266,7 @@ struct BackendOptions: ParsableArguments {
             systemInstruction: try promptBuilder().systemInstruction(
                 fidelity: try resolveFidelity(),
                 script: AppPreferences.chineseScript,
-                dictationExample: AppPreferences.dictationExample(using: try promptBuilder())),
+                dictationExample: try resolveDictationExample(try promptBuilder())),
             fidelity: try resolveFidelity(),
             typography: AppPreferences.typographySpacing)
         return (service, resolved.source)
