@@ -6,6 +6,39 @@ measurement that justified them; see [docs/EVALUATION.md](docs/EVALUATION.md).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Release dates use the
 repository's local calendar date.
 
+## 0.6.1 - 2026-09-06
+
+### Fixed
+
+- **Prose stops asking for the line breaks people chose prose to avoid.** The example a new
+  install is seeded with ended *"and paragraph breaks where the speaker changed subject"* — an
+  instruction the model turns out to obey at hesitation pauses rather than at subject changes, and
+  in spontaneous speech those are mostly the same pauses. The dictation that surfaced it was 65
+  seconds of Mandarin returned in 19 fragments, 8 of them splitting a sentence in half. Measured on
+  ten real recordings replayed from history with the screen context each one originally carried,
+  six passes per wording: 82 line breaks across 60 runs before, 0 across 60 after.
+
+  Clearing the box is not the same fix, though it also produces no line breaks. On two of the five
+  Mandarin recordings the model then dropped nearly all punctuation, down to 1.0 and 0.0 marks per
+  hundred characters. The prose clause earns its place; only its paragraph half was doing harm.
+
+  A variant that *named* the failure — "never in the middle of a sentence", "a pause is punctuation,
+  never a line break" — produced more mid-sentence breaks than the wording it was meant to fix. The
+  shipped wording does not mention line breaks as a mistake, it just stops asking for them. Cost on
+  the near-miss suite is nothing that suite can see: 38 of 48 matched both before and after, and
+  both runs are committed as scorecards. See [docs/PROMPT.md](docs/PROMPT.md#changelog).
+
+  **This does not reach an existing install on its own.** The example box stores a *copy* of the
+  preset's text and is seeded only once, so an install that already has the old sentence goes on
+  sending it. Press **Prose** again in Settings to take the new wording.
+
+### Added
+
+- **`dnt transcribe --example`**, mirroring the flag `dnt-eval` already had. It answers "what would
+  this wording do to *my* audio" for one run, without editing the setting the app is dictating with
+  — which otherwise means changing the thing being measured while measuring it. A preset name,
+  `none`, or literal text; nothing is written back.
+
 ## 0.6.0 - 2026-09-03
 
 Three ways the app used to keep its workings to itself now show them. A recording is on the
