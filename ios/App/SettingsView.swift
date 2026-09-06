@@ -279,10 +279,17 @@ struct SettingsView: View {
                     .disabled(model.dictationExample.isEmpty)
                     .accessibilityIdentifier("preset-clear")
             }
+            // `prompt:` rather than the title, to say what this string is instead of relying on
+            // the platform to guess. iOS happens to render a Form TextField's title inside the
+            // field, so this looked right here while the identical line on macOS put "Empty — …"
+            // in the label column, where it stayed above a box with text in it.
             TextField(
-                "Empty — however the model would write it",
-                text: $model.dictationExample, axis: .vertical
+                "Your example",
+                text: $model.dictationExample,
+                prompt: Text("Empty — however the model would write it"),
+                axis: .vertical
             )
+            .labelsHidden()
             .lineLimit(4...12)
             .accessibilityIdentifier("dictation-example")
             Text(
