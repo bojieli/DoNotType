@@ -6,6 +6,19 @@ measurement that justified them; see [docs/EVALUATION.md](docs/EVALUATION.md).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Release dates use the
 repository's local calendar date.
 
+## 0.6.2 - 2026-09-07
+
+### Fixed
+
+- **The example box stops claiming to be empty while holding text.** The line above it read
+  *"Empty — however the model would write it"* whatever the box contained. It was not a status
+  readout: the sentence was passed as the text field's *title* rather than its placeholder, and a
+  form renders a title as a label and keeps it there regardless. Nothing about it was conditional,
+  so it said "Empty" over a box with a paragraph in it. It is now the placeholder, shown only while
+  the box is genuinely empty. (macOS; the identical line on iOS looked right because iOS puts a
+  field's title inside the field, and it is changed there too so neither depends on where a
+  platform decides to place a label.)
+
 ## 0.6.1 - 2026-09-06
 
 ### Fixed

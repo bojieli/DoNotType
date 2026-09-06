@@ -38,7 +38,7 @@ struct Dnt: AsyncParsableCommand {
               dnt doctor --probe
               dnt logs --follow --level debug
             """,
-        version: "dnt 0.6.1 (b2cba25, 2026-09-06)",
+        version: "dnt 0.6.2 (c29cbda, 2026-09-06)",
         subcommands: [
             Transcribe.self, Providers.self, Doctor.self, HistoryCommand.self, LogsCommand.self,
             PromptCommand.self,
