@@ -201,6 +201,13 @@ jobs:
       - name: Launch the app and check it stays up
         run: ./scripts/macos-launch-check.sh
 
+      # And starting proves nothing about whether it can work. The app launched fine for every
+      # release while being unable to find its own Silero model anywhere but the build directory
+      # that produced it — invisible here, because the build machine is the test machine. This
+      # takes the build directory away and makes the bundle answer from its own contents.
+      - name: Check the bundle carries its own resources
+        run: ./scripts/macos-bundle-selfcontained.sh
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

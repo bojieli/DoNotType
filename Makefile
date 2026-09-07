@@ -60,9 +60,15 @@ app: build
 	@# instead of a commit it may no longer match.
 	@/usr/libexec/PlistBuddy -c "Add :DNTBuildCommit string $$(git rev-parse --short HEAD 2>/dev/null || echo dev)" "$(CONTENTS)/Info.plist"
 	@/usr/libexec/PlistBuddy -c "Add :DNTBuildTimestamp string $$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(CONTENTS)/Info.plist"
-	@# SwiftPM keeps target resources in a sibling bundle. Bundle.module looks for that bundle in
-	@# Contents/Resources once the executable is wrapped as an app, so it must cross that boundary
-	@# with the binary. This carries the local Silero model and its licence notice.
+	@# SwiftPM keeps target resources in a sibling bundle, which has to cross into the app with the
+	@# binary. This carries the local Silero model and its licence notice.
+	@#
+	@# Contents/Resources is where a signed bundle must keep them, and it is NOT where SwiftPM's
+	@# generated Bundle.module looks — that checks the .app root and then an absolute path into the
+	@# build tree, so it resolved here only on the machine that compiled the binary. Every release
+	@# was therefore one recording away from a fatalError on anybody else's computer. The lookup now
+	@# lives in CoreResources.swift, and scripts/macos-bundle-selfcontained.sh hides the build
+	@# directory and asks the bundle to prove it does not need it.
 	@cp -R "$(BUILD_DIR)/DoNotType_DoNotTypeCore.bundle" "$(CONTENTS)/Resources/"
 	@# The contract ships inside the bundle so the app does not depend on the source tree. The
 	@# directory layout is preserved, because a part is found by its path under prompt/.

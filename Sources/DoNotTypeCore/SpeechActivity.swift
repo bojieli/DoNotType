@@ -52,6 +52,16 @@ public enum SpeechActivity {
         }
     }
 
+    /// Whether the bundled Silero model can actually be found in this build's layout.
+    ///
+    /// Exposed because "is the model there" is a property of how the binary was *packaged*, not of
+    /// the code, and the two disagreed for every release this project has cut: the model resolved
+    /// on any machine holding the build directory and on no other. A packaging mistake that only
+    /// appears on somebody else's computer needs something on this side of the network to ask.
+    public static var isModelAvailable: Bool {
+        CoreResources.url(forResource: "silero_vad", withExtension: "onnx") != nil
+    }
+
     public static let sampleRate = 16_000
     public static let windowSamples = 512
     public static let threshold: Float = 0.5
@@ -285,7 +295,9 @@ private final class SileroModel: @unchecked Sendable {
     private let session: ORTSession
 
     init() throws {
-        guard let modelURL = Bundle.module.url(forResource: "silero_vad", withExtension: "onnx")
+        // Not `Bundle.module`: its generated lookup cannot succeed from inside a `.app`, and it
+        // traps rather than returning nil when it fails. See CoreResources.
+        guard let modelURL = CoreResources.url(forResource: "silero_vad", withExtension: "onnx")
         else { throw SpeechActivity.DetectorError.unavailable("silero_vad.onnx is missing") }
 
         let environment = try ORTEnv(loggingLevel: .warning)
