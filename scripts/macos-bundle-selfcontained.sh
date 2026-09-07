@@ -29,7 +29,12 @@ DNT="$APP/Contents/MacOS/dnt"
 }
 
 # Every sibling resource bundle SwiftPM produced, whatever the configuration or arch triple.
-mapfile -t bundles < <(find .build -maxdepth 3 -name "DoNotType_*.bundle" -type d 2>/dev/null || true)
+# A while-read loop rather than `mapfile`, which is a bash 4 builtin: macOS ships bash 3.2, so
+# `mapfile` works on a developer machine with Homebrew bash on PATH and fails on the CI runner.
+bundles=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && bundles+=("$line")
+done < <(find .build -maxdepth 3 -name "DoNotType_*.bundle" -type d 2>/dev/null || true)
 
 moved=()
 restore() {
