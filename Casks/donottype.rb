@@ -21,8 +21,9 @@ cask "donottype" do
   version "0.6.2"
   sha256 "56a017fe48be8e459156050c3dce8f5fbed38524e9be90aa9c025aefe2862493"
 
-  url "https://github.com/bojieli/DoNotType/releases/download/v#{version}/DoNotType-macOS.zip",
-      verified: "github.com/bojieli/DoNotType/"
+  # No `verified:` — Homebrew deprecated it, and it was always redundant here: the default check
+  # is that the download host matches `homepage`, which it does.
+  url "https://github.com/bojieli/DoNotType/releases/download/v#{version}/DoNotType-macOS.zip"
   name "DoNotType"
   desc "Voice input that transcribes what you said instead of rewriting it"
   homepage "https://github.com/bojieli/DoNotType/"
