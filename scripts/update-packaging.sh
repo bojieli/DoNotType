@@ -2,6 +2,10 @@
 #
 # Fills the version and checksum into the Homebrew cask from a published release.
 #
+# The cask lives at Casks/donottype.rb because this repository is its own Homebrew tap: the file
+# somebody installs from is the file in this checkout, so there is no second copy to drift and no
+# submission step between a release and the thing users get.
+#
 # Hand-copying a sha256 is the step that goes wrong, and it goes wrong invisibly: a cask with a
 # stale hash fails at install time complaining about a corrupt download. That reads as something
 # far more alarming than "somebody forgot to update a field". So nobody types a hash — this reads
@@ -55,7 +59,7 @@ import re, sys
 version, mac_sha = sys.argv[1], sys.argv[2]
 
 # Homebrew: version and sha256 are their own lines, so this is unambiguous.
-path = "packaging/homebrew/donottype.rb"
+path = "Casks/donottype.rb"
 text = open(path).read()
 text, version_matches = re.subn(
     r'version "[^"]*"', f'version "{version}"', text, count=1)
@@ -68,5 +72,6 @@ PY
 
 echo "✓ packaging updated to $VERSION"
 echo
-echo "Next (manual because it is a submission to another repository):"
-echo "  Homebrew  copy packaging/homebrew/donottype.rb into your tap's Casks/ and push"
+echo "Casks/donottype.rb is the tap — committing it to the default branch is the release."
+echo "The release workflow does that for itself when a release is published; run this by hand"
+echo "only to re-point the cask outside that flow."

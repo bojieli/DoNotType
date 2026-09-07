@@ -95,29 +95,52 @@ Normal main-branch CI still runs the full iOS suite as regression coverage.
 
 ## Package managers
 
-Manifests live in [`packaging/`](../packaging/) and are **not** submitted yet. Homebrew onboarding
-should follow a notarized macOS release with some public history. The winget drafts remain dormant:
-there is no Windows release artifact for them to reference until Windows production verification
-and Authenticode signing exist.
+### Homebrew — automatic
 
-After a release is published:
+**This repository is its own tap.** The cask lives at [`Casks/donottype.rb`](../Casks/donottype.rb),
+which is one of the three directories Homebrew looks in, so the file somebody installs from is the
+file reviewed in a pull request here. There is no second repository, no copy to fall out of date,
+and no submission step to forget.
 
 ```bash
-./scripts/update-packaging.sh 0.2.0
+brew tap bojieli/donottype https://github.com/bojieli/DoNotType
+brew install --cask donottype
 ```
 
-The script reads the macOS `.sha256` file the workflow published and writes the version and checksum
-into the Homebrew cask. No hash is typed by hand: a cask with a stale checksum fails at install with
-a complaint about a corrupt download, which reads as something far more alarming than a forgotten
-field. It deliberately does not update the dormant winget drafts.
+The URL is needed because a tap is normally located by the name `homebrew-<x>`, and this repository
+is named for the product. That is the entire cost of keeping one copy of the cask.
 
-Submission is deliberately manual, because each submission is a pull request to somebody else's
-repository:
+**Publishing a release updates it.** [`packaging.yml`](../.github/workflows/packaging.yml) runs on
+`release: published`, points the cask at that version with `scripts/update-packaging.sh`, and
+commits the result to the default branch. Nothing to run, and nothing to remember.
 
-| | where |
-|---|---|
-| Homebrew | copy `packaging/homebrew/donottype.rb` into the tap's `Casks/` |
-| winget | unavailable until a verified, Authenticode-signed Windows artifact is restored |
+It runs on publication rather than on the tag because the cask cannot be correct any earlier: the
+script reads the checksum from the release's own `.sha256` asset, which 404s while the release is
+still a draft. That is also the moment the artifacts become real for users, so it is the right
+moment for the tap to follow them. The rolling `latest` prerelease is excluded — every green build
+on main republishes it, and a cask following that would hand users a development build.
+
+No hash is ever typed by hand. A cask with a stale checksum fails at install with a complaint about
+a corrupt download, which reads as something far more alarming than a forgotten field.
+
+To re-point the cask outside that flow — a release published before this workflow existed, or a run
+that failed — run the workflow by hand from the Actions tab with a version, or locally:
+
+```bash
+./scripts/update-packaging.sh 0.6.2 && git commit -am "packaging: point the tap at v0.6.2"
+```
+
+### winget — dormant
+
+The drafts in [`packaging/winget/`](../packaging/winget/) are **not** submitted and are not touched
+by the script or the workflow. There is no Windows release artifact for them to reference until
+Windows production verification and Authenticode signing exist.
+
+### homebrew-cask — not yet
+
+Onboarding to Homebrew's own registry should follow a notarized macOS release with some public
+history, and it is a pull request to somebody else's repository, so it stays a decision rather than
+a step. The tap above is the supported way to install in the meantime.
 
 ## Signing
 
