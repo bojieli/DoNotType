@@ -1,14 +1,22 @@
 # Homebrew cask for DoNotType.
 #
-# Not submitted to homebrew-cask yet: registry onboarding should follow a notarized release with
-# some public history. Until then this file lives here so it can be installed from a tap, and so the
-# shape of the thing is reviewable rather than invented at submission time:
+# This repository *is* the tap. `Casks/` is one of the three directories Homebrew looks in, so the
+# file installed from is the file reviewed in this pull request — there is no second copy to fall
+# out of date, and no submission step to forget:
 #
-#     brew install --cask bojieli/tap/donottype
+#     brew tap bojieli/donottype https://github.com/bojieli/DoNotType
+#     brew install --cask donottype
 #
-# `scripts/update-packaging.sh <version>` fills in the version and the checksum from a published
-# release, so nobody hand-copies a sha256 — a cask with a stale hash fails at install time with a
-# message about a corrupt download, which is a bad way to learn that a field was forgotten.
+# The URL is required because a tap is normally found by the name `homebrew-<x>`, and this repo is
+# named for the product rather than for Homebrew. That is the whole cost of keeping one copy.
+#
+# Not submitted to homebrew-cask itself yet: registry onboarding should follow a notarized release
+# with some public history. Until then this is the supported way to install.
+#
+# The version and checksum below are written by `scripts/update-packaging.sh <version>`, which the
+# release workflow runs for itself when a release is published — nobody hand-copies a sha256, and a
+# cask with a stale hash fails at install time complaining about a corrupt download, which is a bad
+# way to learn that a field was forgotten.
 cask "donottype" do
   version "0.6.2"
   sha256 "56a017fe48be8e459156050c3dce8f5fbed38524e9be90aa9c025aefe2862493"

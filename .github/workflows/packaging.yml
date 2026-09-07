@@ -1,0 +1,107 @@
+name: Packaging
+
+# Points the Homebrew cask at a release, automatically, the moment that release is published.
+#
+# Separate from release.yml on purpose. That workflow is tag-driven and ends by drafting a release
+# for a human to read; this one starts where a human finishes, because the cask cannot be correct
+# any earlier: scripts/update-packaging.sh reads the checksum from the release's own `.sha256`
+# asset URL, which 404s while the release is still a draft. Publication is also the moment the
+# artifacts become real for users, so it is the right moment for the tap to follow them.
+#
+# This repository is its own tap — the cask lives at Casks/donottype.rb — so "submitting" it is a
+# commit to the default branch and nothing else. There is no second repository, no token beyond the
+# built-in one, and no copy of the file to fall out of date.
+on:
+  release:
+    types: [published]
+  # A hand re-run, for a release published before this workflow existed or one whose run failed.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to point the cask at (x.y.z, no leading v)'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+# Two releases published within a minute of each other would otherwise race to push the same file,
+# and the loser would fail on a non-fast-forward rather than simply going second.
+concurrency:
+  group: packaging
+  cancel-in-progress: false
+
+jobs:
+  homebrew:
+    name: Point the cask at the release
+    # The rolling `latest` prerelease is republished by every green build on main. A cask that
+    # followed it would quietly hand users a development build, so only versioned, non-prerelease
+    # tags are allowed to move the tap.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.release.prerelease == false &&
+       startsWith(github.event.release.tag_name, 'v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The default branch, not the tag. The cask somebody installs is the one on the branch
+          # this repository is tapped at; updating a detached checkout of the tag would change a
+          # file nobody reads.
+          ref: ${{ github.event.repository.default_branch }}
+
+      # Through the environment rather than interpolated into the script body: a tag name is
+      # attacker-controllable on a fork, and `${{ }}` inside `run:` is textual substitution.
+      - name: Resolve the version
+        id: resolve
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${INPUT_VERSION:-$RELEASE_TAG}"
+          version="${version#v}"
+          if ! [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "✗ '$version' is not a canonical x.y.z version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Fails loudly when the release has no published macOS checksum, which is the one thing that
+      # would otherwise produce a cask pointing at a download nobody can verify.
+      - name: Point the cask at it
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: ./scripts/update-packaging.sh "$VERSION"
+
+      - name: Commit it to the tap
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if git diff --quiet -- Casks/; then
+            echo "The cask already points at $VERSION — nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/donottype.rb
+          git commit -m "packaging: point the tap at v$VERSION" \
+            -m "Written by scripts/update-packaging.sh from the published release's own .sha256, so no checksum is typed by hand. This repository is its own Homebrew tap, so this commit is the submission."
+
+          # main forbids non-fast-forward pushes, so losing a race is a failed push rather than a
+          # clobbered branch. Rebase and try again instead of failing a release over ordering.
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:$BRANCH"; then
+              echo "pushed on attempt $attempt"
+              exit 0
+            fi
+            git fetch origin "$BRANCH"
+            git rebase "origin/$BRANCH" || {
+              echo "✗ the cask changed underneath this run; re-run this workflow" >&2
+              exit 1
+            }
+          done
+          echo "✗ could not push after 3 attempts" >&2
+          exit 1

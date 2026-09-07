@@ -84,7 +84,18 @@ as source but is deliberately not distributed until its production build is manu
 Authenticode signing is available. The rolling Android build uses a debug key; versioned Android
 releases use the configured release keystore.
 
-To build and install the macOS app:
+On macOS, Homebrew installs the same notarized build and keeps it updated:
+
+```bash
+brew tap bojieli/donottype https://github.com/bojieli/DoNotType
+brew install --cask donottype
+```
+
+The repository is its own tap, so the cask you install is the one in
+[`Casks/donottype.rb`](Casks/donottype.rb); the URL is needed only because the repository is named
+for the product rather than `homebrew-donottype`.
+
+To build and install the macOS app from source instead:
 
 ```bash
 git clone https://github.com/bojieli/DoNotType
