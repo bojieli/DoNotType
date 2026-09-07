@@ -6,6 +6,32 @@ measurement that justified them; see [docs/EVALUATION.md](docs/EVALUATION.md).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Release dates use the
 repository's local calendar date.
 
+## 0.6.3 - 2026-09-07
+
+### Fixed
+
+- **A downloaded app could not find its own speech detector, and died the first time you spoke.**
+  Every macOS release before this one carries the fault. The Silero model ships inside the bundle,
+  but the code looked for it where SwiftPM's generated accessor points — the `.app` root, where a
+  signed bundle may not keep resources — and then at an absolute path inside whatever build tree
+  produced the binary. That fallback exists on the machine that compiled it and nowhere else, so
+  the app worked for anyone who built it and crashed on `fatalError` for anyone who downloaded it,
+  on the first recording and on every `dnt transcribe`.
+
+  Nothing could see it, because the machine that builds is the machine that tests, and the app
+  launches perfectly well right up until it needs the model. It was found by installing 0.6.2
+  through Homebrew and transcribing one file with the `dnt` that ships in the bundle.
+
+  The lookup now tries the layouts this project actually ships and checks for the resource rather
+  than for a bundle that merely loads. It returns nothing instead of trapping, so a build genuinely
+  missing the model reports that instead of killing the process.
+
+### Added
+
+- **`dnt doctor` reports the local speech detector**, beside the opus encoder. Whether it resolves
+  is a property of how a binary was packaged rather than of the code, so there needs to be
+  something you can ask without a network round trip.
+
 ## 0.6.2 - 2026-09-07
 
 ### Fixed
