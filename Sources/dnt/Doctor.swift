@@ -111,6 +111,14 @@ struct Doctor: AsyncParsableCommand {
         section("Environment")
         row("macOS", ProcessInfo.processInfo.operatingSystemVersionString)
         row("opus encoder", OpusEncoder.isAvailable ? "available" : "UNAVAILABLE — uploads as WAV")
+        // Reported because it is a packaging property rather than a code one: the model is found
+        // relative to the binary, so a bundle can be built correctly and shipped wrong. Silence
+        // trimming and long-recording splitting both stop without it.
+        if SpeechActivity.isModelAvailable {
+            row("silero VAD", "available")
+        } else {
+            bad("silero VAD", "MISSING — this build cannot trim silence or split long recordings")
+        }
         row(
             "app settings",
             AppPreferences.isAvailable
