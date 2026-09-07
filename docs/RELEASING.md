@@ -104,11 +104,16 @@ and no submission step to forget.
 
 ```bash
 brew tap bojieli/donottype https://github.com/bojieli/DoNotType
+brew trust bojieli/donottype
 brew install --cask donottype
 ```
 
-The URL is needed because a tap is normally located by the name `homebrew-<x>`, and this repository
-is named for the product. That is the entire cost of keeping one copy of the cask.
+Two lines of friction, both from being a third-party tap rather than from this layout. The URL is
+needed because a tap is normally located by the name `homebrew-<x>` and this repository is named
+for the product. `brew trust` is needed because Homebrew refuses to load a cask from any tap
+outside its own registry until the user says so — without it, `brew info` and `brew install` both
+stop with *"Refusing to load cask … from untrusted tap"*. Both lines would still be needed with a
+separate `homebrew-tap` repository; onboarding to homebrew-cask is what removes them.
 
 **Publishing a release updates it.** [`packaging.yml`](../.github/workflows/packaging.yml) runs on
 `release: published`, points the cask at that version with `scripts/update-packaging.sh`, and

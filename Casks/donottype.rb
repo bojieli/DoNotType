@@ -5,10 +5,12 @@
 # out of date, and no submission step to forget:
 #
 #     brew tap bojieli/donottype https://github.com/bojieli/DoNotType
+#     brew trust bojieli/donottype
 #     brew install --cask donottype
 #
 # The URL is required because a tap is normally found by the name `homebrew-<x>`, and this repo is
-# named for the product rather than for Homebrew. That is the whole cost of keeping one copy.
+# named for the product rather than for Homebrew. `brew trust` is required of every tap outside
+# Homebrew's own registry, and would be needed just the same from a separate homebrew-tap repo.
 #
 # Not submitted to homebrew-cask itself yet: registry onboarding should follow a notarized release
 # with some public history. Until then this is the supported way to install.

@@ -88,12 +88,15 @@ On macOS, Homebrew installs the same notarized build and keeps it updated:
 
 ```bash
 brew tap bojieli/donottype https://github.com/bojieli/DoNotType
+brew trust bojieli/donottype
 brew install --cask donottype
 ```
 
 The repository is its own tap, so the cask you install is the one in
 [`Casks/donottype.rb`](Casks/donottype.rb); the URL is needed only because the repository is named
-for the product rather than `homebrew-donottype`.
+for the product rather than `homebrew-donottype`. Homebrew refuses to load a cask from a
+third-party tap until you say you trust it, which is the `brew trust` line — read the cask first if
+you would rather not take that on trust.
 
 To build and install the macOS app from source instead:
 
