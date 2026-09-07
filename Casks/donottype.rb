@@ -28,6 +28,11 @@ cask "donottype" do
   desc "Voice input that transcribes what you said instead of rewriting it"
   homepage "https://github.com/bojieli/DoNotType/"
 
+  # Matches LSMinimumSystemVersion in Resources/Info.plist and .macOS(.v14) in Package.swift.
+  # Without it Homebrew installs happily onto an older system and the app refuses to launch, which
+  # is a worse way to learn the requirement than being told before the download.
+  depends_on macos: ">= :sonoma"
+
   # Accessibility is revoked whenever the signature changes, so an update always needs re-granting.
   # Saying so here is cheaper than a support thread about dictation that silently stopped.
   caveats <<~CAVEATS
