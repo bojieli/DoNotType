@@ -7,7 +7,10 @@ import Foundation
 final class DictationController {
     enum State: Equatable {
         case idle
+        case starting
+        case startingStalled
         case recording
+        case stopping
         case transcribing
         case failed(String)
     }
@@ -25,7 +28,7 @@ final class DictationController {
     let store: HistoryStore
 
     private let log = Log("dictation")
-    private let recorder = AudioRecorder()
+    private let recorder = RecordingDevice()
     private let hotkey = HotkeyMonitor()
     private var hotkeyPausedForCapture = false
     private let grounding = GroundingCoordinator()
@@ -38,6 +41,11 @@ final class DictationController {
     private var transcriptionTask: Task<Void, Never>?
     /// The in-flight dictation's id, from the key press to the insertion.
     private var pendingID = UUID()
+    private enum PendingEnd: Equatable { case finish, cancel }
+    private var pendingEnd: PendingEnd?
+    private var cancelWhenStopped = false
+    private var startRequestedAt = Date()
+    private var stopRequestedAt = Date()
 
     /// Eight characters is enough to pick one dictation out of a day's log and short enough to
     /// sit in every line without pushing the interesting fields off the end.
@@ -76,10 +84,16 @@ final class DictationController {
         hotkey.finishAndSendAction = Settings.shared.finishAndSendAction
         hotkey.rewriteTrigger = Settings.shared.rewriteTrigger
         hotkey.translateTrigger = Settings.shared.translateTrigger
-        hotkey.isRecording = { [weak self] in self?.state == .recording }
+        hotkey.isRecording = { [weak self] in
+            self?.state == .starting || self?.state == .startingStalled
+                || self?.state == .recording || self?.state == .stopping
+        }
+        hotkey.canFinishWithReturn = { [weak self] in self?.state == .recording }
         hotkey.isDictationActive = { [weak self] in
             guard let self else { return false }
-            return self.state == .recording || self.state == .transcribing
+            return self.state == .starting || self.state == .startingStalled
+                || self.state == .recording || self.state == .stopping
+                || self.state == .transcribing
         }
         hotkey.onPressMode = { [weak self] mode in self?.pendingMode = mode }
         hotkey.onPress = { [weak self] in self?.beginRecording() }
@@ -105,15 +119,6 @@ final class DictationController {
         hotkey.stop()
         transcriptionTask?.cancel()
         levelTimer?.invalidate()
-    }
-
-    /// Builds the audio input ahead of the first dictation. See `AudioRecorder.warmUp`.
-    ///
-    /// Detached, because doing it on the main actor would only move the stall from the first key
-    /// press to launch, and launch is when the menu bar and the settings window are being built.
-    func warmUpAudio() {
-        let recorder = self.recorder
-        Task.detached(priority: .utility) { recorder.warmUp() }
     }
 
     /// Re-reads the trigger and mode after the user changes them in settings.
@@ -171,107 +176,164 @@ final class DictationController {
             return
         }
 
-        do {
-            // Construct the request machinery before capture so the first PCM sample enters both
-            // the recovery WAV and the live segmenter. Missing configuration still follows the
-            // established post-release error path.
+        pendingID = UUID()
+        pendingEnd = nil
+        cancelWhenStopped = false
+        pendingFinishAndSend = .disabled
+        pendingTarget = NSWorkspace.shared.frontmostApplication.map {
+            ($0.processIdentifier, $0.localizedName ?? "?")
+        }
+        startRequestedAt = Date()
+        state = .starting
+        overlay.show(phase: .recording, hint: "Starting microphone…")
+
+        let startingID = pendingID
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard let self, pendingID == startingID, state == .starting else { return }
+            log.warning("microphone startup is not responding", ["dictation": Self.short(startingID)])
+            state = .startingStalled
+            if pendingEnd != .cancel {
+                overlay.update(phase: .failed("Microphone not responding — check audio input"))
+            }
+        }
+
+        // Leave the event-tap callback before reading Accessibility or touching CoreAudio. The
+        // actor runs the latter on a worker thread, so a stalled audio service cannot freeze the
+        // menu bar or hold the system's keyboard event stream.
+        Task { [weak self] in
+            guard let self else { return }
+            pendingFocusIdentity = AccessibilityReader.focusedElementIdentity()
+            if pendingEnd == .cancel {
+                completeCancellation()
+                return
+            }
+
+            // Prepare the live pipeline before the first sample arrives.
+            let onPCM: (@Sendable (Data) -> Void)?
             if let coordinator = makeCoordinator() {
                 let session = LiveTranscriptionSession(
                     transcriber: makeTranscriber(primary: coordinator.service), context: nil)
                 let pipeline = LiveAudioPipeline(session: session)
                 livePipeline = pipeline
-                recorder.onPCM = { [weak pipeline] pcm in pipeline?.append(pcm: pcm) }
+                onPCM = { [weak pipeline] pcm in pipeline?.append(pcm: pcm) }
             } else {
                 livePipeline = nil
-                recorder.onPCM = nil
+                onPCM = nil
             }
-            recorder.preferredDeviceUID = Settings.shared.microphoneUID
-            try recorder.start()
-            state = .recording
-            InteractionSounds.playStart()
-
-            // One id from the key press to the insertion, on every line and on the history row.
-            // Without it a log with three dictations in it is three interleaved stories, and the
-            // question being asked is always about one of them.
-            pendingID = UUID()
-            pendingFinishAndSend = .disabled
-            // Where the words are meant to go, decided now rather than when they arrive.
-            pendingTarget = NSWorkspace.shared.frontmostApplication.map {
-                ($0.processIdentifier, $0.localizedName ?? "?")
+            let device = Settings.shared.microphoneUID
+            do {
+                try await recorder.start(preferredDeviceUID: device, onPCM: onPCM)
+                recordingStarted()
+            } catch {
+                recordingStartFailed(error)
             }
-            pendingFocusIdentity = AccessibilityReader.focusedElementIdentity()
-            log.info(
-                "recording started",
-                [
-                    "dictation": Self.short(pendingID),
-                    "mode": Settings.shared.hotkeyMode.rawValue,
-                    "live": pendingMode.rawValue,
-                    "device": Settings.shared.microphoneUID ?? "system default",
-                    "provider": Settings.shared.provider.rawValue,
-                    "model": Settings.shared.model,
-                    "fidelity": Settings.shared.fidelity.rawValue,
-                    "grounding": Settings.shared.groundingEnabled ? "on" : "off",
-                ])
-
-            // Phase 2 of the capture: the expensive accessibility walk runs while the user is
-            // still speaking, so grounding costs no perceived latency.
-            grounding.beginCapture()
-            let contextTask = Task { [grounding] in await grounding.finishCapture() }
-            pendingContextTask = contextTask
-            if let session = livePipeline?.session {
-                Task {
-                    await session.setContext(await contextTask.value)
-                }
-            }
-
-            // The same trick, for the network. Opening a connection costs about a second, and
-            // whether the pooled one is still alive cannot be known without using it — so both
-            // happen here, against speech the user was going to produce anyway, rather than after
-            // the key comes up with somebody watching. A connection found dead is replaced
-            // mid-sentence instead of eight seconds into a wait. See `ProviderTransport`.
-            warmUpConnection()
-
-            let hints = recordingHints(isTriggerHeld: hotkey.isHeld)
-            overlay.show(
-                phase: .recording, hint: hints.primary, subhint: hints.secondary)
-            startLevelUpdates()
-        } catch {
-            recorder.cancel()
-            livePipeline?.cancel()
-            livePipeline = nil
-            recorder.onPCM = nil
-            log.error(
-                "could not start recording",
-                [
-                    "dictation": Self.short(pendingID),
-                    "device": Settings.shared.microphoneUID ?? "system default",
-                    "detail": FailureAdvice.detail(of: error),
-                ])
-            fail(error.localizedDescription)
         }
     }
 
+    private func recordingStarted() {
+        guard state == .starting || state == .startingStalled else { return }
+        state = .recording
+        if pendingEnd == .cancel {
+            pendingEnd = nil
+            cancelRecording()
+            return
+        }
+        // If the audio service took a long time to answer, don't make another CoreAudio call just
+        // to play a cue. The recording overlay already shows the new state.
+        if Date().timeIntervalSince(startRequestedAt) < 1 {
+            InteractionSounds.playStart()
+        }
+        log.info(
+            "recording started",
+            [
+                "dictation": Self.short(pendingID),
+                "mode": Settings.shared.hotkeyMode.rawValue,
+                "live": pendingMode.rawValue,
+                "device": Settings.shared.microphoneUID ?? "system default",
+                "provider": Settings.shared.provider.rawValue,
+                "model": Settings.shared.model,
+                "fidelity": Settings.shared.fidelity.rawValue,
+                "grounding": Settings.shared.groundingEnabled ? "on" : "off",
+            ])
+
+        grounding.beginCapture()
+        let contextTask = Task { [grounding] in await grounding.finishCapture() }
+        pendingContextTask = contextTask
+        if let session = livePipeline?.session {
+            Task { await session.setContext(await contextTask.value) }
+        }
+        warmUpConnection()
+
+        let hints = recordingHints(isTriggerHeld: hotkey.isHeld)
+        overlay.update(phase: .recording, hint: hints.primary, subhint: hints.secondary)
+        startLevelUpdates()
+
+        let requestedEnd = pendingEnd
+        pendingEnd = nil
+        switch requestedEnd {
+        case .finish: finishRecording()
+        case .cancel: cancelRecording()
+        case nil: break
+        }
+    }
+
+    private func recordingStartFailed(_ error: Error) {
+        if pendingEnd == .cancel {
+            pendingEnd = nil
+            completeCancellation()
+            return
+        }
+        livePipeline?.cancel()
+        livePipeline = nil
+        pendingEnd = nil
+        pendingFocusIdentity = nil
+        log.error(
+            "could not start recording",
+            [
+                "dictation": Self.short(pendingID),
+                "device": Settings.shared.microphoneUID ?? "system default",
+                "detail": FailureAdvice.detail(of: error),
+            ])
+        fail(error.localizedDescription)
+    }
+
     private func cancelRecording() {
+        if state == .starting || state == .startingStalled {
+            pendingEnd = .cancel
+            overlay.hide()
+            return
+        }
         guard state == .recording else { return }
         log.info("recording cancelled", ["dictation": Self.short(pendingID)])
-        recorder.cancel()
-        recorder.onPCM = nil
+        state = .stopping
+        stopLevelUpdates()
+        overlay.hide()
+        Task { [weak self] in
+            guard let self else { return }
+            await recorder.cancel()
+            completeCancellation()
+        }
+    }
+
+    private func completeCancellation() {
         livePipeline?.cancel()
         livePipeline = nil
         pendingContextTask?.cancel()
         pendingContextTask = nil
         grounding.cancel()
-        stopLevelUpdates()
-        overlay.hide()
         pendingFinishAndSend = .disabled
         pendingFocusIdentity = nil
+        cancelWhenStopped = false
         state = .idle
     }
 
     private func cancelActiveDictation() {
         switch state {
-        case .recording:
+        case .starting, .startingStalled, .recording:
             cancelRecording()
+        case .stopping:
+            cancelWhenStopped = true
         case .transcribing:
             log.info("transcription cancellation requested", ["dictation": Self.short(pendingID)])
             // The task's cancellation handler also stops live segment requests and context capture.
@@ -284,7 +346,9 @@ final class DictationController {
     }
 
     private func finishWithReturn(_ action: FinishAndSendAction) {
-        guard state == .recording else { return }
+        guard state == .starting || state == .startingStalled || state == .recording else {
+            return
+        }
         pendingFinishAndSend = action
         log.info(
             "Return finish requested",
@@ -315,7 +379,12 @@ final class DictationController {
             [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.overlay.append(levels: self.recorder.drainLevels())
+                Task { [weak self] in
+                    guard let self else { return }
+                    let levels = await self.recorder.drainLevels()
+                    guard self.state == .recording else { return }
+                    self.overlay.append(levels: levels)
+                }
             }
         }
     }
@@ -326,15 +395,43 @@ final class DictationController {
     }
 
     private func finishRecording() {
+        if state == .starting || state == .startingStalled {
+            if pendingEnd != .cancel { pendingEnd = .finish }
+            return
+        }
         guard state == .recording else { return }
+        state = .stopping
         stopLevelUpdates()
+        stopRequestedAt = Date()
+        overlay.update(phase: .transcribing, hint: "Finishing recording…")
+        Task { [weak self] in
+            guard let self else { return }
+            let result: Result<AudioFile, Error>
+            do {
+                result = .success(try await recorder.stop())
+            } catch {
+                result = .failure(error)
+            }
+            recordingStopped(result)
+        }
+    }
 
-        InteractionSounds.playStop()
+    private func recordingStopped(_ result: Result<AudioFile, Error>) {
+        guard state == .stopping else { return }
+        if cancelWhenStopped {
+            if case .success(let audio) = result {
+                try? FileManager.default.removeItem(at: audio.url)
+            }
+            completeCancellation()
+            return
+        }
+        if Date().timeIntervalSince(stopRequestedAt) < 1 {
+            InteractionSounds.playStop()
+        }
 
         let audio: AudioFile
         do {
-            audio = try recorder.stop()
-            recorder.onPCM = nil
+            audio = try result.get()
         } catch AudioRecorder.RecorderError.tooShort {
             // A tap rather than a hold is not an error, but hiding the pill makes the gesture look
             // lost. Say what happened without turning the menu-bar icon into a warning.

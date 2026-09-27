@@ -131,23 +131,38 @@ enum AudioDevices {
 /// On by default, so recording boundaries remain clear when the overlay is behind another window.
 /// The setting is still exposed for people who prefer silent dictation.
 ///
-/// The cue itself is `Tone`, in the core, because it is shared with Windows. All that belongs here
-/// is handing its bytes to AppKit — `NSSound` will not take raw samples, only a container it
-/// recognises, which is why the core hands over a WAV rather than an array of floats.
+/// The cue itself is `Tone`, in the core, because it is shared with Windows. Playback runs on an
+/// actor so an unresponsive audio service cannot freeze the menu bar or keyboard event tap.
 @MainActor
 enum InteractionSounds {
-    private static var start: NSSound? = NSSound(data: Tone.start())
-    private static var stop: NSSound? = NSSound(data: Tone.stop())
+    private static let player = InteractionSoundPlayer()
 
     static func playStart() {
         guard Settings.shared.interactionSounds else { return }
-        start?.stop()
-        start?.play()
+        Task { await player.playStart() }
     }
 
     static func playStop() {
         guard Settings.shared.interactionSounds else { return }
+        Task { await player.playStop() }
+    }
+}
+
+private actor InteractionSoundPlayer {
+    private var start: AVAudioPlayer?
+    private var stop: AVAudioPlayer?
+
+    func playStart() {
+        if start == nil { start = try? AVAudioPlayer(data: Tone.start()) }
+        start?.stop()
+        start?.currentTime = 0
+        start?.play()
+    }
+
+    func playStop() {
+        if stop == nil { stop = try? AVAudioPlayer(data: Tone.stop()) }
         stop?.stop()
+        stop?.currentTime = 0
         stop?.play()
     }
 }
