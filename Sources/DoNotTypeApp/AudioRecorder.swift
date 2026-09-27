@@ -45,6 +45,7 @@ final class AudioRecorder: @unchecked Sendable {
     private var converter: AVAudioConverter?
     private var outputURL: URL?
     private var startedAt: Date?
+    private var tapInstalled = false
     private var meter = AudioLevelMeter(sampleRate: sampleRate)
     /// Bars the overlay has not drawn yet. See `drainLevels`.
     private var pendingBars: [AudioLevelMeter.Bar] = []
@@ -153,9 +154,15 @@ final class AudioRecorder: @unchecked Sendable {
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             self?.append(buffer, target: target)
         }
+        tapInstalled = true
 
         engine.prepare()
-        try engine.start()
+        do {
+            try engine.start()
+        } catch {
+            teardown()
+            throw error
+        }
         startedAt = Date()
     }
 
@@ -182,9 +189,14 @@ final class AudioRecorder: @unchecked Sendable {
     // MARK: - Private
 
     private func teardown() {
-        guard engine.isRunning else { return }
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        // engine.start() can fail after installTap succeeds. In that case isRunning is false,
+        // but the tap still exists; leaving it behind makes the next installTap raise an
+        // Objective-C exception from AVAudioEngine.
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
+        if engine.isRunning { engine.stop() }
         lock.withLock { file = nil }  // closing the AVAudioFile finalises the WAV header
         converter = nil
         startedAt = nil
