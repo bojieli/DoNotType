@@ -195,6 +195,7 @@ final class DictationController {
             state = .startingStalled
             if pendingEnd != .cancel {
                 overlay.update(phase: .failed("Microphone not responding — check audio input"))
+                overlay.hide(after: .seconds(5))
             }
         }
 
@@ -233,6 +234,7 @@ final class DictationController {
 
     private func recordingStarted() {
         guard state == .starting || state == .startingStalled else { return }
+        let wasStalled = state == .startingStalled
         state = .recording
         if pendingEnd == .cancel {
             pendingEnd = nil
@@ -266,7 +268,11 @@ final class DictationController {
         warmUpConnection()
 
         let hints = recordingHints(isTriggerHeld: hotkey.isHeld)
-        overlay.update(phase: .recording, hint: hints.primary, subhint: hints.secondary)
+        if wasStalled {
+            overlay.show(phase: .recording, hint: hints.primary, subhint: hints.secondary)
+        } else {
+            overlay.update(phase: .recording, hint: hints.primary, subhint: hints.secondary)
+        }
         startLevelUpdates()
 
         let requestedEnd = pendingEnd
