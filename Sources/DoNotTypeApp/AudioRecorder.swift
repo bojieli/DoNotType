@@ -70,21 +70,6 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
-    /// Pays the audio stack's one-off setup cost at launch instead of inside the first key press.
-    ///
-    /// Reaching `inputNode` for the first time builds the input audio unit and opens the device.
-    /// Measured cold on an M-series Mac it took 94–166 ms, and `start()` runs on the event-tap
-    /// callback, so every millisecond of it is a millisecond the hotkey is not being read — see
-    /// `HotkeyMonitor.seconds(from:to:)` for what that cost used to do to the first dictation.
-    ///
-    /// It opens the device without starting IO: `kAudioDevicePropertyDeviceIsRunningSomewhere`
-    /// stays false afterwards, so no recording indicator appears and nothing is captured. Called
-    /// off the main thread, because the point is to move the wait, not to move it to launch.
-    func warmUp() {
-        guard !engine.isRunning else { return }
-        _ = engine.inputNode.outputFormat(forBus: 0)
-    }
-
     static func requestAccess() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized: true
@@ -265,4 +250,35 @@ final class AudioRecorder: @unchecked Sendable {
 
     /// About seven seconds of bars.
     private static let maximumPendingBars = 120
+}
+
+/// Serializes CoreAudio calls away from the main thread and the keyboard event tap. A HAL request
+/// can take 30 seconds to time out; while it does, the menu bar and every intercepted key must
+/// remain responsive. The actor also prevents stop/cancel from racing an in-progress start.
+actor RecordingDevice {
+    private let recorder = AudioRecorder()
+
+    func start(preferredDeviceUID: String?, onPCM: (@Sendable (Data) -> Void)?) throws {
+        recorder.preferredDeviceUID = preferredDeviceUID
+        recorder.onPCM = onPCM
+        do {
+            try recorder.start()
+        } catch {
+            recorder.cancel()
+            recorder.onPCM = nil
+            throw error
+        }
+    }
+
+    func stop() throws -> AudioFile {
+        defer { recorder.onPCM = nil }
+        return try recorder.stop()
+    }
+
+    func cancel() {
+        recorder.cancel()
+        recorder.onPCM = nil
+    }
+
+    func drainLevels() -> [AudioLevelMeter.Bar] { recorder.drainLevels() }
 }

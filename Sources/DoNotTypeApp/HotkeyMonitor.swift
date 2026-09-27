@@ -208,6 +208,9 @@ final class HotkeyMonitor {
     var chords: [(keyCode: CGKeyCode, flags: CGEventFlags, action: () -> Void)] = []
     /// Set by the owner so tap-toggle knows whether a tap should start or stop.
     var isRecording: () -> Bool = { false }
+    /// Return may finish only after the microphone is actually recording. During a slow start it
+    /// remains the foreground app's key, even though the hotkey gesture is already active.
+    var canFinishWithReturn: () -> Bool = { false }
     /// Unlike `isRecording`, this includes the request and optional rewrite after key-up.
     var isDictationActive: () -> Bool = { false }
 
@@ -360,7 +363,7 @@ final class HotkeyMonitor {
                 if type == .keyDown {
                     // Repeats stay swallowed, but only the first key-down finishes the recording.
                     if isFinishingWithReturn { return true }
-                    if finishAndSendAction.capturesReturn(whileRecording: isRecording()) {
+                    if finishAndSendAction.capturesReturn(whileRecording: canFinishWithReturn()) {
                         isFinishingWithReturn = true
                         onFinishWithReturn?(finishAndSendAction)
                         return true

@@ -104,10 +104,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Immediately after the hotkey is live, because the window between the two is exactly when
-        // an eager user presses the key for the first time.
-        dictation.warmUpAudio()
-
         await settingsModel.refresh()
         rebuildMenu()
 
@@ -160,8 +156,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let image: NSImage?
         switch state {
         case .idle: image = Self.statusImage("StatusIdle", fallback: "mic")
-        case .recording: image = Self.statusImage("StatusRecording", fallback: "mic.fill")
-        case .transcribing: image = Self.statusImage("StatusTranscribing", fallback: "waveform")
+        case .starting, .recording:
+            image = Self.statusImage("StatusRecording", fallback: "mic.fill")
+        case .startingStalled:
+            image = NSImage(systemSymbolName: "exclamationmark.triangle",
+                            accessibilityDescription: "DoNotType")
+        case .stopping, .transcribing:
+            image = Self.statusImage("StatusTranscribing", fallback: "waveform")
         case .failed:
             image = NSImage(systemSymbolName: "exclamationmark.triangle",
                             accessibilityDescription: "DoNotType")
@@ -203,8 +204,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch dictation.state {
         case .idle:
             menu.addItem(disabled("Hold \(Settings.shared.trigger.label) to dictate"))
+        case .starting:
+            menu.addItem(disabled("Starting microphone…"))
+        case .startingStalled:
+            menu.addItem(disabled("Microphone not responding — check audio input"))
         case .recording:
             menu.addItem(disabled("Recording… release to transcribe"))
+        case .stopping:
+            menu.addItem(disabled("Finishing recording…"))
         case .transcribing:
             menu.addItem(disabled("Transcribing…"))
         case .failed(let message):
