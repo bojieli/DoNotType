@@ -101,7 +101,7 @@ public static class Program
 
     private static int Version()
     {
-        Out.Line("dnt 0.6.3 (d2db0ee, 2026-09-07)");
+        Out.Line("dnt 0.6.4 (67fb439, 2026-09-27)");
         return 0;
     }
 
