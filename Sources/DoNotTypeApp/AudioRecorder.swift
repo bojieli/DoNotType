@@ -38,7 +38,7 @@ final class AudioRecorder: @unchecked Sendable {
     static let minimumDuration = PressGesture.minimumRecordingSeconds
 
     private let log = Log("audio")
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private let lock = NSLock()
 
     private var file: AVAudioFile?
@@ -185,6 +185,10 @@ final class AudioRecorder: @unchecked Sendable {
         lock.withLock { file = nil }  // closing the AVAudioFile finalises the WAV header
         converter = nil
         startedAt = nil
+        // A CoreAudio timeout or service restart can leave an AVAudioEngine's input node in an
+        // unusable state even after its tap has been removed. A later installTap then raises an
+        // Objective-C exception that Swift cannot catch. Use a new engine for the next attempt.
+        engine = AVAudioEngine()
     }
 
     private func append(_ buffer: AVAudioPCMBuffer, target: AVAudioFormat) {
