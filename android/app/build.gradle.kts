@@ -118,16 +118,16 @@ tasks.named("preBuild") { dependsOn(syncContract) }
 dependencies {
     // 1.19 requires compileSdk 37. Keep the newest line compatible with the app's API 35 build;
     // compileSdk can move independently later without opting users into a new target SDK.
-    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("com.google.android.material:material:1.14.0")
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.29.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.30.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.json:json:20260814")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     testImplementation("junit:junit:4.13.2")
     // Local JVM tests need the desktop native library; production still packages the Android AAR.
-    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.29.0")
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.30.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:rules:1.7.0")
