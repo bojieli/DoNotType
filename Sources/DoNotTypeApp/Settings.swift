@@ -34,6 +34,7 @@ final class Settings {
         static let retention = "retention"
         static let hotkeyMode = "hotkeyMode"
         static let cancelShortcut = "cancelShortcut"
+        static let finishShortcut = "finishShortcut"
         static let finishAndSendAction = "finishAndSendAction"
         // The stored names still say "secondary" from when a rewrite was the only thing a
         // second key could do. Renaming them would log every existing user out of their own
@@ -85,6 +86,7 @@ final class Settings {
             Key.hotkeyMode: HotkeyMonitor.Mode.automatic.rawValue,
             Key.cancelShortcut: CancelShortcut.escape.rawValue,
             // Finishing a message can send it to another person, so it must be a deliberate opt-in.
+            Key.finishShortcut: HotkeyMonitor.Trigger.defaultFinish.rawValue,
             Key.finishAndSendAction: FinishAndSendAction.disabled.rawValue,
             Key.rewriteStyle: RewriteStyle.casual.rawValue,
             // Audible boundaries make it clear when capture has begun and ended, even when the
@@ -220,6 +222,12 @@ final class Settings {
                 ?? .escape
         }
         set { defaults.set(newValue.rawValue, forKey: Key.cancelShortcut) }
+    }
+
+    /// An empty persisted value disables the optional recording-only finish shortcut.
+    var finishShortcut: HotkeyMonitor.Trigger? {
+        get { defaults.string(forKey: Key.finishShortcut).flatMap(HotkeyMonitor.Trigger.init(rawValue:)) }
+        set { defaults.set(newValue?.rawValue ?? "", forKey: Key.finishShortcut) }
     }
 
     var finishAndSendAction: FinishAndSendAction {

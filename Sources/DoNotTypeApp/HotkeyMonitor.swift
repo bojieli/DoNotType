@@ -35,6 +35,8 @@ final class HotkeyMonitor {
         static let fnKey = Trigger(
             legacy: "fnKey", keyCode: 63, modifiers: .maskSecondaryFn, keyLabel: "fn")
 
+        static let defaultFinish = rightOption
+
         private static let persistedPrefix = "shortcut.1"
         static let modifierMask: CGEventFlags = [
             .maskCommand, .maskShift, .maskControl, .maskAlternate, .maskSecondaryFn,
@@ -111,7 +113,7 @@ final class HotkeyMonitor {
             return Self.functionKeyCodes.contains(keyCode)
         }
 
-        /// Return and Escape already have recording-only meanings configured elsewhere.
+        /// Return and Escape are reserved for recording controls rather than global triggers.
         var isReserved: Bool { keyCode == 36 || keyCode == 76 || keyCode == 53 }
 
         static func modifierFlag(for keyCode: CGKeyCode) -> CGEventFlags? {
@@ -170,6 +172,7 @@ final class HotkeyMonitor {
     var trigger: Trigger = .rightCommand
     var mode: Mode = .automatic
     var cancelShortcut: CancelShortcut = .escape
+    var finishShortcut: Trigger? = .defaultFinish
     var finishAndSendAction: FinishAndSendAction = .disabled
 
     /// Optional key bound to a rewrite style.
@@ -198,8 +201,9 @@ final class HotkeyMonitor {
     var onHoldChange: ((Bool) -> Void)?
     /// Fires when the configured cancel key is pressed during recording or transcription.
     var onCancel: (() -> Void)?
-    /// Fires when Return ends a recording. The action decides whether insertion is also submitted.
-    var onFinishWithReturn: ((FinishAndSendAction) -> Void)?
+    /// Fires when the configured shortcut ends recording. The action decides whether insertion
+    /// is also submitted.
+    var onFinishShortcut: ((FinishAndSendAction) -> Void)?
 
     /// Extra chorded shortcuts that work whether or not a recording is in flight.
     ///
@@ -208,9 +212,9 @@ final class HotkeyMonitor {
     var chords: [(keyCode: CGKeyCode, flags: CGEventFlags, action: () -> Void)] = []
     /// Set by the owner so tap-toggle knows whether a tap should start or stop.
     var isRecording: () -> Bool = { false }
-    /// Return may finish only after the microphone is actually recording. During a slow start it
-    /// remains the foreground app's key, even though the hotkey gesture is already active.
-    var canFinishWithReturn: () -> Bool = { false }
+    /// The finish shortcut may act only after the microphone is actually recording. During a
+    /// slow start it remains the foreground app's key, even though the hotkey gesture is active.
+    var canFinishWithShortcut: () -> Bool = { false }
     /// Unlike `isRecording`, this includes the request and optional rewrite after key-up.
     var isDictationActive: () -> Bool = { false }
 
@@ -234,8 +238,9 @@ final class HotkeyMonitor {
     private var consumedTriggerKeyCode: CGKeyCode?
     /// Keeps the key-up swallowed after key-down cancellation has already returned the app idle.
     private var isCancellingWithEscape = false
-    /// Keeps Return's key-up swallowed after its key-down has moved recording to transcription.
-    private var isFinishingWithReturn = false
+    /// Keeps the finish shortcut's key-up swallowed after its key-down has moved recording
+    /// to transcription.
+    private var consumedFinishShortcut: Trigger?
     private(set) var restartCount = 0
 
     func start() -> Bool {
@@ -253,6 +258,7 @@ final class HotkeyMonitor {
         isHeld = false
         activeTrigger = nil
         consumedTriggerKeyCode = nil
+        consumedFinishShortcut = nil
         if let runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
@@ -300,7 +306,7 @@ final class HotkeyMonitor {
     }
 
     /// Returns true only for a configured recording-only keystroke in its active state.
-    private func handle(type: CGEventType, event: CGEvent) -> Bool {
+    func handle(type: CGEventType, event: CGEvent) -> Bool {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             // Re-enable immediately rather than waiting for the next watchdog tick.
@@ -309,6 +315,16 @@ final class HotkeyMonitor {
         case .flagsChanged:
             let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
             let flags = Trigger.normalizedModifiers(event.flags)
+
+            var consumedFinishRelease = false
+            if let consumed = consumedFinishShortcut, consumed.isModifierKey {
+                if !flags.isSuperset(of: consumed.modifiers) {
+                    consumedFinishShortcut = nil
+                    consumedFinishRelease = true
+                } else if consumed.keyCode == keyCode {
+                    consumedFinishRelease = true
+                }
+            }
 
             // Any required modifier being released ends a modifier-only combination. This also
             // covers combinations such as Right Command + Right Option when Option is released
@@ -320,8 +336,10 @@ final class HotkeyMonitor {
                 self.activeTrigger = nil
                 onHoldChange?(false)
                 handleRelease(at: event.timestamp)
-                return false
+                return consumedFinishRelease
             }
+            if consumedFinishRelease { return true }
+            if captureFinishShortcut(keyCode: keyCode, modifiers: flags) { return true }
 
             guard !isHeld,
                 let match = matchingTrigger(keyCode: keyCode, modifiers: flags),
@@ -355,20 +373,15 @@ final class HotkeyMonitor {
                 return true
             }
 
-            if keyCode == 36 || keyCode == 76 {  // kVK_Return or kVK_ANSI_KeypadEnter
-                if type == .keyUp, isFinishingWithReturn {
-                    isFinishingWithReturn = false
-                    return true
-                }
-                if type == .keyDown {
-                    // Repeats stay swallowed, but only the first key-down finishes the recording.
-                    if isFinishingWithReturn { return true }
-                    if finishAndSendAction.capturesReturn(whileRecording: canFinishWithReturn()) {
-                        isFinishingWithReturn = true
-                        onFinishWithReturn?(finishAndSendAction)
-                        return true
-                    }
-                }
+            let normalizedFlags = Trigger.normalizedModifiers(event.flags)
+            if let consumed = consumedFinishShortcut, consumed.keyCode == keyCode {
+                if type == .keyUp { consumedFinishShortcut = nil }
+                return true
+            }
+            if type == .keyDown,
+                captureFinishShortcut(keyCode: keyCode, modifiers: normalizedFlags)
+            {
+                return true
             }
 
             if keyCode == 53 {  // kVK_Escape
@@ -417,6 +430,20 @@ final class HotkeyMonitor {
             break
         }
         return false
+    }
+
+    private func captureFinishShortcut(keyCode: CGKeyCode, modifiers: CGEventFlags) -> Bool {
+        guard canFinishWithShortcut(), let finishShortcut else { return false }
+        // Holding the recording trigger must not turn a one-key finish into a required chord.
+        let recordingModifiers = isHeld ? (activeTrigger?.modifiers ?? []) : []
+        let finishModifiers = modifiers.subtracting(recordingModifiers.subtracting(finishShortcut.modifiers))
+        guard finishShortcut.keyCode == keyCode, finishShortcut.modifiers == finishModifiers,
+            finishShortcut != trigger, finishShortcut != rewriteTrigger,
+            finishShortcut != translateTrigger, finishShortcut.keyCode != 53
+        else { return false }
+        consumedFinishShortcut = finishShortcut
+        onFinishShortcut?(finishAndSendAction)
+        return true
     }
 
     /// Which mode's key this keystroke is, if any.

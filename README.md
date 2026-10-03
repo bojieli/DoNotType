@@ -120,9 +120,12 @@ The same key supports either a tap or a hold:
 |---|---|---|
 | **Tap, speak, tap** | The first tap starts recording and the second ends it. | Longer dictation and everyday use. |
 | **Hold, speak, release** | After half a second, recording continues only while you hold the key. | Short utterances. |
-| **Tap, speak, Return** | Return ends the recording, inserts the text, and can submit it. | Prompts and chat messages you were about to send. |
+| **Tap, speak, finish shortcut** | The configured shortcut ends the recording, inserts the text, and can submit it. | Prompts and chat messages you were about to send. |
 
-The third gesture is controlled by **Settings › Dictation › Finish with Return**. With
+On macOS, configure the third gesture in **Settings › Recording › Finish shortcut** (default
+`Right ⌥`), and choose the output under **After finishing**. You can record a different shortcut or
+clear it entirely. Plain Return stays available for typing while recording unless you explicitly
+bind it as the finish shortcut. Windows uses Return/Enter as its finish key. With
 `Insert + Return`, DoNotType inserts the transcript and presses Return for you. This is useful for
 CLI prompts such as Claude Code or Codex. In apps where Return creates a new line and ⌘/Ctrl Return
 submits the message, choose `Insert + ⌘ Return` instead.
