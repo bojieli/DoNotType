@@ -18,7 +18,7 @@ is reachable by a user of that client, not merely present in its core library.
 | Dictate from the app itself | n/a ¹⁷ | n/a ¹⁷ | ✅ record button | ✅ record button |
 | Return and backspace on the keyboard | n/a ¹⁸ | n/a ¹⁸ | ✅ | ✅ |
 | Cancel recording or transcription | ✅ Escape / None ¹⁴ | ✅ Escape / None ¹⁴ | ✅ button ²⁰ | ✅ button ²⁰ |
-| Finish recording, insert, and submit | ✅ Return / ⌘Return / Off ¹⁵ | ✅ Enter / Ctrl+Enter / Off ¹⁵ | — ¹⁵ | — ¹⁵ |
+| Finish recording, insert, and submit | ✅ configurable key; Return / ⌘Return / Off output ¹⁵ | ✅ Enter / Ctrl+Enter / Off ¹⁵ | — ¹⁵ | — ¹⁵ |
 | Push-to-talk / hands-free as a *setting* | ✅ | ✅ | — ¹ | — ¹ |
 | Rewrite a dictation | ✅ second hotkey | ✅ second hotkey | ✅ mode chip ²² | ✅ mode chip ²² |
 | Write it like this (one example box) | ✅ | ✅ | ✅ | ✅ |
@@ -66,7 +66,8 @@ overlay names it — `Esc to cancel`, beside the send hint when there is one —
 the only thing the user is looking at while a dictation is under way, and a shortcut nothing
 mentions is a shortcut nobody has.
 
-¹⁵ Desktop Return/Enter finishes capture only while recording and inserts the transcript. Sending
+¹⁵ The macOS finish shortcut is configurable and defaults to Right Option; Windows uses Return/Enter.
+Both finish capture only while recording and insert the transcript. Sending
 an additional Return/Enter is opt-in: the app latches that request before transcription and emits
 the configured submit key only if the exact field focused at recording start still has focus after
 insertion. Mobile clients already own their foreground recording UI but cannot submit a message in

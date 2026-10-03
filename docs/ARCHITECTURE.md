@@ -42,12 +42,12 @@ hotkey down ──┬─ start recording
               ├─ phase 2 capture (accessibility walk, 500 ms cap)
               └─ screenshot if the tree came back thin
                         │
-finish input ──┬─ trigger release/tap, or recording-only Return when opted in
+finish input ──┬─ trigger release/tap, or recording-only finish shortcut
                ├─ finish recording, encode already done
                ├─ upload finished file, or fall back to inline
                ├─ transcribe (context parts first, audio last)
                ├─ paste, confirm, store
-               └─ if Return latched the intent, verify exact field and submit
+               └─ if the finish shortcut latched the intent, verify exact field and submit
 ```
 
 Both steps marked "not awaited" exist for the same reason: everything expensive happens while the
@@ -57,12 +57,12 @@ perceived as latency.
 ### Finish-and-send
 
 Finish-and-send carries an extra identity beside the ordinary process-level paste guard: process
-ID plus the focused accessibility/UI Automation element token. Return/Enter is consumed only while
-recording and latches the configured output action before recognition begins. It always finishes
+ID plus the focused accessibility/UI Automation element token. The configured finish shortcut
+(macOS; default Right Option) or Return/Enter (Windows) is consumed only while recording and latches the configured output action before recognition begins. It always finishes
 capture and inserts; the default output action stops there. After paste settles, only an exact
 field match may receive the optional Return/Enter, `⌘ Return`, or `Ctrl+Enter`. Cancellation,
 failure, manual-paste fallback, or an identity that could not be read has no submit path. For both
-configured Escape and recording-time Return/Enter, the physical key-down, every repeat, and the
+configured Escape and the recording-time finish key, the physical key-down, every repeat, and the
 matching key-up are consumed; none reaches the target app.
 
 ## Measured design decisions

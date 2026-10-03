@@ -554,7 +554,7 @@ private struct GeneralTab: View {
                             get: { Optional(model.trigger) },
                             set: { if let value = $0 { model.trigger = value } }),
                         canClear: false,
-                        conflictingValues: [model.rewriteTrigger, model.translateTrigger],
+                        conflictingValues: [model.rewriteTrigger, model.translateTrigger, model.finishShortcut],
                         setCaptureActive: model.setHotkeyCaptureActive)
                 }
                 Picker("Behaviour", selection: $model.hotkeyMode) {
@@ -567,11 +567,22 @@ private struct GeneralTab: View {
                         Text(shortcut.label).tag(shortcut)
                     }
                 }
-                Picker("Finish with Return", selection: $model.finishAndSendAction) {
+                LabeledContent("Finish shortcut") {
+                    HotkeyRecorder(
+                        value: $model.finishShortcut,
+                        canClear: true,
+                        conflictingValues: [model.trigger, model.rewriteTrigger, model.translateTrigger],
+                        setCaptureActive: model.setHotkeyCaptureActive,
+                        isRecordingOnly: true)
+                }
+                Picker("After finishing", selection: $model.finishAndSendAction) {
                     Text("Insert only").tag(FinishAndSendAction.disabled)
                     Text("Insert + Return").tag(FinishAndSendAction.returnKey)
                     Text("Insert + ⌘ Return").tag(FinishAndSendAction.modifiedReturn)
                 }
+                Text("Right Option is the default finish key. Choose Insert + Return to send after transcription.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 Text(dictationHelp)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -633,7 +644,8 @@ private struct GeneralTab: View {
         }
         return "A quick tap starts recording and a second tap ends it; holding the key past a "
             + "moment records only while held. " + cancel
-            + " Press Return while recording to stop and insert the transcript." + submit
+            + (model.finishShortcut.map { " Press \($0.label) while recording to stop and insert the transcript." + submit }
+                ?? " The finish shortcut is disabled.")
     }
 
     /// One backend's "does this actually work?" button, with room for the answer.
@@ -1069,6 +1081,7 @@ private struct HotkeyRecorder: View {
     /// steal the key Rewrite is using.
     let conflictingValues: [HotkeyMonitor.Trigger?]
     let setCaptureActive: (Bool) -> Bool
+    var isRecordingOnly = false
 
     @State private var isCapturing = false
     @State private var eventMonitor: Any?
@@ -1248,11 +1261,12 @@ private struct HotkeyRecorder: View {
     }
 
     private func accept(_ trigger: HotkeyMonitor.Trigger) {
-        if trigger.isReserved {
-            issue = "Return and Escape are reserved for finishing or cancelling a dictation."
+        if isRecordingOnly ? trigger.keyCode == 53 : trigger.isReserved {
+            issue = isRecordingOnly ? "Escape is reserved for cancelling dictation."
+                : "Return and Escape are reserved for finishing or cancelling a dictation."
             return
         }
-        guard trigger.isSafeForGlobalUse else {
+        guard isRecordingOnly || trigger.isSafeForGlobalUse else {
             issue = "Add ⌘, ⌥, or ⌃, or use a modifier or function key by itself."
             return
         }
@@ -1517,7 +1531,7 @@ private struct TranslationSection: View {
                 HotkeyRecorder(
                     value: $model.translateTrigger,
                     canClear: true,
-                    conflictingValues: [model.trigger, model.rewriteTrigger],
+                    conflictingValues: [model.trigger, model.rewriteTrigger, model.finishShortcut],
                     setCaptureActive: model.setHotkeyCaptureActive)
             }
 
@@ -1581,7 +1595,7 @@ private struct RewriteSection: View {
                 HotkeyRecorder(
                     value: $model.rewriteTrigger,
                     canClear: true,
-                    conflictingValues: [model.trigger, model.translateTrigger],
+                    conflictingValues: [model.trigger, model.translateTrigger, model.finishShortcut],
                     setCaptureActive: model.setHotkeyCaptureActive)
             }
             .disabled(!availability.isAvailable)

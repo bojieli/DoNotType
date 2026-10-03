@@ -54,6 +54,8 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
         public var hotkeyMode: String
         public var cancelShortcut: String
         public var finishAndSendAction: String
+        /// Missing in older profiles; an empty value explicitly disables the shortcut.
+        public var finishShortcut: String?
         public var secondaryTrigger: String?
         public var secondaryStyle: String
         /// The key bound to Translate. Absent in a profile written before Translate had a key of
@@ -74,7 +76,7 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
 
         public init(
             trigger: String, hotkeyMode: String, cancelShortcut: String,
-            finishAndSendAction: String, secondaryTrigger: String?, secondaryStyle: String,
+            finishAndSendAction: String, finishShortcut: String? = nil, secondaryTrigger: String?, secondaryStyle: String,
             translateTrigger: String? = nil,
             interactionSounds: Bool, launchAtLogin: Bool, groundingEnabled: Bool,
             screenshotEnabled: Bool, keytermBiasing: Bool, blockedBundleIDs: [String],
@@ -84,6 +86,7 @@ public struct SettingsTransferDocument: Codable, Equatable, Sendable {
             self.hotkeyMode = hotkeyMode
             self.cancelShortcut = cancelShortcut
             self.finishAndSendAction = finishAndSendAction
+            self.finishShortcut = finishShortcut
             self.secondaryTrigger = secondaryTrigger
             self.secondaryStyle = secondaryStyle
             self.translateTrigger = translateTrigger

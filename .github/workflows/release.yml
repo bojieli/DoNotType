@@ -133,7 +133,7 @@ jobs:
       # A release that fails its own suite should not exist. Cheap insurance against tagging a
       # commit that was never green.
       - name: Unit tests
-        run: swift test --filter DoNotTypeCoreTests
+        run: swift test --filter 'DoNotType(Core|App)Tests'
 
       # Imported before the build, not after, so `make app` signs with the Developer ID on its
       # only run. Ad-hoc still produces a working app, but macOS forgets the Accessibility grant

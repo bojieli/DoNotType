@@ -105,7 +105,7 @@ jobs:
       - name: Unit tests
         # Integration tests are deliberately excluded: they call a paid API and fail when the
         # network does, which would make CI a coin flip rather than a signal.
-        run: swift test --filter DoNotTypeCoreTests
+        run: swift test --filter 'DoNotType(Core|App)Tests'
 
       - name: Build the menu-bar app
         run: swift build -c release --product DoNotTypeMac

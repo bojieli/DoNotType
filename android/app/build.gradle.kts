@@ -32,8 +32,8 @@ android {
         // coroutine APIs used here available without desugaring.
         minSdk = 26
         targetSdk = 35
-        versionCode = 606
-        versionName = "0.6.6"
+        versionCode = 700
+        versionName = "0.7.0"
         // The value is a Java literal, so the quotes are part of it.
         buildConfigField("String", "BUILD_COMMIT", "\"$buildCommit\"")
         buildConfigField("String", "BUILD_TIMESTAMP", "\"$buildTimestamp\"")

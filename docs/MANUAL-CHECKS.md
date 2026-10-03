@@ -61,19 +61,21 @@ stopped early), text landing in the wrong window (injection raced the focus), or
 "corrected" to something on screen (the failure this project is about — if you see it, it belongs in
 `eval/nearmiss/` as a case).
 
-### Finishing with Return/Enter
+### Finishing with a shortcut
 
 On macOS and Windows, try each post-insertion choice in turn. Start recording in a disposable chat
-or test field, speak, and press Return/Enter instead of releasing or tapping the recording key.
+or test field, speak, and press the configured finish shortcut (macOS default `Right ⌥`) or Enter
+(Windows) instead of releasing or tapping the recording key. On macOS, also rebind the shortcut,
+clear it, and confirm plain Return and keypad Enter reach the target during recording by default.
 
 - Insert only should finish recording, transcribe, and insert without submitting.
 - Plain Return/Enter should insert the transcript and submit it once.
 - `⌘ Return` / `Ctrl+Enter` should insert first and emit that exact chord once.
-- Hold Escape and Return/Enter briefly during their active cases. The target must receive neither
+- Hold Escape and the finish shortcut briefly during their active cases. The target must receive neither
   the physical key-down, its repeats, nor its key-up; only a configured later submit is delivered.
 - Move to another field immediately after insertion: the overlay should say it was not sent, and no
   Return/Enter should reach the newly focused field.
-- With recording and transcription both idle, test Return/Enter in another application. All three
+- With recording and transcription both idle, test the finish shortcut in another application. All three
   settings must leave it untouched.
 
 **Passes if** only the recording-time key is captured, a successful path submits exactly once, and

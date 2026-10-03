@@ -315,6 +315,13 @@ final class SettingsModel {
         }
     }
 
+    var finishShortcut: HotkeyMonitor.Trigger? {
+        didSet {
+            Settings.shared.finishShortcut = finishShortcut
+            onHotkeyChange?()
+        }
+    }
+
     var finishAndSendAction: FinishAndSendAction {
         didSet {
             Settings.shared.finishAndSendAction = finishAndSendAction
@@ -693,6 +700,7 @@ final class SettingsModel {
         trigger = settings.trigger
         hotkeyMode = settings.hotkeyMode
         cancelShortcut = settings.cancelShortcut
+        finishShortcut = settings.finishShortcut
         finishAndSendAction = settings.finishAndSendAction
         rewriteTrigger = settings.rewriteTrigger
         rewriteStyle = settings.rewriteStyle
@@ -771,6 +779,7 @@ final class SettingsModel {
                 hotkeyMode: settings.hotkeyMode.rawValue,
                 cancelShortcut: settings.cancelShortcut.rawValue,
                 finishAndSendAction: settings.finishAndSendAction.rawValue,
+                finishShortcut: settings.finishShortcut?.rawValue ?? "",
                 secondaryTrigger: settings.rewriteTrigger?.rawValue,
                 secondaryStyle: settings.rewriteStyle.rawValue,
                 translateTrigger: settings.translateTrigger?.rawValue,
@@ -860,6 +869,13 @@ final class SettingsModel {
             HotkeyMonitor.Trigger?, RewriteStyle, HotkeyMonitor.Trigger?, LogLevel,
             TranscriptMode
         )?
+        if let raw = document.desktop?.finishShortcut, !raw.isEmpty {
+            guard let shortcut = HotkeyMonitor.Trigger(rawValue: raw),
+                shortcut.keyCode != 53
+            else {
+                throw SettingsTransferApplyError.unsupportedValue(field: "desktop.finishShortcut", value: raw)
+            }
+        }
         if let desktop = document.desktop {
             guard let trigger = HotkeyMonitor.Trigger(rawValue: desktop.trigger) else {
                 throw SettingsTransferApplyError.unsupportedValue(
@@ -942,6 +958,9 @@ final class SettingsModel {
             settings.hotkeyMode = values.1
             settings.cancelShortcut = values.2
             settings.finishAndSendAction = values.3
+            if let raw = desktop.finishShortcut {
+                settings.finishShortcut = raw.isEmpty ? nil : HotkeyMonitor.Trigger(rawValue: raw)
+            }
             settings.rewriteTrigger = values.4
             settings.rewriteStyle = values.5
             settings.translateTrigger = values.6
@@ -986,6 +1005,7 @@ final class SettingsModel {
         trigger = settings.trigger
         hotkeyMode = settings.hotkeyMode
         cancelShortcut = settings.cancelShortcut
+        finishShortcut = settings.finishShortcut
         finishAndSendAction = settings.finishAndSendAction
         rewriteTrigger = settings.rewriteTrigger
         rewriteStyle = settings.rewriteStyle

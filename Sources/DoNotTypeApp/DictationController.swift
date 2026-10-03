@@ -81,6 +81,7 @@ final class DictationController {
         hotkey.trigger = Settings.shared.trigger
         hotkey.mode = Settings.shared.hotkeyMode
         hotkey.cancelShortcut = Settings.shared.cancelShortcut
+        hotkey.finishShortcut = Settings.shared.finishShortcut
         hotkey.finishAndSendAction = Settings.shared.finishAndSendAction
         hotkey.rewriteTrigger = Settings.shared.rewriteTrigger
         hotkey.translateTrigger = Settings.shared.translateTrigger
@@ -88,7 +89,7 @@ final class DictationController {
             self?.state == .starting || self?.state == .startingStalled
                 || self?.state == .recording || self?.state == .stopping
         }
-        hotkey.canFinishWithReturn = { [weak self] in self?.state == .recording }
+        hotkey.canFinishWithShortcut = { [weak self] in self?.state == .recording }
         hotkey.isDictationActive = { [weak self] in
             guard let self else { return false }
             return self.state == .starting || self.state == .startingStalled
@@ -100,7 +101,7 @@ final class DictationController {
         hotkey.onRelease = { [weak self] in self?.finishRecording() }
         hotkey.onHoldChange = { [weak self] held in self?.triggerHoldChanged(held) }
         hotkey.onCancel = { [weak self] in self?.cancelActiveDictation() }
-        hotkey.onFinishWithReturn = { [weak self] action in self?.finishWithReturn(action) }
+        hotkey.onFinishShortcut = { [weak self] action in self?.finishWithShortcut(action) }
 
         // ⌘⇧Z undoes the last insertion; ⌘⌥Z swaps a rewrite back to what was actually said.
         // Both are cheap only because the verbatim transcript is always kept.
@@ -128,6 +129,7 @@ final class DictationController {
         hotkey.trigger = Settings.shared.trigger
         hotkey.mode = Settings.shared.hotkeyMode
         hotkey.cancelShortcut = Settings.shared.cancelShortcut
+        hotkey.finishShortcut = Settings.shared.finishShortcut
         hotkey.finishAndSendAction = Settings.shared.finishAndSendAction
         hotkey.rewriteTrigger = Settings.shared.rewriteTrigger
         hotkey.translateTrigger = Settings.shared.translateTrigger
@@ -351,13 +353,13 @@ final class DictationController {
         }
     }
 
-    private func finishWithReturn(_ action: FinishAndSendAction) {
+    private func finishWithShortcut(_ action: FinishAndSendAction) {
         guard state == .starting || state == .startingStalled || state == .recording else {
             return
         }
         pendingFinishAndSend = action
         log.info(
-            "Return finish requested",
+            "Shortcut finish requested",
             ["dictation": Self.short(pendingID), "action": action.rawValue])
         finishRecording()
     }
@@ -370,11 +372,20 @@ final class DictationController {
     }
 
     private func recordingHints(isTriggerHeld: Bool) -> (primary: String, secondary: String) {
-        let primary = Settings.shared.hotkeyMode.overlayHint(isTriggerHeld: isTriggerHeld)
+        let settings = Settings.shared
+        let trigger = switch pendingMode {
+        case .dictate: settings.trigger
+        case .rewrite: settings.rewriteTrigger ?? settings.trigger
+        case .translate: settings.translateTrigger ?? settings.trigger
+        }
+        let primary = settings.hotkeyMode.overlayHint(
+            isTriggerHeld: isTriggerHeld, triggerLabel: trigger.label)
         // Escape has cancelled a recording since the shortcut existed, and nothing on screen said
         // so; the overlay is the only surface a user is looking at while one is under way.
         let secondary = RecordingHint.secondary(
-            finish: Settings.shared.finishAndSendAction == .disabled ? "" : "Return to send",
+            finish: Settings.shared.finishShortcut.map {
+                "\($0.label) to " + (Settings.shared.finishAndSendAction == .disabled ? "insert" : "send")
+            } ?? "",
             cancel: Settings.shared.cancelShortcut)
         return (primary, secondary)
     }

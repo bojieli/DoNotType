@@ -6,6 +6,23 @@ measurement that justified them; see [docs/EVALUATION.md](docs/EVALUATION.md).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Release dates use the
 repository's local calendar date.
 
+## 0.7.0 - 2026-10-03
+
+### Added
+
+- **A configurable finish shortcut on macOS.** Right Option is the default single key to end a
+  recording and insert its transcript. Choose `Insert + Return` or `Insert + ⌘ Return` under
+  Settings → Recording → After finishing to submit after insertion. The finish shortcut can be
+  changed or cleared, and follows settings export and import.
+
+### Fixed
+
+- **Return no longer interrupts recording by default.** Plain Return and keypad Enter reach the
+  app being used unless explicitly configured as the finish shortcut.
+- **The floating recording bar names the configured key.** It shows, for example, “Tap Right ⌘
+  to transcribe” or “Release Right ⌘ to transcribe,” and uses the respective key for Rewrite and
+  Translate recordings.
+
 ## 0.6.3 - 2026-09-07
 
 ### Fixed

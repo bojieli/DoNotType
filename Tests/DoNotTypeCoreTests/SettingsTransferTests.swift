@@ -51,6 +51,22 @@ struct SettingsTransferTests {
         #expect(try SettingsTransferDocument.decode(older.encoded()).typography == nil)
     }
 
+    @Test func finishShortcutRoundTripsAndOlderProfilesOmitIt() throws {
+        var profile = document()
+        profile.desktop = .init(
+            trigger: "rightCommand", hotkeyMode: "automatic", cancelShortcut: "escape",
+            finishAndSendAction: "returnKey", secondaryTrigger: nil, secondaryStyle: "casual",
+            interactionSounds: true, launchAtLogin: false, groundingEnabled: true,
+            screenshotEnabled: false, keytermBiasing: true, blockedBundleIDs: [],
+            blockedURLPrefixes: [], logLevel: "info", logContent: false, fileMode: "verbatim")
+        #expect(try SettingsTransferDocument.decode(profile.encoded()).desktop?.finishShortcut == nil)
+        // A binding and an explicitly disabled binding both survive transfer.
+        for shortcut in ["rightOption", ""] {
+            profile.desktop?.finishShortcut = shortcut
+            #expect(try SettingsTransferDocument.decode(profile.encoded()) == profile)
+        }
+    }
+
     @Test func rejectsWrongFormatAndUnknownVersion() throws {
         var wrongFormat = document()
         wrongFormat.format = "some.other.application"

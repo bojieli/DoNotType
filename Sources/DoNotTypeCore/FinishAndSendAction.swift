@@ -1,14 +1,12 @@
-/// What to press after a transcript has been inserted when the user finishes a recording with
-/// Return. `disabled` means insert only; it does not disable Return as a recording control.
-///
-/// Sending is opt-in because Return is often meaningful while somebody is composing. The physical
-/// key is captured only during recording; at idle and during transcription it remains the
-/// foreground application's key.
+/// What to emit after inserting a transcript finished with the configured recording shortcut.
+/// `disabled` means insert only. The input shortcut is configured separately from this output.
+/// Submission remains opt-in and uses the original focused field guard.
 public enum FinishAndSendAction: String, CaseIterable, Sendable {
     case disabled
     case returnKey
     case modifiedReturn
 
+    /// Legacy clients still use Return as their fixed recording-only input.
     public func capturesReturn(whileRecording isRecording: Bool) -> Bool {
         isRecording
     }
