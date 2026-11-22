@@ -21,10 +21,11 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
         // Silero VAD ships as ONNX so the same model and thresholds run on every platform.
-        // Pinned exactly: inference runtimes are part of the product, not build-time tooling.
+        // Microsoft retired the SwiftPM repository. This revision preserves the 1.24.2
+        // sources and binary checksums and updates only the two download URLs.
         .package(
-            url: "https://github.com/microsoft/onnxruntime-swift-package-manager",
-            exact: "1.24.2"),
+            url: "https://github.com/FutureWorkshops/onnxruntime-swift-package-manager",
+            revision: "4107b7abd4cdeb3212de58be2b24fc9844ad44ac"),
     ],
     targets: [
         // Pure logic. Deliberately free of AppKit so the eval harness runs headless in CI.
