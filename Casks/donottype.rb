@@ -20,8 +20,8 @@
 # cask with a stale hash fails at install time complaining about a corrupt download, which is a bad
 # way to learn that a field was forgotten.
 cask "donottype" do
-  version "0.7.0"
-  sha256 "cc6964b10bf61a0122dfda23dde3463b0dd9fab2c588876db5e4f2f64255de03"
+  version "0.8.0"
+  sha256 "9c3f2c4a2713cdd4407a84be8a05ec9ffc4968ca4adb283d0567dfedbef39854"
 
   # No `verified:` — Homebrew deprecated it, and it was always redundant here: the default check
   # is that the download host matches `homepage`, which it does.
