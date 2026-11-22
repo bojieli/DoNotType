@@ -36,7 +36,7 @@ ONNX Runtime
 ------------
 Runs the VAD model on every platform.
 Version: 1.24.2 (macOS/iOS, onnxruntime-swift-package-manager), 1.31.1 (Windows,
-Microsoft.ML.OnnxRuntime), 1.29.0 (Android, onnxruntime-android)
+Microsoft.ML.OnnxRuntime; Android, onnxruntime-android)
 Licence: MIT
 https://github.com/microsoft/onnxruntime
 Ships on: macOS, iOS, Windows, Android.
