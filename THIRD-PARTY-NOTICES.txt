@@ -35,8 +35,8 @@ the exact weights that shipped — travels next to the model as SILERO-VAD-NOTIC
 ONNX Runtime
 ------------
 Runs the VAD model on every platform.
-Version: 1.24.2 (macOS/iOS, onnxruntime-swift-package-manager), 1.29.0 (Windows,
-Microsoft.ML.OnnxRuntime; Android, onnxruntime-android)
+Version: 1.24.2 (macOS/iOS, onnxruntime-swift-package-manager), 1.31.1 (Windows,
+Microsoft.ML.OnnxRuntime), 1.29.0 (Android, onnxruntime-android)
 Licence: MIT
 https://github.com/microsoft/onnxruntime
 Ships on: macOS, iOS, Windows, Android.
