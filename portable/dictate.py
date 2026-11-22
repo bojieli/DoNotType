@@ -22,6 +22,14 @@ MAX_SECONDS = 120
 
 
 def record(path, seconds, device):
+    if sys.platform == "darwin":
+        if device:
+            raise ValueError("Choose the recording input in System Preferences > Sound > Input.")
+        helper = Path(__file__).resolve().parent / "macos/record"
+        if not helper.is_file():
+            raise ValueError("Build the recorder with portable/macos/build.sh first.")
+        subprocess.run([str(helper), str(path), str(seconds)], check=True, timeout=seconds + 75)
+        return
     if not shutil.which("arecord"):
         raise ValueError("Install ALSA arecord (alsa-utils) or use --audio FILE.")
     subprocess.run(
