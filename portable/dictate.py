@@ -67,7 +67,8 @@ def transcribe(audio, key, model):
             "name": "transcript", "strict": True, "schema": schema}}}
     request = urllib.request.Request(
         ENDPOINT, data=json.dumps(body).encode(),
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
+        headers={"Content-Type": "application/json"})
+    request.add_unredirected_header("Authorization", "Bearer " + key)
     with urllib.request.urlopen(request, timeout=120) as response:
         reply = json.load(response)
     choice = reply["choices"][0]

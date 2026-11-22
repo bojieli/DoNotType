@@ -1,14 +1,17 @@
 name: Portable dictation
 on:
   push:
+    branches: [main]
     paths: ['portable/**', 'prompt/**', '.github/workflows/portable.yml']
   pull_request:
     paths: ['portable/**', 'prompt/**', '.github/workflows/portable.yml']
+permissions:
+  contents: read
 jobs:
   linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo apt-get update && sudo apt-get install -y alsa-utils
       - run: DNT_ALSA_TEST=1 python3 -m unittest discover -s portable -v
   monterey:
