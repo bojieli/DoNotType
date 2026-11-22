@@ -6,6 +6,15 @@ measurement that justified them; see [docs/EVALUATION.md](docs/EVALUATION.md).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Release dates use the
 repository's local calendar date.
 
+## 0.8.0 - 2026-11-22
+
+### Added
+
+- Linux terminal dictation can record from an ALSA microphone or transcribe a local PCM WAV.
+  The client sends audio to OpenRouter using the configured API key and prints the transcript.
+- Intel Macs running Monterey can use the same terminal client with a small AVFoundation
+  recorder built from source. See the platform instructions in the README.
+
 ## 0.7.0 - 2026-10-03
 
 ### Added
