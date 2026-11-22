@@ -28,6 +28,8 @@ class DictationTests(unittest.TestCase):
             self.assertEqual(dictate.transcribe(audio, "test", "example"), "你好")
         request = send.call_args[0][0]
         self.assertEqual(request.full_url, dictate.ENDPOINT)
+        self.assertEqual(request.get_header("Authorization"), "Bearer test")
+        self.assertNotIn("Authorization", request.headers)
         payload = json.loads(request.data)
         system, user = payload["messages"]
         self.assertNotIn("{{", system["content"])
