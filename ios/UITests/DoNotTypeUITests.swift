@@ -395,12 +395,14 @@ final class DoNotTypeUITests: XCTestCase {
         let app = launch()
         app.buttons["open-settings"].tap()
 
-        let box = app.textFields["dictation-example"]
-        XCTAssertTrue(reveal(box, in: app), "the example box should be reachable")
+        // The presets are above the example field. Visit them in form order because
+        // reveal scrolls down and the lazy form can discard rows above the viewport.
         let chat = app.buttons["preset-chat"]
         XCTAssertTrue(reveal(chat, in: app), "the Chat preset should be reachable")
         chat.tap()
 
+        let box = app.textFields["dictation-example"]
+        XCTAssertTrue(reveal(box, in: app), "the example box should be reachable")
         XCTAssertTrue(
             box.value as? String != "" && (box.value as? String)?.isEmpty == false,
             "pressing a preset must put its text in the box, not just select it")
